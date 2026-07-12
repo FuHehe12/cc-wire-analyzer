@@ -1,13 +1,13 @@
 name: build-release
 
-# 触发：推 v* tag → 双平台打包 + 发 GitHub Release；也支持手动（workflow_dispatch）做测试构建
+# 触发：推 v* tag → 双平台打包 + 发 GitHub Release；workflow_dispatch 做测试构建（不出 release）
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write   # softprops/action-gh-release 发 release 需要
+  contents: write   # release job 发 release 需要
 
 jobs:
   build:
@@ -19,13 +19,11 @@ jobs:
           - os: windows-latest
             spec: build.spec
             extra: ''
-            artifact_glob: 'dist/cc-wire-analyzer.exe'
-            artifact_name: cc-wire-analyzer-windows.exe
+            artifact: dist/cc-wire-analyzer-windows.exe
           - os: macos-latest
             spec: build-mac.spec
             extra: '--extra mac'   # 装 pyobjc（macOS WebKit 后端）
-            artifact_glob: 'dist/CCWireAnalyzer-mac.zip'
-            artifact_name: CCWireAnalyzer-mac.zip
+            artifact: dist/CCWireAnalyzer-mac.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +42,8 @@ jobs:
       - name: Build with PyInstaller
         run: uv run pyinstaller ${{ matrix.spec }} --noconfirm --clean
 
-      # macOS：把 .app 打成 zip（.app 是目录，release/artifact 需单文件）
+      # macOS：把 .app 打成 zip（.app 是目录，artifact/release 需单文件）
+      # ditto --sequesterRsrc --keepParent 保留资源分支与目录结构（普通 zip 会丢）
       - name: Zip macOS app
         if: runner.os == 'macOS'
         run: cd dist && ditto -c -k --sequesterRsrc --keepParent CCWireAnalyzer.app CCWireAnalyzer-mac.zip
@@ -52,17 +51,32 @@ jobs:
       - name: Rename Windows exe
         if: runner.os == 'Windows'
         shell: bash
-        run: mv dist/cc-wire-analyzer.exe dist/cc-wire-analyzer-windows.exe || true
+        run: mv dist/cc-wire-analyzer.exe dist/cc-wire-analyzer-windows.exe
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
-          path: ${{ matrix.artifact_glob }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error   # 产物缺失则构建失败，不静默放过
 
-      - name: Attach to Release
-        if: startsWith(github.ref, 'refs/tags/')
+  # 单独 release job：等两个平台都构建完，下载所有产物后一次性 attach。
+  # 为什么不放每个 build job 里：两个 build job 各自 attach 时会并发写同一 release，
+  # 后到的基于不完整状态更新、覆盖先到的 asset —— v0.1.0 首发就这样丢了 Windows exe。
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true   # 各平台 artifact 的文件合并到同一目录
+
+      - name: Attach all assets to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_glob }}
+          files: artifacts/*
           generate_release_notes: true
