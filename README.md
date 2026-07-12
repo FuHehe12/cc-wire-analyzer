@@ -36,7 +36,10 @@ When Claude Code talks to an upstream (Anthropic official, or a third-party gate
 Grab the latest `cc-wire-analyzer-windows.exe` or `CCWireAnalyzer-mac.zip` from [Releases](../../releases). No Python needed.
 
 - **Windows**: double-click the `.exe`. If it warns about WebView2 missing, install [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
-- **macOS**: unzip, drag `CCWireAnalyzer.app` to `/Applications`. First launch, right-click → Open (the app is unsigned, so Gatekeeper will prompt).
+- **macOS**: unzip, drag `CCWireAnalyzer.app` to `/Applications`. The app is **unsigned and un-notarized** (normal for a free open-source project — code-signing costs $99/year), so **Gatekeeper blocks the first launch**. Allow it once:
+  - Right-click `CCWireAnalyzer.app` → **Open** → confirm **Open** in the dialog; **or**
+  - On newer macOS where that's unavailable: **System Settings → Privacy & Security → scroll to the bottom → click "Open Anyway"**.
+  - After the first launch, it opens normally with no further prompts. (This is an Apple security measure, not a problem with the app.)
 
 ### Option B — run from source
 
