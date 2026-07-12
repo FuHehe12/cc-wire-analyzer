@@ -1,4 +1,19 @@
-MIT License
+CC Wire Analyzer is released under a split license depending on the type of
+content:
+
+• Source code (`.py`, `.spec`, `.js`, `.html`, `.css`, `.yml`, build scripts,
+  etc.) — **MIT License** (below).
+• Documentation and prose (`README.md`, `CONTRIBUTING.md`, `CLAUDE.md`, files
+  under `docs/`, and the prose content of in-app text) —
+  **Creative Commons Attribution 4.0 International (CC BY 4.0)**.
+  https://creativecommons.org/licenses/by/4.0/
+
+Bundled third-party assets retain their own licenses (see the notice at the
+bottom) and are not covered by the MIT or CC BY 4.0 grant above.
+
+====================================================================
+
+The MIT License (code) — full text:
 
 Copyright (c) 2026 cc-wire-analyzer contributors
 
@@ -20,14 +35,43 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
+====================================================================
 
-Third-party assets bundled in this distribution:
+CC BY 4.0 (documentation and prose) — summary:
 
-• Inter (static/fonts/Inter-*.woff2) — Copyright Rasmus Andersson, SIL Open Font License 1.1
-• JetBrains Mono (static/fonts/JetBrainsMono-*.woff2) — Copyright JetBrains, SIL Open Font License 1.1
-• Noto Sans SC (static/fonts/NotoSansSC-*.woff2) — Copyright Google Inc., SIL Open Font License 1.1
-• marked.js (src/static/marked.min.js) — Copyright Christopher Jeffrey, MIT
-• DOMPurify (src/static/purify.min.js) — Copyright Mario Heiderich, Apache-2.0/MPL-2.0
+You are free to:
 
-These assets retain their original licenses; see their respective project pages for details.
+• Share — copy and redistribute the documentation in any medium or format.
+• Adapt — remix, transform, and build upon the material for any purpose,
+  including commercially.
+
+Under the following terms:
+
+• Attribution — You must give appropriate credit (a reasonable indication of
+  the source), indicate if changes were made, and link to the license. You may
+  do so in any reasonable manner, but not in a way that suggests the licensor
+  endorses you or your use.
+
+Suggested attribution when reusing the documentation:
+
+    Based on CC Wire Analyzer: https://github.com/FuHehe12/cc-wire-analyzer
+    Licensed under CC BY 4.0.
+
+The full legal text of CC BY 4.0 is at
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+====================================================================
+
+Third-party assets bundled in this distribution
+(each retains its original license — see its own project page for details):
+
+• Inter (src/static/fonts/Inter.ttf) — Copyright Rasmus Andersson,
+  SIL Open Font License 1.1.
+• JetBrains Mono (src/static/fonts/JetBrainsMono.ttf) — Copyright JetBrains,
+  SIL Open Font License 1.1.
+• Noto Sans SC (src/static/fonts/NotoSansSC.ttf) — Copyright Google Inc.,
+  SIL Open Font License 1.1.
+  The full OFL 1.1 text for these fonts is in src/static/fonts/OFL.txt.
+• marked.js (src/static/marked.min.js) — Copyright Christopher Jeffrey, MIT.
+• DOMPurify (src/static/purify.min.js) — Copyright Mario Heiderich and
+  other contributors, Apache-2.0 OR MPL-2.0 (dual-licensed).

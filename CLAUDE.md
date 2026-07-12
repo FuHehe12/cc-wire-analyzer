@@ -45,6 +45,6 @@ If frontend changed, exercise the UI at `http://127.0.0.1:5051/` (dev server rea
 
 ## Open-source housekeeping
 
-- License: MIT (code) + SIL OFL (fonts). Third-party notices in [LICENSE](LICENSE).
+- License: MIT (code) + CC BY 4.0 (documentation/prose) + SIL OFL (fonts). Third-party notices in [LICENSE](LICENSE).
 - Releases built by CI on `v*` tags.
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor guide.
