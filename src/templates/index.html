@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CC Wire Analyzer</title>
+<style>
+/* ===== 打包字体（@font-face，跨平台视觉一致；均 SIL OFL，见根 LICENSE）===== */
+@font-face{font-family:'Inter';src:url('/static/fonts/Inter.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap;}
+@font-face{font-family:'JetBrains Mono';src:url('/static/fonts/JetBrainsMono.ttf') format('truetype');font-weight:100 800;font-style:normal;font-display:swap;}
+@font-face{font-family:'Noto Sans SC';src:url('/static/fonts/NotoSansSC.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap;}
+
+:root{
+  /* ===== beacon 暖米金设计系统 ===== */
+  --apple-primary:#C2882B;
+  --apple-bg:#DED8CC;
+  --apple-surface:#FFFFFF;
+  --apple-text:#1A1A1A;
+  --apple-text-secondary:#5C564C;
+  --apple-secondary:#9C9489;
+  --apple-border:#E7E2D8;
+  --apple-shadow:0 2px 8px rgba(0,0,0,0.05);
+  --apple-shadow-sm:0 1px 4px rgba(0,0,0,0.04);
+  --apple-transition:all .16s ease;
+  --font-display:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono","SF Mono","Menlo","Courier New",monospace;
+  --node-user:#D69A36;
+  --node-assistant:#7C7468;
+  --node-system:#B0A892;
+  --node-tool:#9C9489;
+  --node-file:#9C9489;
+  --node-agent:#D69A36;
+  --accent:#D69A36; --accent-deep:#C2882B;
+  --gold-text:#6B4A12; --gold-text-2:#9A7B43;
+  --bg-canvas:#DED8CC; --bg-card:#FFFFFF;
+  --bg-soft:#F4F2EF; --bg-softer:#FBFAF8;
+  --bg-warm:#EFE6D6; --bg-warm-2:#F3ECDD; --bg-warm-3:#FBF7EF;
+  --bg-ask:#EEF4FB; --bg-permission:#FFF7E6; --bg-error-soft:#FDF1EC;
+  --border:#E7E2D8; --border-soft:#EDE7DC; --border-warm:#C8B496; --border-ask:#C9D8EA;
+  --ok:#4F7A3A; --err:#B4452F; --warn:#B08A3E; --info:#3D6FB4;
+  --text-tertiary:#7C7468; --text-faint:#B0A892;
+  --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-body);background:var(--bg-canvas);color:var(--apple-text);
+  line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;}
+::selection{background:rgba(214,154,54,0.28);color:#1A1A1A;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:#C9C2B4;border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+/* ===== Header ===== */
+.app-header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 32px;position:sticky;top:0;z-index:100;background:var(--bg-card);}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.brand-title{font-size:20px;font-weight:700;letter-spacing:-0.01em;color:var(--apple-text);line-height:1.2;}
+.brand-sub{font-size:11px;color:var(--apple-secondary);font-family:var(--font-mono);line-height:1.4;}
+.header-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;}
+.tab-btn{background:transparent;border:1px solid transparent;padding:8px 14px;border-radius:var(--radius-sm);
+  font-size:12.5px;font-weight:600;color:var(--apple-secondary);cursor:pointer;font-family:var(--font-body);
+  transition:var(--apple-transition);}
+.tab-btn:hover{background:var(--bg-softer);color:var(--apple-text-secondary);}
+.tab-btn.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);}
+
+/* ===== 通用 ===== */
+.main-content{padding:18px 32px 48px;max-width:1376px;margin:0 auto;min-width:0;}
+.card{background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow);padding:16px 22px;}
+.btn{background:var(--bg-soft);border:1px solid var(--border);padding:7px 13px;border-radius:var(--radius-sm);
+  font-size:11.5px;font-weight:600;color:var(--apple-text-secondary);cursor:pointer;
+  transition:var(--apple-transition);font-family:var(--font-body);}
+.btn:hover{background:var(--bg-warm-2);border-color:var(--border-warm);color:var(--gold-text);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;padding:9px 18px;font-size:12.5px;}
+.btn.primary:hover{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff;}
+.btn.danger-soft:hover{background:var(--bg-error-soft);border-color:var(--err);color:var(--err);}
+.btn:disabled{opacity:.55;cursor:wait;}
+/* 工具按钮：轻量透明底 + 单色线性图标（跟随文字色），低调精致，融入卡片（260712）*/
+.btn.tool{display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid transparent;
+  color:var(--apple-secondary);padding:4px 9px;font-size:11.5px;font-weight:600;border-radius:var(--radius-sm);
+  cursor:pointer;font-family:var(--font-body);transition:var(--apple-transition);}
+.btn.tool:hover{background:var(--bg-warm-2);border-color:var(--border-warm);color:var(--gold-text);}
+.btn.tool:disabled{opacity:.55;cursor:wait;background:transparent;border-color:transparent;}
+.ico{width:13px;height:13px;flex-shrink:0;stroke:currentColor;opacity:.9;vertical-align:-2px;}
+.btn.tool .lbl{line-height:1;}
+/* 下拉清理按钮（260712）：date-row 右侧，菜单与确认态 */
+.date-row-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.dropdown{position:relative;display:inline-block;}
+.btn.tool.dropdown-trigger::after{content:"▾";margin-left:3px;font-size:9px;opacity:.6;}
+.dropdown-menu{position:absolute;right:0;top:calc(100% + 5px);background:var(--bg-card);
+  border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 6px 20px rgba(0,0,0,.1);
+  z-index:50;min-width:200px;padding:5px;animation:fadeIn .15s ease;}
+.dropdown-menu button{display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  background:transparent;border:none;padding:8px 10px;border-radius:var(--radius-sm);
+  font-family:var(--font-body);font-size:11.5px;font-weight:600;color:var(--apple-text-secondary);
+  cursor:pointer;transition:background .12s;}
+.dropdown-menu button:hover{background:var(--bg-warm-2);color:var(--gold-text);}
+.dropdown-menu button.danger:hover{background:var(--bg-error-soft);color:var(--err);}
+.dropdown-menu .dm-sub{font-weight:400;font-size:10px;color:var(--apple-secondary);margin-left:20px;display:block;}
+/* 确认态：破坏性操作二次确认，主按钮变红 */
+.btn.tool.confirm{background:var(--bg-error-soft);border-color:var(--err);color:var(--err);
+  animation:pulse 1.8s ease-in-out infinite;}
+.btn.tool.confirm::after{content:"";margin-left:0;}
+.chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;
+  color:#fff;letter-spacing:0.02em;font-family:var(--font-mono);white-space:nowrap;}
+.chip.outline{background:transparent;color:var(--apple-text-secondary);border:1px solid var(--border);font-weight:600;}
+.chip.ok-soft{background:rgba(79,122,58,.12);color:var(--ok);}
+.chip.err-soft{background:rgba(180,69,47,.12);color:var(--err);}
+.chip.probe{background:var(--text-tertiary);}
+.mono{font-family:var(--font-mono);}
+[hidden]{display:none !important;}
+
+/* ===== View A 状态卡 ===== */
+.status-card{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px;}
+.status-left{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.status-row1{display:flex;align-items:center;gap:10px;}
+.status-title{font-size:14.5px;font-weight:700;}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--apple-secondary);flex-shrink:0;}
+.dot.on{background:var(--ok);animation:pulse 1.8s ease-in-out infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(79,122,58,.35);}50%{box-shadow:0 0 0 5px rgba(79,122,58,0);}}
+.live-chip{background:var(--ok);color:#fff;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;
+  font-family:var(--font-mono);letter-spacing:.05em;}
+.status-route{font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.status-meta{font-size:11px;color:var(--apple-secondary);}
+.warn-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
+  background:var(--bg-permission);border:1px solid var(--border-warm);font-size:11.5px;color:var(--gold-text);
+  margin-bottom:14px;}
+.orphan-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
+  background:var(--bg-ask);border:1px solid var(--border-ask);font-size:11.5px;color:var(--info);margin-bottom:14px;}
+
+/* ===== View A 日期与列表 ===== */
+.date-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+.date-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.date-chip{padding:6px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-card);
+  font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);cursor:pointer;
+  transition:var(--apple-transition);}
+.date-chip:hover{border-color:var(--border-warm);}
+.date-chip.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);font-weight:600;}
+.date-meta{font-size:11px;color:var(--apple-secondary);}
+.capture-list{background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow);overflow:hidden;}
+.cap-row{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border-soft);
+  cursor:pointer;transition:background .12s ease;}
+.cap-row:hover{background:var(--bg-warm-3);}
+.cap-row:last-of-type{border-bottom:none;}
+.cap-row.new{animation:fadeIn .45s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+.cap-time{font-family:var(--font-mono);font-size:11px;color:var(--apple-secondary);flex-shrink:0;
+  font-variant-numeric:tabular-nums;}
+.cap-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cap-dot.s2xx{background:var(--ok);}
+.cap-dot.s4xx{background:var(--warn);}
+.cap-dot.s5xx,.cap-dot.serr{background:var(--err);}
+.cap-dot.pending{background:var(--info);animation:pulse 1.4s ease-in-out infinite;}
+.cap-path{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--apple-text);flex-shrink:0;}
+.cap-dur{font-size:11px;font-weight:600;color:var(--apple-text-secondary);flex-shrink:0;}
+.cap-tokens{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);flex-shrink:0;}
+.cap-tokens .cache{color:var(--text-faint);}
+.cap-ttft{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint);flex-shrink:0;}
+.cap-summary{font-size:12px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0;flex:1;}
+.cap-summary.err{color:var(--err);}
+.cap-row.probe{opacity:.72;}
+.list-footer{display:flex;justify-content:center;padding:10px 16px;background:var(--bg-softer);}
+.list-empty{padding:36px 16px;text-align:center;color:var(--apple-secondary);font-size:12.5px;}
+
+/* ===== View B 详情 ===== */
+.crumb-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:11px 0 14px;flex-wrap:wrap;}
+.crumb-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.crumb-id{font-family:var(--font-mono);font-size:13px;font-weight:700;}
+.crumb-meta{font-family:var(--font-mono);font-size:11px;color:var(--apple-secondary);}
+.detail-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+@media (max-width:1080px){.detail-cols{grid-template-columns:1fr;}}
+.col-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+.col-head h3{font-size:13px;font-weight:700;}
+.col-head .meta{font-size:11px;color:var(--apple-secondary);}
+.detail-col>details,.detail-col>.dcard{margin-bottom:10px;}
+details.fold{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card);overflow:hidden;}
+details.fold>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:11.5px;font-weight:600;
+  color:var(--apple-text-secondary);user-select:none;background:var(--bg-softer);display:flex;gap:6px;align-items:center;}
+details.fold>summary::-webkit-details-marker{display:none;}
+details.fold>summary::before{content:"▸";color:var(--accent);font-weight:700;}
+details.fold[open]>summary::before{content:"▾";}
+details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
+.fold-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+.dcard{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card);padding:12px 14px;}
+.dcard.meta-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+.chip-row{display:flex;gap:6px;flex-wrap:wrap;}
+.tool-item>summary{cursor:pointer;font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--apple-text);}
+.kv-table{width:100%;border-collapse:collapse;font-size:11px;}
+.kv-table td{padding:4px 8px;vertical-align:top;border-bottom:1px solid var(--border-soft);}
+.kv-table tr:last-child td{border-bottom:none;}
+.kv-table td.k{font-family:var(--font-mono);color:var(--apple-secondary);white-space:nowrap;width:1%;}
+.kv-table td.v{font-family:var(--font-mono);color:var(--apple-text-secondary);word-break:break-all;}
+.blk{display:flex;flex-direction:column;gap:5px;}
+.blk-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.blk-meta{font-family:var(--font-mono);font-size:10px;color:var(--apple-secondary);}
+.excerpt{border-radius:var(--radius-sm);background:var(--bg-softer);padding:10px 12px;}
+.excerpt pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:var(--font-mono);
+  font-size:11px;line-height:1.6;color:var(--apple-text-secondary);max-height:420px;overflow:auto;}
+.msg{border-left:3px solid var(--node-assistant);border-radius:6px;background:var(--bg-softer);
+  padding:8px 12px;display:flex;flex-direction:column;gap:5px;}
+.msg.user{border-left-color:var(--node-user);}
+.msg.toolres{border-left-color:var(--ok);}
+.msg .chip.user{background:var(--node-user);}
+.msg .chip.assistant{background:var(--node-assistant);}
+.msg .chip.toolres{background:var(--ok);}
+.msg-text{font-size:12px;line-height:1.65;color:var(--apple-text);}
+.thinking-text{font-size:11.5px;font-style:italic;color:var(--text-faint);line-height:1.6;}
+.tooluse-box{border-radius:6px;background:var(--bg-soft);padding:6px 10px;font-family:var(--font-mono);
+  font-size:11px;color:var(--apple-text-secondary);white-space:pre-wrap;word-break:break-word;}
+.md-body{font-size:12.5px;line-height:1.7;color:var(--apple-text);}
+.md-body p{margin-bottom:.7em;}
+.md-body p:last-child{margin-bottom:0;}
+.md-body h1,.md-body h2,.md-body h3{font-weight:700;margin:.9em 0 .45em;letter-spacing:-0.01em;}
+.md-body h1{font-size:16px;}.md-body h2{font-size:14px;}.md-body h3{font-size:13px;}
+.md-body code{font-family:var(--font-mono);font-size:11px;background:var(--bg-soft);padding:1px 5px;border-radius:4px;}
+.md-body pre{background:var(--bg-softer);border-radius:var(--radius-sm);padding:10px 12px;overflow:auto;margin:.6em 0;}
+.md-body pre code{background:transparent;padding:0;white-space:pre-wrap;word-break:break-word;}
+.md-body ul,.md-body ol{padding-left:1.4em;margin-bottom:.7em;}
+.md-body blockquote{border-left:3px solid var(--border-warm);padding-left:10px;color:var(--apple-text-secondary);margin:.6em 0;}
+.stat-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.stat{background:var(--bg-softer);border-radius:var(--radius-md);padding:12px 16px;}
+.stat .v{font-size:20px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;}
+.stat .l{font-size:10.5px;color:var(--apple-secondary);margin-top:2px;}
+.usage-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+.usage-head b{font-size:11.5px;}
+.usage-cost{font-size:11px;color:var(--gold-text-2);}
+.err-card{border:1px solid var(--err);border-radius:var(--radius-md);background:var(--bg-error-soft);
+  padding:12px 14px;color:var(--err);font-size:12px;}
+.err-card pre{font-family:var(--font-mono);font-size:11px;margin-top:6px;white-space:pre-wrap;word-break:break-word;
+  color:var(--apple-text-secondary);}
+.show-more{align-self:center;margin:2px 0 6px;}
+.btn.mini{font-size:11px;padding:2px 8px;}
+.blk-actions{margin-left:auto;display:inline-flex;gap:6px;}
+.excerpt-tools{margin:6px 0;display:flex;gap:6px;flex-wrap:wrap;}
+/* 翻译 / AI 解读结果块：与原文分层的视觉容器 */
+.llm-result{margin-top:8px;border-left:3px solid var(--info);background:var(--bg-ask);
+  border-radius:6px;padding:8px 12px;}
+.llm-result.ex-explain{border-left-color:var(--border-warm);background:var(--bg-warm-3);}
+.llm-result-tag{font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--info);
+  margin-bottom:4px;letter-spacing:.02em;}
+.llm-result.ex-explain .llm-result-tag{color:var(--gold-text-2);}
+
+/* ===== View D 时序 DAG ===== */
+.dag-bar{display:flex;gap:8px;align-items:stretch;margin-bottom:12px;}
+.dag-legend{flex:1;display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:8px 14px;
+  border-radius:var(--radius-sm);background:var(--bg-card);min-height:36px;
+  font-size:10.5px;color:var(--apple-text-secondary);}
+.dag-legend .leg{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+.dag-legend .leg-lines{color:var(--text-faint);margin-left:auto;display:inline-flex;gap:14px;flex-wrap:wrap;}
+.dag-toolbar{display:flex;align-items:center;gap:6px;flex-shrink:0;padding:6px 10px;
+  border-radius:var(--radius-sm);background:var(--bg-card);}
+.dag-toolbar .btn{min-width:28px;padding:5px 0;text-align:center;font-family:var(--font-mono);}
+.dag-toolbar .btn.fit{min-width:0;padding:5px 12px;font-family:var(--font-body);}
+.dag-zoom-val{font-family:var(--font-mono);font-size:11px;min-width:42px;text-align:center;
+  color:var(--apple-secondary);font-variant-numeric:tabular-nums;}
+.lh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.dag-wrap{position:relative;background:var(--bg-card);border-radius:var(--radius-lg);
+  box-shadow:var(--apple-shadow);overflow:auto;min-height:520px;max-height:calc(100vh - 250px);}
+.dag-inner{position:relative;}
+.dag-svg{position:absolute;left:0;top:0;pointer-events:none;}
+/* e-seq/e-trigger/e-near 的 stroke 与 arrow 的 fill 由 lane 色内联下发（260712 item5） */
+.dag-svg .e-seq{fill:none;stroke-width:2;opacity:.55;}
+.dag-svg .e-trigger{fill:none;stroke-width:2.6;stroke-dasharray:7 4;opacity:1;}
+.dag-svg .e-near{fill:none;stroke-width:1.2;stroke-dasharray:2 5;opacity:.55;}
+.dag-svg .arrow{opacity:.85;}
+.lane-head{position:absolute;top:14px;display:flex;align-items:center;gap:6px;font-size:11.5px;
+  color:var(--apple-text);white-space:nowrap;}
+.lane-head b{font-weight:600;}
+.lane-head .lh-count{font-family:var(--font-mono);font-size:9.5px;font-weight:600;color:var(--apple-text-secondary);
+  background:var(--bg-soft);border-radius:5px;padding:1px 7px;}
+.lane-head .lh-id{font-size:9.5px;color:var(--text-faint);}
+.assoc-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0;
+  box-shadow:0 0 0 1.5px var(--bg-card);}
+.dn-tags{display:inline-flex;gap:5px;align-items:center;flex-shrink:0;}
+.leg-svg{vertical-align:-1px;margin-right:3px;}
+.dag-node{position:absolute;width:260px;border-left:3px solid var(--accent);border-radius:8px;
+  background:var(--bg-softer);padding:8px 10px;cursor:pointer;transition:var(--apple-transition);
+  display:flex;flex-direction:column;gap:3px;box-shadow:var(--apple-shadow-sm);}
+.dag-node:hover{background:var(--bg-warm-3);transform:translateY(-1px);}
+.dag-node.new{animation:fadeIn .45s ease;}
+.dag-node .dn-r1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.dag-node .dn-time{font-family:var(--font-mono);font-size:10.5px;color:var(--apple-secondary);
+  font-variant-numeric:tabular-nums;}
+.dag-node .dn-meta{font-family:var(--font-mono);font-size:10px;color:var(--apple-text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dag-node .dn-sum{font-size:10.5px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;}
+.dag-node .dn-sum.err{color:var(--err);}
+
+/* ===== View C 设置 ===== */
+.settings-col{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
+.scard{background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow);padding:14px 22px;}
+.scard h3{font-size:13px;font-weight:700;margin-bottom:2px;}
+.scard .card-sub{font-size:10.5px;color:var(--apple-secondary);margin-bottom:10px;}
+.srow{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:9px 0;
+  border-bottom:1px solid var(--border-soft);}
+.srow:last-child{border-bottom:none;}
+.srow .lbl{font-size:12px;font-weight:600;}
+.srow .sub{font-size:10.5px;color:var(--apple-secondary);margin-top:1px;}
+.srow .val{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);background:var(--bg-soft);
+  padding:6px 10px;border-radius:6px;word-break:break-all;text-align:right;}
+.srow input[type=text],.srow input[type=password],.srow input[type=number],.srow select,.srow textarea{
+  font-family:var(--font-mono);font-size:11px;color:var(--apple-text);background:var(--bg-softer);
+  border:1px solid var(--border);border-radius:6px;padding:6px 10px;min-width:260px;outline:none;
+  transition:var(--apple-transition);}
+.srow input:focus,.srow select:focus,.srow textarea:focus{border-color:var(--border-warm);background:#fff;}
+.srow input[type=number]{min-width:90px;text-align:right;}
+.srow select{min-width:140px;font-family:var(--font-body);cursor:pointer;}
+.srow textarea{font-family:var(--font-body);line-height:1.6;resize:vertical;min-height:72px;width:340px;}
+.in-group{display:flex;gap:8px;align-items:center;}
+.toggle{position:relative;width:36px;height:20px;border-radius:10px;background:var(--border);cursor:pointer;
+  transition:var(--apple-transition);flex-shrink:0;border:none;}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;transition:var(--apple-transition);box-shadow:0 1px 3px rgba(0,0,0,.18);}
+.toggle.on{background:var(--accent);}
+.toggle.on::after{left:18px;}
+.srow.test-row{justify-content:flex-start;align-items:center;gap:10px;}
+.test-result.busy{color:var(--info);}
+.test-result.ok{color:var(--ok);}
+.test-result.err{color:var(--err);}
+.save-row{display:flex;justify-content:flex-end;gap:10px;}
+.about-row{display:flex;gap:40px;flex-wrap:wrap;padding:4px 0;margin-top:8px;}
+.about-item .l{font-size:10.5px;color:var(--apple-secondary);}
+.about-item .v{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);margin-top:2px;}
+
+/* ===== Toast ===== */
+#toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(8px);z-index:999;
+  background:var(--apple-text);color:#fff;font-size:12px;padding:9px 18px;border-radius:10px;
+  opacity:0;pointer-events:none;transition:all .25s ease;max-width:80vw;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.err{background:var(--err);}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-title">CC Wire Analyzer</div>
+    <div class="brand-sub" data-i18n="brand.sub">wire-level capture · CC ↔ 上游链路流量录制</div>
+  </div>
+  <div class="header-actions">
+    <button class="tab-btn active" id="tabCaptures" onclick="showView('list')" data-i18n="tab.captures">捕获</button>
+    <button class="tab-btn" id="tabDag" onclick="showView('dag')" data-i18n="tab.dag">时序</button>
+    <button class="tab-btn" id="tabSettings" onclick="showView('settings')" data-i18n="tab.settings">设置</button>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <!-- ============ View A 捕获列表 ============ -->
+  <section id="view-list">
+    <div class="status-card card">
+      <div class="status-left">
+        <div class="status-row1">
+          <span class="dot" id="stDot"></span>
+          <span class="status-title" id="stTitle" data-i18n="status.loading">正在获取状态…</span>
+          <span class="live-chip" id="stLive" hidden>LIVE</span>
+        </div>
+        <div class="status-route" id="stRoute">—</div>
+        <div class="status-meta" id="stMeta">—</div>
+      </div>
+      <button class="btn primary" id="btnToggle" onclick="toggleProxy()" disabled>…</button>
+    </div>
+    <div class="warn-bar" id="warnBar" hidden>
+      <span>⚠️</span><span data-i18n="warn.ccswitch">代理运行期间请勿用 cc-switch 切换端点——切换会改写 BASE_URL，CC 将绕过代理直连上游。</span>
+    </div>
+    <div class="orphan-bar" id="orphanBar" hidden>
+      <span>ℹ️</span><span id="orphanText"></span>
+    </div>
+    <div class="date-row">
+      <div class="date-chips" id="dateChips"></div>
+      <div class="date-row-right">
+        <div class="date-meta" id="dateMeta"></div>
+        <div class="dropdown" id="clearDropdown">
+          <button class="btn tool dropdown-trigger" id="clearBtn" onclick="clearBtnClick(event)">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span class="lbl" data-i18n="clear.title">清理</span>
+          </button>
+          <div class="dropdown-menu" id="clearMenu" hidden>
+            <button class="danger" onclick="requestClear('purge')">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <span><span data-i18n="clear.purge">清除录制</span><span class="dm-sub" data-i18n="clear.purgeSub">删除当日报文，不可恢复</span></span>
+            </button>
+            <button onclick="requestClear('archive')">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+              <span><span data-i18n="clear.archive">清除并压缩存档</span><span class="dm-sub" data-i18n="clear.archiveSub">先压缩保存到 archives/，再删除</span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="capture-list" id="captureList">
+      <div class="list-empty" data-i18n="list.loading">加载中…</div>
+    </div>
+  </section>
+
+  <!-- ============ View B 请求详情 ============ -->
+  <section id="view-detail" hidden>
+    <div class="crumb-bar">
+      <div class="crumb-left">
+        <button class="btn" onclick="showView(S.detailFrom || 'list')" data-i18n="detail.back">← 返回</button>
+        <span class="crumb-id" id="dId"></span>
+        <span class="chip outline mono" id="dPath"></span>
+        <span class="chip" id="dStatus"></span>
+      </div>
+      <div class="crumb-meta" id="dTiming"></div>
+    </div>
+    <div class="detail-cols">
+      <div class="detail-col" id="reqCol"></div>
+      <div class="detail-col" id="respCol"></div>
+    </div>
+  </section>
+
+  <!-- ============ View D 时序 DAG ============ -->
+  <section id="view-dag" hidden>
+    <div class="date-row">
+      <div class="date-chips" id="dagDateChips"></div>
+      <div class="date-meta" id="dagMeta"></div>
+    </div>
+    <div class="dag-bar">
+      <div class="dag-legend" id="dagLegend"></div>
+      <div class="dag-toolbar">
+        <button class="btn" onclick="dagZoomBy(-0.1)" title="缩小" data-i18n-title="dag.zoomOut">−</button>
+        <span class="dag-zoom-val" id="dagZoomVal">100%</span>
+        <button class="btn" onclick="dagZoomBy(0.1)" title="放大" data-i18n-title="dag.zoomIn">+</button>
+        <button class="btn fit" onclick="dagZoomFit()" title="适应宽度（无水平滚动）"
+          data-i18n="dag.fit" data-i18n-title="dag.fitTitle">⤢ 适应宽度</button>
+      </div>
+    </div>
+    <div class="dag-wrap" id="dagWrap">
+      <div class="list-empty" data-i18n="list.loading">加载中…</div>
+    </div>
+  </section>
+
+  <!-- ============ View C 设置 ============ -->
+  <section id="view-settings" hidden>
+    <div class="settings-col">
+      <div class="scard">
+        <h3 data-i18n="set.ui.title">界面</h3>
+        <div class="card-sub" data-i18n="set.ui.sub">界面语言切换立即生效并保存</div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.ui.lang">界面语言</div><div class="sub" data-i18n="set.ui.langSub">Language / 言語</div></div>
+          <select id="cfgUiLang" onchange="setLang(this.value)">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="scard">
+        <h3 data-i18n="set.proxy.title">代理与数据</h3>
+        <div class="card-sub" data-i18n="set.proxy.sub">代理只改 settings.json 的 env.ANTHROPIC_BASE_URL 一个字段，其余不碰</div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.path">settings.json 路径</div><div class="sub" data-i18n="set.pathSub">CC 配置文件位置（只读）</div></div>
+          <div class="val" id="cfgSettingsPath">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.baseurl">当前 BASE_URL</div><div class="sub" data-i18n="set.baseurlSub">停止代理后恢复为原值（只读）</div></div>
+          <div class="val" id="cfgBaseUrl">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.backup">备份目录</div><div class="sub" data-i18n="set.backupSub">保留最近 5 份，孤儿备份启动时自动恢复</div></div>
+          <div class="in-group">
+            <div class="val" id="cfgBackupDir">—</div>
+            <button class="btn" onclick="openBackupDir()" data-i18n="set.backupOpen">打开</button>
+          </div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.autostart">自动启动代理</div><div class="sub" data-i18n="set.autostartSub">打开软件时自动开始捕获</div></div>
+          <button class="toggle" id="cfgAutoStart" onclick="this.classList.toggle('on')"></button>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.retention">保留天数</div><div class="sub" data-i18n="set.retentionSub">超过天数的 captures 自动清理</div></div>
+          <input type="number" id="cfgRetention" min="1" max="365" value="30">
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.redact">Headers 脱敏</div><div class="sub" data-i18n="set.redactSub">authorization · x-api-key 入库前替换为 &lt;redacted&gt;</div></div>
+          <button class="toggle on" id="cfgRedact" onclick="this.classList.toggle('on')"></button>
+        </div>
+      </div>
+
+      <div class="scard">
+        <h3 data-i18n="set.llm.title">LLM 模型</h3>
+        <div class="card-sub" data-i18n="set.llm.sub">供详情页 翻译与 AI 解读共用 · OpenAI 兼容 /chat/completions · 配好后点「测试连通」验证</div>
+        <div class="srow">
+          <div class="lbl">API Key</div>
+          <div class="in-group">
+            <input type="password" id="cfgTransKey" placeholder="留空则不启用" data-i18n-ph="set.llm.keyPh" autocomplete="off">
+            <button class="btn tool" onclick="toggleKeyVisible()" aria-label="显示/隐藏" style="padding:5px 7px"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+        <div class="srow">
+          <div class="lbl">Base URL</div>
+          <input type="text" id="cfgTransBase" placeholder="https://api.example.com/v1">
+        </div>
+        <div class="srow">
+          <div class="lbl">Model</div>
+          <input type="text" id="cfgTransModel" placeholder="glm-4.7">
+        </div>
+        <div class="srow">
+          <div class="lbl">Temperature</div>
+          <input type="number" id="cfgTransTemp" min="0" max="2" step="0.1" value="0.3">
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.translang">翻译目标语言</div><div class="sub" data-i18n="set.translangSub">点 翻译后译成的语言</div></div>
+          <select id="cfgTransLang">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+          </select>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.explain">AI 解读提示词</div><div class="sub" data-i18n="set.explainSub">AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响</div></div>
+          <textarea id="cfgExplainPrompt" rows="4" data-i18n-ph="set.explainPh"></textarea>
+        </div>
+        <div class="srow test-row">
+          <button class="btn tool" onclick="testLlm()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg><span class="lbl" data-i18n="set.test">测试连通</span></button>
+          <span id="llmTestResult" class="sub test-result"></span>
+        </div>
+      </div>
+
+      <div class="scard">
+        <h3 data-i18n="set.about.title">关于</h3>
+        <div class="about-row">
+          <div class="about-item"><div class="l" data-i18n="set.about.version">版本</div><div class="v" id="aboutVersion">—</div></div>
+          <div class="about-item"><div class="l" data-i18n="set.about.dataDir">数据目录</div><div class="v" id="aboutDataDir">—</div></div>
+          <div class="about-item"><div class="l" data-i18n="set.about.log">运行日志</div><div class="v" id="aboutLogPath">—</div></div>
+        </div>
+      </div>
+
+      <div class="save-row">
+        <button class="btn primary" onclick="saveConfig()" data-i18n="set.save">保存配置</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="/static/marked.min.js"></script><!-- vendored：离线 exe 可用（审计 260712 #3） -->
+<script src="/static/purify.min.js"></script><!-- DOMPurify：md 渲染消毒防 XSS（审计 260712 #5） -->
+<script>
+"use strict";
+/* ================= 状态 ================= */
+const S = {
+  view: "list",
+  status: null,          // /api/proxy/status
+  date: null,            // 当前选中日期 YYYY-MM-DD
+  dates: [],             // dates_available
+  items: [],             // 当前列表
+  total: 0,
+  captureId: null,       // View B 当前请求
+  detailFrom: "list",    // View B 返回目标（list | dag）
+  sseBuf: [],
+  sseTimer: null,
+  dagTimer: null,
+  msgShowAll: false,
+  detailSeq: 0,           // openDetail 请求序号（重入守卫，丢弃过期 fetch 响应）
+  toggling: false,        // toggleProxy 进行中（防 5s 定时器击穿按钮 disabled）
+};
+/* 成本估算单价（¥ / 1M tokens），默认按常见上游估算；按你实际使用的上游刊例修改 */
+const PRICING = { input: 4.0, output: 16.0, cache_read: 0.8, cache_creation: 4.0 };
+const $ = id => document.getElementById(id);
+
+/* ================= 线性图标（单色描边 SVG，跟随文字色，替代 emoji，260712）================= */
+const ICONS = {
+  translate: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/>',
+  explain: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15 14c.2-1 .7-1.7 1.4-2.5A4.6 4.6 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.8 1.2 1.5 1.4 2.5"/>',
+  format: '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="13" y2="12"/><line x1="4" y1="18" x2="17" y2="18"/>',
+  unfold: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  plug: '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/>',
+};
+function icon(name){
+  return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || "") + '</svg>';
+}
+/* 工具按钮 HTML：图标固定 + 文字放 .lbl（切换文案只改 .lbl，不动图标）*/
+function toolBtn(ico, label, onclick){
+  return '<button class="btn tool" onclick="' + onclick + '">' + icon(ico) +
+    '<span class="lbl">' + label + '</span></button>';
+}
+
+/* ================= i18n（260712 item2：zh/en/ja，缺失键回退 zh）================= */
+const I18N = {
+zh: {
+  "brand.sub": "wire-level capture · CC ↔ 上游链路流量录制",
+  "tab.captures": "捕获", "tab.dag": "时序", "tab.settings": "设置",
+  "status.loading": "正在获取状态…", "status.unreachable": "后端不可达",
+  "status.running": "代理运行中", "status.stopped": "代理已停止",
+  "status.upstream": "上游端点 {url}",
+  "status.backups": "备份 {n} 份", "status.startedAt": "{t} 启动", "status.todayCount": "今日捕获 {n} 条",
+  "status.dateCount": "{date} {n} 条",
+  "btn.retry": "重试", "btn.start": "启动代理", "btn.stop": "停止代理",
+  "btn.starting": "启动中…", "btn.stopping": "停止中…",
+  "warn.ccswitch": "代理运行期间请勿用 cc-switch 切换端点——切换会改写 BASE_URL，CC 将绕过代理直连上游。",
+  "orphan.recovered": "检测到上次异常退出，已自动恢复 BASE_URL（{info}）",
+  "toast.stopped": "代理已停止，BASE_URL 已恢复",
+  "toast.started": "代理已启动，settings.json 已指向本地代理",
+  "toast.opFailed": "操作失败：{msg}", "toast.loadFailed": "加载失败：{msg}",
+  "toast.tooShort": "内容太短",
+  "toast.cfgSaved": "配置已保存", "toast.cfgSaveFailed": "保存失败：{msg}",
+  "toast.cfgLoadFailed": "配置加载失败：{msg}", "toast.backupDir": "备份目录：{dir}",
+  "dates.meta": "显示 {shown} / {total} 条", "dates.live": " · 新请求实时插入顶部",
+  "clear.title": "清理", "clear.purge": "清除录制", "clear.purgeSub": "删除当日报文，不可恢复",
+  "clear.archive": "清除并压缩存档", "clear.archiveSub": "先压缩保存到 archives/，再删除",
+  "clear.confirmPurge": "确认清除 {n} 条？", "clear.confirmArchive": "确认压缩存档并清除 {n} 条？",
+  "clear.purging": "清除中…", "clear.archiving": "压缩中…",
+  "clear.purgeOk": "已清除 {n} 条录制", "clear.archiveOk": "已压缩存档并清除 {n} 条（{kb} KB）",
+  "clear.fail": "清除失败", "clear.empty": "当天无录制可清除",
+  "list.loading": "加载中…",
+  "list.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话即可看到请求。",
+  "list.emptyDate": "该日期没有捕获记录。",
+  "list.loadMore": "加载更多（还有 {n} 条）", "list.loadFailed": "列表加载失败：{msg}",
+  "row.probe": "计数探针", "row.error": "请求异常", "chip.pending": "进行中",
+  "detail.back": "← 返回", "detail.loading": "加载中…", "detail.loadFailed": "详情加载失败：{msg}",
+  "detail.request": "请求 Request", "detail.response": "响应 Response",
+  "detail.bodyChars": "body {n} 字符",
+  "detail.system": "System（{n} 块 · {chars} 字符）",
+  "detail.noTools": "无工具定义",
+  "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 显示最近 {m} 条）",
+  "detail.showAllMsgs": "展开全部 {n} 条",
+  "detail.sse": "SSE 流式 · {n} chunks", "detail.nonStream": "非流式",
+  "detail.usageNote": "≈ ¥{cost} · 估算单价见源码 PRICING",
+  "detail.blocks": "Content Blocks 回放（{n}）", "detail.noBlocks": "无内容块",
+  "bt.expand": "展开全部 {n} 字符", "bt.collapse": "收起",
+  "bt.format": "格式化", "bt.plain": "纯文本",
+  "bt.translate": "翻译", "bt.explain": "AI 解读",
+  "llm.translating": "翻译中…", "llm.retranslate": "重译", "llm.translateFail": "翻译失败",
+  "llm.translated": "↓ 翻译",
+  "llm.explaining": "解读中…", "llm.reexplain": "再问一次", "llm.explainFail": "解读失败",
+  "llm.explained": "AI 解读",
+  "dag.meta": "{n} 请求 · {m} 泳道", "dag.live": " · LIVE 自动重绘",
+  "dag.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话，交互时序会实时出现在这里。",
+  "dag.emptyDate": "该日期没有捕获记录。", "dag.loadFailed": "时序图加载失败：{msg}",
+  "dag.legSub": "子代理（旁点色 = 派生主线）", "dag.legAux": "辅助（节点色点 = 关联主线）",
+  "dag.legSeq": "会话顺序", "dag.legTrigger": "派生触发", "dag.legNear": "时序邻近",
+  "dag.spawnedBy": "由主线 {n} 派生", "dag.assoc": "关联主线 {n}",
+  "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
+  "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
+  "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
+  "lane.main": "主线", "lane.subagent": "子代理", "lane.aux": "辅助",
+  "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
+  "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
+  "set.proxy.title": "代理与数据",
+  "set.proxy.sub": "代理只改 settings.json 的 env.ANTHROPIC_BASE_URL 一个字段，其余不碰",
+  "set.path": "settings.json 路径", "set.pathSub": "CC 配置文件位置（只读）",
+  "set.baseurl": "当前 BASE_URL", "set.baseurlSub": "停止代理后恢复为原值（只读）",
+  "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开",
+  "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
+  "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
+  "set.redact": "Headers 脱敏", "set.redactSub": "authorization · x-api-key 入库前替换为 <redacted>",
+  "set.llm.title": "LLM 模型",
+  "set.llm.sub": "供详情页 翻译与 AI 解读共用 · OpenAI 兼容 /chat/completions · 配好后点「测试连通」验证",
+  "set.llm.keyPh": "留空则不启用",
+  "set.translang": "翻译目标语言", "set.translangSub": "点 翻译后译成的语言",
+  "set.explain": "AI 解读提示词",
+  "set.explainSub": "AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响",
+  "set.explainPh": "请用通俗的语言解释这段内容在做什么：它是谁发给谁的、想达到什么目的、关键动作有哪些。遇到代码或工具调用，说明它的作用即可，不要逐行复述。最后用一两句话总结。",
+  "set.test": "测试连通", "set.testing": "测试中…",
+  "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
+  "set.about.title": "关于", "set.about.version": "版本", "set.about.dataDir": "数据目录", "set.about.log": "运行日志",
+  "set.save": "保存配置",
+  "err.no_api_key": "未配置 LLM API Key（设置页「LLM 模型」）",
+  "err.no_base_url": "未配置 LLM Base URL（设置页「LLM 模型」）",
+  "err.empty_response": "上游返回空内容，请重试",
+  "err.bad_response": "上游响应结构异常，请重试",
+  "err.empty_text": "空文本", "fail": "失败",
+},
+en: {
+  "brand.sub": "wire-level capture · records CC ↔ upstream traffic",
+  "tab.captures": "Captures", "tab.dag": "Timeline", "tab.settings": "Settings",
+  "status.loading": "Fetching status…", "status.unreachable": "Backend unreachable",
+  "status.running": "Proxy running", "status.stopped": "Proxy stopped",
+  "status.upstream": "Upstream {url}",
+  "status.backups": "{n} backups", "status.startedAt": "started {t}", "status.todayCount": "{n} captured today",
+  "status.dateCount": "{date} · {n}",
+  "btn.retry": "Retry", "btn.start": "Start proxy", "btn.stop": "Stop proxy",
+  "btn.starting": "Starting…", "btn.stopping": "Stopping…",
+  "warn.ccswitch": "While the proxy is running, do not switch endpoints with cc-switch — it rewrites BASE_URL and CC will bypass the proxy.",
+  "orphan.recovered": "Abnormal exit detected last run; BASE_URL auto-restored ({info})",
+  "toast.stopped": "Proxy stopped, BASE_URL restored",
+  "toast.started": "Proxy started, settings.json now points to the local proxy",
+  "toast.opFailed": "Operation failed: {msg}", "toast.loadFailed": "Load failed: {msg}",
+  "toast.tooShort": "Content too short",
+  "toast.cfgSaved": "Settings saved", "toast.cfgSaveFailed": "Save failed: {msg}",
+  "toast.cfgLoadFailed": "Failed to load settings: {msg}", "toast.backupDir": "Backup dir: {dir}",
+  "dates.meta": "{shown} / {total} shown", "dates.live": " · new requests appear on top",
+  "clear.title": "Clear", "clear.purge": "Clear captures", "clear.purgeSub": "Delete today's records, unrecoverable",
+  "clear.archive": "Archive then clear", "clear.archiveSub": "Compress to archives/ first, then delete",
+  "clear.confirmPurge": "Clear {n} records?", "clear.confirmArchive": "Archive & clear {n} records?",
+  "clear.purging": "Clearing…", "clear.archiving": "Archiving…",
+  "clear.purgeOk": "Cleared {n} records", "clear.archiveOk": "Archived & cleared {n} records ({kb} KB)",
+  "clear.fail": "Clear failed", "clear.empty": "No records to clear for this date",
+  "list.loading": "Loading…",
+  "list.emptyToday": "No captures today — start the proxy, then open a new CC session to see requests.",
+  "list.emptyDate": "No captures on this date.",
+  "list.loadMore": "Load more ({n} left)", "list.loadFailed": "Failed to load list: {msg}",
+  "row.probe": "token probe", "row.error": "request error", "chip.pending": "pending",
+  "detail.back": "← Back", "detail.loading": "Loading…", "detail.loadFailed": "Failed to load detail: {msg}",
+  "detail.request": "Request", "detail.response": "Response",
+  "detail.bodyChars": "body {n} chars",
+  "detail.system": "System ({n} blocks · {chars} chars)",
+  "detail.noTools": "no tool definitions",
+  "detail.messages": "Messages ({n})", "detail.messagesRecent": "Messages ({n} · last {m})",
+  "detail.showAllMsgs": "Show all {n}",
+  "detail.sse": "SSE stream · {n} chunks", "detail.nonStream": "non-stream",
+  "detail.usageNote": "≈ ¥{cost} · unit prices in source PRICING",
+  "detail.blocks": "Content Blocks ({n})", "detail.noBlocks": "no content blocks",
+  "bt.expand": "Show all {n} chars", "bt.collapse": "Collapse",
+  "bt.format": "Format", "bt.plain": "Plain text",
+  "bt.translate": "Translate", "bt.explain": "Ask AI",
+  "llm.translating": "Translating…", "llm.retranslate": "Retranslate", "llm.translateFail": "Translation failed",
+  "llm.translated": "↓ Translation",
+  "llm.explaining": "Asking…", "llm.reexplain": "Ask again", "llm.explainFail": "Ask AI failed",
+  "llm.explained": "AI explanation",
+  "dag.meta": "{n} requests · {m} lanes", "dag.live": " · LIVE redraw",
+  "dag.emptyToday": "No captures today — start the proxy and open a new CC session; the timeline appears here live.",
+  "dag.emptyDate": "No captures on this date.", "dag.loadFailed": "Failed to load timeline: {msg}",
+  "dag.legSub": "subagent (side dot = spawning session)", "dag.legAux": "auxiliary (dot = related session)",
+  "dag.legSeq": "sequence", "dag.legTrigger": "spawn", "dag.legNear": "proximity",
+  "dag.spawnedBy": "spawned by session {n}", "dag.assoc": "related to session {n}",
+  "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
+  "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
+  "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
+  "lane.main": "Session", "lane.subagent": "Agent", "lane.aux": "Aux",
+  "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
+  "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
+  "set.proxy.title": "Proxy & data",
+  "set.proxy.sub": "The proxy only edits env.ANTHROPIC_BASE_URL in settings.json; nothing else is touched",
+  "set.path": "settings.json path", "set.pathSub": "CC config file location (read-only)",
+  "set.baseurl": "Current BASE_URL", "set.baseurlSub": "Restored to original when the proxy stops (read-only)",
+  "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open",
+  "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
+  "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
+  "set.redact": "Header redaction", "set.redactSub": "authorization · x-api-key replaced with <redacted> before storage",
+  "set.llm.title": "LLM model",
+  "set.llm.sub": "Shared by Translate and Ask AI · OpenAI-compatible /chat/completions · click Test after configuring",
+  "set.llm.keyPh": "leave empty to disable",
+  "set.translang": "Translation target", "set.translangSub": "Language that Translate outputs",
+  "set.explain": "Ask-AI prompt",
+  "set.explainSub": "Task description for Ask AI; empty = built-in default. The injection guard is built-in and unaffected",
+  "set.explainPh": "Explain in plain language what this content is doing: who is sending it to whom, what it is trying to achieve, and what the key actions are. For code or tool calls, describe their purpose instead of going line by line. End with a one- or two-sentence summary.",
+  "set.test": "Test connection", "set.testing": "Testing…",
+  "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
+  "set.about.title": "About", "set.about.version": "Version", "set.about.dataDir": "Data dir", "set.about.log": "Log file",
+  "set.save": "Save settings",
+  "err.no_api_key": "LLM API Key not configured (Settings → LLM model)",
+  "err.no_base_url": "LLM Base URL not configured (Settings → LLM model)",
+  "err.empty_response": "Upstream returned empty content, please retry",
+  "err.bad_response": "Malformed upstream response, please retry",
+  "err.empty_text": "Empty text", "fail": "failed",
+},
+ja: {
+  "brand.sub": "wire-level capture · CC ↔ 上流トラフィック記録",
+  "tab.captures": "キャプチャ", "tab.dag": "タイムライン", "tab.settings": "設定",
+  "status.loading": "状態を取得中…", "status.unreachable": "バックエンドに接続できません",
+  "status.running": "プロキシ稼働中", "status.stopped": "プロキシ停止中",
+  "status.upstream": "上流エンドポイント {url}",
+  "status.backups": "バックアップ {n} 件", "status.startedAt": "{t} 開始", "status.todayCount": "本日 {n} 件",
+  "status.dateCount": "{date} · {n} 件",
+  "btn.retry": "再試行", "btn.start": "プロキシ開始", "btn.stop": "プロキシ停止",
+  "btn.starting": "開始中…", "btn.stopping": "停止中…",
+  "warn.ccswitch": "プロキシ稼働中は cc-switch でエンドポイントを切り替えないでください——BASE_URL が書き換えられ、CC がプロキシを迂回します。",
+  "orphan.recovered": "前回の異常終了を検出し、BASE_URL を自動復元しました（{info}）",
+  "toast.stopped": "プロキシを停止し、BASE_URL を復元しました",
+  "toast.started": "プロキシを開始し、settings.json をローカルプロキシに向けました",
+  "toast.opFailed": "操作に失敗：{msg}", "toast.loadFailed": "読み込みに失敗：{msg}",
+  "toast.tooShort": "内容が短すぎます",
+  "toast.cfgSaved": "設定を保存しました", "toast.cfgSaveFailed": "保存に失敗：{msg}",
+  "toast.cfgLoadFailed": "設定の読み込みに失敗：{msg}", "toast.backupDir": "バックアップ先：{dir}",
+  "dates.meta": "{shown} / {total} 件表示", "dates.live": " · 新リクエストは先頭に追加",
+  "clear.title": "クリア", "clear.purge": "録画を削除", "clear.purgeSub": "当日の録画を削除、元に戻せません",
+  "clear.archive": "圧縮保存して削除", "clear.archiveSub": "archives/ に圧縮保存してから削除",
+  "clear.confirmPurge": "{n} 件を削除しますか？", "clear.confirmArchive": "{n} 件を圧縮保存して削除しますか？",
+  "clear.purging": "削除中…", "clear.archiving": "圧縮中…",
+  "clear.purgeOk": "{n} 件を削除しました", "clear.archiveOk": "{n} 件を圧縮保存して削除しました（{kb} KB）",
+  "clear.fail": "削除に失敗", "clear.empty": "この日付の録画はありません",
+  "list.loading": "読み込み中…",
+  "list.emptyToday": "本日のキャプチャはまだありません——プロキシを開始し、新しい CC セッションを開くとリクエストが表示されます。",
+  "list.emptyDate": "この日付のキャプチャはありません。",
+  "list.loadMore": "さらに読み込む（残り {n} 件）", "list.loadFailed": "一覧の読み込みに失敗：{msg}",
+  "row.probe": "カウントプローブ", "row.error": "リクエスト異常", "chip.pending": "進行中",
+  "detail.back": "← 戻る", "detail.loading": "読み込み中…", "detail.loadFailed": "詳細の読み込みに失敗：{msg}",
+  "detail.request": "リクエスト", "detail.response": "レスポンス",
+  "detail.bodyChars": "body {n} 文字",
+  "detail.system": "System（{n} ブロック · {chars} 文字）",
+  "detail.noTools": "ツール定義なし",
+  "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 直近 {m} 件）",
+  "detail.showAllMsgs": "全 {n} 件を表示",
+  "detail.sse": "SSE ストリーム · {n} chunks", "detail.nonStream": "非ストリーム",
+  "detail.usageNote": "≈ ¥{cost} · 単価はソースの PRICING 参照",
+  "detail.blocks": "Content Blocks（{n}）", "detail.noBlocks": "内容ブロックなし",
+  "bt.expand": "全 {n} 文字を表示", "bt.collapse": "折りたたむ",
+  "bt.format": "整形", "bt.plain": "プレーン",
+  "bt.translate": "翻訳", "bt.explain": "AI に聞く",
+  "llm.translating": "翻訳中…", "llm.retranslate": "再翻訳", "llm.translateFail": "翻訳に失敗",
+  "llm.translated": "↓ 翻訳",
+  "llm.explaining": "解析中…", "llm.reexplain": "もう一度", "llm.explainFail": "AI 解説に失敗",
+  "llm.explained": "AI 解説",
+  "dag.meta": "{n} リクエスト · {m} レーン", "dag.live": " · LIVE 再描画",
+  "dag.emptyToday": "本日のキャプチャはまだありません——プロキシを開始して新しい CC セッションを開くと、タイムラインがここに表示されます。",
+  "dag.emptyDate": "この日付のキャプチャはありません。", "dag.loadFailed": "タイムラインの読み込みに失敗：{msg}",
+  "dag.legSub": "サブエージェント（横の点＝派生元メイン）", "dag.legAux": "補助（点＝関連メイン）",
+  "dag.legSeq": "会話順", "dag.legTrigger": "派生", "dag.legNear": "時間近接",
+  "dag.spawnedBy": "メイン {n} から派生", "dag.assoc": "メイン {n} に関連",
+  "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
+  "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
+  "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
+  "lane.main": "メイン", "lane.subagent": "エージェント", "lane.aux": "補助",
+  "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
+  "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
+  "set.proxy.title": "プロキシとデータ",
+  "set.proxy.sub": "プロキシは settings.json の env.ANTHROPIC_BASE_URL のみを書き換えます",
+  "set.path": "settings.json パス", "set.pathSub": "CC 設定ファイルの場所（読み取り専用）",
+  "set.baseurl": "現在の BASE_URL", "set.baseurlSub": "プロキシ停止時に元の値へ復元（読み取り専用）",
+  "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く",
+  "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
+  "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
+  "set.redact": "Headers マスク", "set.redactSub": "authorization · x-api-key は保存前に <redacted> へ置換",
+  "set.llm.title": "LLM モデル",
+  "set.llm.sub": "翻訳と AI 解説で共用 · OpenAI 互換 /chat/completions · 設定後「接続テスト」で確認",
+  "set.llm.keyPh": "空欄で無効",
+  "set.translang": "翻訳先言語", "set.translangSub": "翻訳の出力言語",
+  "set.explain": "AI 解説プロンプト",
+  "set.explainSub": "AI 解説のタスク記述；空欄＝内蔵デフォルト。注入対策ガードは内蔵のため影響を受けません",
+  "set.explainPh": "この内容が何をしているのか、わかりやすい言葉で説明してください：誰が誰に送ったものか、何を達成しようとしているのか、主要なアクションは何か。コードやツール呼び出しは逐行ではなく役割を説明してください。最後に1〜2文でまとめてください。",
+  "set.test": "接続テスト", "set.testing": "テスト中…",
+  "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
+  "set.about.title": "情報", "set.about.version": "バージョン", "set.about.dataDir": "データ保存先", "set.about.log": "ログ",
+  "set.save": "設定を保存",
+  "err.no_api_key": "LLM API Key が未設定です（設定 → LLM モデル）",
+  "err.no_base_url": "LLM Base URL が未設定です（設定 → LLM モデル）",
+  "err.empty_response": "上流が空の内容を返しました。再試行してください",
+  "err.bad_response": "上流レスポンスの構造異常、再試行してください",
+  "err.empty_text": "テキストが空です", "fail": "失敗",
+},
+};
+let LANG = "zh";
+/* 取文案（命名 t18 避免与局部变量 t 遮蔽冲突：bigText/toast/timePart 里都有 const t） */
+function t18(key, params){
+  let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.zh[key] ?? key;
+  if(params) for(const k in params) s = s.replaceAll("{" + k + "}", String(params[k]));
+  return s;
+}
+function kindLabel(k){ return (I18N.zh["kind." + k] != null) ? t18("kind." + k) : k; }
+function laneLabel(k){ return (I18N.zh["lane." + k] != null) ? t18("lane." + k) : k; }
+/* 后端 error_code → 本地化文案；无对应码时回退原始诊断串 */
+function llmErrMsg(j){
+  return (j && j.error_code && I18N.zh["err." + j.error_code] != null)
+    ? t18("err." + j.error_code) : ((j && (j.error || j.error_code)) || t18("fail"));
+}
+function applyI18n(){
+  document.documentElement.lang = ({zh: "zh-CN", en: "en", ja: "ja"})[LANG] || LANG;
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t18(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t18(el.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-title]").forEach(el => { el.title = t18(el.dataset.i18nTitle); });
+}
+async function setLang(lang){
+  LANG = lang;
+  applyI18n();
+  /* 静态文案已换，动态渲染的视图全部重渲（切换立即生效，无需重启） */
+  renderStatus(); renderDates(); renderList();
+  if(S.view === "dag") loadDag();
+  if(S.view === "detail" && S.captureId) openDetail(S.captureId);
+  try{
+    await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ui_lang: lang})});
+    toast(t18("toast.cfgSaved"));
+  }catch(e){
+    toast(t18("toast.cfgSaveFailed", {msg: e.message}), true);
+  }
+}
+
+/* ================= 工具 ================= */
+function esc(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function fmtTok(n){
+  if(n == null) return "—";
+  if(n >= 1000) return (n/1000).toFixed(1).replace(/\.0$/,"") + "k";
+  return String(n);
+}
+function fmtMs(ms){
+  if(ms == null) return "—";
+  if(ms >= 1000) return (ms/1000).toFixed(1) + "s";
+  return Math.round(ms) + "ms";
+}
+function timePart(iso){
+  if(!iso) return "—";
+  const t = iso.split("T")[1] || iso;
+  return t.length > 12 ? t.slice(0,12) : t;
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function toast(msg, isErr){
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = isErr ? "show err" : "show";
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = "", 3200);
+}
+function mdRender(text){
+  /* marked 默认透传 inline HTML，渲染内容是上游响应（不可信）→ 必须经 DOMPurify 消毒防 XSS（审计 260712 #5） */
+  if(window.marked && window.DOMPurify){
+    try { return '<div class="md-body">' + DOMPurify.sanitize(marked.parse(text, {mangle:false, headerIds:false})) + '</div>'; }
+    catch(e){ /* fall through */ }
+  }
+  return '<div class="msg-text" style="white-space:pre-wrap">' + esc(text) + '</div>';
+}
+/* 大文本截断渲染：超过 limit 折叠 */
+function bigText(text, limit, cls){
+  const t = String(text ?? "");
+  const c = cls || "";
+  const tools = '<div class="excerpt-tools">' +
+    (t.length > limit ? toolBtn("unfold", t18("bt.expand", {n: fmtTok(t.length)}), "btToggle(this)") : '') +
+    toolBtn("format", t18("bt.format"), "btFormat(this)") +
+    toolBtn("translate", t18("bt.translate"), "btTranslate(this)") +
+    toolBtn("explain", t18("bt.explain"), "btExplain(this)") + '</div>';
+  if(t.length <= limit) return '<div class="excerpt"><pre class="' + c + '">' + esc(t) + '</pre>' + tools + '</div>';
+  /* toggle：默认截断版 + 工具条；点展开原地替换为全文（260712 需求3） */
+  return '<div class="excerpt bigtext">' +
+    '<pre class="bt-short ' + c + '">' + esc(t.slice(0, limit)) + '…</pre>' +
+    '<pre class="bt-full ' + c + '" hidden>' + esc(t) + '</pre>' + tools + '</div>';
+}
+function _excerptRaw(ex){
+  const full = ex.querySelector(".bt-full");
+  if(full) return full.textContent;
+  const pre = ex.querySelector("pre");
+  return pre ? pre.textContent : "";
+}
+function setBtnLabel(btn, text){ const l = btn.querySelector(".lbl"); if(l) l.textContent = text; else btn.textContent = text; }
+function btToggle(btn){
+  const wrap = btn.closest(".bigtext");
+  if(!wrap) return;
+  const short = wrap.querySelector(".bt-short");
+  const full = wrap.querySelector(".bt-full");
+  if(full.hasAttribute("hidden")){
+    short.setAttribute("hidden", "");
+    full.removeAttribute("hidden");
+    setBtnLabel(btn, t18("bt.collapse"));
+  }else{
+    short.removeAttribute("hidden");
+    full.setAttribute("hidden", "");
+    setBtnLabel(btn, t18("bt.expand", {n: fmtTok(full.textContent.length)}));
+  }
+}
+function btFormat(btn){
+  const ex = btn.closest(".excerpt");
+  if(!ex) return;
+  const raw = _excerptRaw(ex);
+  if(!raw) return;
+  const rendered = ex.querySelector(".ex-rendered");
+  if(rendered){
+    rendered.remove();
+    ex.querySelectorAll("pre").forEach(p => p.style.display = "");
+    setBtnLabel(btn, t18("bt.format"));
+    return;
+  }
+  ex.querySelectorAll("pre").forEach(p => p.style.display = "none");
+  const div = document.createElement("div");
+  div.className = "ex-rendered md-body";
+  const tr = raw.trim();
+  if(tr[0] === "{" || tr[0] === "["){
+    try { div.innerHTML = "<pre>" + esc(JSON.stringify(JSON.parse(raw), null, 2)) + "</pre>"; }
+    catch(e){ div.innerHTML = mdRender(raw); }
+  } else {
+    div.innerHTML = mdRender(raw);
+  }
+  ex.insertBefore(div, ex.querySelector(".excerpt-tools"));
+  setBtnLabel(btn, t18("bt.plain"));
+}
+/* 翻译 / AI 解读共用动作（260712 item3+4）：POST → 结果块插到 host 尾部；
+   成功后按钮变「重发」而非置灰——换目标语言/改提示词后可覆盖旧结果 */
+const LLM_ACTIONS = {
+  translate: { api: "/api/translate", field: "translation", cls: "ex-translation",
+               tag: "llm.translated", busy: "llm.translating", redo: "llm.retranslate", fail: "llm.translateFail" },
+  explain:   { api: "/api/explain", field: "explanation", cls: "ex-explain",
+               tag: "llm.explained", busy: "llm.explaining", redo: "llm.reexplain", fail: "llm.explainFail" },
+};
+function llmToolAction(btn, kind, raw, host){
+  const A = LLM_ACTIONS[kind];
+  if(!raw || raw.length < 10){ toast(t18("toast.tooShort"), true); return; }
+  btn.disabled = true; const orig = btn.querySelector(".lbl") ? btn.querySelector(".lbl").textContent : btn.textContent;
+  setBtnLabel(btn, t18(A.busy));
+  fetch(A.api, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: raw})})
+    .then(r => r.json()).then(j => {
+      if(j.ok){
+        const old = host.querySelector("." + A.cls); if(old) old.remove();
+        const div = document.createElement("div");
+        div.className = A.cls + " llm-result md-body";
+        div.innerHTML = '<div class="llm-result-tag">' + t18(A.tag) + '</div>' + mdRender(j[A.field]);
+        host.appendChild(div);
+        setBtnLabel(btn, t18(A.redo)); btn.disabled = false;
+      } else {
+        toast(t18(A.fail) + "：" + llmErrMsg(j), true);
+        setBtnLabel(btn, orig); btn.disabled = false;
+      }
+    }).catch(e => {
+      toast(t18(A.fail) + "：" + e.message, true);
+      setBtnLabel(btn, orig); btn.disabled = false;
+    });
+}
+function btTranslate(btn){
+  const ex = btn.closest(".excerpt");
+  if(ex) llmToolAction(btn, "translate", _excerptRaw(ex), ex);
+}
+function btExplain(btn){
+  const ex = btn.closest(".excerpt");
+  if(ex) llmToolAction(btn, "explain", _excerptRaw(ex), ex);
+}
+
+/* ================= 视图切换 ================= */
+function showView(v){
+  S.view = v;
+  $("view-list").hidden = v !== "list";
+  $("view-detail").hidden = v !== "detail";
+  $("view-dag").hidden = v !== "dag";
+  $("view-settings").hidden = v !== "settings";
+  $("tabCaptures").classList.toggle("active", v === "list" || (v === "detail" && S.detailFrom === "list"));
+  $("tabDag").classList.toggle("active", v === "dag" || (v === "detail" && S.detailFrom === "dag"));
+  $("tabSettings").classList.toggle("active", v === "settings");
+  if(v === "settings") loadConfig();
+  if(v === "dag") loadDag();
+}
+
+/* ================= 代理状态 ================= */
+async function refreshStatus(){
+  try{
+    const r = await fetch("/api/proxy/status");
+    S.status = await r.json();
+  }catch(e){ S.status = null; }
+  renderStatus();
+}
+function renderStatus(){
+  const st = S.status;
+  const btn = $("btnToggle");
+  const allowBtn = !S.toggling;   /* toggle 期间保留 busy 态，防 5s 定时器击穿 disabled（260712） */
+  if(!st){
+    $("stTitle").textContent = t18("status.unreachable");
+    $("stDot").className = "dot";
+    $("stLive").hidden = true; $("warnBar").hidden = true;
+    if(allowBtn){ btn.textContent = t18("btn.retry"); btn.disabled = false; }
+    return;
+  }
+  const on = !!st.running;
+  $("stDot").className = on ? "dot on" : "dot";
+  $("stTitle").textContent = on ? t18("status.running") : t18("status.stopped");
+  $("stLive").hidden = !on;
+  $("warnBar").hidden = !on;
+  $("stRoute").textContent = on
+    ? (st.listen || "—") + "  →  " + (st.upstream || "—")
+    : t18("status.upstream", {url: st.original_base_url || st.upstream || "—"});
+  const metaBits = [];
+  if(st.backups_count != null) metaBits.push(t18("status.backups", {n: st.backups_count}));
+  if(on && st.started_at) metaBits.push(t18("status.startedAt", {t: timePart(st.started_at).slice(0,5)}));
+  /* 计数标签如实反映当前选中日期：今日说"今日捕获"，历史日期带日期（260712 修 status.todayCount 误用） */
+  metaBits.push(S.date === todayStr()
+    ? t18("status.todayCount", {n: S.total})
+    : t18("status.dateCount", {date: S.date, n: S.total}));
+  $("stMeta").textContent = metaBits.join(" · ");
+  if(allowBtn){
+    btn.textContent = on ? t18("btn.stop") : t18("btn.start");
+    btn.classList.toggle("danger-soft", on);
+    btn.disabled = false;
+  }
+  if(st.orphan_recovered_at_startup){
+    const v = st.orphan_recovered_at_startup;
+    $("orphanText").textContent = t18("orphan.recovered",
+      {info: typeof v === "object" ? JSON.stringify(v) : v});
+    $("orphanBar").hidden = false;
+  }
+}
+async function toggleProxy(){
+  const btn = $("btnToggle");
+  if(!S.status){ btn.disabled = true; await refreshStatus(); return; }
+  if(S.toggling) return;   /* 防重入：启停进行中忽略再次点击（260712） */
+  const running = S.status.running;
+  S.toggling = true;
+  btn.disabled = true; btn.textContent = running ? t18("btn.stopping") : t18("btn.starting");
+  try{
+    const r = await fetch("/api/proxy/" + (running ? "stop" : "start"), {method:"POST"});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok && r.status !== 409){
+      throw new Error(d.detail || d.error || ("HTTP " + r.status));
+    }
+    toast(running ? t18("toast.stopped") : t18("toast.started"));
+  }catch(e){
+    toast(t18("toast.opFailed", {msg: e.message}), true);
+  }finally{
+    S.toggling = false;
+  }
+  await refreshStatus();
+}
+
+/* ================= 捕获列表 ================= */
+async function fetchCaptures(date){
+  try{
+    const q = date ? ("?date=" + encodeURIComponent(date)) : "";
+    const r = await fetch("/api/captures" + q);
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
+    S.date = d.date; S.items = d.items || []; S.total = d.total || 0;
+    S.dates = d.dates_available || [];
+    renderDates(); renderList(); renderStatus();
+  }catch(e){
+    $("captureList").innerHTML = '<div class="list-empty">' + esc(t18("list.loadFailed", {msg: e.message})) + '</div>';
+  }
+}
+function renderDates(){
+  const wrap = $("dateChips");
+  const dates = S.dates.length ? S.dates : [S.date || todayStr()];
+  wrap.innerHTML = dates.map(d =>
+    '<button class="date-chip' + (d === S.date ? " active" : "") + '" onclick="fetchCaptures(\'' + d + '\')">' + d + '</button>'
+  ).join("");
+  $("dateMeta").textContent = t18("dates.meta", {shown: S.items.length, total: S.total}) +
+    (S.status && S.status.running ? t18("dates.live") : "");
+}
+function rowHtml(it, isNew){
+  const status = it.status;
+  let dotCls = "pending", dur = "…";
+  if(it.has_error && (status == null || status >= 500)) dotCls = "serr";
+  else if(status != null){
+    dotCls = status < 300 ? "s2xx" : (status < 500 ? "s4xx" : "s5xx");
+  }
+  if(it.total_ms != null) dur = fmtMs(it.total_ms);
+  const ur = it.usage || {};
+  const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output,
+              cache_read: ur.cache_read_input_tokens ?? ur.cache_read };
+  const tok = fmtTok(u.input) + "→" + fmtTok(u.output) +
+    (u.cache_read ? ' <span class="cache">(+' + fmtTok(u.cache_read) + ' cache)</span>' : "");
+  const ttft = it.ttft_ms != null ? "ttft " + fmtMs(it.ttft_ms) : "";
+  const isProbe = it.path && it.path.indexOf("count_tokens") >= 0;
+  const sumCls = it.has_error ? "cap-summary err" : "cap-summary";
+  return '<div class="cap-row' + (isNew ? " new" : "") + (isProbe ? " probe" : "") + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
+    '<span class="cap-time">' + timePart(it.ts_start) + '</span>' +
+    '<span class="cap-dot ' + dotCls + '"></span>' +
+    '<span class="cap-path">' + esc((it.method || "POST") + " " + (it.path || "")) + '</span>' +
+    (isProbe ? '<span class="chip probe">' + t18("row.probe") + '</span>' : "") +
+    '<span class="chip outline">' + esc(it.model || "?") + '</span>' +
+    '<span class="cap-dur">' + dur + '</span>' +
+    '<span class="cap-tokens">' + tok + '</span>' +
+    '<span class="cap-ttft">' + ttft + '</span>' +
+    '<span class="' + sumCls + '">' + esc(it.summary || (it.has_error ? t18("row.error") : "")) + '</span>' +
+    '</div>';
+}
+function renderList(){
+  const wrap = $("captureList");
+  if(!S.items.length){
+    wrap.innerHTML = '<div class="list-empty">' + (S.date === todayStr()
+      ? t18("list.emptyToday") : t18("list.emptyDate")) + '</div>';
+    return;
+  }
+  wrap.innerHTML = S.items.map(it => rowHtml(it, false)).join("") +
+    (S.total > S.items.length
+      ? '<div class="list-footer"><button class="btn" onclick="loadMore()">' +
+        t18("list.loadMore", {n: S.total - S.items.length}) + '</button></div>'
+      : "");
+}
+async function loadMore(){
+  try{
+    const r = await fetch("/api/captures?date=" + encodeURIComponent(S.date) + "&offset=" + S.items.length);
+    const d = await r.json();
+    S.items = S.items.concat(d.items || []); S.total = d.total || S.total;
+    renderList(); renderDates();
+  }catch(e){ toast(t18("toast.loadFailed", {msg: e.message}), true); }
+}
+
+/* ================= 捕获清理（260712）：下拉 + 内联二次确认 ================= */
+let _clearPending = null;   // {mode, timer} 确认态
+function clearBtnClick(ev){
+  /* 主按钮统一入口：确认态→执行；否则展开/收起菜单 */
+  ev?.stopPropagation();
+  if(_clearPending){ doClear(_clearPending.mode); return; }
+  const m = $("clearMenu"); if(m) m.hidden = !m.hidden;
+}
+function _closeClearMenu(){ const m = $("clearMenu"); if(m) m.hidden = true; }
+function requestClear(mode){
+  _closeClearMenu();
+  if(!S.total){ toast(t18("clear.empty"), true); return; }  // 当天无录制，不必进确认态
+  const n = S.total || 0;
+  const btn = $("clearBtn");
+  if(!btn) return;
+  btn.classList.add("confirm");
+  setBtnLabel(btn, mode === "archive"
+    ? t18("clear.confirmArchive", {n}) : t18("clear.confirmPurge", {n}));
+  clearTimeout(_clearPending?.timer);
+  _clearPending = {mode, timer: setTimeout(cancelClear, 4000)};
+}
+function cancelClear(){
+  if(!_clearPending) return;
+  clearTimeout(_clearPending.timer); _clearPending = null;
+  const btn = $("clearBtn");
+  if(btn){ btn.classList.remove("confirm"); setBtnLabel(btn, t18("clear.title")); }
+}
+async function doClear(mode){
+  const pending = _clearPending; _clearPending = null;
+  clearTimeout(pending?.timer);
+  const btn = $("clearBtn"); if(!btn) return;
+  btn.classList.remove("confirm"); btn.disabled = true;
+  setBtnLabel(btn, mode === "archive" ? t18("clear.archiving") : t18("clear.purging"));
+  try{
+    const r = await fetch("/api/captures/clear", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({date:S.date, mode})});
+    const j = await r.json();
+    if(j.ok){
+      if(mode === "archive" && j.archive){
+        toast(t18("clear.archiveOk", {n:j.removed, kb:Math.max(1,Math.round(j.archive.size/1024))}));
+      }else{
+        toast(t18("clear.purgeOk", {n:j.removed}));
+      }
+      await fetchCaptures(S.date);
+      if(S.view === "dag") loadDag();
+    }else{
+      toast(t18("clear.fail") + "：" + (j.error || ""), true);
+    }
+  }catch(e){
+    toast(t18("clear.fail") + "：" + e.message, true);
+  }
+  btn.disabled = false;
+  setBtnLabel(btn, t18("clear.title"));
+}
+/* 点击外部收起菜单 */
+document.addEventListener("click", e => {
+  const dd = $("clearDropdown");
+  if(dd && !dd.contains(e.target)) _closeClearMenu();
+});
+
+/* ================= LIVE SSE ================= */
+function initSSE(){
+  let es;
+  try{ es = new EventSource("/api/captures/stream"); }catch(e){ return; }
+  es.addEventListener("capture", ev => {
+    try{ S.sseBuf.push(JSON.parse(ev.data)); }catch(e){ return; }
+    clearTimeout(S.sseTimer);
+    S.sseTimer = setTimeout(flushSSE, 300);
+  });
+  /* onerror 交给 EventSource 自动重连 */
+}
+function flushSSE(){
+  const buf = S.sseBuf; S.sseBuf = [];
+  if(!buf.length) return;
+  /* 只在查看今天列表时插入；查看历史日期时今日新到的 capture 与该日期无关，直接丢弃
+     （260712：原 S.total += buf.length 会把今日增量累加到历史日期 total，冒出幽灵"加载更多"） */
+  if(S.date && S.date !== todayStr()){ return; }
+  const wrap = $("captureList");
+  const empty = wrap.querySelector(".list-empty");
+  if(empty) wrap.innerHTML = "";
+  for(const it of buf){
+    /* 同 id 已存在则更新（请求完成事件），否则插入顶部 */
+    const idx = S.items.findIndex(x => x.id === it.id);
+    if(idx >= 0){
+      S.items[idx] = it;
+      renderList();
+    }else{
+      S.items.unshift(it); S.total += 1;
+      wrap.insertAdjacentHTML("afterbegin", rowHtml(it, true));
+    }
+  }
+  renderDates(); renderStatus();
+  if(S.view === "dag"){
+    clearTimeout(S.dagTimer);
+    S.dagTimer = setTimeout(loadDag, 800);   /* LIVE 重绘防抖 */
+  }
+}
+
+/* ================= View B 详情 ================= */
+async function openDetail(id, from){
+  if(id !== S.captureId) S.msgShowAll = false;
+  S.captureId = id;
+  const seq = ++S.detailSeq;   /* 重入守卫：快速连点两条时丢弃过期 fetch 响应（260712） */
+  if(from) S.detailFrom = from;   /* 不带 from（如「展开全部」重进）时保持原返回目标 */
+  showView("detail");
+  $("reqCol").innerHTML = '<div class="dcard">' + t18("detail.loading") + '</div>';
+  $("respCol").innerHTML = "";
+  try{
+    const r = await fetch("/api/captures/" + encodeURIComponent(id) + "?date=" + encodeURIComponent(S.date || ""));
+    if(seq !== S.detailSeq) return;   /* 期间已切到别的 capture，丢弃 */
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    renderDetail(await r.json());
+  }catch(e){
+    if(seq !== S.detailSeq) return;
+    $("reqCol").innerHTML = '<div class="err-card">' + esc(t18("detail.loadFailed", {msg: e.message})) + '</div>';
+  }
+}
+function chipFor(status){
+  if(status == null) return '<span class="chip outline">' + t18("chip.pending") + '</span>';
+  const cls = status < 300 ? "ok-soft" : "err-soft";
+  return '<span class="chip ' + cls + '">' + status + (status < 300 ? " OK" : "") + '</span>';
+}
+function renderDetail(d){
+  const req = d.request || {}, resp = d.response || {}, body = req.body || {};
+  /* 头部 */
+  $("dId").textContent = d.id || "";
+  $("dPath").textContent = (d.method || "POST") + " " + (d.path || "");
+  $("dStatus").outerHTML = '<span id="dStatus">' + chipFor(resp.status) + '</span>';
+  $("dTiming").textContent =
+    timePart(d.ts_start) + (d.ts_end ? " → " + timePart(d.ts_end) : "") +
+    (resp.total_ms != null ? " · " + fmtMs(resp.total_ms) : "") +
+    (resp.ttft_ms != null ? " · ttft " + fmtMs(resp.ttft_ms) : "");
+
+  /* ---- 左栏 请求 ---- */
+  let L = "";
+  const bodySize = JSON.stringify(body).length;
+  L += '<div class="col-head"><h3>' + t18("detail.request") + '</h3><span class="meta">' +
+    t18("detail.bodyChars", {n: fmtTok(bodySize)}) + '</span></div>';
+
+  /* headers */
+  const hs = req.headers_safe || {};
+  const hKeys = Object.keys(hs);
+  L += '<details class="fold"><summary>Headers (' + hKeys.length + ')</summary><div class="fold-body">' +
+    '<table class="kv-table">' + hKeys.map(k =>
+      '<tr><td class="k">' + esc(k) + '</td><td class="v">' + esc(hs[k]) + '</td></tr>').join("") +
+    '</table></div></details>';
+
+  /* system 数组 */
+  const sys = Array.isArray(body.system) ? body.system : (body.system ? [{type:"text", text:String(body.system)}] : []);
+  const sysSize = sys.reduce((a,b) => a + (b.text || "").length, 0);
+  L += '<details class="fold"><summary>' + t18("detail.system", {n: sys.length, chars: fmtTok(sysSize)}) + '</summary><div class="fold-body">' +
+    sys.map((blk,i) => {
+      const cache = blk.cache_control ? 'cache_control: ' + esc(blk.cache_control.type || JSON.stringify(blk.cache_control)) : "";
+      return '<div class="blk"><div class="blk-head">' +
+        '<span class="chip" style="background:var(--node-system)">system[' + i + ']</span>' +
+        (cache ? '<span class="blk-meta">' + cache + '</span>' : "") +
+        '</div>' + bigText(blk.text || "", 3000) + '</div>';
+    }).join("") + '</div></details>';
+
+  /* tools */
+  const tools = Array.isArray(body.tools) ? body.tools : [];
+  L += '<details class="fold"><summary>Tools (' + tools.length + ')' +
+    (tools.length ? ' · ' + esc(tools.slice(0,5).map(t => t.name).join(" / ")) + (tools.length > 5 ? "…" : "") : "") +
+    '</summary><div class="fold-body">' +
+    (tools.length ? tools.map(t =>
+      '<details class="tool-item"><summary>' +
+      esc(t.name) + '</summary>' +
+      bigText((t.description || "") + "\n\ninput_schema: " + JSON.stringify(t.input_schema || {}, null, 1), 2000) +
+      '</details>').join("")
+    : '<span class="blk-meta">' + t18("detail.noTools") + '</span>') +
+    '</div></details>';
+
+  /* messages */
+  const msgs = Array.isArray(body.messages) ? body.messages : [];
+  const TAIL = 3;
+  const shown = S.msgShowAll ? msgs : msgs.slice(-TAIL);
+  L += '<details class="fold" open><summary>' +
+    (S.msgShowAll || msgs.length <= TAIL
+      ? t18("detail.messages", {n: msgs.length})
+      : t18("detail.messagesRecent", {n: msgs.length, m: TAIL})) + '</summary><div class="fold-body">' +
+    (msgs.length > TAIL && !S.msgShowAll
+      ? '<button class="btn show-more" onclick="S.msgShowAll=true;openDetail(S.captureId)">' +
+        t18("detail.showAllMsgs", {n: msgs.length}) + '</button>' : "") +
+    shown.map(renderMsg).join("") +
+    '</div></details>';
+  $("reqCol").innerHTML = L;
+
+  /* ---- 右栏 响应 ---- */
+  let R = "";
+  R += '<div class="col-head"><h3>' + t18("detail.response") + '</h3><span class="meta">' +
+    (resp.chunks_count != null ? t18("detail.sse", {n: resp.chunks_count}) : t18("detail.nonStream")) + '</span></div>';
+
+  /* 元信息 */
+  R += '<div class="dcard meta-row">' +
+    '<div class="chip-row">' + chipFor(resp.status) +
+    (resp.stop_reason ? '<span class="chip outline">stop: ' + esc(resp.stop_reason) + '</span>' : "") +
+    (body.stream ? '<span class="chip outline">stream: true</span>' : "") +
+    (body.model ? '<span class="chip outline">' + esc(body.model) + '</span>' : "") +
+    '</div><span class="crumb-meta">' +
+    (resp.ttft_ms != null ? "ttft " + fmtMs(resp.ttft_ms) : "") +
+    (resp.total_ms != null ? " · total " + fmtMs(resp.total_ms) : "") + '</span></div>';
+
+  /* usage（key 兼容：SSE 聚合给 input_tokens 全名，count_tokens 非 SSE 提取到同 key）*/
+  const ur = resp.usage || {};
+  const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output,
+              cache_read: ur.cache_read_input_tokens ?? ur.cache_read,
+              cache_creation: ur.cache_creation_input_tokens ?? ur.cache_creation };
+  if(Object.values(u).some(v => v != null)){   /* 260712：原 Object.keys(u).length 恒真，无 usage 也渲染全"—" */
+    const cost = ((u.input||0) * PRICING.input + (u.output||0) * PRICING.output +
+      (u.cache_read||0) * PRICING.cache_read + (u.cache_creation||0) * PRICING.cache_creation) / 1e6;
+    R += '<div class="dcard"><div class="usage-head"><b>Usage</b><span class="usage-cost">' +
+      t18("detail.usageNote", {cost: cost.toFixed(4)}) + '</span></div><div class="stat-grid2">' +
+      [["input", u.input], ["output", u.output], ["cache_read", u.cache_read], ["cache_creation", u.cache_creation]]
+        .map(([l,v]) => '<div class="stat"><div class="v">' + (v != null ? v.toLocaleString("en-US") : "—") +
+          '</div><div class="l">' + l + ' tokens</div></div>').join("") +
+      '</div></div>';
+  }
+
+  /* error */
+  if(d.error){
+    R += '<div class="err-card"><b>' + esc(d.error.kind || "error") + '</b>' +
+      (d.error.status ? " · HTTP " + d.error.status : "") +
+      (d.error.body_snippet ? '<pre>' + esc(d.error.body_snippet) + '</pre>' : "") + '</div>';
+  }
+
+  /* content blocks */
+  const blocks = Array.isArray(resp.content_blocks) ? resp.content_blocks : [];
+  R += '<details class="fold" open><summary>' + t18("detail.blocks", {n: blocks.length}) + '</summary><div class="fold-body">' +
+    (blocks.length ? blocks.map(renderRespBlock).join("") : '<span class="blk-meta">' + t18("detail.noBlocks") + '</span>') +
+    '</div></details>';
+  $("respCol").innerHTML = R;
+}
+function renderMsg(m){
+  const role = m.role || "user";
+  const isUser = role === "user";
+  const content = Array.isArray(m.content) ? m.content : [{type:"text", text:String(m.content ?? "")}];
+  let cls = isUser ? "msg user" : "msg";
+  let chip = '<span class="chip ' + (isUser ? "user" : "assistant") + '">' + esc(role) + '</span>';
+  /* user 消息里全是 tool_result 时按 tool_result 着色 */
+  if(isUser && content.length && content.every(b => b.type === "tool_result")){
+    cls = "msg toolres";
+    chip = '<span class="chip toolres">tool_result</span>';
+  }
+  let inner = "";
+  for(const b of content){
+    if(b.type === "text"){
+      inner += bigText(b.text || "", 4000);
+    }else if(b.type === "thinking"){
+      inner += '<div class="thinking-text">' + esc((b.thinking || b.text || "").slice(0, 2000)) + '</div>';
+    }else if(b.type === "tool_use"){
+      inner += '<div class="tooluse-box">→ ' + esc(b.name || "tool") + " " +
+        esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
+    }else if(b.type === "tool_result"){
+      const txt = typeof b.content === "string" ? b.content
+        : (Array.isArray(b.content) ? b.content.map(c => c.text || "").join("\n") : JSON.stringify(b.content));
+      inner += bigText(txt, 1500);
+    }else{
+      inner += '<div class="blk-meta">[' + esc(b.type || "?") + ']</div>';
+    }
+  }
+  return '<div class="' + cls + '"><div class="blk-head">' + chip + '</div>' + inner + '</div>';
+}
+function renderRespBlock(b){
+  if(b.type === "thinking"){
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--text-faint)">thinking</span></div>' +
+      bigText(b.text || b.thinking || "", 3000) + '</div>';
+  }
+  if(b.type === "text"){
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--accent)">text</span>' +
+      '<span class="blk-actions">' +
+      toolBtn("translate", t18("bt.translate"), "translateBlock(this)") +
+      toolBtn("explain", t18("bt.explain"), "explainBlock(this)") + '</span></div>' +
+      '<div class="blk-text">' + mdRender(b.text || "") + '</div></div>';
+  }
+  if(b.type === "tool_use"){
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--info)">tool_use</span>' +
+      (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
+      '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
+      esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';
+  }
+  return '<div class="blk"><div class="blk-head"><span class="chip outline">' + esc(b.type || "?") + '</span></div>' +
+    bigText(JSON.stringify(b, null, 1), 1500) + '</div>';
+}
+function translateBlock(btn){
+  const blk = btn.closest(".blk");
+  const textEl = blk ? blk.querySelector(".blk-text") : null;
+  if(textEl) llmToolAction(btn, "translate", textEl.textContent, blk);
+}
+function explainBlock(btn){
+  const blk = btn.closest(".blk");
+  const textEl = blk ? blk.querySelector(".blk-text") : null;
+  if(textEl) llmToolAction(btn, "explain", textEl.textContent, blk);
+}
+
+/* ================= View D 时序 DAG ================= */
+const KIND_COLOR = {
+  main: "var(--accent)", subagent: "var(--info)",
+  title: "var(--node-system)", compact: "var(--node-assistant)",
+  security: "var(--gold-text-2)", count_tokens: "var(--text-tertiary)",
+  other: "var(--apple-secondary)",
+};
+/* kind/lane 显示名走 i18n：kindLabel() / laneLabel()（I18N 的 kind.* / lane.* 键） */
+const LANE_COLOR = { main: "var(--accent)", subagent: "var(--info)", aux: "var(--apple-secondary)" };
+/* 主线泳道分类色板（260712 item5）：dataviz 六检全过（白面 all-pairs CVD ΔE≥13、对比≥3:1、
+   色度≥0.1），槽 1=品牌深金。按 lane 首见顺序取色，LIVE 新增 lane 只追加、已有色不变。 */
+const LANE_PALETTE = ["#C2882B", "#24A0B2", "#8F63B0", "#B25578", "#48923F", "#96540E"];
+
+async function loadDag(){
+  try{
+    /* dates_available 来自列表接口；首次直进 dag 时先补拉一次 */
+    if(!S.dates.length) await fetchCaptures(S.date);
+    const q = S.date ? ("?date=" + encodeURIComponent(S.date)) : "";
+    const r = await fetch("/api/dag" + q);
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
+    renderDag(d);
+  }catch(e){
+    $("dagWrap").innerHTML = '<div class="list-empty">' + esc(t18("dag.loadFailed", {msg: e.message})) + '</div>';
+  }
+}
+function dagPickDate(d){ S.date = d; fetchCaptures(d); loadDag(); }
+function renderDagDates(){
+  const dates = S.dates.length ? S.dates : [S.date || todayStr()];
+  $("dagDateChips").innerHTML = dates.map(d =>
+    '<button class="date-chip' + (d === S.date ? " active" : "") + '" onclick="dagPickDate(\'' + d + '\')">' + d + '</button>'
+  ).join("");
+}
+/* 图例线型小样（SVG，与实际边线型一致，替代字符示意） */
+function legLine(type){
+  const s = type === "seq"
+    ? '<line x1="1" y1="5" x2="26" y2="5" stroke="var(--apple-secondary)" stroke-width="2"/>'
+    : type === "trigger"
+    ? '<line x1="1" y1="5" x2="19" y2="5" stroke="var(--apple-secondary)" stroke-width="2" stroke-dasharray="5 3"/>' +
+      '<path d="M19 1.5 L26 5 L19 8.5 Z" fill="var(--apple-secondary)"/>'
+    : '<line x1="1" y1="5" x2="26" y2="5" stroke="var(--apple-secondary)" stroke-width="1.6" stroke-dasharray="1.5 4" stroke-linecap="round"/>';
+  return '<svg class="leg-svg" width="27" height="10" aria-hidden="true">' + s + '</svg>';
+}
+function renderDagLegend(lanes, laneColor, laneNum){
+  const el = $("dagLegend");
+  if(!el) return;
+  const mains = lanes.filter(l => l.kind === "main");
+  let h = mains.map(l =>
+    '<span class="leg"><span class="lh-dot" style="background:' + laneColor[l.lane_id] + '"></span>' +
+    laneLabel("main") + ' ' + laneNum[l.lane_id] + '</span>').join("");
+  if(lanes.some(l => l.kind === "subagent"))
+    h += '<span class="leg"><span class="lh-dot" style="background:' + LANE_COLOR.subagent + '"></span>' + t18("dag.legSub") + '</span>';
+  if(lanes.some(l => l.kind === "aux"))
+    h += '<span class="leg"><span class="lh-dot" style="background:' + LANE_COLOR.aux + '"></span>' + t18("dag.legAux") + '</span>';
+  h += '<span class="leg-lines">' +
+    '<span class="leg">' + legLine("seq") + t18("dag.legSeq") + '</span>' +
+    '<span class="leg">' + legLine("trigger") + t18("dag.legTrigger") + '</span>' +
+    '<span class="leg">' + legLine("near") + t18("dag.legNear") + '</span></span>';
+  el.innerHTML = h;
+}
+function renderDag(d){
+  const wrap = $("dagWrap");
+  const nodes = d.nodes || [], lanes = d.lanes || [], edges = d.edges || [];
+  renderDagDates();
+  $("dagMeta").textContent = t18("dag.meta", {n: nodes.length, m: lanes.length}) +
+    (S.status && S.status.running ? t18("dag.live") : "");
+  if(!nodes.length){
+    $("dagLegend").innerHTML = "";
+    wrap.innerHTML = '<div class="list-empty">' + (S.date === todayStr()
+      ? t18("dag.emptyToday") : t18("dag.emptyDate")) + '</div>';
+    return;
+  }
+
+  /* --- 主线配色与关联解析（260712 item5）--- */
+  const nodeById = {};
+  nodes.forEach(n => nodeById[n.id] = n);
+  const laneKindOf = {};
+  lanes.forEach(l => laneKindOf[l.lane_id] = l.kind);
+  const laneColor = {}, laneNum = {};   /* 仅 main lane 取色板；lanes 已按首见时间排序 */
+  let mi = 0;
+  for(const l of lanes){
+    if(l.kind !== "main") continue;
+    laneColor[l.lane_id] = LANE_PALETTE[mi % LANE_PALETTE.length];
+    laneNum[l.lane_id] = ++mi;
+  }
+  /* 子代理 lane → 触发它的主线；aux 节点 → near 边来源主线（classifier 已算好，前端反查） */
+  const parentLane = {}, auxAssoc = {};
+  for(const e of edges){
+    const a = nodeById[e.from], b = nodeById[e.to];
+    if(!a || !b) continue;
+    if(e.type === "trigger" && laneColor[a.lane]) parentLane[b.lane] = a.lane;
+    if(e.type === "near" && laneColor[a.lane]) auxAssoc[b.id] = a.lane;
+  }
+  /* lane/边用色：main=专属色，其余按 lane kind 语义色 */
+  const laneStroke = id => laneColor[id] || LANE_COLOR[laneKindOf[id]] || LANE_COLOR.aux;
+  renderDagLegend(lanes, laneColor, laneNum);
+
+  const X0 = 16, LW = 260, LG = 40, Y0 = 52, RH = 82, NH = 62;
+  const laneX = {};
+  lanes.forEach((l, i) => laneX[l.lane_id] = X0 + i * (LW + LG));
+  const sorted = nodes.slice().sort((a, b) => (a.ts_start || "").localeCompare(b.ts_start || ""));
+  const pos = {};
+  sorted.forEach((n, i) => pos[n.id] = { x: laneX[n.lane] ?? X0, y: Y0 + i * RH });
+  const W = Math.max(X0 + lanes.length * (LW + LG) - LG + 16, 600);
+  const H = Y0 + sorted.length * RH + 24;
+
+  let svg = "", html = "";
+  for(const l of lanes){
+    const x = laneX[l.lane_id];
+    const label = laneLabel(l.kind) + (l.kind === "main" ? " " + laneNum[l.lane_id] : "");
+    const pDot = (l.kind === "subagent" && parentLane[l.lane_id])
+      ? '<span class="assoc-dot" style="background:' + laneColor[parentLane[l.lane_id]] +
+        '" title="' + t18("dag.spawnedBy", {n: laneNum[parentLane[l.lane_id]]}) + '"></span>'
+      : "";
+    html += '<div class="lane-head" style="left:' + x + 'px">' +
+      '<span class="lh-dot" style="background:' + laneStroke(l.lane_id) + '"></span>' +
+      '<b>' + label + '</b>' + pDot +
+      '<span class="lh-count">' + l.count + '</span>' +
+      '<span class="lh-id mono">' + esc(l.lane_id) + '</span></div>';
+    /* 泳道背景轴线：主线用本 lane 色淡化，其余中性 */
+    svg += '<line x1="' + (x + LW / 2) + '" y1="' + (Y0 - 8) + '" x2="' + (x + LW / 2) + '" y2="' + (H - 12) +
+      '" stroke="' + (laneColor[l.lane_id] || "var(--border-soft)") + '"' +
+      (laneColor[l.lane_id] ? ' stroke-opacity="0.25"' : "") + ' stroke-width="1"/>';
+  }
+  for(const e of edges){
+    const a = pos[e.from], b = pos[e.to];
+    if(!a || !b) continue;
+    if(e.type === "seq"){
+      const cx = a.x + LW / 2;
+      svg += '<path class="e-seq" style="stroke:' + laneStroke((nodeById[e.from] || {}).lane) + '" d="M' +
+        cx + ' ' + (a.y + NH) + ' L' + cx + ' ' + b.y + '"/>';
+    }else if(e.type === "trigger"){
+      const tc = laneColor[(nodeById[e.from] || {}).lane] || "var(--info)";
+      const x1 = a.x + LW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const mx = (x1 + x2) / 2;
+      svg += '<path class="e-trigger" style="stroke:' + tc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 +
+        ' ' + (x2 - 8) + ' ' + y2 + '"/>' +
+        '<path class="arrow" style="fill:' + tc + '" d="M' + (x2 - 8) + ' ' + (y2 - 4) + ' L' + x2 + ' ' + y2 + ' L' + (x2 - 8) + ' ' + (y2 + 4) + ' Z"/>';
+    }else{ /* near：弱示意点线，随关联主线着色 */
+      const nc = laneColor[(nodeById[e.from] || {}).lane] || "var(--apple-secondary)";
+      const x1 = a.x + LW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const mx = (x1 + x2) / 2;
+      svg += '<path class="e-near" style="stroke:' + nc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 +
+        ' ' + x2 + ' ' + y2 + '"/>';
+    }
+  }
+  for(const n of sorted){
+    const p = pos[n.id];
+    const color = KIND_COLOR[n.kind] || KIND_COLOR.other;
+    const border = n.has_error ? "var(--err)" : (laneColor[n.lane] || color);
+    const assoc = auxAssoc[n.id]
+      ? '<span class="assoc-dot" style="background:' + laneColor[auxAssoc[n.id]] +
+        '" title="' + t18("dag.assoc", {n: laneNum[auxAssoc[n.id]]}) + '"></span>'
+      : "";
+    const ur = n.usage || {};
+    const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
+    html += '<div class="dag-node" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
+      border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
+      '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
+      '<span class="dn-tags">' + assoc +
+      '<span class="chip" style="background:' + color + '">' + esc(kindLabel(n.kind)) + '</span></span></div>' +
+      '<div class="dn-meta">' + esc(n.model || "?") + ' · ' + fmtMs(n.total_ms) +
+      (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") +
+      (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +
+      '<div class="dn-sum' + (n.has_error ? " err" : "") + '">' + esc(n.summary || "") + '</div></div>';
+  }
+  /* LIVE 重绘保留滚动位置（审计 260712 #11），避免 800ms 防抖重绘打断浏览 */
+  const _sl = wrap.scrollLeft, _st = wrap.scrollTop;
+  wrap.innerHTML = '<div class="dag-inner" style="width:' + W + 'px;height:' + H + 'px">' +
+    '<svg class="dag-svg" width="' + W + '" height="' + H + '">' + svg + '</svg>' + html + '</div>';
+  wrap.scrollLeft = _sl;
+  wrap.scrollTop = _st;
+  /* 缩放：默认适应宽度（消除水平滚动），用户 +/- 后保持自定义（260712 需求2） */
+  const inner = wrap.querySelector(".dag-inner");
+  if(inner){
+    const fit = Math.min(1, (wrap.clientWidth - 24) / W);
+    const z = (S.dagZoom != null) ? S.dagZoom : fit;
+    inner.style.zoom = z;
+    const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
+  }
+}
+function dagZoomBy(delta){
+  const inner = $("dagWrap").querySelector(".dag-inner");
+  if(!inner) return;
+  const cur = parseFloat(inner.style.zoom) || 1;
+  const z = Math.max(0.2, Math.min(2, +(cur + delta).toFixed(2)));
+  S.dagZoom = z;
+  inner.style.zoom = z;
+  const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
+}
+function dagZoomFit(){ S.dagZoom = null; loadDag(); }
+
+/* ================= View C 设置 ================= */
+async function loadConfig(){
+  try{
+    const [cfgR, aboutR, stR] = await Promise.all([
+      fetch("/api/config"), fetch("/api/about"), fetch("/api/proxy/status")
+    ]);
+    const cfg = await cfgR.json(), about = await aboutR.json(), st = await stR.json();
+    $("cfgUiLang").value = cfg.ui_lang || "zh";
+    $("cfgSettingsPath").textContent = about.settings_path || "—";
+    $("cfgBaseUrl").textContent = st.original_base_url || st.upstream || "—";
+    $("cfgBackupDir").textContent = (about.data_dir || "~/.cc-wire-analyzer") + "/backups";
+    $("cfgAutoStart").classList.toggle("on", !!cfg.auto_start_proxy);
+    $("cfgRetention").value = cfg.retention_days ?? 30;
+    $("cfgRedact").classList.toggle("on", cfg.redact_headers !== false);
+    const tr = cfg.translate || {};
+    $("cfgTransKey").value = tr.api_key || "";
+    $("cfgTransBase").value = tr.base_url || "";
+    $("cfgTransModel").value = tr.model || "";
+    $("cfgTransTemp").value = tr.temperature ?? 0.3;
+    $("cfgTransLang").value = tr.target_lang || "zh";
+    $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
+    $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
+    $("aboutDataDir").textContent = about.data_dir || "—";
+    $("aboutLogPath").textContent = about.log_path || "—";
+  }catch(e){
+    toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
+  }
+}
+async function saveConfig(){
+  const payload = {
+    auto_start_proxy: $("cfgAutoStart").classList.contains("on"),
+    retention_days: parseInt($("cfgRetention").value, 10) || 30,
+    redact_headers: $("cfgRedact").classList.contains("on"),
+    translate: {
+      api_key: $("cfgTransKey").value,
+      base_url: $("cfgTransBase").value.trim(),
+      model: $("cfgTransModel").value.trim(),
+      temperature: parseFloat($("cfgTransTemp").value) || 0.3,
+      target_lang: $("cfgTransLang").value,
+    },
+    explain: { prompt: $("cfgExplainPrompt").value.trim() },
+  };
+  try{
+    const r = await fetch("/api/config", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    toast(t18("toast.cfgSaved"));
+    loadConfig();  /* 回读验证持久化 */
+  }catch(e){
+    toast(t18("toast.cfgSaveFailed", {msg: e.message}), true);
+  }
+}
+async function testLlm(){
+  /* 先保存当前表单（测试用最新输入），再调后端 ping 一次短翻译 */
+  await saveConfig();
+  const el = $("llmTestResult");
+  el.textContent = t18("set.testing"); el.className = "sub test-result busy";
+  try{
+    const r = await fetch("/api/translate/test", {method:"POST"});
+    const j = await r.json();
+    if(j.ok){
+      el.textContent = t18("set.testOk", {snippet: (j.snippet || "").slice(0, 60)});
+      el.className = "sub test-result ok";
+    }else{
+      el.textContent = t18("set.testFail", {msg: llmErrMsg(j)});
+      el.className = "sub test-result err";
+    }
+  }catch(e){
+    el.textContent = t18("set.testFail", {msg: e.message});
+    el.className = "sub test-result err";
+  }
+}
+function toggleKeyVisible(){
+  const inp = $("cfgTransKey");
+  inp.type = inp.type === "password" ? "text" : "password";
+}
+function openBackupDir(){
+  const dir = $("cfgBackupDir").textContent;
+  /* 经后端 /api/open-folder 打开（os.startfile）；原 pywebview bridge open_folder 未注册致失效（260712） */
+  fetch("/api/open-folder", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path:dir})})
+    .then(r => r.json()).then(j => {
+      if(!j.ok) toast(t18("toast.backupDir", {dir}) + "：" + (j.error || ""), true);
+    }).catch(e => toast(t18("toast.backupDir", {dir}) + "：" + e.message, true));
+}
+
+/* ================= 启动 ================= */
+(async function init(){
+  /* 先取 ui_lang 再渲染，避免语言闪切 */
+  try{
+    const cfg = await (await fetch("/api/config")).json();
+    LANG = cfg.ui_lang || "zh";
+  }catch(e){ /* 配置不可达时按默认 zh */ }
+  applyI18n();
+  await fetchCaptures();      /* 默认今天，含 dates_available */
+  await refreshStatus();
+  initSSE();
+  setInterval(refreshStatus, 5000);   /* 防状态漂移 */
+})();
+</script>
+</body>
+</html>

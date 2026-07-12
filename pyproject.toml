@@ -1,0 +1,23 @@
+[project]
+name = "cc-wire-analyzer"
+version = "0.1.0"
+description = "Local MITM proxy desktop app that transparently records and analyzes all HTTP traffic between Claude Code and its upstream endpoint."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "flask>=3.0",
+    "httpx>=0.27",
+    "pywebview>=5.0",
+    "pyinstaller>=6.0",   # bundling tool kept in main deps so CI/build machines get it on `uv sync`
+]
+
+[project.optional-dependencies]
+# pywebview 的 macOS 后端依赖 WebKit（pyobjc）；Windows 用 WebView2（系统自带，无需依赖）。
+# 用 optional 让 `uv sync` 在 Windows 不装 pyobjc。macOS 构建机 `uv sync --extra mac`。
+mac = [
+    "pyobjc>=10.0",
+]
+
+[tool.uv]
+package = false

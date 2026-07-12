@@ -1,0 +1,68 @@
+name: build-release
+
+# 触发：推 v* tag → 双平台打包 + 发 GitHub Release；也支持手动（workflow_dispatch）做测试构建
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # softprops/action-gh-release 发 release 需要
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false   # 一个平台失败不影响另一个
+      matrix:
+        include:
+          - os: windows-latest
+            spec: build.spec
+            extra: ''
+            artifact_glob: 'dist/cc-wire-analyzer.exe'
+            artifact_name: cc-wire-analyzer-windows.exe
+          - os: macos-latest
+            spec: build-mac.spec
+            extra: '--extra mac'   # 装 pyobjc（macOS WebKit 后端）
+            artifact_glob: 'dist/CCWireAnalyzer-mac.zip'
+            artifact_name: CCWireAnalyzer-mac.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync dependencies
+        run: uv sync ${{ matrix.extra }}
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller ${{ matrix.spec }} --noconfirm --clean
+
+      # macOS：把 .app 打成 zip（.app 是目录，release/artifact 需单文件）
+      - name: Zip macOS app
+        if: runner.os == 'macOS'
+        run: cd dist && ditto -c -k --sequesterRsrc --keepParent CCWireAnalyzer.app CCWireAnalyzer-mac.zip
+
+      - name: Rename Windows exe
+        if: runner.os == 'Windows'
+        shell: bash
+        run: mv dist/cc-wire-analyzer.exe dist/cc-wire-analyzer-windows.exe || true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-build
+          path: ${{ matrix.artifact_glob }}
+
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_glob }}
+          generate_release_notes: true
