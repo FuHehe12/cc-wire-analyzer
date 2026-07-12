@@ -26,3 +26,8 @@ run.log
 port.txt
 *.jsonl
 *.jsonl.zip
+
+# 本地维护文件（工作区规范，不上传开源仓库）
+# CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
+CLAUDE.md
+issues/
