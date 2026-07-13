@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 - 2026-07-14
 
 ### Changed
 - **Merged into a single binary.** Was: GUI exe + CLI exe (51 MB, two files). Now: one noconsole GUI exe
@@ -34,7 +34,9 @@
   Python stack and runs no `atexit` hooks. `settings.json` was left pointing at a dead local port and
   **Claude Code could no longer reach any upstream** — after the tool had already been closed. Now hooked
   to the window's `closing` event, the only event pywebview dispatches synchronously, and the one both
-  macOS quit paths raise.
+  macOS quit paths raise. Verified on macOS (pywebview 6.2.1): both red-dot and Cmd+Q restore `BASE_URL`
+  and clear the marker — the source-level assumption (`closing` = synchronous `Event(self, True)`, both
+  Cocoa quit paths route through `should_close()`) still holds unchanged in 6.2.1.
 - **Stale recovery marker could delete the user's config.** `recover_from_orphan()` acted on the marker
   file without ever checking what `settings.json` currently contained. If the app was killed while patched
   and the user then set their own `ANTHROPIC_BASE_URL` (e.g. via cc-switch), the next launch would

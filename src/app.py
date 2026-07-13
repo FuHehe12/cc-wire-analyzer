@@ -481,7 +481,7 @@ def api_translate_test():
 @app.route("/api/about")
 def about():
     return jsonify({
-        "version": "0.1.0",
+        "version": "0.2.0",
         "settings_path": str(CFG.CLAUDE_SETTINGS),
         "data_dir": str(CFG.CONFIG_DIR),
         "captures_dir": str(capture_store.CAPTURES_DIR),
