@@ -71,6 +71,25 @@ uv run python src/desktop.py
 | `~/.cc-wire-analyzer/config.json` | 应用配置（ui_lang / translate / explain…） |
 | `~/.cc-wire-analyzer/run.log` | 运行日志 |
 
+## 给 AI agent：用命令行驱动它
+
+这软件不只是给人看的 —— **AI 也能自己开、自己查**。`cc-wire-analyzer-cli` 负责起代理、找录制、
+回答关于录制的问题，输出全是 JSON：
+
+```bash
+cc-wire-analyzer-cli proxy start                       # patch settings.json，headless 常驻
+cc-wire-analyzer-cli stats  --date 2026-07-12          # kind / 模型 / token / 耗时分位
+cc-wire-analyzer-cli list   --date 2026-07-12 --kind main --limit 20
+cc-wire-analyzer-cli get    req_a5f758e --part system --max-chars 4000
+cc-wire-analyzer-cli restore                           # 把停在死代理端口上的 settings.json 救回来
+```
+
+输出默认截断并明确标注 —— 单条录制可超过 5 MB，agent 直接读 JSONL 会当场炸掉上下文。
+完整命令、记录 schema 与安全注意事项见 **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
+
+macOS 同样支持（`cc-wire-analyzer-cli-mac`，或 `CCWireAnalyzer.app/Contents/MacOS/` 里的二进制）。
+CLI 是**独立的 console 二进制**：GUI 那个是 windowed 构建，根本没有 stdout。
+
 ## 可选：翻译 / 问 AI
 
 详情页可以通过任何 OpenAI 兼容的 `/chat/completions` 端点翻译文本或解读"这段内容在干什么"。在**设置 → LLM 模型**里配 API key / base URL / model。解读功能内置注入防护（不可信的捕获内容被定界符包裹；字面闭合标签被转义；隔离框架是硬编码的，不受你的自定义提示词影响）。

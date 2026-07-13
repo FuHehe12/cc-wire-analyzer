@@ -189,11 +189,24 @@ def patch_base_url(local_listen: str, path: Path | None = None) -> None:
 def restore(path: Path | None = None) -> bool:
     """恢复 settings.json 到 patch 前原状。返回是否实际执行。
     幂等：未 patch 时返回 False，重复调用安全。
-    原本有 BASE_URL 键 → 写回原值；原本无 → 删键（回到直连官方原状，260712）。"""
+    原本有 BASE_URL 键 → 写回原值；原本无 → 删键（回到直连官方原状，260712）。
+
+    260713 新增守卫：只撤销**我们还能证明是自己做的**那一笔。若当前 BASE_URL 已不是我们
+    patch 进去的那个地址（代理运行期间用户用 cc-switch 换了上游 / 手改了配置），那是用户的
+    新意图，无权拿旧快照覆盖它 —— 只清内部状态与 marker，不动文件。"""
     global _patched, _patched_listen, _patched_at
     if not _patched:
         return False
     p = path or CFG.CLAUDE_SETTINGS
+    current = _read_base_url(p)
+    if _patched_listen and current != _patched_listen:
+        log.warning("跳过恢复：当前 BASE_URL=%s ≠ 我们 patch 的 %s（用户已自行改动）",
+                    current, _patched_listen)
+        _patched = False
+        _patched_listen = None
+        _patched_at = None
+        _clear_marker()
+        return False
     try:
         if _original_had_key:
             _patch_base_url_to(p, _original_base_url)
@@ -211,7 +224,15 @@ def restore(path: Path | None = None) -> bool:
 
 def check_orphan_backup(path: Path | None = None) -> dict | None:
     """启动时调。看 patch 态 marker 是否残留（=上次 patch 后进程被强杀、没正常 restore），
-    marker 记的 original_url 即恢复目标。不靠 url 子串猜，避免误判用户合法本地端点（审计 260712 #7）。"""
+    marker 记的 original_url 即恢复目标。
+
+    marker 与 URL 两个条件**都要满足**才认（260713 修复）：marker 证明「我们 patch 过」，
+    URL 证明「而且 settings.json 现在还是我们那份」。260712 那次改成只信 marker，
+    把 URL 检查整个丢了（`_is_local_proxy_url` 就此成了零调用的死代码）——后果是陈 marker
+    会拿过期信息覆盖用户之后自己设的 BASE_URL，`had_key=False` 的陈 marker 更会**直接删掉**
+    用户刚用 cc-switch 设好的键。真实可触发链见 issues/260713_孤儿恢复会覆盖用户新配置.md。
+
+    陈 marker（当前值不是我们写进去的那个）→ 只清 marker，绝不碰 settings.json。"""
     p = path or CFG.CLAUDE_SETTINGS
     if not _PATCHED_MARKER.exists():
         return None
@@ -222,9 +243,20 @@ def check_orphan_backup(path: Path | None = None) -> dict | None:
     original = info.get("original")
     if not original:
         return None
+
+    current = _read_base_url(p)
+    listen = info.get("listen")
+    # 精确比对优先（marker 记着当初 patch 进去的确切地址）；老 marker 无 listen 时退回本地端点判断。
+    ours = bool(current) and (current == listen if listen else _is_local_proxy_url(current))
+    if not ours:
+        log.warning("陈旧 marker：当前 BASE_URL=%s 不是我们 patch 的 %s → 只清 marker，不动 settings.json",
+                    current, listen)
+        _clear_marker()
+        return None
+
     return {
         "marker_file": str(_PATCHED_MARKER),
-        "orphan_base_url": _read_base_url(p),
+        "orphan_base_url": current,
         "recovered_to": original,
         "had_key": info.get("had_key", True),  # 老 marker 无此字段则按有键（保守写回）
     }
@@ -416,6 +448,62 @@ def self_test() -> None:
         assert restore(noenv) is True
         assert ENV_KEY not in _read_settings(noenv).get("env", {}), "restore 后不应残留 BASE_URL"
         print(f"[8] 无 env 字段场景 OK: patch 创建 env → restore 清键 ✓")
+
+        # 9. 陈旧 marker（had_key=False）+ 用户之后自己设了 BASE_URL → 绝不能删他的键（260713）
+        #    这是真实可触发的破坏链：直连官方的用户起代理 → 被强杀 → 自己用 cc-switch 切到智谱
+        #    → 再开本软件 → 旧代码会把刚设好的键删掉。
+        stale = tmpdir / "settings_stale.json"
+        stale.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic",
+                    "ANTHROPIC_AUTH_TOKEN": "tok"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _PATCHED_MARKER.write_text(json.dumps({      # 模拟强杀留下的 marker（当时没有键）
+            "original": DEFAULT_UPSTREAM, "listen": "http://127.0.0.1:5051",
+            "had_key": False, "at": "2026-07-13T00:00:00"}), encoding="utf-8")
+        assert check_orphan_backup(stale) is None, "陈旧 marker 不该被当成孤儿"
+        d9 = _read_settings(stale)
+        assert d9["env"][ENV_KEY] == "https://open.bigmodel.cn/api/anthropic", "用户的 BASE_URL 被删了!"
+        assert not _PATCHED_MARKER.exists(), "陈旧 marker 应被清掉"
+        print(f"[9] 陈旧 marker(had_key=False) + 用户已设新 BASE_URL → 不删键、只清 marker ✓")
+
+        # 10. 陈旧 marker（had_key=True）+ 用户已换别的上游 → 不得用旧值覆盖
+        stale.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "https://new-provider.example.com"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _PATCHED_MARKER.write_text(json.dumps({
+            "original": "https://old-provider.example.com", "listen": "http://127.0.0.1:5051",
+            "had_key": True, "at": "2026-07-13T00:00:00"}), encoding="utf-8")
+        assert check_orphan_backup(stale) is None
+        assert _read_base_url(stale) == "https://new-provider.example.com", "用户的新上游被旧值覆盖了!"
+        print(f"[10] 陈旧 marker(had_key=True) + 用户已换上游 → 不覆盖 ✓")
+
+        # 11. 真孤儿（当前值 == marker 记的 listen）→ 照常恢复（回归：别把安全网收得连正事都不干了）
+        real = tmpdir / "settings_orphan.json"
+        real.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:5051"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _PATCHED_MARKER.write_text(json.dumps({
+            "original": "https://open.bigmodel.cn/api/anthropic", "listen": "http://127.0.0.1:5051",
+            "had_key": True, "at": "2026-07-13T00:00:00"}), encoding="utf-8")
+        o11 = check_orphan_backup(real)
+        assert o11 is not None, "真孤儿没被检出！"
+        recover_from_orphan(o11, real)
+        assert _read_base_url(real) == "https://open.bigmodel.cn/api/anthropic"
+        assert not _PATCHED_MARKER.exists()
+        print(f"[11] 真孤儿(current == marker.listen) → 正常恢复 ✓")
+
+        # 12. 代理运行期间用户换了上游 → restore 不得覆盖他的新选择
+        live = tmpdir / "settings_live.json"
+        live.write_text(json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://a.example.com"}},
+                                   ensure_ascii=False, indent=2), encoding="utf-8")
+        _patched = False
+        snapshot_original(live)
+        patch_base_url("http://127.0.0.1:5051", live)
+        _patch_base_url_to(live, "https://user-switched.example.com")   # 模拟 cc-switch 中途切换
+        assert restore(live) is False, "用户中途改了 BASE_URL，restore 不该动它"
+        assert _read_base_url(live) == "https://user-switched.example.com", "用户的新上游被覆盖了!"
+        assert not _PATCHED_MARKER.exists()
+        print(f"[12] 代理运行期间用户换上游 → restore 跳过、不覆盖 ✓")
 
         print("\n[ALL PASSED] ✓")
     finally:

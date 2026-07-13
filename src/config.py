@@ -13,9 +13,17 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".cc-wire-analyzer"
+# 两个环境变量覆盖（默认值不变，普通用户无感）：
+#   CCWA_HOME            —— 数据目录（录制/配置/日志/marker）
+#   CCWA_CLAUDE_SETTINGS —— 上游 settings.json 路径
+# 动机：本软件最危险的动作是改用户的 ~/.claude/settings.json，而在 260713 之前
+# **这条路径根本没法端到端自测**——一测就得动真配置，等于拿用户的 CC 当小白鼠。
+# 有了覆盖，e2e 自测可以在临时目录里把「起代理→patch→停→恢复」整条链跑真的。
+# 顺带也照顾了把数据放别处、或 settings.json 不在默认位置的用户。
+CONFIG_DIR = Path(os.environ.get("CCWA_HOME") or (Path.home() / ".cc-wire-analyzer"))
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 _DEFAULTS = {
@@ -108,8 +116,9 @@ def list_capture_dates() -> list[dict]:
 LOG_FILE = CONFIG_DIR / "run.log"
 PORT_FILE = CONFIG_DIR / "port.txt"
 
-# 上游 settings.json（settings_guard 读写）
-CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
+# 上游 settings.json（settings_guard 读写）。见文件头：CCWA_CLAUDE_SETTINGS 可覆盖。
+CLAUDE_SETTINGS = Path(os.environ.get("CCWA_CLAUDE_SETTINGS")
+                       or (Path.home() / ".claude" / "settings.json"))
 
 
 def find_free_port(start: int = 5051, end: int = 5100) -> int | None:

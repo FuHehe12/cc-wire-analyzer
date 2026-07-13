@@ -46,6 +46,18 @@
 body{font-family:var(--font-body);background:var(--bg-canvas);color:var(--apple-text);
   line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;}
 ::selection{background:rgba(214,154,54,0.28);color:#1A1A1A;}
+/* 内容区显式可选：交互控件（按钮/标签页/折叠头/泳道图）不可选，正文一律可选。
+   -webkit- 前缀是给 macOS WebKit 后端的。见 ctxInit() 注释：两个后端都不给原生复制，
+   所以「能选中」是复制链路的第一环，不能靠默认值碰运气。 */
+pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.mono{
+  user-select:text;-webkit-user-select:text;cursor:auto;}
+/* 自绘右键菜单（原生的被 WebView2 禁掉了）*/
+.ctx-menu{position:fixed;z-index:9999;min-width:150px;padding:4px;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--bg-card);box-shadow:0 6px 24px rgba(0,0,0,0.14);
+  display:flex;flex-direction:column;gap:1px;}
+.ctx-item{all:unset;padding:7px 12px;font-size:12px;font-family:var(--font-body);color:var(--apple-text);
+  border-radius:5px;cursor:pointer;white-space:nowrap;user-select:none;}
+.ctx-item:hover{background:var(--bg-warm);color:var(--gold-text);}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:#C9C2B4;border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -575,6 +587,8 @@ const ICONS = {
   plug: '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
   archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
 };
 function icon(name){
   return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" ' +
@@ -631,6 +645,9 @@ zh: {
   "bt.expand": "展开全部 {n} 字符", "bt.collapse": "收起",
   "bt.format": "格式化", "bt.plain": "纯文本",
   "bt.translate": "翻译", "bt.explain": "AI 解读",
+  "bt.copy": "复制", "bt.copied": "已复制",
+  "toast.copied": "已复制 {n} 字符", "toast.copyFail": "复制失败",
+  "ctx.copySel": "复制选中", "ctx.copyBlock": "复制整块（{n} 字符）", "ctx.selectBlock": "选中整块",
   "llm.translating": "翻译中…", "llm.retranslate": "重译", "llm.translateFail": "翻译失败",
   "llm.translated": "↓ 翻译",
   "llm.explaining": "解读中…", "llm.reexplain": "再问一次", "llm.explainFail": "解读失败",
@@ -714,6 +731,9 @@ en: {
   "detail.blocks": "Content Blocks ({n})", "detail.noBlocks": "no content blocks",
   "bt.expand": "Show all {n} chars", "bt.collapse": "Collapse",
   "bt.format": "Format", "bt.plain": "Plain text",
+  "bt.copy": "Copy", "bt.copied": "Copied",
+  "toast.copied": "Copied {n} chars", "toast.copyFail": "Copy failed",
+  "ctx.copySel": "Copy selection", "ctx.copyBlock": "Copy block ({n} chars)", "ctx.selectBlock": "Select block",
   "bt.translate": "Translate", "bt.explain": "Ask AI",
   "llm.translating": "Translating…", "llm.retranslate": "Retranslate", "llm.translateFail": "Translation failed",
   "llm.translated": "↓ Translation",
@@ -798,6 +818,9 @@ ja: {
   "detail.blocks": "Content Blocks（{n}）", "detail.noBlocks": "内容ブロックなし",
   "bt.expand": "全 {n} 文字を表示", "bt.collapse": "折りたたむ",
   "bt.format": "整形", "bt.plain": "プレーン",
+  "bt.copy": "コピー", "bt.copied": "コピー済み",
+  "toast.copied": "{n} 文字をコピーしました", "toast.copyFail": "コピーに失敗しました",
+  "ctx.copySel": "選択範囲をコピー", "ctx.copyBlock": "ブロックをコピー（{n} 文字）", "ctx.selectBlock": "ブロックを選択",
   "bt.translate": "翻訳", "bt.explain": "AI に聞く",
   "llm.translating": "翻訳中…", "llm.retranslate": "再翻訳", "llm.translateFail": "翻訳に失敗",
   "llm.translated": "↓ 翻訳",
@@ -921,6 +944,7 @@ function bigText(text, limit, cls){
   const c = cls || "";
   const tools = '<div class="excerpt-tools">' +
     (t.length > limit ? toolBtn("unfold", t18("bt.expand", {n: fmtTok(t.length)}), "btToggle(this)") : '') +
+    toolBtn("copy", t18("bt.copy"), "btCopy(this)") +
     toolBtn("format", t18("bt.format"), "btFormat(this)") +
     toolBtn("translate", t18("bt.translate"), "btTranslate(this)") +
     toolBtn("explain", t18("bt.explain"), "btExplain(this)") + '</div>';
@@ -937,6 +961,103 @@ function _excerptRaw(ex){
   return pre ? pre.textContent : "";
 }
 function setBtnLabel(btn, text){ const l = btn.querySelector(".lbl"); if(l) l.textContent = text; else btn.textContent = text; }
+
+/* ================= 复制（260713 用户反馈 #1）=================
+   为什么要自己实现：pywebview 的 WebView2 后端把原生右键菜单绑死在 debug 开关上
+   （edgechromium.py: `AreDefaultContextMenusEnabled = _state['debug']`），发行版 debug=False
+   → **右键什么都不弹**；macOS 的 WebKit 后端更狠，pywebview 压根不建 Edit 菜单
+   → **Cmd+C 完全无响应**。所以「把看到的内容拷走」这件最基本的事，必须由前端全权兜底：
+   复制按钮 + 自绘右键菜单 + Ctrl/Cmd+C 监听，三条路都走前端，跨平台行为一致。 */
+async function copyText(text){
+  if(!text) return false;
+  try{
+    /* 127.0.0.1 属 secure context，Clipboard API 可用 */
+    if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); return true; }
+  }catch(e){ /* 降级 */ }
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;top:-9999px;opacity:0;";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }catch(e){ return false; }
+}
+async function copyAndReport(text, btn){
+  const ok = await copyText(text);
+  toast(t18(ok ? "toast.copied" : "toast.copyFail", {n: fmtTok((text||"").length)}), !ok);
+  if(ok && btn){   /* 按钮短暂变勾，给一次确定的反馈 */
+    const svg = btn.querySelector("svg"), lbl = btn.querySelector(".lbl");
+    const oldSvg = svg ? svg.innerHTML : "", oldLbl = lbl ? lbl.textContent : "";
+    if(svg) svg.innerHTML = ICONS.check;
+    if(lbl) lbl.textContent = t18("bt.copied");
+    setTimeout(() => { if(svg) svg.innerHTML = oldSvg; if(lbl) lbl.textContent = oldLbl; }, 1400);
+  }
+  return ok;
+}
+/* 工具条「复制」：永远拷**全文**，即使当前是折叠态——用户要的是内容，不是他看到的那一截 */
+function btCopy(btn){
+  const ex = btn.closest(".excerpt");
+  if(ex) copyAndReport(_excerptRaw(ex), btn);
+}
+/* 右键/快捷键的「复制整块」：就近找一个有意义的内容块 */
+function blockTextOf(el){
+  if(!el || !el.closest) return "";
+  const ex = el.closest(".excerpt");
+  if(ex) return _excerptRaw(ex);                     /* excerpt 特判：拿原始全文而非可见片段 */
+  const blk = el.closest("pre, .md-body, .msg, .err-card, .dcard, .node-card, .lane");
+  return blk ? blk.innerText : "";
+}
+function selText(){ return String(window.getSelection() ? window.getSelection().toString() : ""); }
+
+/* —— 自绘右键菜单 —— */
+function ctxHide(){ const m = $("ctxMenu"); if(m) m.hidden = true; }
+function ctxInit(){
+  const m = document.createElement("div");
+  m.id = "ctxMenu"; m.className = "ctx-menu"; m.hidden = true;
+  document.body.appendChild(m);
+
+  document.addEventListener("contextmenu", e => {
+    const sel = selText(), blk = blockTextOf(e.target);
+    if(!sel && !blk) return;                          /* 没内容可拷 → 不劫持 */
+    e.preventDefault();
+    const items = [];
+    if(sel) items.push([t18("ctx.copySel"), () => copyAndReport(sel)]);
+    if(blk) items.push([t18("ctx.copyBlock", {n: fmtTok(blk.length)}), () => copyAndReport(blk)]);
+    if(blk) items.push([t18("ctx.selectBlock"), () => {
+      const el = e.target.closest(".excerpt, pre, .md-body, .msg, .err-card, .dcard");
+      if(!el) return;
+      const r = document.createRange(); r.selectNodeContents(el);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    }]);
+    m.innerHTML = "";
+    items.forEach(([label, fn]) => {
+      const b = document.createElement("button");
+      b.className = "ctx-item"; b.textContent = label;
+      b.onclick = () => { ctxHide(); fn(); };
+      m.appendChild(b);
+    });
+    /* 先显示再定位，才能量到尺寸做边界翻转（贴右/下边缘时不出画） */
+    m.hidden = false;
+    const w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = Math.min(e.clientX, window.innerWidth - w - 8) + "px";
+    m.style.top = Math.min(e.clientY, window.innerHeight - h - 8) + "px";
+  });
+  document.addEventListener("click", ctxHide);
+  document.addEventListener("scroll", ctxHide, true);
+  window.addEventListener("blur", ctxHide);
+  document.addEventListener("keydown", e => {
+    if(e.key === "Escape") ctxHide();
+    /* Cmd/Ctrl+C 兜底：macOS 无 Edit 菜单，原生复制根本不存在。
+       不 preventDefault——Windows 上原生复制是好的，让它照常走，我们只是写同样的内容，幂等。 */
+    if((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")){
+      const s = selText();
+      if(s) copyText(s);
+    }
+  });
+}
 function btToggle(btn){
   const wrap = btn.closest(".bigtext");
   if(!wrap) return;
@@ -1757,6 +1878,7 @@ function openBackupDir(){
     LANG = cfg.ui_lang || "zh";
   }catch(e){ /* 配置不可达时按默认 zh */ }
   applyI18n();
+  ctxInit();                  /* 自绘右键菜单 + Cmd/Ctrl+C 兜底（WebView2/WebKit 都不给原生的）*/
   await fetchCaptures();      /* 默认今天，含 dates_available */
   await refreshStatus();
   initSSE();

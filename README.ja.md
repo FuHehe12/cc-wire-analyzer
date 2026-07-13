@@ -71,6 +71,26 @@ uv run python src/desktop.py
 | `~/.cc-wire-analyzer/config.json` | アプリ設定（ui_lang / translate / explain…） |
 | `~/.cc-wire-analyzer/run.log` | 実行ログ |
 
+## AI エージェント向け：コマンドラインから操作する
+
+このツールは人が見るためだけのものではありません —— **エージェント自身が起動し、調べられます**。
+`cc-wire-analyzer-cli` はプロキシの起動、記録の場所の特定、記録に関する質問への回答を、すべて JSON で行います：
+
+```bash
+cc-wire-analyzer-cli proxy start                       # settings.json を patch し headless 常駐
+cc-wire-analyzer-cli stats  --date 2026-07-12          # kind / モデル / トークン / レイテンシ分位
+cc-wire-analyzer-cli list   --date 2026-07-12 --kind main --limit 20
+cc-wire-analyzer-cli get    req_a5f758e --part system --max-chars 4000
+cc-wire-analyzer-cli restore                           # 死んだポートを指したままの settings.json を復旧
+```
+
+出力はデフォルトで truncate され、その旨を明示します —— 1 件の記録が 5 MB を超えることもあり、
+エージェントが JSONL を直接読むとコンテキストが即座に溢れます。
+コマンド全一覧・レコード schema・安全上の注意は **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
+
+macOS でも動作します（`cc-wire-analyzer-cli-mac`、または `CCWireAnalyzer.app/Contents/MacOS/` 内のバイナリ）。
+CLI が**独立した console バイナリ**なのは、GUI 版が windowed ビルドで stdout を持たないためです。
+
 ## オプション：翻訳 / AI に聞く
 
 詳細ページは、OpenAI 互換の `/chat/completions` エンドポイント経由でテキスト翻訳や「この内容が何をするものか」解説ができます。**設定 → LLM モデル**で API キー / base URL / model を設定。解説機能には組み込みの注入ガードがあります（信頼できないキャプチャ内容はデリミタで包まれ、リテラルの閉じタグはエスケープされ、隔離フレームはハードコードされておりカスタムプロンプトの影響を受けません）。

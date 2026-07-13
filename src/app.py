@@ -44,7 +44,7 @@ def set_listen_port(port: int) -> None:
     _LISTEN_PORT = port
 
 
-# ===== 启动时：孤儿恢复 + 崩溃保护 =====
+# ===== 启动时：孤儿恢复 + 崩溃保护 + 保留天数清理 =====
 _ORPHAN_RECOVERED: dict | None = None
 try:
     _orphan = settings_guard.check_orphan_backup()
@@ -56,6 +56,18 @@ except Exception as e:
     log.error("orphan check failed: %s", e)
 
 settings_guard.install_crash_guards()
+
+# 保留天数：启动清一次超期录制。260713 修复——此前 retention_days 是死配置，
+# 设置页承诺「超过天数的 captures 自动清理」却零实现。清理结果经 /api/about 回给设置页显示，
+# 让这个功能是**看得见地在工作**，而不是又一句无法验证的承诺。
+_RETENTION_REMOVED: list[str] = []
+try:
+    _RETENTION_REMOVED = capture_store.enforce_retention(
+        CFG.get_config().get("retention_days", 30))
+    if _RETENTION_REMOVED:
+        log.info("retention: purged %d day(s): %s", len(_RETENTION_REMOVED), _RETENTION_REMOVED)
+except Exception as e:
+    log.error("retention sweep failed: %s", e)
 
 
 # ===== 页面 =====
@@ -368,7 +380,9 @@ def about():
         "version": "0.1.0",
         "settings_path": str(CFG.CLAUDE_SETTINGS),
         "data_dir": str(CFG.CONFIG_DIR),
+        "captures_dir": str(capture_store.CAPTURES_DIR),
         "log_path": str(CFG.LOG_FILE),
+        "retention_removed": _RETENTION_REMOVED,   # 本次启动清掉的日期（供设置页反馈）
     })
 
 

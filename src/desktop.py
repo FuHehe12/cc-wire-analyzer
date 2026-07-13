@@ -46,6 +46,20 @@ def _msg_box(text: str, title: str = "CC Wire Analyzer", style: int = 0x30) -> N
         pass
 
 
+def _restore_on_close() -> None:
+    """窗口 closing 事件回调：恢复 settings.json。幂等，未 patch 时不操作。
+
+    绝不返回 False —— pywebview 把「有 handler 返回 False」当成取消关闭
+    （webview/event.py: `return len(false_values) != 0`），那样用户就关不掉窗口了。
+    异常也吞掉（pywebview 自己会 log），恢复失败不能演变成关不掉窗。"""
+    import logging
+    try:
+        import settings_guard
+        settings_guard._safe_restore()
+    except Exception:
+        logging.getLogger(__name__).exception("restore on close failed")
+
+
 def main() -> None:
     port = CFG.find_free_port()
     if not port:
@@ -66,8 +80,17 @@ def main() -> None:
 
     try:
         import webview
-        webview.create_window("CC Wire Analyzer", f"http://127.0.0.1:{port}/",
-                              width=1280, height=840, min_size=(1080, 680))
+        win = webview.create_window("CC Wire Analyzer", f"http://127.0.0.1:{port}/",
+                                    width=1280, height=840, min_size=(1080, 680))
+        # 命脉：恢复不能只押在下面 finally 上（260713 用户实测：Mac 退出后 CC 通信直接断，
+        # 要重开软件才靠孤儿自愈修回来 → 说明退出那刻 restore 压根没跑）。
+        # macOS 的 Cmd+Q / 红点关窗走 NSApp terminate → C 层 exit()：既不展开 Python 栈、
+        # 也不跑 atexit → finally 与三重崩溃保护全部落空，settings.json 永久指向死代理端口。
+        # closing 是 pywebview 唯一**同步**派发的关闭事件（window.py:163 `Event(self, True)`），
+        # 而 cocoa 的 windowShouldClose_（红点）与 applicationShouldTerminate_（Cmd+Q）
+        # 都经 should_close() 触发它 —— 两条 macOS 退出路径全覆盖；winforms 的 FormClosing 同理。
+        # 不挂 closed：它是异步派发（后台线程），进程都要没了，跑不跑得完全看运气。
+        win.events.closing += _restore_on_close
         webview.start()
     except Exception as e:
         msg = str(e)

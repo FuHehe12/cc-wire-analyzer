@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import collections
+import datetime
 import json
 import queue
 import threading
@@ -240,6 +241,37 @@ def purge_date(date: str) -> int:
                 raise StoreError("delete_failed", f"删除失败：{e}")
         if date == today:
             _LIVE_DEQUE.clear()
+    return removed
+
+
+def enforce_retention(days: int) -> list[str]:
+    """删除早于 today-days 的录制文件，返回被删日期列表（升序）。
+
+    260713 修复：此前 retention_days 是**死配置**——设置页白纸黑字承诺「超过天数的 captures 自动清理」，
+    但全项目没有一行代码消费它，录制从第一天起永远堆着（实测 13 条 = 5.6MB，重度使用一天上百 MB）。
+
+    - days <= 0 视为「永不清理」（给要留全量的人一个显式出口，不是当成 0 天全删）。
+    - 只动 captures/*.jsonl；archives/ 是用户显式存档的，绝不自动删。
+    - 按日期字符串比（YYYY-MM-DD 字典序 = 时间序），不碰文件 mtime——
+      mtime 会被拷贝/同步改掉，日期在文件名里才是事实。
+    """
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        return []
+    if days <= 0:
+        return []
+    cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    removed = []
+    for d in sorted(_available_dates()):
+        if not _DATE_RE.match(d):
+            continue          # 非日期文件名（如存档中的 .YYYY-MM-DD.archiving.* 临时文件）一律不碰
+        if d < cutoff:
+            try:
+                purge_date(d)
+                removed.append(d)
+            except StoreError:
+                continue      # 单个删不掉不影响其他（占用/权限），下次启动再试
     return removed
 
 

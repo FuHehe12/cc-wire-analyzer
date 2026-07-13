@@ -71,6 +71,25 @@ While the proxy runs, **don't switch endpoints with cc-switch** — it rewrites 
 | `~/.cc-wire-analyzer/config.json` | App config (ui_lang / translate / explain …) |
 | `~/.cc-wire-analyzer/run.log` | Run log |
 
+## For AI agents: drive it from the command line
+
+This tool is not only for humans to look at — **an agent can drive it too**. `cc-wire-analyzer-cli`
+starts the proxy, locates the recordings, and answers questions about them, all in JSON:
+
+```bash
+cc-wire-analyzer-cli proxy start                       # patch settings.json, run headless
+cc-wire-analyzer-cli stats  --date 2026-07-12          # kinds, models, tokens, latency
+cc-wire-analyzer-cli list   --date 2026-07-12 --kind main --limit 20
+cc-wire-analyzer-cli get    req_a5f758e --part system --max-chars 4000
+cc-wire-analyzer-cli restore                           # rescue a settings.json left pointing at a dead port
+```
+
+Output is truncated by default and says so — one capture can exceed 5 MB, so an agent must never
+read the JSONL directly. Full reference, record schema, and safety notes: **[docs/AI_USAGE.md](docs/AI_USAGE.md)**.
+
+Works on macOS too (`cc-wire-analyzer-cli-mac`, or the binary inside `CCWireAnalyzer.app/Contents/MacOS/`).
+The CLI ships as a **separate console binary** because the GUI build is windowed and has no stdout.
+
 ## Optional: translate / ask-AI
 
 The detail page can translate text or explain "what does this content do" via any OpenAI-compatible `/chat/completions` endpoint. Configure API key / base URL / model in **Settings → LLM model**. The explain feature has a built-in injection guard (the untrusted captured content is wrapped in delimiters; literal closing tags are escaped; the isolation frame is hardcoded and unaffected by your custom prompt).
