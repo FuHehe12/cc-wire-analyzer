@@ -92,6 +92,8 @@ def _proxy_state() -> dict:
         "started_at": settings_guard.patched_at(),
         "backups_count": settings_guard.backups_count(),
         "orphan_recovered_at_startup": _ORPHAN_RECOVERED,
+        # 录制落盘失败要顶到 UI（260713）——否则就是"界面在跳、盘上没有"的静默数据丢失
+        "write_errors": capture_store.write_errors(),
     }
 
 

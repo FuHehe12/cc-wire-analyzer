@@ -139,6 +139,10 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
   margin-bottom:14px;}
 .orphan-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
   background:var(--bg-ask);border:1px solid var(--border-ask);font-size:11.5px;color:var(--info);margin-bottom:14px;}
+/* 落盘失败：这是数据丢失，比 warn 更重——用错误色，不能让用户扫过去 */
+.fail-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
+  background:var(--bg-error-soft);border:1px solid var(--err);font-size:11.5px;color:var(--err);
+  font-weight:600;margin-bottom:14px;}
 
 /* ===== View A 日期与列表 ===== */
 .date-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
@@ -381,6 +385,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
     <div class="orphan-bar" id="orphanBar" hidden>
       <span>ℹ️</span><span id="orphanText"></span>
     </div>
+    <!-- 落盘失败告警：LIVE 列表照常在跳，但这些流量根本没存到盘上。必须刺眼（260713）。 -->
+    <div class="fail-bar" id="writeFailBar" hidden>
+      <span>🛑</span><span id="writeFailText"></span>
+    </div>
     <div class="date-row">
       <div class="date-chips" id="dateChips"></div>
       <div class="date-row-right">
@@ -487,10 +495,9 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           <div><div class="lbl" data-i18n="set.retention">保留天数</div><div class="sub" data-i18n="set.retentionSub">超过天数的 captures 自动清理</div></div>
           <input type="number" id="cfgRetention" min="1" max="365" value="30">
         </div>
-        <div class="srow">
-          <div><div class="lbl" data-i18n="set.redact">Headers 脱敏</div><div class="sub" data-i18n="set.redactSub">authorization · x-api-key 入库前替换为 &lt;redacted&gt;</div></div>
-          <button class="toggle on" id="cfgRedact" onclick="this.classList.toggle('on')"></button>
-        </div>
+        <!-- 曾有个「Headers 脱敏」开关：它是假的（proxy._redact() 一直无条件调用，从不看配置）。
+             260713 连开关一起删掉，脱敏恒开——真让它可关 = 提供把 API key 明文写进 jsonl 的选项，
+             而录制现在可被 AI 经 CLI 读取（docs/AI_USAGE.md），等于给 key 修一条直通 AI 上下文的路。 -->
       </div>
 
       <div class="scard">
@@ -671,7 +678,8 @@ zh: {
   "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开",
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
-  "set.redact": "Headers 脱敏", "set.redactSub": "authorization · x-api-key 入库前替换为 <redacted>",
+  "detail.respHeaders": "响应 Headers",
+  "status.writeFail": "⚠ 录制写盘失败 {n} 次 —— 这些流量没有存下来！{msg}",
   "set.llm.title": "LLM 模型",
   "set.llm.sub": "供详情页 翻译与 AI 解读共用 · OpenAI 兼容 /chat/completions · 配好后点「测试连通」验证",
   "set.llm.keyPh": "留空则不启用",
@@ -758,7 +766,8 @@ en: {
   "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open",
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
-  "set.redact": "Header redaction", "set.redactSub": "authorization · x-api-key replaced with <redacted> before storage",
+  "detail.respHeaders": "Response headers",
+  "status.writeFail": "⚠ {n} capture(s) failed to write to disk — that traffic was NOT saved! {msg}",
   "set.llm.title": "LLM model",
   "set.llm.sub": "Shared by Translate and Ask AI · OpenAI-compatible /chat/completions · click Test after configuring",
   "set.llm.keyPh": "leave empty to disable",
@@ -845,7 +854,8 @@ ja: {
   "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く",
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
-  "set.redact": "Headers マスク", "set.redactSub": "authorization · x-api-key は保存前に <redacted> へ置換",
+  "detail.respHeaders": "レスポンス Headers",
+  "status.writeFail": "⚠ 録画の書き込みに {n} 回失敗 —— そのトラフィックは保存されていません！{msg}",
   "set.llm.title": "LLM モデル",
   "set.llm.sub": "翻訳と AI 解説で共用 · OpenAI 互換 /chat/completions · 設定後「接続テスト」で確認",
   "set.llm.keyPh": "空欄で無効",
@@ -1198,6 +1208,15 @@ function renderStatus(){
       {info: typeof v === "object" ? JSON.stringify(v) : v});
     $("orphanBar").hidden = false;
   }
+  /* 录制落盘失败（磁盘满/权限/被锁）——LIVE 还在跳但盘上什么都没有，必须刺眼地告诉用户（260713）*/
+  const we = st.write_errors || {};
+  if(we.count > 0){
+    $("writeFailText").textContent = t18("status.writeFail",
+      {n: we.count, msg: we.last ? "（" + we.last + "）" : ""});
+    $("writeFailBar").hidden = false;
+  }else{
+    $("writeFailBar").hidden = true;
+  }
 }
 async function toggleProxy(){
   const btn = $("btnToggle");
@@ -1497,6 +1516,18 @@ function renderDetail(d){
     (resp.ttft_ms != null ? "ttft " + fmtMs(resp.ttft_ms) : "") +
     (resp.total_ms != null ? " · total " + fmtMs(resp.total_ms) : "") + '</span></div>';
 
+  /* 响应 headers —— proxy.py 一直在录（response.headers_safe），但界面上从来没有入口看（260713 补）。
+     这里恰恰是 wire 层最值钱的信息：anthropic-ratelimit-*（限流余量）、request-id（找上游对账）、
+     x-should-retry、上游实际回的 model。请求侧有 Headers 面板，响应侧不该没有。*/
+  const rhs = resp.headers_safe || {};
+  const rhKeys = Object.keys(rhs);
+  if(rhKeys.length){
+    R += '<details class="fold"><summary>' + t18("detail.respHeaders") + ' (' + rhKeys.length + ')</summary>' +
+      '<div class="fold-body"><table class="kv-table">' + rhKeys.map(k =>
+        '<tr><td class="k">' + esc(k) + '</td><td class="v">' + esc(rhs[k]) + '</td></tr>').join("") +
+      '</table></div></details>';
+  }
+
   /* usage（key 兼容：SSE 聚合给 input_tokens 全名，count_tokens 非 SSE 提取到同 key）*/
   const ur = resp.usage || {};
   const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output,
@@ -1513,10 +1544,15 @@ function renderDetail(d){
       '</div></div>';
   }
 
-  /* error */
+  /* error —— proxy 写的 error 有两种形状：
+       异常路径（connect/timeout/http_error）→ {kind, detail}   detail = str(e)，真正的原因
+       上游 4xx/5xx                          → {kind, status, body_snippet}
+     原来只渲染 kind/status/body_snippet，**detail 一个字都不显示** → 上游连不上时界面只有一个
+     光秃秃的 "connect"，为什么连不上被丢进垃圾桶。一个调试工具不该这样（260713 修）。*/
   if(d.error){
     R += '<div class="err-card"><b>' + esc(d.error.kind || "error") + '</b>' +
       (d.error.status ? " · HTTP " + d.error.status : "") +
+      (d.error.detail ? '<pre>' + esc(d.error.detail) + '</pre>' : "") +
       (d.error.body_snippet ? '<pre>' + esc(d.error.body_snippet) + '</pre>' : "") + '</div>';
   }
 
@@ -1794,7 +1830,6 @@ async function loadConfig(){
     $("cfgBackupDir").textContent = (about.data_dir || "~/.cc-wire-analyzer") + "/backups";
     $("cfgAutoStart").classList.toggle("on", !!cfg.auto_start_proxy);
     $("cfgRetention").value = cfg.retention_days ?? 30;
-    $("cfgRedact").classList.toggle("on", cfg.redact_headers !== false);
     const tr = cfg.translate || {};
     $("cfgTransKey").value = tr.api_key || "";
     $("cfgTransBase").value = tr.base_url || "";
@@ -1813,7 +1848,6 @@ async function saveConfig(){
   const payload = {
     auto_start_proxy: $("cfgAutoStart").classList.contains("on"),
     retention_days: parseInt($("cfgRetention").value, 10) || 30,
-    redact_headers: $("cfgRedact").classList.contains("on"),
     translate: {
       api_key: $("cfgTransKey").value,
       base_url: $("cfgTransBase").value.trim(),
@@ -1873,8 +1907,9 @@ function openBackupDir(){
 /* ================= 启动 ================= */
 (async function init(){
   /* 先取 ui_lang 再渲染，避免语言闪切 */
+  let cfg = {};
   try{
-    const cfg = await (await fetch("/api/config")).json();
+    cfg = await (await fetch("/api/config")).json();
     LANG = cfg.ui_lang || "zh";
   }catch(e){ /* 配置不可达时按默认 zh */ }
   applyI18n();
@@ -1883,6 +1918,14 @@ function openBackupDir(){
   await refreshStatus();
   initSSE();
   setInterval(refreshStatus, 5000);   /* 防状态漂移 */
+
+  /* 自动启动代理（260713 接线：此前 auto_start_proxy 是死配置——设置页有开关、
+     配置存得好好的，但全项目没有一行代码读它，用户打开它什么也不会发生）。
+     放前端而不是后端 import 期：那样"软件一起来就改用户的 settings.json"太粗暴，
+     也绕过了 UI 的状态反馈与错误提示。走 toggleProxy() 复用同一条启停路径（含防重入）。*/
+  if(cfg.auto_start_proxy && S.status && !S.status.running){
+    await toggleProxy();
+  }
 })();
 </script>
 </body>

@@ -196,19 +196,30 @@ def _finalize(rec, status, resp_headers_raw, content_type, is_sse,
             text = None
         if text:
             resp["body_text"] = text[:2000]
-            # count_tokens 等非 SSE JSON 响应也带 token 计数，提取到 usage
-            # （260712：count_tokens 响应 {input_tokens:N} 原本只落 body_text，前端拿不到）
             try:
                 j = json.loads(text)
             except (json.JSONDecodeError, ValueError):
                 j = None
             if isinstance(j, dict):
-                u = {k: j[k] for k in
-                     ("input_tokens", "output_tokens",
-                      "cache_read_input_tokens", "cache_creation_input_tokens")
-                     if isinstance(j.get(k), (int, float))}
+                # 260713：非流式响应原本只抽顶层 token 键（260712 为 count_tokens 加的，
+                # 那种响应恰好是 {"input_tokens": N} 顶层形状）。但普通 /v1/messages 非流式响应
+                # 把 usage **嵌在 j["usage"] 里**，顶层扫不到 → usage 整个丢失；
+                # 而 stop_reason / content_blocks 更是只在 SSE 分支解析过，非流式一律没有。
+                # 后果：CC 的**安全分类器调用就是非流式的** —— 它每个会话都在后台跑、用户看不见、
+                # 还实实在在花钱（实测 551 in + 28224 cache_read），成本却被我们自己扔掉，
+                # 用户会以为这些调用不花钱。这恰恰是本工具最该揭示的东西。
+                nested = j.get("usage")
+                u = dict(nested) if isinstance(nested, dict) else {}
+                for k in ("input_tokens", "output_tokens",
+                          "cache_read_input_tokens", "cache_creation_input_tokens"):
+                    if isinstance(j.get(k), (int, float)):
+                        u.setdefault(k, j[k])       # 顶层形状（count_tokens）作补充，不覆盖嵌套值
                 if u:
                     resp["usage"] = u
+                if j.get("stop_reason"):
+                    resp["stop_reason"] = j["stop_reason"]
+                if isinstance(j.get("content"), list):
+                    resp["content_blocks"] = j["content"]   # 已是 Anthropic block 数组，拿来即用
     if status >= 400:
         rec["error"] = {
             "kind": f"upstream_{status // 100}xx",

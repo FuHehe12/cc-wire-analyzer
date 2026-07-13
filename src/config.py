@@ -2,12 +2,16 @@
 
 跨用户隔离（不污染项目目录）。打包分发后用户在「设置」里改这里。存储字段：
   - ui_lang: 界面语言 zh/en/ja（默认 zh）
-  - auto_start_proxy: 启动软件时是否自动启动代理（默认 False）
-  - retention_days: 捕获录制保留天数（默认 30）
-  - redact_headers: headers 入库脱敏（默认 True）
+  - auto_start_proxy: 启动软件时是否自动启动代理（默认 False；260713 前是死配置，从没接线）
+  - retention_days: 捕获录制保留天数（默认 30；260713 前是死配置，UI 承诺自动清理却零实现）
   - translate: LLM 配置（api_key/base_url/model/temperature 供翻译与 AI 解读共用）
     + target_lang: 翻译目标语言 zh/en/ja（默认 zh）
   - explain: AI 解读配置（prompt 留空 = 用内置默认提示词，按界面语言取）
+
+已移除：`redact_headers`（260713）。它曾是个假开关——设置页承诺"可关闭脱敏"，而 `proxy._redact()`
+一直是无条件调用的。没有把它接线实现，而是**连开关一起删掉、脱敏恒开**：真让它生效 =
+提供一个把 API key 明文写进 jsonl 的选项，而我们刚给 AI agent 开了读这些 jsonl 的 CLI
+（见 docs/AI_USAGE.md）—— 等于给 key 修一条直通 AI 上下文的路。老 config.json 里残留该键会被忽略。
 """
 from __future__ import annotations
 
@@ -30,7 +34,6 @@ _DEFAULTS = {
     "ui_lang": "zh",
     "auto_start_proxy": False,
     "retention_days": 30,
-    "redact_headers": True,
     "translate": {
         "api_key": "",
         "base_url": "",
@@ -160,20 +163,9 @@ def setup_logging() -> None:
 
 
 def write_port(port: int) -> None:
-    """把选中端口写文件，供外壳读。"""
+    """把选中端口写文件，供外部进程（CLI）发现正在跑的实例。"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     PORT_FILE.write_text(str(port), encoding="utf-8")
 
-
-def read_port(timeout_s: float = 30.0) -> int | None:
-    """外壳等 PORT_FILE 出现并读端口。"""
-    import time
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        if PORT_FILE.exists():
-            try:
-                return int(PORT_FILE.read_text(encoding="utf-8").strip())
-            except (ValueError, OSError):
-                return None
-        time.sleep(0.2)
-    return None
+# 曾有个 read_port()（轮询等 PORT_FILE 出现）—— 旧架构里外壳是独立进程才需要它。
+# 现在 desktop.py 直接把端口传给 Flask，CLI 自己有 _read_port()，它零调用多时了，260713 删除。

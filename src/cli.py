@@ -139,16 +139,7 @@ def _lines(date: str | None) -> list[str]:
         return fh.readlines()
 
 
-def _usage(resp: dict) -> dict:
-    """usage 键名归一。SSE 聚合出来的是 Anthropic 全名（input_tokens / cache_read_input_tokens），
-    不是短名 —— 直接读 u["input"] 恒为 0（前端早就做了兼容，后端这边一直没做）。"""
-    u = resp.get("usage") or {}
-    return {
-        "input": u.get("input_tokens", u.get("input")),
-        "output": u.get("output_tokens", u.get("output")),
-        "cache_read": u.get("cache_read_input_tokens", u.get("cache_read")),
-        "cache_creation": u.get("cache_creation_input_tokens", u.get("cache_creation")),
-    }
+_usage = classifier.usage_norm   # 键名归一的单一真源在 classifier（别再各抄一份，那正是这个 bug 的根因）
 
 
 def _brief(rec: dict) -> dict:

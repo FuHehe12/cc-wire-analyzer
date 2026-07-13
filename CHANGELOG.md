@@ -16,6 +16,9 @@
   collapsed), a **custom right-click menu**, and a **Ctrl/Cmd+C** handler. pywebview disables WebView2's
   native context menu outside debug mode, and its WebKit backend builds no Edit menu at all — so on macOS
   Cmd+C did nothing. Copying is now handled entirely in the frontend and behaves the same on both platforms.
+- **Response headers panel** in the detail view. The proxy had been recording `response.headers_safe` all
+  along and the UI simply never showed it — throwing away the most valuable thing at this layer:
+  `anthropic-ratelimit-*`, `request-id`, `x-should-retry`, the model the upstream actually served.
 - `tools/lane_probe.py` — dumps the candidate signals for telling main threads from subagents
   (`X-Claude-Code-Session-Id`, `cc_entrypoint`, presence of the `Agent` tool, system-block structure,
   spawn-prompt alignment) so the classifier can be calibrated against real traffic instead of guesses.
@@ -41,8 +44,36 @@
   automatically" and nothing in the codebase ever read `retention_days`. Recordings accumulated forever —
   13 records already weigh 5.6 MB. Now enforced at startup, with the result reported back to the UI, and
   available as `clear --older-than N`.
-- Token totals in the CLI read the short `usage.input` keys, but SSE aggregation produces Anthropic's full
-  names (`input_tokens`, `cache_read_input_tokens`) — every token count came out as 0.
+- **Non-streaming responses lost their usage, content blocks and stop reason.** The non-SSE branch looked
+  for token counts only at the *top level* of the JSON (the shape `count_tokens` happens to return), while
+  a normal `/v1/messages` response nests them under `"usage"`; and `content_blocks` / `stop_reason` were
+  only ever parsed in the SSE branch. Claude Code's **security-classifier calls are non-streaming** — they
+  run in the background of every session, are invisible to the user, and cost real money (551 input +
+  28,224 cached, measured). Their cost was being thrown away by the one tool meant to reveal it.
+- **A failed capture write was silently swallowed.** On a full disk, a permissions problem or a locked
+  file, `append()` dropped the `OSError` and carried on — while the LIVE deque and SSE push, sitting
+  outside the `try`, kept firing. The UI went on ticking with new captures while nothing reached the disk.
+  Write failures are now counted, logged, surfaced in `/api/proxy/status` and shown as a red banner.
+  (Forwarding is still never blocked by a write failure — that part was right.)
+- The DAG nodes' token counts were always empty, and the CLI's token totals always 0: both read the short
+  `usage.input` keys while SSE aggregation produces Anthropic's full names (`input_tokens`,
+  `cache_read_input_tokens`). Key normalization now lives in exactly one place (`classifier.usage_norm`) —
+  the bug appeared twice precisely because that logic had been copied around.
+- The upstream error's actual cause was never displayed. The proxy records `{kind, detail}` on a
+  connect/timeout failure, but the UI only rendered `kind`/`status`/`body_snippet` — so a failed upstream
+  connection showed up as a bare `connect`, with the reason discarded. Ironic, for a debugging tool.
+- `auto_start_proxy` was a dead setting, like `retention_days`: the settings page offered the toggle,
+  stored it faithfully, and nothing ever read it. Now wired up.
+- The self-test's mock SSE used token key names that do not exist in reality (`input`, `output` instead of
+  `input_tokens`, `output_tokens`), which is why the key mismatch above stayed invisible. Fixed, and a
+  non-streaming upstream case was added — the whole non-SSE path had never been asserted on.
+
+### Removed
+- The **"Header redaction" toggle**. It never did anything (`_redact()` was always applied unconditionally),
+  and rather than wire it up we removed it: making it real would mean offering to write API keys in
+  plaintext into the capture files — the same files an agent now reads through the CLI. Redaction is
+  unconditional and no longer pretends to be optional.
+- `config.read_port()` — dead since the shell stopped being a separate process.
 
 ## v0.1.0
 

@@ -59,9 +59,13 @@ settings_guard._patched_at = None
 
 
 # ===== 2. mock 上游（模拟 Anthropic Messages SSE 流）=====
+# usage 用**真实的 Anthropic 键名**（input_tokens / output_tokens / cache_read_input_tokens）。
+# 260713 前这里写的是短名 {"input":10,"output":2} —— 现实中根本不存在的形状。
+# 后果：消费方读短名的键名错位 bug（DAG token 恒空、CLI token 恒 0）在自测里**永远暴露不出来**，
+# 因为测试数据自己就是错的。测试数据必须长得像真流量，否则它只是在验证自己的幻觉。
 MOCK_SSE = "\n".join([
     'event: message_start',
-    'data: {"type":"message_start","message":{"id":"msg_x","usage":{"input":10,"cache_read":0,"cache_creation":0}}}',
+    'data: {"type":"message_start","message":{"id":"msg_x","usage":{"input_tokens":10,"cache_read_input_tokens":7,"cache_creation_input_tokens":0}}}',
     '',
     'event: content_block_start',
     'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
@@ -76,7 +80,7 @@ MOCK_SSE = "\n".join([
     'data: {"type":"content_block_stop","index":0}',
     '',
     'event: message_delta',
-    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output":2}}',
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
     '',
     'event: message_stop',
     'data: {"type":"message_stop"}',
@@ -84,11 +88,24 @@ MOCK_SSE = "\n".join([
     '',
 ])
 
+# 非流式 /v1/messages 响应：usage **嵌在 "usage" 里**（不是顶层）——这正是 CC 安全分类器调用的形状。
+# 260713 前非 SSE 分支只在顶层找 token 键、且压根不解析 content/stop_reason → 这三样全丢。
+MOCK_JSON_MSG = {
+    "id": "msg_nonstream", "type": "message", "role": "assistant", "model": "glm-5.2",
+    "content": [{"type": "text", "text": "safe"}],
+    "stop_reason": "end_turn",
+    "usage": {"input_tokens": 551, "output_tokens": 7, "cache_read_input_tokens": 28224},
+}
+
 mock_app = Flask("mock_upstream")
 
 
 @mock_app.route("/api/anthropic/v1/messages", methods=["POST"])
 def _mock_messages():
+    from flask import request as _rq
+    body = _rq.get_json(silent=True) or {}
+    if not body.get("stream"):        # 非流式：返回普通 JSON（安全分类器就走这条）
+        return Response(json.dumps(MOCK_JSON_MSG), status=200, mimetype="application/json")
     return Response(MOCK_SSE, status=200, mimetype="text/event-stream")
 
 
@@ -150,28 +167,58 @@ print(f"    ttft_ms={rec['response']['ttft_ms']}  total_ms={rec['response']['tot
 hs = rec["request"]["headers_safe"]
 auth = next((v for k, v in hs.items() if k.lower() == "authorization"), None)
 print(f"    headers_safe.authorization={auth}")
+import classifier  # noqa: E402  （usage 键名归一的单一真源）
+
 assert rec["response"]["content_blocks"] == [{"type": "text", "text": "你好世界"}], "SSE 聚合错误"
 assert rec["response"]["stop_reason"] == "end_turn"
-assert rec["response"]["usage"]["input"] == 10
-assert rec["response"]["usage"]["output"] == 2
+un = classifier.usage_norm(rec["response"])
+assert un["input"] == 10 and un["output"] == 2 and un["cache_read"] == 7, f"usage 归一错误: {un}"
 assert "fake-token-secret" not in json.dumps(rec["request"]["headers_safe"]), "token 未脱敏!"
 assert auth is not None and auth != "Bearer fake-token-secret", f"auth 原文入库或未录: {auth}"
-print("    SSE 聚合 + usage + 脱敏 ✓")
+print("    SSE 聚合 + usage(真实键名) + 脱敏 ✓")
 
 
-# ===== 6. 非 SSE 请求（count_tokens）也录到 =====
-print("\n[3] POST /v1/messages/count_tokens（非流式）...")
+# ===== 6. 非流式 /v1/messages —— usage 嵌在 "usage" 里，content/stop_reason 也要解析出来 =====
+# 这条正是 CC 安全分类器的形状。260713 前：只断言"录到了 2 条"，从不看录到了什么 →
+# usage/content_blocks/stop_reason 三样全丢，测试却一路绿灯。
+print("\n[3] POST /v1/messages（非流式，usage 嵌套）...")
 r2 = httpx.post(
+    "http://127.0.0.1:5051/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": False},
+    timeout=10.0,
+)
+assert r2.status_code == 200
+caps2 = capture_store.list_captures()
+assert caps2["total"] == 2, f"应录 2 条: {caps2['total']}"
+rec2 = capture_store.get_capture(caps2["items"][0]["id"])
+r2resp = rec2["response"]
+print(f"    usage={r2resp.get('usage')}")
+print(f"    stop_reason={r2resp.get('stop_reason')}  content_blocks={r2resp.get('content_blocks')}")
+un2 = classifier.usage_norm(r2resp)
+assert un2["input"] == 551 and un2["output"] == 7 and un2["cache_read"] == 28224, \
+    f"非流式 usage 丢失（嵌套在 j['usage'] 里，旧代码只扫顶层）: {un2}"
+assert r2resp.get("stop_reason") == "end_turn", "非流式 stop_reason 丢失（旧代码只在 SSE 分支解析）"
+assert r2resp.get("content_blocks") == [{"type": "text", "text": "safe"}], \
+    f"非流式 content_blocks 丢失: {r2resp.get('content_blocks')}"
+print("    非流式 usage(嵌套) + stop_reason + content_blocks 全解析 ✓")
+
+
+# ===== 6b. count_tokens（顶层 token 键形状）不能被上面的改动带坏 =====
+print("\n[3b] POST /v1/messages/count_tokens（顶层 token 键）...")
+r3 = httpx.post(
     "http://127.0.0.1:5051/v1/messages/count_tokens",
     headers={"content-type": "application/json", "authorization": "Bearer fake"},
     json={"model": "glm-5.2", "messages": [{"role": "user", "content": "x"}]},
     timeout=10.0,
 )
-print(f"    status={r2.status_code} body={r2.text}")
-assert r2.status_code == 200
-caps2 = capture_store.list_captures()
-assert caps2["total"] == 2, f"应录 2 条: {caps2['total']}"
-print("    非 SSE 请求也录到 ✓")
+assert r3.status_code == 200
+caps3 = capture_store.list_captures()
+assert caps3["total"] == 3, f"应录 3 条: {caps3['total']}"
+rec3 = capture_store.get_capture(caps3["items"][0]["id"])
+assert classifier.usage_norm(rec3["response"])["input"] == 42, "count_tokens 顶层形状被带坏了"
+print("    count_tokens 顶层 token 键仍正常 ✓")
 
 
 # ===== 7. 恢复 =====

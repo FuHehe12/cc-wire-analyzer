@@ -11,6 +11,7 @@ from __future__ import annotations
 import collections
 import datetime
 import json
+import logging
 import queue
 import threading
 import time
@@ -19,6 +20,8 @@ from pathlib import Path
 
 import config as CFG
 
+log = logging.getLogger(__name__)
+
 CAPTURES_DIR = CFG.CONFIG_DIR / "captures"
 ARCHIVES_DIR = CFG.CONFIG_DIR / "archives"
 
@@ -26,6 +29,15 @@ _LOCK = threading.Lock()
 _LIVE_DEQUE: collections.deque = collections.deque(maxlen=200)
 _LIVE_SUBSCRIBERS: set[queue.Queue] = set()
 _SUB_LOCK = threading.Lock()
+
+# 落盘失败计数（260713）：磁盘满/权限/文件被锁时 append 写不进去，但**绝不能因此阻塞转发**
+# （代理的透明性优先级最高，录不下来也不许把用户的 CC 弄挂）。
+# 可"不阻塞"不等于"不告诉任何人"——旧代码 `except OSError: pass` 把两件事混为一谈：
+# 写盘失败被完全吞掉，而 deque + SSE 推送在 try 之外照常执行 →
+# **界面 LIVE 还在实时跳，磁盘上一个字节都没有**，用户毫无理由怀疑。
+# 现在失败要计数 + 记日志 + 经 /api/proxy/status 顶到 UI 上。
+_WRITE_ERRORS = 0
+_LAST_WRITE_ERROR: str | None = None
 
 
 def new_record_id() -> str:
@@ -54,20 +66,31 @@ def new_record() -> dict:
 
 
 def append(record: dict) -> None:
-    """落盘 + 推 LIVE。record 应已填完。"""
+    """落盘 + 推 LIVE。record 应已填完。
+
+    落盘失败**不阻塞转发**（代理透明性优先），但必须留下痕迹：计数 + 日志 + 顶到 UI，
+    否则就是"界面在跳、盘上没有"的静默数据丢失（见 _WRITE_ERRORS 注释）。"""
+    global _WRITE_ERRORS, _LAST_WRITE_ERROR
     date = time.strftime("%Y-%m-%d", time.localtime())
-    CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
     f = CAPTURES_DIR / f"{date}.jsonl"
     line = json.dumps(record, ensure_ascii=False)
+    ok = True
     with _LOCK:
         try:
+            CAPTURES_DIR.mkdir(parents=True, exist_ok=True)   # 目录建不出来也算落盘失败，一并计入
             with f.open("a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
-        except OSError:
-            pass  # 落盘失败不阻塞转发
+        except OSError as e:
+            ok = False
+            _WRITE_ERRORS += 1
+            _LAST_WRITE_ERROR = f"{type(e).__name__}: {e}"
+            log.error("录制落盘失败（第 %d 次，转发不受影响）: %s", _WRITE_ERRORS, e)
     # 内存 deque + 广播（推摘要不推完整 record：契约规定 SSE 是列表项形状，
     # 且完整 body 可能 MB 级，推给 SSE 会拖垮 LIVE 通道）
+    # 失败的记录照样推 LIVE —— 流量确实发生了，用户有权看到；但状态栏会同时告警"这些没存下来"。
     summ = _summary(record)
+    if not ok:
+        summ["not_persisted"] = True
     _LIVE_DEQUE.append(summ)
     with _SUB_LOCK:
         for q in list(_LIVE_SUBSCRIBERS):
@@ -242,6 +265,11 @@ def purge_date(date: str) -> int:
         if date == today:
             _LIVE_DEQUE.clear()
     return removed
+
+
+def write_errors() -> dict:
+    """落盘失败统计（供 /api/proxy/status → UI 告警、CLI status → AI 健康检查）。"""
+    return {"count": _WRITE_ERRORS, "last": _LAST_WRITE_ERROR}
 
 
 def enforce_retention(days: int) -> list[str]:

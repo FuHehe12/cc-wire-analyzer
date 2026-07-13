@@ -66,6 +66,23 @@ def _user_texts(body: dict) -> list[str]:
     return out
 
 
+def usage_norm(resp: dict) -> dict:
+    """usage 键名归一（**单一真源**，前后端都从这里取）。
+
+    SSE 聚合写进录制的是 Anthropic 全名（`input_tokens` / `cache_read_input_tokens`），
+    不是短名。直接读 `u.get("input")` 恒为 None —— 这个错犯过两次（DAG 节点 token 恒空、
+    CLI token 统计恒 0），根因是归一化逻辑被各处各抄一份。所以收口到这里，别再抄第四份。"""
+    u = resp.get("usage") or {}
+    if not isinstance(u, dict):
+        return {"input": None, "output": None, "cache_read": None, "cache_creation": None}
+    return {
+        "input": u.get("input_tokens", u.get("input")),
+        "output": u.get("output_tokens", u.get("output")),
+        "cache_read": u.get("cache_read_input_tokens", u.get("cache_read")),
+        "cache_creation": u.get("cache_creation_input_tokens", u.get("cache_creation")),
+    }
+
+
 def _system_text(body: dict) -> str:
     sysv = body.get("system")
     if isinstance(sysv, str):
@@ -143,7 +160,6 @@ def _node_summary(record: dict, kind: str, lane: str) -> dict:
     if not summary:
         users = _user_texts(body)
         summary = (users[-1][:60] if users else "")
-    u = resp.get("usage") or {}
     return {
         "id": record.get("id"),
         "ts_start": record.get("ts_start"),
@@ -152,7 +168,9 @@ def _node_summary(record: dict, kind: str, lane: str) -> dict:
         "model": body.get("model"),
         "status": resp.get("status"),
         "total_ms": resp.get("total_ms"),
-        "usage": {"input": u.get("input"), "output": u.get("output")},
+        "usage": usage_norm(resp),   # 260713：原来读短名 u.get("input")，而 SSE 写的是 input_tokens
+                                     # → DAG 节点的 token 恒为 null（前端做了双键兼容也救不回来，
+                                     #   因为后端发出去的两个键都是空的）
         "has_error": record.get("error") is not None,
         "summary": summary,
     }
