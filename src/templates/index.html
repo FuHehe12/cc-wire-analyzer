@@ -257,6 +257,12 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .llm-result-tag{font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--info);
   margin-bottom:4px;letter-spacing:.02em;}
 .llm-result.ex-explain .llm-result-tag{color:var(--gold-text-2);}
+/* 翻译/解读失败：持久显示在结果区，带 error_code（260713）——别让用户对着空白发呆 */
+.llm-result.llm-error{border-left-color:var(--err);background:var(--bg-error-soft);}
+.llm-result.llm-error .llm-result-tag{color:var(--err);}
+.llm-err-body{font-size:12px;color:var(--apple-text);line-height:1.5;}
+.llm-err-body code{font-family:var(--font-mono);font-size:11px;background:var(--bg-softer);
+  padding:1px 5px;border-radius:3px;color:var(--err);margin-right:4px;}
 
 /* ===== View D 时序 DAG ===== */
 .dag-bar{display:flex;gap:8px;align-items:stretch;margin-bottom:12px;}
@@ -1131,10 +1137,26 @@ function llmToolAction(btn, kind, raw, host){
         host.appendChild(div);
         setBtnLabel(btn, t18(A.redo)); btn.disabled = false;
       } else {
+        /* 260713：失败不只 toast（一闪而过用户看不到根因），还在结果区持久显示错误详情，
+           含 error_code（timeout / empty_response / non_ascii / upstream_error…）——
+           用户能直接看到为什么失败，而不是对着空白发呆。原文长度也带上，便于判断是不是太长。*/
+        const old = host.querySelector("." + A.cls); if(old) old.remove();
+        const div = document.createElement("div");
+        div.className = A.cls + " llm-result llm-error";
+        const code = j.error_code ? '<code>' + esc(j.error_code) + '</code> · ' : '';
+        div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
+          '<div class="llm-err-body">' + code + esc(llmErrMsg(j)) + '</div>';
+        host.appendChild(div);
         toast(t18(A.fail) + "：" + llmErrMsg(j), true);
         setBtnLabel(btn, orig); btn.disabled = false;
       }
     }).catch(e => {
+      const old = host.querySelector("." + A.cls); if(old) old.remove();
+      const div = document.createElement("div");
+      div.className = A.cls + " llm-result llm-error";
+      div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
+        '<div class="llm-err-body">' + esc(e.message) + '</div>';
+      host.appendChild(div);
       toast(t18(A.fail) + "：" + e.message, true);
       setBtnLabel(btn, orig); btn.disabled = false;
     });

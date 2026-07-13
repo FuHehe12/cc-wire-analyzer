@@ -278,6 +278,21 @@ def _llm_chat(system: str, user_content: str) -> str:
     base_url = (tr.get("base_url") or "").rstrip("/")
     if not base_url:
         raise LlmConfigError("no_base_url", "未配置 LLM Base URL（设置页「LLM 模型」）")
+    # 260713：HTTP header 只能 latin-1 编码。API Key/Base URL 若混入非 ASCII（从网页/文档复制时
+    # 极易带入零宽空格 U+200B、全角字符、中文标点），urlopen 会抛
+    # "'latin-1' codec can't encode characters in position N: ordinal not in range(256)"
+    # —— 这个原始报错对非程序员完全不可懂（用户在另一台机器实测踩中）。
+    # 在此前置校验，给出能看懂的人话。Base URL 理论上 ASCII，但校验它顺带防 IDN 异常。
+    def _assert_ascii(field: str, value: str) -> None:
+        for i, ch in enumerate(value):
+            if ord(ch) > 127:
+                raise LlmConfigError(
+                    "non_ascii",
+                    f"{field} 第 {i+1} 个字符「{ch}」不是 ASCII。"
+                    "常见原因：从网页/文档复制时混入了零宽空格、全角字符或中文标点。"
+                    "请清空该字段，重新纯文本粘贴。")
+    _assert_ascii("API Key", key)
+    _assert_ascii("Base URL", base_url)
     body = {
         "model": tr.get("model") or "deepseek-chat",
         "messages": [
@@ -285,6 +300,10 @@ def _llm_chat(system: str, user_content: str) -> str:
             {"role": "user", "content": user_content},
         ],
         "temperature": float(tr.get("temperature", 0.3)),
+        # 260713：长文本翻译（如 security system prompt 截断后仍有 20K 字符）必须给足输出配额。
+        # 不设 max_tokens 时上游默认值可能很小（4K），输出被截断 —— 虽然 content 非空不是空白，
+        # 但长翻译几乎必失败。8192 是 OpenAI 兼容通用安全值；可经 config.translate.max_tokens 覆盖。
+        "max_tokens": int(tr.get("max_tokens") or 8192),
     }
     req = urllib.request.Request(
         base_url + "/chat/completions",
@@ -292,15 +311,36 @@ def _llm_chat(system: str, user_content: str) -> str:
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         method="POST",
     )
-    resp = json.load(urllib.request.urlopen(req, timeout=120))
+    # 260713：翻译 20K 文本上游耗时显著（尤其慢模型），120s 常超时 → 用户看到"翻译失败/空白"。
+    # 提到 180s；超时单独给 error_code=timeout，前端能显示"上游超时"而非笼统失败。
+    import socket
+    import urllib.error
+    try:
+        resp_raw = urllib.request.urlopen(req, timeout=180)
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, socket.timeout) or "timed out" in str(e).lower():
+            raise LlmConfigError("timeout", "上游响应超时（180s）。文本可能过长，或上游繁忙，可重试或缩短文本。")
+        raise LlmConfigError("upstream_error", f"请求上游失败：{e}")
+    resp = json.load(resp_raw)
     try:
         content = resp["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
         raise LlmConfigError("bad_response", f"上游响应结构异常：{e}")
     # 上游偶发返回空 content（审查/截断/抖动）→ 报错让前端提示重试，而非显示空结果装成功（260712）
     if not content or not str(content).strip():
-        raise LlmConfigError("empty_response", "上游返回空内容，请重试")
+        # 把上游的 finish_reason 一起带上，便于诊断（length=输出截断、content_filter=审查）
+        finish = resp.get("choices", [{}])[0].get("finish_reason") if isinstance(resp.get("choices"), list) else None
+        hint = {"length": "输出被 max_tokens 截断", "content_filter": "上游内容审查拦截"}.get(finish or "", "")
+        raise LlmConfigError("empty_response", f"上游返回空内容{'（'+hint+'）' if hint else ''}，请重试或缩短文本")
     return content
+
+
+def _strip_delim(s: str, tag: str) -> str:
+    """去掉模型把定界符标签也带进输出的情况（260713 实测：deepseek 译文开头多了 <text>）。"""
+    import re
+    s = re.sub(rf"^\s*<\s*{tag}\s*>\s*", "", s)
+    s = re.sub(rf"\s*<\s*/\s*{tag}\s*>\s*$", "", s)
+    return s.strip()
 
 
 def _translate(text: str) -> str:
@@ -318,7 +358,7 @@ def _translate(text: str) -> str:
         "4. 只输出译文本身，不加解释、不加前后缀、不加引号。\n"
         f"5. 若文本已是{target}或无需翻译，原样返回。"
     )
-    return _llm_chat(system, _wrap_content(text, "text"))
+    return _strip_delim(_llm_chat(system, _wrap_content(text, "text")), "text")
 
 
 def _explain(text: str) -> str:
@@ -326,8 +366,8 @@ def _explain(text: str) -> str:
     custom = ((cfg.get("explain") or {}).get("prompt") or "").strip()
     task = custom or DEFAULT_EXPLAIN_PROMPTS.get(
         cfg.get("ui_lang") or "zh", DEFAULT_EXPLAIN_PROMPTS["zh"])
-    return _llm_chat(EXPLAIN_GUARD_HEAD + task + EXPLAIN_GUARD_TAIL,
-                     _wrap_content(text, "content"))
+    return _strip_delim(_llm_chat(EXPLAIN_GUARD_HEAD + task + EXPLAIN_GUARD_TAIL,
+                                  _wrap_content(text, "content")), "content")
 
 
 def _llm_error_payload(e: Exception) -> dict:

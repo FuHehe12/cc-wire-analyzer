@@ -2,16 +2,17 @@
 
 ## Unreleased
 
+### Changed
+- **Merged into a single binary.** Was: GUI exe + CLI exe (51 MB, two files). Now: one noconsole GUI exe
+  with a `serve` subcommand. Double-click → GUI for a human; `cc-wire-analyzer.exe serve` → background HTTP
+  service + proxy, no window, for an agent. The agent talks to the same HTTP API the GUI already uses
+  (`/api/proxy/*`, `/api/captures`, `/api/dag`). This works because a Windows noconsole binary has no
+  stdout — so there was never a way for a CLI subcommand to print back to an agent anyway; HTTP is the
+  right channel. macOS is a single binary too (it never had the console/windowed split). See
+  [docs/AI_USAGE.md](docs/AI_USAGE.md). `cli.py` stays in the source tree as a developer convenience
+  (`uv run python src/cli.py`), but is no longer packaged or shipped.
+
 ### Added
-- **CLI for AI agents** (`cc-wire-analyzer-cli`) — the tool is no longer only for humans to look at.
-  Headless subcommands, all emitting JSON: `proxy start/stop`, `status`, `restore`, `paths`, `dates`,
-  `list`, `get`, `grep`, `dag`, `stats`, `clear`. Output is truncated by default and says so, because a
-  single capture can exceed 5 MB and would otherwise blow up an agent's context. Ships as a **separate
-  console binary** — the GUI build is windowed and has no stdout, so subcommands on it could never print
-  anything. See [docs/AI_USAGE.md](docs/AI_USAGE.md).
-- `restore` command — repairs a `settings.json` left pointing at a dead proxy port without launching the
-  GUI. Previously the only self-heal ran at the *next app start*; if the app was force-killed, Claude Code
-  stayed broken until the user happened to reopen the tool.
 - Copy support in the UI: a **Copy** button on every content block (copies the full text even when
   collapsed), a **custom right-click menu**, and a **Ctrl/Cmd+C** handler. pywebview disables WebView2's
   native context menu outside debug mode, and its WebKit backend builds no Edit menu at all — so on macOS
@@ -67,11 +68,24 @@
 - The self-test's mock SSE used token key names that do not exist in reality (`input`, `output` instead of
   `input_tokens`, `output_tokens`), which is why the key mismatch above stayed invisible. Fixed, and a
   non-streaming upstream case was added — the whole non-SSE path had never been asserted on.
+- **Long-text translation failed silently.** `_llm_chat` sent no `max_tokens` (upstream's small default
+  truncated long output) and timed out at 120 s; on failure the UI only flashed a toast and left the
+  translation area blank, so the user saw an empty "重译" with no reason. Now sets `max_tokens`, raises the
+  timeout to 180 s with a dedicated `timeout` error code, and **persists the error in the result area**
+  (with `error_code` + the upstream `finish_reason` hint, e.g. length / content_filter) instead of
+  vanishing. Verified: a 106 K-character security prompt (truncated to 20 K) translates in ~38 s.
+- **API Key / Base URL with non-ASCII characters** produced an opaque `'latin-1' codec can't encode…`
+  traceback (HTTP headers are latin-1). Zero-width spaces and full-width characters sneak in easily when
+  copying from web pages. Now caught up front with a human-readable message naming the offending character.
+- Translation/explain output sometimes leaked the `<text>` / `<content>` delimiter tags the engine wraps
+  content in. They are now stripped from the result.
 
 ### Removed
+- **The standalone CLI binary** (`cc-wire-analyzer-cli.exe`) — folded into the GUI binary's `serve` mode
+  (see Changed). The "Header redaction" toggle below is also gone.
 - The **"Header redaction" toggle**. It never did anything (`_redact()` was always applied unconditionally),
   and rather than wire it up we removed it: making it real would mean offering to write API keys in
-  plaintext into the capture files — the same files an agent now reads through the CLI. Redaction is
+  plaintext into the capture files — the same files an agent now reads. Redaction is
   unconditional and no longer pretends to be optional.
 - `config.read_port()` — dead since the shell stopped being a separate process.
 

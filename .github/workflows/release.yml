@@ -20,12 +20,10 @@ jobs:
             spec: build.spec
             extra: ''
             artifact: dist/cc-wire-analyzer-windows.exe
-            cli: dist/cc-wire-analyzer-cli-windows.exe
           - os: macos-latest
             spec: build-mac.spec
             extra: '--extra mac'   # 装 pyobjc（macOS WebKit 后端）
             artifact: dist/CCWireAnalyzer-mac.zip
-            cli: dist/cc-wire-analyzer-cli-mac
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -41,13 +39,11 @@ jobs:
       - name: Sync dependencies
         run: uv sync ${{ matrix.extra }}
 
-      - name: Build GUI with PyInstaller
+      # 单 exe（260713 合并）：无参/双击开 GUI，`serve` 子命令起 headless 服务给 AI。
+      # 不再单独出 CLI 二进制——AI 走 HTTP API（/api/proxy/*、/api/captures…），
+      # 不需要 stdout；Windows 的 noconsole GUI exe 本来也没 stdout 可用。
+      - name: Build with PyInstaller
         run: uv run pyinstaller ${{ matrix.spec }} --noconfirm --clean
-
-      # CLI 是独立的 console 二进制（给 AI agent 用）。Windows 的 GUI exe 是 noconsole，
-      # 没有 stdout —— 加子命令也打不出东西，所以只能单独出一个 console=True 的。
-      - name: Build CLI with PyInstaller
-        run: uv run pyinstaller build-cli.spec --noconfirm
 
       # macOS：把 .app 打成 zip（.app 是目录，artifact/release 需单文件）
       # ditto --sequesterRsrc --keepParent 保留资源分支与目录结构（普通 zip 会丢）
@@ -55,23 +51,16 @@ jobs:
         if: runner.os == 'macOS'
         run: cd dist && ditto -c -k --sequesterRsrc --keepParent CCWireAnalyzer.app CCWireAnalyzer-mac.zip
 
-      - name: Rename platform binaries
+      - name: Rename Windows exe
+        if: runner.os == 'Windows'
         shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            mv dist/cc-wire-analyzer.exe dist/cc-wire-analyzer-windows.exe
-            mv dist/cc-wire-analyzer-cli.exe dist/cc-wire-analyzer-cli-windows.exe
-          else
-            mv dist/cc-wire-analyzer-cli dist/cc-wire-analyzer-cli-mac
-          fi
+        run: mv dist/cc-wire-analyzer.exe dist/cc-wire-analyzer-windows.exe
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
-          path: |
-            ${{ matrix.artifact }}
-            ${{ matrix.cli }}
+          path: ${{ matrix.artifact }}
           if-no-files-found: error   # 产物缺失则构建失败，不静默放过
 
   # 单独 release job：等两个平台都构建完，下载所有产物后一次性 attach。

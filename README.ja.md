@@ -71,25 +71,29 @@ uv run python src/desktop.py
 | `~/.cc-wire-analyzer/config.json` | アプリ設定（ui_lang / translate / explain…） |
 | `~/.cc-wire-analyzer/run.log` | 実行ログ |
 
-## AI エージェント向け：コマンドラインから操作する
+## AI エージェント向け：HTTP で操作する
 
 このツールは人が見るためだけのものではありません —— **エージェント自身が起動し、調べられます**。
-`cc-wire-analyzer-cli` はプロキシの起動、記録の場所の特定、記録に関する質問への回答を、すべて JSON で行います：
+バイナリ 1 つ、2 つのモード：
+
+- `cc-wire-analyzer.exe`（ダブルクリック）→ GUI を開く
+- `cc-wire-analyzer.exe serve` → **バックグラウンド HTTP サービス + プロキシ**を起動（ウィンドウなし、エージェント用）
+
+`127.0.0.1` の HTTP で操作します（GUI と同じエンドポイント）：
 
 ```bash
-cc-wire-analyzer-cli proxy start                       # settings.json を patch し headless 常駐
-cc-wire-analyzer-cli stats  --date 2026-07-12          # kind / モデル / トークン / レイテンシ分位
-cc-wire-analyzer-cli list   --date 2026-07-12 --kind main --limit 20
-cc-wire-analyzer-cli get    req_a5f758e --part system --max-chars 4000
-cc-wire-analyzer-cli restore                           # 死んだポートを指したままの settings.json を復旧
+cc-wire-analyzer.exe serve &                     # サービス + プロキシ起動（settings.json を patch）
+port=$(cat ~/.cc-wire-analyzer/port.txt)
+curl 127.0.0.1:$port/api/proxy/status            # 記録中か？
+# …記録したいセッションを実行…
+curl -X POST 127.0.0.1:$port/api/proxy/stop
+curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 ```
 
-出力はデフォルトで truncate され、その旨を明示します —— 1 件の記録が 5 MB を超えることもあり、
-エージェントが JSONL を直接読むとコンテキストが即座に溢れます。
-コマンド全一覧・レコード schema・安全上の注意は **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
+1 件の記録が 5 MB を超えることがあるため、まず概要を取得し id で個別取得します。
+API 全一覧・レコード schema・安全上の注意は **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
 
-macOS でも動作します（`cc-wire-analyzer-cli-mac`、または `CCWireAnalyzer.app/Contents/MacOS/` 内のバイナリ）。
-CLI が**独立した console バイナリ**なのは、GUI 版が windowed ビルドで stdout を持たないためです。
+macOS も同じバイナリ 1 つ —— `CCWireAnalyzer.app/Contents/MacOS/CCWireAnalyzer serve`。
 
 ## オプション：翻訳 / AI に聞く
 

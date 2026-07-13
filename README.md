@@ -71,24 +71,28 @@ While the proxy runs, **don't switch endpoints with cc-switch** — it rewrites 
 | `~/.cc-wire-analyzer/config.json` | App config (ui_lang / translate / explain …) |
 | `~/.cc-wire-analyzer/run.log` | Run log |
 
-## For AI agents: drive it from the command line
+## For AI agents: drive it over HTTP
 
-This tool is not only for humans to look at — **an agent can drive it too**. `cc-wire-analyzer-cli`
-starts the proxy, locates the recordings, and answers questions about them, all in JSON:
+This tool is not only for humans to look at — **an agent can drive it too**. One binary, two modes:
+
+- `cc-wire-analyzer.exe` (double-click) → opens the GUI
+- `cc-wire-analyzer.exe serve` → starts a **background HTTP service + the proxy**, no window, for an agent
+
+Talk to it over HTTP on `127.0.0.1` — the same endpoints the GUI uses:
 
 ```bash
-cc-wire-analyzer-cli proxy start                       # patch settings.json, run headless
-cc-wire-analyzer-cli stats  --date 2026-07-12          # kinds, models, tokens, latency
-cc-wire-analyzer-cli list   --date 2026-07-12 --kind main --limit 20
-cc-wire-analyzer-cli get    req_a5f758e --part system --max-chars 4000
-cc-wire-analyzer-cli restore                           # rescue a settings.json left pointing at a dead port
+cc-wire-analyzer.exe serve &                     # start the service + proxy (patches settings.json)
+port=$(cat ~/.cc-wire-analyzer/port.txt)
+curl 127.0.0.1:$port/api/proxy/status            # is it recording?
+# …run the session you want to record…
+curl -X POST 127.0.0.1:$port/api/proxy/stop
+curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 ```
 
-Output is truncated by default and says so — one capture can exceed 5 MB, so an agent must never
-read the JSONL directly. Full reference, record schema, and safety notes: **[docs/AI_USAGE.md](docs/AI_USAGE.md)**.
+One capture can exceed 5 MB, so fetch summaries first and single records by id. Full reference,
+record schema, and safety notes: **[docs/AI_USAGE.md](docs/AI_USAGE.md)**.
 
-Works on macOS too (`cc-wire-analyzer-cli-mac`, or the binary inside `CCWireAnalyzer.app/Contents/MacOS/`).
-The CLI ships as a **separate console binary** because the GUI build is windowed and has no stdout.
+On macOS it's the same single binary — `CCWireAnalyzer.app/Contents/MacOS/CCWireAnalyzer serve`.
 
 ## Optional: translate / ask-AI
 
