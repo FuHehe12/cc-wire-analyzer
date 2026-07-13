@@ -268,8 +268,21 @@ def _wrap_content(text: str, tag: str) -> str:
     return f"<{tag}>\n{safe}\n</{tag}>"
 
 
-def _llm_chat(system: str, user_content: str) -> str:
-    """OpenAI 兼容单轮调用。翻译与 AI 解读共用「LLM 模型」配置（config.translate）。"""
+def _assert_ascii(field: str, value: str) -> None:
+    """HTTP header 只能 latin-1。Key/Base URL 混入非 ASCII（零宽空格/全角/中文标点）时 urlopen 抛
+    'latin-1 codec can't encode…'，对非程序员不可懂。前置校验给人话（260713）。"""
+    for i, ch in enumerate(value):
+        if ord(ch) > 127:
+            raise LlmConfigError(
+                "non_ascii",
+                f"{field} 第 {i+1} 个字符「{ch}」不是 ASCII。"
+                "常见原因：从网页/文档复制时混入了零宽空格、全角字符或中文标点。"
+                "请清空该字段，重新纯文本粘贴。")
+
+
+def _llm_request(system: str, user_content: str, stream: bool = False):
+    """公共：读 config.translate、校验 Key/Base URL、构造 /chat/completions 请求。
+    _llm_chat（非流式）与 _llm_chat_stream（流式）共用。失败抛 LlmConfigError。"""
     import urllib.request
     tr = CFG.get_config().get("translate") or {}
     key = tr.get("api_key")
@@ -278,19 +291,6 @@ def _llm_chat(system: str, user_content: str) -> str:
     base_url = (tr.get("base_url") or "").rstrip("/")
     if not base_url:
         raise LlmConfigError("no_base_url", "未配置 LLM Base URL（设置页「LLM 模型」）")
-    # 260713：HTTP header 只能 latin-1 编码。API Key/Base URL 若混入非 ASCII（从网页/文档复制时
-    # 极易带入零宽空格 U+200B、全角字符、中文标点），urlopen 会抛
-    # "'latin-1' codec can't encode characters in position N: ordinal not in range(256)"
-    # —— 这个原始报错对非程序员完全不可懂（用户在另一台机器实测踩中）。
-    # 在此前置校验，给出能看懂的人话。Base URL 理论上 ASCII，但校验它顺带防 IDN 异常。
-    def _assert_ascii(field: str, value: str) -> None:
-        for i, ch in enumerate(value):
-            if ord(ch) > 127:
-                raise LlmConfigError(
-                    "non_ascii",
-                    f"{field} 第 {i+1} 个字符「{ch}」不是 ASCII。"
-                    "常见原因：从网页/文档复制时混入了零宽空格、全角字符或中文标点。"
-                    "请清空该字段，重新纯文本粘贴。")
     _assert_ascii("API Key", key)
     _assert_ascii("Base URL", base_url)
     body = {
@@ -301,40 +301,69 @@ def _llm_chat(system: str, user_content: str) -> str:
         ],
         "temperature": float(tr.get("temperature", 0.3)),
     }
-    # 260713：长文本翻译（如 security system prompt 截断后仍有 20K 字符）必须给足输出配额。
-    # 不传 max_tokens 时上游默认值可能很小（4K），输出被截断。config 默认 8192；
-    # 用户在设置页填 0 = 不传该字段、用上游自己的默认。
     mt = tr.get("max_tokens")
-    if mt:
+    if mt:                      # 0/缺省 = 不传，用上游默认（260713）
         body["max_tokens"] = int(mt)
-    req = urllib.request.Request(
+    if stream:
+        body["stream"] = True
+    return urllib.request.Request(
         base_url + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         method="POST",
     )
-    # 260713：翻译 20K 文本上游耗时显著（尤其慢模型），120s 常超时 → 用户看到"翻译失败/空白"。
-    # 提到 180s；超时单独给 error_code=timeout，前端能显示"上游超时"而非笼统失败。
+
+
+def _open_llm(req):
+    """打开 LLM 请求，统一超时识别（180s）。翻译长文本上游慢，超时给人话（260713）。"""
     import socket
     import urllib.error
+    import urllib.request
     try:
-        resp_raw = urllib.request.urlopen(req, timeout=180)
+        return urllib.request.urlopen(req, timeout=180)
     except urllib.error.URLError as e:
         if isinstance(e.reason, socket.timeout) or "timed out" in str(e).lower():
             raise LlmConfigError("timeout", "上游响应超时（180s）。文本可能过长，或上游繁忙，可重试或缩短文本。")
         raise LlmConfigError("upstream_error", f"请求上游失败：{e}")
-    resp = json.load(resp_raw)
+
+
+def _llm_chat(system: str, user_content: str) -> str:
+    """OpenAI 兼容单轮调用（非流式）。测试连通 / 内部一次性调用用。"""
+    resp = json.load(_open_llm(_llm_request(system, user_content)))
     try:
         content = resp["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
         raise LlmConfigError("bad_response", f"上游响应结构异常：{e}")
-    # 上游偶发返回空 content（审查/截断/抖动）→ 报错让前端提示重试，而非显示空结果装成功（260712）
     if not content or not str(content).strip():
-        # 把上游的 finish_reason 一起带上，便于诊断（length=输出截断、content_filter=审查）
         finish = resp.get("choices", [{}])[0].get("finish_reason") if isinstance(resp.get("choices"), list) else None
         hint = {"length": "输出被 max_tokens 截断", "content_filter": "上游内容审查拦截"}.get(finish or "", "")
         raise LlmConfigError("empty_response", f"上游返回空内容{'（'+hint+'）' if hint else ''}，请重试或缩短文本")
     return content
+
+
+def _llm_chat_stream(system: str, user_content: str):
+    """流式版：generator，yield 文本增量（delta.content）。
+
+    翻译/解读用这个 —— 长文本边出字，用户不用干等完整响应（260713）。
+    前端 rAF 节流渲染 + append 增量，上游吐多碎都不卡。"""
+    resp = _open_llm(_llm_request(system, user_content, stream=True))
+    for raw in resp:                       # HTTPResponse 逐行迭代（SSE event 以空行分隔，每行一个 data:）
+        line = raw.decode("utf-8", "replace").strip()
+        if not line or line.startswith(":") or not line.startswith("data:"):
+            continue                       # 心跳/注释/非 data 行
+        data = line[5:].strip()
+        if data == "[DONE]":
+            break
+        try:
+            evt = json.loads(data)
+        except json.JSONDecodeError:
+            continue
+        try:
+            delta = (evt["choices"][0].get("delta") or {}).get("content")
+        except (KeyError, IndexError, TypeError):
+            delta = None
+        if delta:
+            yield delta
 
 
 def _strip_delim(s: str, tag: str) -> str:
@@ -345,7 +374,8 @@ def _strip_delim(s: str, tag: str) -> str:
     return s.strip()
 
 
-def _translate(text: str) -> str:
+def _translate_parts(text: str) -> tuple[str, str]:
+    """翻译的 (system, wrapped_user)。_translate（非流式）与 SSE 端点共用，避免 system 文本抄两份。"""
     tr = CFG.get_config().get("translate") or {}
     code = tr.get("target_lang") or "zh"
     target = LANG_NAMES.get(code, code)
@@ -360,20 +390,56 @@ def _translate(text: str) -> str:
         "4. 只输出译文本身，不加解释、不加前后缀、不加引号。\n"
         f"5. 若文本已是{target}或无需翻译，原样返回。"
     )
-    return _strip_delim(_llm_chat(system, _wrap_content(text, "text")), "text")
+    return system, _wrap_content(text, "text")
 
 
-def _explain(text: str) -> str:
+def _translate(text: str) -> str:
+    system, wrapped = _translate_parts(text)
+    return _strip_delim(_llm_chat(system, wrapped), "text")
+
+
+def _explain_parts(text: str) -> tuple[str, str]:
+    """解读的 (system, wrapped_user)。同上，SSE 端点共用。"""
     cfg = CFG.get_config()
     custom = ((cfg.get("explain") or {}).get("prompt") or "").strip()
     task = custom or DEFAULT_EXPLAIN_PROMPTS.get(
         cfg.get("ui_lang") or "zh", DEFAULT_EXPLAIN_PROMPTS["zh"])
-    return _strip_delim(_llm_chat(EXPLAIN_GUARD_HEAD + task + EXPLAIN_GUARD_TAIL,
-                                  _wrap_content(text, "content")), "content")
+    return EXPLAIN_GUARD_HEAD + task + EXPLAIN_GUARD_TAIL, _wrap_content(text, "content")
+
+
+def _explain(text: str) -> str:
+    system, wrapped = _explain_parts(text)
+    return _strip_delim(_llm_chat(system, wrapped), "content")
 
 
 def _llm_error_payload(e: Exception) -> dict:
     return {"ok": False, "error_code": getattr(e, "code", None), "error": str(e)}
+
+
+def _sse(obj: dict) -> str:
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+def _stream_response(parts_fn, text: str):
+    """通用 SSE 流式端点：parts_fn(text) → (system, wrapped)，逐 delta 推给前端。
+
+    流式协议（每行一个 SSE data 事件）：
+      {"delta": "..."}   文本增量
+      {"done": true}     正常结束
+      {"error_code": "...", "error": "..."}  出错（前端显示在结果区，不靠一闪而过的 toast）
+    前端 rAF 节流 + append 增量渲染，上游吐多碎都不卡（260713）。"""
+    def gen():
+        try:
+            system, wrapped = parts_fn(text)
+            for delta in _llm_chat_stream(system, wrapped):
+                yield _sse({"delta": delta})
+            yield _sse({"done": True})
+        except LlmConfigError as e:
+            yield _sse({"error_code": e.code, "error": str(e)})
+        except Exception as e:
+            yield _sse({"error_code": "internal", "error": str(e)})
+    return Response(gen(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/translate", methods=["POST"])
@@ -384,10 +450,7 @@ def api_translate():
         return jsonify({"ok": False, "error_code": "empty_text", "error": "空文本"}), 400
     if len(text) > 20000:
         text = text[:20000] + "\n…（已截断）"
-    try:
-        return jsonify({"ok": True, "translation": _translate(text)})
-    except Exception as e:
-        return jsonify(_llm_error_payload(e)), 500
+    return _stream_response(_translate_parts, text)
 
 
 @app.route("/api/explain", methods=["POST"])
@@ -399,10 +462,7 @@ def api_explain():
         return jsonify({"ok": False, "error_code": "empty_text", "error": "空文本"}), 400
     if len(text) > 20000:
         text = text[:20000] + "\n…（已截断）"
-    try:
-        return jsonify({"ok": True, "explanation": _explain(text)})
-    except Exception as e:
-        return jsonify(_llm_error_payload(e)), 500
+    return _stream_response(_explain_parts, text)
 
 
 @app.route("/api/translate/test", methods=["POST"])

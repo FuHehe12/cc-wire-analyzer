@@ -263,6 +263,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .llm-err-body{font-size:12px;color:var(--apple-text);line-height:1.5;}
 .llm-err-body code{font-family:var(--font-mono);font-size:11px;background:var(--bg-softer);
   padding:1px 5px;border-radius:3px;color:var(--err);margin-right:4px;}
+/* 流式渲染区（260713）：纯文本增量，结束后替换为 md-body。pre 用正文字体、自动换行。 */
+.llm-result.llm-streaming .llm-stream-text{font-family:var(--font-body);font-size:13px;
+  white-space:pre-wrap;word-break:break-word;margin:0;color:var(--apple-text);min-height:1em;}
+.llm-result.llm-streaming .llm-stream-text:empty::after{content:"…";color:var(--text-faint);}
 
 /* ===== View D 时序 DAG ===== */
 .dag-bar{display:flex;gap:8px;align-items:stretch;margin-bottom:12px;}
@@ -1129,44 +1133,77 @@ const LLM_ACTIONS = {
   explain:   { api: "/api/explain", field: "explanation", cls: "ex-explain",
                tag: "llm.explained", busy: "llm.explaining", redo: "llm.reexplain", fail: "llm.explainFail" },
 };
+/* 去掉模型带进输出的定界符标签（流式结束后对全文做一次，与后端 _strip_delim 对应）*/
+function _stripDelim(s, tag){
+  return String(s||"").replace(new RegExp("^\\s*<\\s*"+tag+"\\s*>\\s*",""), "")
+    .replace(new RegExp("\\s*<\\s*/\\s*"+tag+"\\s*>\\s*$",""), "").trim();
+}
 function llmToolAction(btn, kind, raw, host){
   const A = LLM_ACTIONS[kind];
   if(!raw || raw.length < 10){ toast(t18("toast.tooShort"), true); return; }
   btn.disabled = true; const orig = btn.querySelector(".lbl") ? btn.querySelector(".lbl").textContent : btn.textContent;
   setBtnLabel(btn, t18(A.busy));
+
+  const old = host.querySelector("." + A.cls); if(old) old.remove();
+  const div = document.createElement("div");
+  div.className = A.cls + " llm-result llm-streaming";
+  div.innerHTML = '<div class="llm-result-tag">' + t18(A.tag) + '</div><pre class="llm-stream-text"></pre>';
+  host.appendChild(div);
+  const pre = div.querySelector(".llm-stream-text");
+
+  /* 流式性能（260713 用户要求"不要一个字一个字吐、刷新太高卡顿"）：
+     ① rAF 节流 —— 不管上游 delta 多碎，每帧（≈60fps）最多 flush 一次；
+     ② append textNode 增量 —— 不每帧重设整段大字符串（长文本下 textContent=大串会拖慢）；
+     ③ 流式期间纯文本 pre —— 不每帧 markdown 渲染（贵），结束后才 mdRender 一次。 */
+  let buf = "", rafQueued = false, textNode = null;
+  function flush(){   /* 单一 textNode + appendData：永远 1 个 DOM 节点，无堆积、无需 normalize（260713）*/
+    rafQueued = false;
+    if(buf){ if(!textNode) textNode = pre.appendChild(document.createTextNode("")); textNode.appendData(buf); buf = ""; }
+  }
+  function pushDelta(d){ buf += d; if(!rafQueued){ rafQueued = true; requestAnimationFrame(flush); } }
+  function showError(code, msg){
+    flush();
+    div.className = A.cls + " llm-result llm-error";
+    const c = code ? '<code>' + esc(code) + '</code> · ' : '';
+    div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
+      '<div class="llm-err-body">' + c + esc(msg || "") + '</div>';
+    toast(t18(A.fail) + "：" + (msg || code), true);
+    setBtnLabel(btn, orig); btn.disabled = false;
+  }
+  function finalize(){
+    flush();
+    const full = pre.textContent;
+    const tag = kind === "translate" ? "text" : "content";
+    const clean = _stripDelim(full, tag);
+    if(!clean){ showError("empty_response", "上游返回空内容，请重试或缩短文本"); return; }
+    div.className = A.cls + " llm-result md-body";
+    div.innerHTML = '<div class="llm-result-tag">' + t18(A.tag) + '</div>' + mdRender(clean);
+    setBtnLabel(btn, t18(A.redo)); btn.disabled = false;
+  }
+
   fetch(A.api, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: raw})})
-    .then(r => r.json()).then(j => {
-      if(j.ok){
-        const old = host.querySelector("." + A.cls); if(old) old.remove();
-        const div = document.createElement("div");
-        div.className = A.cls + " llm-result md-body";
-        div.innerHTML = '<div class="llm-result-tag">' + t18(A.tag) + '</div>' + mdRender(j[A.field]);
-        host.appendChild(div);
-        setBtnLabel(btn, t18(A.redo)); btn.disabled = false;
-      } else {
-        /* 260713：失败不只 toast（一闪而过用户看不到根因），还在结果区持久显示错误详情，
-           含 error_code（timeout / empty_response / non_ascii / upstream_error…）——
-           用户能直接看到为什么失败，而不是对着空白发呆。原文长度也带上，便于判断是不是太长。*/
-        const old = host.querySelector("." + A.cls); if(old) old.remove();
-        const div = document.createElement("div");
-        div.className = A.cls + " llm-result llm-error";
-        const code = j.error_code ? '<code>' + esc(j.error_code) + '</code> · ' : '';
-        div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
-          '<div class="llm-err-body">' + code + esc(llmErrMsg(j)) + '</div>';
-        host.appendChild(div);
-        toast(t18(A.fail) + "：" + llmErrMsg(j), true);
-        setBtnLabel(btn, orig); btn.disabled = false;
+    .then(r => {
+      if(!r.ok){ return r.json().catch(()=>({})).then(j => showError(j.error_code||("http_"+r.status), j.error)); }
+      const reader = r.body.getReader(); const dec = new TextDecoder(); let sseBuf = "", errObj = null, done = false;
+      function pump(){
+        reader.read().then(({done:closed, value}) => {
+          if(closed){ if(errObj) showError(errObj.error_code, errObj.error); else if(done) finalize();
+            else showError("empty_response", "连接提前关闭"); return; }
+          sseBuf += dec.decode(value, {stream:true});
+          const lines = sseBuf.split("\n"); sseBuf = lines.pop();   /* 不完整行留缓冲 */
+          for(const line of lines){
+            if(!line.startsWith("data: ")) continue;
+            let evt; try{ evt = JSON.parse(line.slice(6)); }catch{ continue; }
+            if(evt.delta) pushDelta(evt.delta);
+            else if(evt.done) done = true;
+            else if(evt.error_code) errObj = evt;
+          }
+          if(errObj){ showError(errObj.error_code, errObj.error); return; }
+          pump();
+        }).catch(e => showError("network", e.message));
       }
-    }).catch(e => {
-      const old = host.querySelector("." + A.cls); if(old) old.remove();
-      const div = document.createElement("div");
-      div.className = A.cls + " llm-result llm-error";
-      div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
-        '<div class="llm-err-body">' + esc(e.message) + '</div>';
-      host.appendChild(div);
-      toast(t18(A.fail) + "：" + e.message, true);
-      setBtnLabel(btn, orig); btn.disabled = false;
-    });
+      pump();
+    }).catch(e => showError("network", e.message));
 }
 function btTranslate(btn){
   const ex = btn.closest(".excerpt");
