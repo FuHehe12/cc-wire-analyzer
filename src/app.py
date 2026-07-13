@@ -300,11 +300,13 @@ def _llm_chat(system: str, user_content: str) -> str:
             {"role": "user", "content": user_content},
         ],
         "temperature": float(tr.get("temperature", 0.3)),
-        # 260713：长文本翻译（如 security system prompt 截断后仍有 20K 字符）必须给足输出配额。
-        # 不设 max_tokens 时上游默认值可能很小（4K），输出被截断 —— 虽然 content 非空不是空白，
-        # 但长翻译几乎必失败。8192 是 OpenAI 兼容通用安全值；可经 config.translate.max_tokens 覆盖。
-        "max_tokens": int(tr.get("max_tokens") or 8192),
     }
+    # 260713：长文本翻译（如 security system prompt 截断后仍有 20K 字符）必须给足输出配额。
+    # 不传 max_tokens 时上游默认值可能很小（4K），输出被截断。config 默认 8192；
+    # 用户在设置页填 0 = 不传该字段、用上游自己的默认。
+    mt = tr.get("max_tokens")
+    if mt:
+        body["max_tokens"] = int(mt)
     req = urllib.request.Request(
         base_url + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),

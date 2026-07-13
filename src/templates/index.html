@@ -529,6 +529,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           <input type="number" id="cfgTransTemp" min="0" max="2" step="0.1" value="0.3">
         </div>
         <div class="srow">
+          <div><div class="lbl" data-i18n="set.maxTokens">最大输出 tokens</div><div class="sub" data-i18n="set.maxTokensSub">长文本翻译/解读需要足够大，否则输出被截断</div></div>
+          <input type="number" id="cfgTransMaxTokens" min="256" max="65536" step="256" value="8192">
+        </div>
+        <div class="srow">
           <div><div class="lbl" data-i18n="set.translang">翻译目标语言</div><div class="sub" data-i18n="set.translangSub">点 翻译后译成的语言</div></div>
           <select id="cfgTransLang">
             <option value="zh">中文</option>
@@ -684,6 +688,7 @@ zh: {
   "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开",
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
+  "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）",
   "detail.respHeaders": "响应 Headers",
   "status.writeFail": "⚠ 录制写盘失败 {n} 次 —— 这些流量没有存下来！{msg}",
   "set.llm.title": "LLM 模型",
@@ -772,6 +777,7 @@ en: {
   "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open",
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
+  "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default)",
   "detail.respHeaders": "Response headers",
   "status.writeFail": "⚠ {n} capture(s) failed to write to disk — that traffic was NOT saved! {msg}",
   "set.llm.title": "LLM model",
@@ -860,6 +866,7 @@ ja: {
   "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く",
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
+  "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上游デフォルト）",
   "detail.respHeaders": "レスポンス Headers",
   "status.writeFail": "⚠ 録画の書き込みに {n} 回失敗 —— そのトラフィックは保存されていません！{msg}",
   "set.llm.title": "LLM モデル",
@@ -1857,6 +1864,7 @@ async function loadConfig(){
     $("cfgTransBase").value = tr.base_url || "";
     $("cfgTransModel").value = tr.model || "";
     $("cfgTransTemp").value = tr.temperature ?? 0.3;
+    $("cfgTransMaxTokens").value = tr.max_tokens ?? 8192;
     $("cfgTransLang").value = tr.target_lang || "zh";
     $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
     $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
@@ -1875,6 +1883,7 @@ async function saveConfig(){
       base_url: $("cfgTransBase").value.trim(),
       model: $("cfgTransModel").value.trim(),
       temperature: parseFloat($("cfgTransTemp").value) || 0.3,
+      max_tokens: parseInt($("cfgTransMaxTokens").value, 10) || 8192,
       target_lang: $("cfgTransLang").value,
     },
     explain: { prompt: $("cfgExplainPrompt").value.trim() },

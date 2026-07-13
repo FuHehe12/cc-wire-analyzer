@@ -39,6 +39,7 @@ _DEFAULTS = {
         "base_url": "",
         "model": "",
         "temperature": 0.3,
+        "max_tokens": 8192,   # 长文本翻译/解读输出上限；不足会被上游截断（260713 开放到设置页）
         "target_lang": "zh",
     },
     "explain": {
