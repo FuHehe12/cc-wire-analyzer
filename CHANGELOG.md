@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Release notes are now sourced from `CHANGELOG.md`.** The release workflow had used
+  `generate_release_notes`, which groups entries by pull request — meaningless for this
+  solo-commit project, so the v0.1.0 and v0.2.0 release pages showed only a bare
+  "Full Changelog" link while the detailed changelog went unread. The release job now
+  extracts the current tag's section from this file (with tag-message and placeholder
+  fallbacks), so release pages carry the full changelog automatically.
+
 ## v0.2.0 - 2026-07-14
 
 ### Changed

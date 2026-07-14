@@ -72,14 +72,46 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout（取 CHANGELOG.md 与 tag message 做 release notes）
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true   # fallback：CHANGELOG 无该版本段时用 tag annotated message
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true   # 各平台 artifact 的文件合并到同一目录
 
+      # release notes 取 CHANGELOG.md 当前 tag 段落（单一真源，已在维护、最详细）。
+      # 不用 generate_release_notes：它按 PR 分组列 "What's Changed"，本项目是单人直接
+      # push commit（无 PR），结果只剩一行 Full Changelog 链接，CHANGELOG 和 tag message
+      # 全被忽略——v0.1.0/v0.2.0 的 release 页面即如此（260714 修）。
+      - name: Build release notes from CHANGELOG
+        run: |
+          TAG="${GITHUB_REF_NAME}"   # 例 v0.2.0
+          # 提取 "## <TAG>" 段落：跳过标题行本身，遇下一个 "## " 截止。
+          # 纯字符串前缀匹配（兼容 "## v0.2.0 - 日期" 与 "## v0.1.0" 两种），免正则转义坑。
+          awk -v tag="$TAG" '
+            /^## / {
+              if (found) exit                       # 已在记录，遇下一版本标题 → 停
+              rest = substr($0, 4)                  # 去掉 "## "
+              if (rest == tag || substr(rest, 1, length(tag)+1) == tag " ") found = 1
+              next                                  # 标题行不进 body
+            }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          # 三层兜底，绝不空白：
+          if [ ! -s release_notes.md ]; then
+            git tag -l --format='%(contents)' "$TAG" > release_notes.md   # fallback 1：tag message
+          fi
+          if [ ! -s release_notes.md ]; then
+            echo "Release ${TAG}. See CHANGELOG.md for details." > release_notes.md   # fallback 2：占位
+          fi
+          echo "--- release_notes.md 首部 ---"; head -5 release_notes.md
+
       - name: Attach all assets to Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          generate_release_notes: true
+          body_path: release_notes.md
