@@ -10,6 +10,11 @@
   extracts the current tag's section from this file (with tag-message and placeholder
   fallbacks), so release pages carry the full changelog automatically.
 
+### Added
+- Chinese translation of this changelog at [`CHANGELOG.zh.md`](CHANGELOG.zh.md), kept in
+  sync with the English version. Release notes on GitHub stay English; the Chinese file is
+  a documentation mirror.
+
 ## v0.2.0 - 2026-07-14
 
 ### Changed
