@@ -25,7 +25,7 @@ import settings_guard
 
 log = logging.getLogger(__name__)
 
-VERSION = "0.2.0"   # 单一真源：/api/about 与 desktop 启动横幅共用
+VERSION = "0.3.0"   # 单一真源：/api/about 与 desktop 启动横幅共用
 
 # PyInstaller 冻结态兼容模板/静态资源路径（marked/DOMPurify vendored 在 static/，审计 260712 #3）
 if getattr(sys, "_MEIPASS", None):

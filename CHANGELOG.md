@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.3.0 - 2026-07-17
 
 ### Added
 - **Three-tier visual hierarchy in the timeline (DAG) view.** Every request used to be an
