@@ -28,6 +28,9 @@
 ### 修复
 - run.log 此前按系统 locale 编码写入（中文 Windows 是 GBK），中文日志在任何 UTF-8 工具里
   都是乱码。现在显式 UTF-8（历史 GBK 段不迁移）。
+- release 发布 job 首次被 tag 触发即在 Checkout 崩溃：`fetch-tags: true` 与 checkout 动作
+  自身为触发 tag 拉取的 ref 冲突（"Cannot fetch both … to refs/tags/…"）。改为 checkout 后
+  显式拉取 annotated tag 对象（release notes 的 fallback 来源）。
 
 ### 变更
 - **release notes 现在取自 `CHANGELOG.md`。** 发布工作流此前用的是 `generate_release_notes`，

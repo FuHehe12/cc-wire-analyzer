@@ -33,6 +33,10 @@
 - `run.log` was written in the OS locale encoding (GBK on Chinese Windows), so Chinese log lines
   showed as mojibake in any UTF-8 tool. Logging is now explicitly UTF-8 (historical GBK segments
   are left as-is).
+- The release publish job crashed on checkout at its first tag-triggered run: `fetch-tags: true`
+  conflicts with the ref the checkout action itself fetches for the triggering tag
+  ("Cannot fetch both … to refs/tags/…"). The annotated tag object (used as the release-notes
+  fallback) is now fetched explicitly after checkout instead.
 
 ### Changed
 - **Release notes are now sourced from `CHANGELOG.md`.** The release workflow had used

@@ -74,8 +74,14 @@ jobs:
     steps:
       - name: Checkout（取 CHANGELOG.md 与 tag message 做 release notes）
         uses: actions/checkout@v4
-        with:
-          fetch-tags: true   # fallback：CHANGELOG 无该版本段时用 tag annotated message
+        # 不加 fetch-tags: true —— tag 触发时 checkout 本身就把触发 commit 的 SHA fetch 到
+        # refs/tags/<tag>，与 fetch-tags 要拉的 annotated tag 对象同 ref 不同目标，git 直接
+        # fatal "Cannot fetch both ..."（v0.3.0 首次 tag 触发实测，重试三次后 job 失败）。
+
+      - name: Fetch annotated tag（tag message 做 fallback notes 用）
+        # checkout 把 refs/tags/<tag> 指到了触发 commit（lightweight 化），%(contents) 读不到
+        # annotated message —— 强制覆盖回真 tag 对象。失败不致命：还有占位 fallback 兜底。
+        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" || true
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
