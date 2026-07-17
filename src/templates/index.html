@@ -307,6 +307,11 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   display:flex;flex-direction:column;gap:3px;box-shadow:var(--apple-shadow-sm);}
 .dag-node:hover{background:var(--bg-warm-3);transform:translateY(-1px);}
 .dag-node.new{animation:fadeIn .45s ease;}
+/* 视觉分层（260717）：中间步=工具循环回传（紧凑条，降透明度收视觉权重，骨架凸显）；
+   纯对话轮=整轮没动手（回顾/追问/澄清），虚线左边+💬。错误节点永不降档。 */
+.dag-node.mid{padding:4px 10px;opacity:.68;}
+.dag-node.mid:hover{opacity:1;}
+.dag-node.chat{border-left-style:dashed;opacity:.88;}
 .dag-node .dn-r1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
 .dag-node .dn-time{font-family:var(--font-mono);font-size:10.5px;color:var(--apple-secondary);
   font-variant-numeric:tabular-nums;}
@@ -687,6 +692,7 @@ zh: {
   "dag.emptyDate": "该日期没有捕获记录。", "dag.loadFailed": "时序图加载失败：{msg}",
   "dag.legSub": "子代理（旁点色 = 派生主线）", "dag.legAux": "辅助（节点色点 = 关联主线）",
   "dag.legSeq": "会话顺序", "dag.legTrigger": "派生触发", "dag.legNear": "时序邻近",
+  "dag.legTurn": "卡片 = 用户消息轮", "dag.legMid": "细条 = 工具循环步", "dag.legChat": "💬虚线 = 纯对话轮（没动手）",
   "dag.spawnedBy": "由主线 {n} 派生", "dag.assoc": "关联主线 {n}",
   "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
@@ -780,6 +786,7 @@ en: {
   "dag.emptyDate": "No captures on this date.", "dag.loadFailed": "Failed to load timeline: {msg}",
   "dag.legSub": "subagent (side dot = spawning session)", "dag.legAux": "auxiliary (dot = related session)",
   "dag.legSeq": "sequence", "dag.legTrigger": "spawn", "dag.legNear": "proximity",
+  "dag.legTurn": "card = user turn", "dag.legMid": "slim = tool-loop step", "dag.legChat": "💬 dashed = chat-only turn (no tools)",
   "dag.spawnedBy": "spawned by session {n}", "dag.assoc": "related to session {n}",
   "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
@@ -873,6 +880,7 @@ ja: {
   "dag.emptyDate": "この日付のキャプチャはありません。", "dag.loadFailed": "タイムラインの読み込みに失敗：{msg}",
   "dag.legSub": "サブエージェント（横の点＝派生元メイン）", "dag.legAux": "補助（点＝関連メイン）",
   "dag.legSeq": "会話順", "dag.legTrigger": "派生", "dag.legNear": "時間近接",
+  "dag.legTurn": "カード = ユーザーターン", "dag.legMid": "細行 = ツールループ", "dag.legChat": "💬破線 = 会話のみ（ツール未使用）",
   "dag.spawnedBy": "メイン {n} から派生", "dag.assoc": "メイン {n} に関連",
   "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
@@ -1778,6 +1786,11 @@ function renderDagLegend(lanes, laneColor, laneNum){
     '<span class="leg">' + legLine("seq") + t18("dag.legSeq") + '</span>' +
     '<span class="leg">' + legLine("trigger") + t18("dag.legTrigger") + '</span>' +
     '<span class="leg">' + legLine("near") + t18("dag.legNear") + '</span></span>';
+  /* 节点三档（260717）：卡片=用户轮起点 / 细条=工具循环步 / 💬=纯对话轮 */
+  h += '<span class="leg-lines">' +
+    '<span class="leg">' + t18("dag.legTurn") + '</span>' +
+    '<span class="leg">' + t18("dag.legMid") + '</span>' +
+    '<span class="leg">' + t18("dag.legChat") + '</span></span>';
   el.innerHTML = h;
 }
 function renderDag(d){
@@ -1817,14 +1830,27 @@ function renderDag(d){
   const laneStroke = id => laneColor[id] || LANE_COLOR[laneKindOf[id]] || LANE_COLOR.aux;
   renderDagLegend(lanes, laneColor, laneNum);
 
-  const X0 = 16, LW = 260, LG = 40, Y0 = 52, RH = 82, NH = 62;
+  const X0 = 16, LW = 260, LG = 40, Y0 = 52, NH = 62, NH_MID = 26, VG = 20;
   const laneX = {};
   lanes.forEach((l, i) => laneX[l.lane_id] = X0 + i * (LW + LG));
   const sorted = nodes.slice().sort((a, b) => (a.ts_start || "").localeCompare(b.ts_start || ""));
+  /* 三档判定（260717）：中间步=工具循环回传（仅 main/subagent，错误节点不降档——必须刺眼）；
+     纯对话轮=classifier 轮聚合标记。行高非均匀：中间步压扁，长工具循环段整体收紧。 */
+  const tierOf = n => {
+    if(n.kind !== "main" && n.kind !== "subagent") return "";
+    if(n.has_error) return "";
+    if(!n.turn_start) return "mid";
+    return n.pure_chat ? "chat" : "";
+  };
   const pos = {};
-  sorted.forEach((n, i) => pos[n.id] = { x: laneX[n.lane] ?? X0, y: Y0 + i * RH });
+  let yCur = Y0;
+  sorted.forEach(n => {
+    const h = tierOf(n) === "mid" ? NH_MID : NH;
+    pos[n.id] = { x: laneX[n.lane] ?? X0, y: yCur, h };
+    yCur += h + VG;
+  });
   const W = Math.max(X0 + lanes.length * (LW + LG) - LG + 16, 600);
-  const H = Y0 + sorted.length * RH + 24;
+  const H = yCur + 4;
 
   let svg = "", html = "";
   for(const l of lanes){
@@ -1850,17 +1876,17 @@ function renderDag(d){
     if(e.type === "seq"){
       const cx = a.x + LW / 2;
       svg += '<path class="e-seq" style="stroke:' + laneStroke((nodeById[e.from] || {}).lane) + '" d="M' +
-        cx + ' ' + (a.y + NH) + ' L' + cx + ' ' + b.y + '"/>';
+        cx + ' ' + (a.y + a.h) + ' L' + cx + ' ' + b.y + '"/>';
     }else if(e.type === "trigger"){
       const tc = laneColor[(nodeById[e.from] || {}).lane] || "var(--info)";
-      const x1 = a.x + LW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const x1 = a.x + LW, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
       const mx = (x1 + x2) / 2;
       svg += '<path class="e-trigger" style="stroke:' + tc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 +
         ' ' + (x2 - 8) + ' ' + y2 + '"/>' +
         '<path class="arrow" style="fill:' + tc + '" d="M' + (x2 - 8) + ' ' + (y2 - 4) + ' L' + x2 + ' ' + y2 + ' L' + (x2 - 8) + ' ' + (y2 + 4) + ' Z"/>';
     }else{ /* near：弱示意点线，随关联主线着色 */
       const nc = laneColor[(nodeById[e.from] || {}).lane] || "var(--apple-secondary)";
-      const x1 = a.x + LW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const x1 = a.x + LW, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
       const mx = (x1 + x2) / 2;
       svg += '<path class="e-near" style="stroke:' + nc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 +
         ' ' + x2 + ' ' + y2 + '"/>';
@@ -1868,6 +1894,7 @@ function renderDag(d){
   }
   for(const n of sorted){
     const p = pos[n.id];
+    const tier = tierOf(n);
     const color = KIND_COLOR[n.kind] || KIND_COLOR.other;
     const border = n.has_error ? "var(--err)" : (laneColor[n.lane] || color);
     const assoc = auxAssoc[n.id]
@@ -1876,7 +1903,17 @@ function renderDag(d){
       : "";
     const ur = n.usage || {};
     const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
-    html += '<div class="dag-node" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
+    if(tier === "mid"){
+      /* 工具循环中间步：单行紧凑条（时间+耗时+token），无 chip 无 summary，点击照常进详情 */
+      html += '<div class="dag-node mid" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
+        border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
+        '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
+        '<span class="dn-meta">' + fmtMs(n.total_ms) +
+        (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") + '</span></div></div>';
+      continue;
+    }
+    const chat = tier === "chat" ? '💬 ' : "";
+    html += '<div class="dag-node' + (tier === "chat" ? " chat" : "") + '" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
       border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
       '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
       '<span class="dn-tags">' + assoc +
@@ -1884,7 +1921,7 @@ function renderDag(d){
       '<div class="dn-meta">' + esc(n.model || "?") + ' · ' + fmtMs(n.total_ms) +
       (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") +
       (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +
-      '<div class="dn-sum' + (n.has_error ? " err" : "") + '">' + esc(n.summary || "") + '</div></div>';
+      '<div class="dn-sum' + (n.has_error ? " err" : "") + '">' + chat + esc(n.summary || "") + '</div></div>';
   }
   /* LIVE 重绘保留滚动位置（审计 260712 #11），避免 800ms 防抖重绘打断浏览 */
   const _sl = wrap.scrollLeft, _st = wrap.scrollTop;

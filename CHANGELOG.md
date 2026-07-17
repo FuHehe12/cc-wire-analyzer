@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- **Three-tier visual hierarchy in the timeline (DAG) view.** Every request used to be an
+  equally sized card, so one user message followed by a long tool loop filled the main lane
+  with same-weight nodes and drowned the story. Nodes are now tiered by two purely structural
+  criteria (no semantic guessing, validated against three days of real captures first):
+  a request whose last user message carries real text (not just `tool_result` blocks) starts
+  a **user turn** → full card; tool-loop follow-ups → **slim rows** (compressed row height,
+  reduced opacity — long loops visually contract); a turn with zero tool calls (asking the
+  agent to recap, follow-up questions, clarifications) → **💬 chat-only turn** with a dashed
+  border. Error nodes are never demoted. Legend explains the tiers in all three languages.
 - **External-change watchdog for `settings.json`.** Switching endpoints with cc-switch (or editing
   the file by hand) rewrites `ANTHROPIC_BASE_URL`, so CC silently bypasses the proxy while the UI
   still says "running" — monitoring stops with no sign of it. A background thread now compares the

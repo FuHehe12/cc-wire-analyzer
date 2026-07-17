@@ -92,6 +92,34 @@ def _system_text(body: dict) -> str:
     return ""
 
 
+def _is_turn_start(body: dict) -> bool:
+    """轮次起点判据（260717，三天真实录制验证）：最后一条 user 消息含「真实 text」
+    （string content，或非 <system-reminder> 开头的 text 块）→ 用户新消息触发的请求。
+    全是 tool_result（工具循环回传）→ 中间步。实测型态干净：工具回传就是纯 tool_result 块，
+    system-reminder 不混入；reminder+text 型是用户新消息被注入 reminder，正确判起点。"""
+    last_u = None
+    for m in body.get("messages") or []:
+        if m.get("role") == "user":
+            last_u = m
+    if last_u is None:
+        return False
+    c = last_u.get("content")
+    if isinstance(c, str):
+        return bool(c.strip())
+    if isinstance(c, list):
+        for b in c:
+            if isinstance(b, dict) and b.get("type") == "text":
+                if not (b.get("text") or "").lstrip().startswith("<system-reminder>"):
+                    return True
+    return False
+
+
+def _tool_use_count(record: dict) -> int:
+    """响应里的 tool_use 块数（纯对话轮判据的原料）。"""
+    return sum(1 for b in (record.get("response") or {}).get("content_blocks") or []
+               if isinstance(b, dict) and b.get("type") == "tool_use")
+
+
 # ===== 分类 =====
 def classify(record: dict) -> str:
     # count_tokens 探针：path 即可判定（非对话，CC 估上下文 token 用，260712 实测）
@@ -173,6 +201,11 @@ def _node_summary(record: dict, kind: str, lane: str) -> dict:
                                      #   因为后端发出去的两个键都是空的）
         "has_error": record.get("error") is not None,
         "summary": summary,
+        # 视觉分层三原料（260717）：turn_start=用户新消息触发；tool_uses=本响应动手次数；
+        # pure_chat 由 build_dag 轮聚合后回填（整轮零动手 → 回顾/追问/澄清类轻量轮）
+        "turn_start": _is_turn_start(body),
+        "tool_uses": _tool_use_count(record),
+        "pure_chat": False,
     }
 
 
@@ -239,6 +272,26 @@ def build_dag(records: list[dict]) -> dict:
         for a, b in zip(lane_nodes, lane_nodes[1:]):
             edges.append({"from": a["id"], "to": b["id"], "type": "seq"})
 
+    # 纯对话轮回填（260717）：main/subagent 泳道内按 turn_start 分轮，
+    # 整轮 tool_use 总数为 0 且轮首是真起点 → 全轮标 pure_chat（「回顾一下干了什么」
+    # 这类没动手的轮次，前端降档渲染）。lane 开头缺起点的残轮（代理中途启动，
+    # 只录到某轮的中间段）不标——它属于一个没看全的干活轮。
+    def _flush_turn(turn: list[dict]) -> None:
+        if turn and turn[0]["turn_start"] and sum(n["tool_uses"] for n in turn) == 0:
+            for n in turn:
+                n["pure_chat"] = True
+    for lane_id, lane_nodes in by_lane.items():
+        if lane_id == "aux":
+            continue
+        turn: list[dict] = []
+        for n in lane_nodes:
+            if n["turn_start"] and turn:
+                _flush_turn(turn)
+                turn = [n]
+            else:
+                turn.append(n)
+        _flush_turn(turn)
+
     # near 边：aux 节点 → 时序上最近的前一条 main 节点（弱示意，仅时序邻近非因果）
     main_nodes = [n for n in nodes if n["kind"] == "main"]
     for n in nodes:
@@ -274,5 +327,7 @@ if __name__ == "__main__":
     print(json.dumps({"nodes": len(dag["nodes"]),
                       "edges": [(e["type"]) for e in dag["edges"]],
                       "lanes": [(l["lane_id"], l["kind"], l["count"]) for l in dag["lanes"]],
-                      "kinds": [n["kind"] for n in dag["nodes"]]},
+                      "kinds": [n["kind"] for n in dag["nodes"]],
+                      "turn_starts": sum(1 for n in dag["nodes"] if n["turn_start"]),
+                      "pure_chat": sum(1 for n in dag["nodes"] if n["pure_chat"])},
                      ensure_ascii=False, indent=1))
