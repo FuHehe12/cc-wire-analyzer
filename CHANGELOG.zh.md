@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+### 新增
+- **settings.json 外部修改监视。** 用 cc-switch 切换端点（或手改文件）会覆写
+  `ANTHROPIC_BASE_URL`——CC 静默绕过代理直连上游，而 UI 仍显示「运行中」，监控断档且毫无征兆。
+  现在后台线程每 2 秒比对一次值（读几 KB JSON；刻意不用 mtime 基线——patch 后有竞态窗，
+  也不引入文件事件库依赖）。发现不符即置「已断开」状态、清 marker、**绝不回写文件**
+  （新值是用户的新意图），界面红色横幅显示新上游并提供一键**重新接管**——本质就是一次普通
+  start，snapshot 自然收编新上游。`/api/proxy/status` 暴露 `external_change` 字段，
+  serve 模式下驱动它的 AI 同样感知得到。
+- **能回答「上次会话怎么结束的」的退出日志。** run.log 此前只以副产品形式记录退出
+  （一行 `restored BASE_URL`，且仅当代理在跑时）——07-15 的一次会话只留下孤零零一行日志，
+  怎么结束的无从知晓。现在有：启动横幅（`=== started mode=gui|serve pid=… version=… port=… ===`）、
+  每条可落笔的退出路径的显式记录（关窗、GUI 收尾、API 手动停止、atexit、信号），以及孤儿自愈
+  触发时一句人话「上次进程未正常退出（强杀/断电/崩溃）」。启动横幅后没有对应退出行 = 必是强杀。
+
+### 修复
+- run.log 此前按系统 locale 编码写入（中文 Windows 是 GBK），中文日志在任何 UTF-8 工具里
+  都是乱码。现在显式 UTF-8（历史 GBK 段不迁移）。
+
 ### 变更
 - **release notes 现在取自 `CHANGELOG.md`。** 发布工作流此前用的是 `generate_release_notes`，
   它按 pull request 分组列出条目——对这种单人直接提交（无 PR）的项目毫无意义，因此 v0.1.0 和

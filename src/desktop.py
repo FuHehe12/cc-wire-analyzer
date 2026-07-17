@@ -66,6 +66,7 @@ def _restore_on_close() -> None:
     import logging
     try:
         import settings_guard
+        logging.getLogger(__name__).info("exit: window closing（用户关窗）")
         settings_guard._safe_restore()
     except Exception:
         logging.getLogger(__name__).exception("restore on close failed")
@@ -83,12 +84,16 @@ def _serve() -> None:
     AI 正常 kill（SIGTERM）→ signal handler restore；Windows 上被 TerminateProcess 强杀 →
     atexit 不跑、marker 残留 → 下次任意模式启动时 check_orphan_backup 自愈
     （260713 已加固：陈旧 marker 不覆盖用户自行改的配置）。"""
+    import logging
     import settings_guard
     port = CFG.find_free_port()
     if not port:
         sys.exit(1)
     CFG.write_port(port)
     flask_app.set_listen_port(port)
+    logging.getLogger(__name__).info(
+        "=== started mode=serve pid=%s version=%s port=%s ===",
+        os.getpid(), flask_app.VERSION, port)
     try:   # 自动 patch（serve 的目的就是录制，一步到位；与 GUI 的 /api/proxy/start 同一套逻辑）
         settings_guard.snapshot_original()
         settings_guard.backup_file()
@@ -113,6 +118,10 @@ def main() -> None:
         sys.exit(1)
     CFG.write_port(port)
     flask_app.set_listen_port(port)   # proxy_start 需要 _LISTEN_PORT，否则 no_listen_port（260712 实测发现）
+    import logging
+    logging.getLogger(__name__).info(
+        "=== started mode=gui pid=%s version=%s port=%s ===",
+        os.getpid(), flask_app.VERSION, port)
 
     def _run_server():
         flask_app.app.run(host="127.0.0.1", port=port, debug=False,
@@ -155,8 +164,13 @@ def main() -> None:
         # 否则 settings.json 永久指向已死的代理端口 → CC 不可用（审计 260712 #1）。
         # _safe_restore 已 try/except 包裹，未 patch 时幂等返回不操作。
         try:
+            import logging
             import settings_guard
             settings_guard._safe_restore()
+            # os._exit 跳过 atexit → 这里是 GUI 正常退出唯一的收尾记录点。
+            # run.log 里见此行 = 干净退出；启动横幅后无任何 exit 行 = 强杀/断电。
+            logging.getLogger(__name__).info("=== exit: gui shutdown pid=%s ===", os.getpid())
+            logging.shutdown()   # os._exit 不冲缓冲，显式 flush 才能保证这行落盘
         except Exception:
             pass
     os._exit(0)

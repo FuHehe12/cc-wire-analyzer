@@ -128,6 +128,7 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .status-title{font-size:14.5px;font-weight:700;}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--apple-secondary);flex-shrink:0;}
 .dot.on{background:var(--ok);animation:pulse 1.8s ease-in-out infinite;}
+.dot.err{background:var(--err);}   /* 外部接管：代理被绕过，监控断档 */
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(79,122,58,.35);}50%{box-shadow:0 0 0 5px rgba(79,122,58,0);}}
 .live-chip{background:var(--ok);color:#fff;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;
   font-family:var(--font-mono);letter-spacing:.05em;}
@@ -392,6 +393,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
     <div class="warn-bar" id="warnBar" hidden>
       <span>⚠️</span><span data-i18n="warn.ccswitch">代理运行期间请勿用 cc-switch 切换端点——切换会改写 BASE_URL，CC 将绕过代理直连上游。</span>
     </div>
+    <!-- 外部接管（cc-switch 切换等）：监控已断档，比 warn 重——错误色（260717） -->
+    <div class="fail-bar" id="externalBar" hidden>
+      <span>🔌</span><span id="externalText"></span>
+    </div>
     <div class="orphan-bar" id="orphanBar" hidden>
       <span>ℹ️</span><span id="orphanText"></span>
     </div>
@@ -634,6 +639,10 @@ zh: {
   "btn.retry": "重试", "btn.start": "启动代理", "btn.stop": "停止代理",
   "btn.starting": "启动中…", "btn.stopping": "停止中…",
   "warn.ccswitch": "代理运行期间请勿用 cc-switch 切换端点——切换会改写 BASE_URL，CC 将绕过代理直连上游。",
+  "status.external": "监控已断开——配置被外部修改",
+  "btn.retake": "重新接管",
+  "external.bar": "检测到 settings.json 被外部修改（cc-switch 切换？）：BASE_URL 现为 {url}，CC 已绕过代理直连上游，监控已断档。点「重新接管」把新上游收编进代理。",
+  "external.keyRemoved": "（键已删，直连官方）",
   "orphan.recovered": "检测到上次异常退出，已自动恢复 BASE_URL（{info}）",
   "toast.stopped": "代理已停止，BASE_URL 已恢复",
   "toast.started": "代理已启动，settings.json 已指向本地代理",
@@ -723,6 +732,10 @@ en: {
   "btn.retry": "Retry", "btn.start": "Start proxy", "btn.stop": "Stop proxy",
   "btn.starting": "Starting…", "btn.stopping": "Stopping…",
   "warn.ccswitch": "While the proxy is running, do not switch endpoints with cc-switch — it rewrites BASE_URL and CC will bypass the proxy.",
+  "status.external": "Monitoring disconnected — settings changed externally",
+  "btn.retake": "Re-attach",
+  "external.bar": "settings.json was modified externally (cc-switch?): BASE_URL is now {url}. CC is bypassing the proxy — monitoring has stopped. Click \"Re-attach\" to capture the new upstream.",
+  "external.keyRemoved": "(key removed — direct to official)",
   "orphan.recovered": "Abnormal exit detected last run; BASE_URL auto-restored ({info})",
   "toast.stopped": "Proxy stopped, BASE_URL restored",
   "toast.started": "Proxy started, settings.json now points to the local proxy",
@@ -812,6 +825,10 @@ ja: {
   "btn.retry": "再試行", "btn.start": "プロキシ開始", "btn.stop": "プロキシ停止",
   "btn.starting": "開始中…", "btn.stopping": "停止中…",
   "warn.ccswitch": "プロキシ稼働中は cc-switch でエンドポイントを切り替えないでください——BASE_URL が書き換えられ、CC がプロキシを迂回します。",
+  "status.external": "監視が切断されました——設定が外部で変更されました",
+  "btn.retake": "再接続",
+  "external.bar": "settings.json が外部で変更されました（cc-switch？）：BASE_URL は現在 {url} です。CC はプロキシを迂回しており、監視は停止しています。「再接続」で新しい上流を取り込みます。",
+  "external.keyRemoved": "（キー削除、公式へ直結）",
   "orphan.recovered": "前回の異常終了を検出し、BASE_URL を自動復元しました（{info}）",
   "toast.stopped": "プロキシを停止し、BASE_URL を復元しました",
   "toast.started": "プロキシを開始し、settings.json をローカルプロキシに向けました",
@@ -1248,13 +1265,24 @@ function renderStatus(){
     return;
   }
   const on = !!st.running;
-  $("stDot").className = on ? "dot on" : "dot";
-  $("stTitle").textContent = on ? t18("status.running") : t18("status.stopped");
+  /* 外部接管（cc-switch 切换等）：代理被绕过已降旗——比普通 stopped 醒目（260717） */
+  const ext = !on && st.external_change;
+  $("stDot").className = on ? "dot on" : (ext ? "dot err" : "dot");
+  $("stTitle").textContent = on ? t18("status.running")
+    : (ext ? t18("status.external") : t18("status.stopped"));
   $("stLive").hidden = !on;
   $("warnBar").hidden = !on;
+  if(ext){
+    const cur = st.external_change.current || t18("external.keyRemoved");
+    $("externalText").textContent = t18("external.bar", {url: cur});
+    $("externalBar").hidden = false;
+  }else{
+    $("externalBar").hidden = true;
+  }
   $("stRoute").textContent = on
     ? (st.listen || "—") + "  →  " + (st.upstream || "—")
-    : t18("status.upstream", {url: st.original_base_url || st.upstream || "—"});
+    : t18("status.upstream", {url: (ext && st.external_change.current)
+        || st.original_base_url || st.upstream || "—"});
   const metaBits = [];
   if(st.backups_count != null) metaBits.push(t18("status.backups", {n: st.backups_count}));
   if(on && st.started_at) metaBits.push(t18("status.startedAt", {t: timePart(st.started_at).slice(0,5)}));
@@ -1264,7 +1292,8 @@ function renderStatus(){
     : t18("status.dateCount", {date: S.date, n: S.total}));
   $("stMeta").textContent = metaBits.join(" · ");
   if(allowBtn){
-    btn.textContent = on ? t18("btn.stop") : t18("btn.start");
+    /* 外部接管态：按钮变「重新接管」——本质仍是 start（snapshot 自然收编新上游） */
+    btn.textContent = on ? t18("btn.stop") : (ext ? t18("btn.retake") : t18("btn.start"));
     btn.classList.toggle("danger-soft", on);
     btn.disabled = false;
   }

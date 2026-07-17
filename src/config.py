@@ -147,10 +147,13 @@ def setup_logging() -> None:
     import sys
     import traceback
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    # encoding 必须显式 utf-8：不传则 Windows 按 locale(GBK) 写，中文日志用 UTF-8 工具
+    # 打开全是乱码（260717 用户实测满屏 ��）。历史 GBK 段不迁移，新行起 UTF-8。
     logging.basicConfig(
         filename=str(LOG_FILE),
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        encoding="utf-8",
     )
 
     def _excepthook(exc_type, exc, tb):

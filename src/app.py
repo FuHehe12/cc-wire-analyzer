@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -23,6 +24,8 @@ import capture_store
 import settings_guard
 
 log = logging.getLogger(__name__)
+
+VERSION = "0.2.0"   # 单一真源：/api/about 与 desktop 启动横幅共用
 
 # PyInstaller 冻结态兼容模板/静态资源路径（marked/DOMPurify vendored 在 static/，审计 260712 #3）
 if getattr(sys, "_MEIPASS", None):
@@ -51,11 +54,32 @@ try:
     if _orphan:
         settings_guard.recover_from_orphan(_orphan)
         _ORPHAN_RECOVERED = _orphan
+        log.warning("上次进程未正常退出（强杀/断电/崩溃，未留退出日志行），已自愈恢复 settings.json")
         log.warning("orphan recovered at startup: %s", _orphan)
 except Exception as e:
     log.error("orphan check failed: %s", e)
 
 settings_guard.install_crash_guards()
+
+
+# ===== settings.json 外部修改监视（260717）=====
+# cc-switch 切换会直接覆写 BASE_URL → CC 绕过代理直连新上游，而 UI 仍显示"运行中"，
+# 监控静默断档。这里起 daemon 线程每 2s 调 check_external_change()：patch 态下读
+# settings.json 比对 BASE_URL 值（几 KB JSON，亚毫秒），不符即降旗+记录，绝不碰文件。
+# 刻意**不用 mtime 基线**：「首轮 stat 建基线」在 patch 完成到首轮之间有 0~2s 竞态窗
+# （期间的外部改写会把基线建在改写之后 → 永远漏检，e2e 实测踩中）；直接比值无基线、
+# 无 mtime 粒度坑，成本同样可忽略。GUI/serve 两模式都 import 本模块 → 天然共用。
+def _settings_watcher() -> None:
+    while True:
+        time.sleep(2)
+        try:
+            settings_guard.check_external_change()   # 未 patch 时内部直接返回，零 IO
+        except Exception:
+            log.exception("settings watcher error")  # watcher 绝不能死
+
+
+threading.Thread(target=_settings_watcher, daemon=True,
+                 name="settings-watcher").start()
 
 # 保留天数：启动清一次超期录制。260713 修复——此前 retention_days 是死配置，
 # 设置页承诺「超过天数的 captures 自动清理」却零实现。清理结果经 /api/about 回给设置页显示，
@@ -94,6 +118,9 @@ def _proxy_state() -> dict:
         "orphan_recovered_at_startup": _ORPHAN_RECOVERED,
         # 录制落盘失败要顶到 UI（260713）——否则就是"界面在跳、盘上没有"的静默数据丢失
         "write_errors": capture_store.write_errors(),
+        # settings.json 被外部改动（cc-switch 等）→ 代理已被绕过（260717）。
+        # UI 据此显示"已断开"+ 一键重新接管；serve 模式下 AI 轮询 status 同样感知。
+        "external_change": settings_guard.get_external_change(),
     }
 
 
@@ -127,6 +154,7 @@ def proxy_start():
 
 @app.route("/api/proxy/stop", methods=["POST"])
 def proxy_stop():
+    log.info("proxy stop requested by user (api)")   # 显式记"手动停止"，与异常退出可区分（260717）
     restored_to = settings_guard.get_original_base_url()
     did = settings_guard.restore()
     return jsonify({
@@ -481,7 +509,7 @@ def api_translate_test():
 @app.route("/api/about")
 def about():
     return jsonify({
-        "version": "0.2.0",
+        "version": VERSION,
         "settings_path": str(CFG.CLAUDE_SETTINGS),
         "data_dir": str(CFG.CONFIG_DIR),
         "captures_dir": str(capture_store.CAPTURES_DIR),

@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+- **External-change watchdog for `settings.json`.** Switching endpoints with cc-switch (or editing
+  the file by hand) rewrites `ANTHROPIC_BASE_URL`, so CC silently bypasses the proxy while the UI
+  still says "running" — monitoring stops with no sign of it. A background thread now compares the
+  value every 2 s (a few-KB JSON read; deliberately no mtime baseline, which had a race window right
+  after patching, and no file-watcher dependency). On mismatch it flags the state as disconnected,
+  clears the marker, **never touches the file** (the new value is the user's intent), surfaces a
+  red banner with the new upstream, and offers one-click **Re-attach** — a plain start that
+  snapshots and captures the new upstream. `/api/proxy/status` exposes `external_change` so an
+  agent driving `serve` mode sees it too.
+- **Exit logging that can answer "how did the last session end?".** `run.log` used to record
+  shutdowns only as a side effect (a `restored BASE_URL` line, and only if the proxy was running) —
+  a session on 07-15 left literally one line and no trace of how it ended. Now: a startup banner
+  (`=== started mode=gui|serve pid=… version=… port=… ===`), explicit exit lines on every path
+  that can write one (window close, GUI shutdown, user stop via API, atexit, signals), and a
+  plain-language "previous process did not exit cleanly (killed / power loss / crash)" warning
+  when orphan recovery triggers. A banner with no matching exit line now reliably means a hard kill.
+
+### Fixed
+- `run.log` was written in the OS locale encoding (GBK on Chinese Windows), so Chinese log lines
+  showed as mojibake in any UTF-8 tool. Logging is now explicitly UTF-8 (historical GBK segments
+  are left as-is).
+
 ### Changed
 - **Release notes are now sourced from `CHANGELOG.md`.** The release workflow had used
   `generate_release_notes`, which groups entries by pull request — meaningless for this

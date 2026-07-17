@@ -17,6 +17,7 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -44,6 +45,10 @@ _patched: bool = False                  # 当前是否处于 patch 态
 _patched_listen: str | None = None      # patch 后的本地监听地址
 _patched_at: str | None = None          # patch 起始时间（ISO，供 UI 显示 started_at）
 _guards_installed: bool = False
+_external_change: dict | None = None    # 外部接管检测结果（cc-switch 等改了 BASE_URL），
+                                        # 重新 patch（重新接管）时清空
+# watcher 线程与 Flask 线程会并发进 patch/restore/外部检测，改状态前必须持锁
+_LOCK = threading.RLock()
 
 
 class SettingsGuardError(Exception):
@@ -175,15 +180,17 @@ def backup_file(path: Path | None = None) -> Path:
 
 def patch_base_url(local_listen: str, path: Path | None = None) -> None:
     """原子改写 env.ANTHROPIC_BASE_URL = local_listen，其他不动。标记 _patched + 写 marker。"""
-    global _patched, _patched_listen, _patched_at
-    p = path or CFG.CLAUDE_SETTINGS
-    _patch_base_url_to(p, local_listen)
-    _patched = True
-    _patched_listen = local_listen
-    _patched_at = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
-    if _original_base_url:
-        _write_marker(_original_base_url, local_listen, _original_had_key)
-    log.info("patched BASE_URL → %s", local_listen)
+    global _patched, _patched_listen, _patched_at, _external_change
+    with _LOCK:
+        p = path or CFG.CLAUDE_SETTINGS
+        _patch_base_url_to(p, local_listen)
+        _patched = True
+        _patched_listen = local_listen
+        _patched_at = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+        _external_change = None   # 重新接管：上一次的外部改动记录随之翻篇
+        if _original_base_url:
+            _write_marker(_original_base_url, local_listen, _original_had_key)
+        log.info("patched BASE_URL → %s", local_listen)
 
 
 def restore(path: Path | None = None) -> bool:
@@ -195,31 +202,32 @@ def restore(path: Path | None = None) -> bool:
     patch 进去的那个地址（代理运行期间用户用 cc-switch 换了上游 / 手改了配置），那是用户的
     新意图，无权拿旧快照覆盖它 —— 只清内部状态与 marker，不动文件。"""
     global _patched, _patched_listen, _patched_at
-    if not _patched:
-        return False
-    p = path or CFG.CLAUDE_SETTINGS
-    current = _read_base_url(p)
-    if _patched_listen and current != _patched_listen:
-        log.warning("跳过恢复：当前 BASE_URL=%s ≠ 我们 patch 的 %s（用户已自行改动）",
-                    current, _patched_listen)
-        _patched = False
-        _patched_listen = None
-        _patched_at = None
-        _clear_marker()
-        return False
-    try:
-        if _original_had_key:
-            _patch_base_url_to(p, _original_base_url)
-            log.info("restored BASE_URL → %s", _original_base_url)
-        else:
-            _remove_base_url(p)
-            log.info("restored: removed BASE_URL key (原本直连官方)")
-    finally:
-        _patched = False
-        _patched_listen = None
-        _patched_at = None
-        _clear_marker()  # 正常恢复，清 patch 态 marker（审计 260712 #7）
-    return True
+    with _LOCK:
+        if not _patched:
+            return False
+        p = path or CFG.CLAUDE_SETTINGS
+        current = _read_base_url(p)
+        if _patched_listen and current != _patched_listen:
+            log.warning("跳过恢复：当前 BASE_URL=%s ≠ 我们 patch 的 %s（用户已自行改动）",
+                        current, _patched_listen)
+            _patched = False
+            _patched_listen = None
+            _patched_at = None
+            _clear_marker()
+            return False
+        try:
+            if _original_had_key:
+                _patch_base_url_to(p, _original_base_url)
+                log.info("restored BASE_URL → %s", _original_base_url)
+            else:
+                _remove_base_url(p)
+                log.info("restored: removed BASE_URL key (原本直连官方)")
+        finally:
+            _patched = False
+            _patched_listen = None
+            _patched_at = None
+            _clear_marker()  # 正常恢复，清 patch 态 marker（审计 260712 #7）
+        return True
 
 
 def check_orphan_backup(path: Path | None = None) -> dict | None:
@@ -299,6 +307,48 @@ def patched_at() -> str | None:
     return _patched_at
 
 
+def check_external_change(path: Path | None = None) -> dict | None:
+    """patch 态下检测 settings.json 是否被外部改动（cc-switch 切换 / 手改）。
+
+    当前 BASE_URL ≠ 我们 patch 进去的地址 → 外部已接管：CC 在直连新上游，代理已被绕过。
+    此时**只降旗**——清 _patched 态与 marker、记录 _external_change 供 UI/AI 呈现，
+    **绝不碰 settings.json**（与 restore 守卫同一原则：只撤销能证明是自己做的那一笔；
+    新值是用户的新意图）。重新接管 = 用户显式再走一次 proxy/start（snapshot 自然收编新上游）。
+
+    返回 None（未变/未 patch）或 _external_change 信息。watcher 线程周期调用。"""
+    global _patched, _patched_listen, _patched_at, _external_change
+    with _LOCK:
+        if not _patched:
+            return None
+        p = path or CFG.CLAUDE_SETTINGS
+        try:
+            current = _read_settings(p).get("env", {}).get(ENV_KEY)
+        except FileNotFoundError:
+            current = None            # 文件没了：等效键被删，按外部改动处理
+        except json.JSONDecodeError:
+            return None               # 外部工具非原子写入的半截文件：本轮不判，下轮再看
+        if current == _patched_listen:
+            return None
+        _external_change = {
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+            "current": current,                    # 外部设的新上游（None=键被删）
+            "was_listen": _patched_listen,         # 我们 patch 进去的本地地址
+            "original": _original_base_url,        # 我们启动时记的旧上游
+        }
+        log.warning("检测到 settings.json 被外部修改：BASE_URL=%s ≠ 我们 patch 的 %s"
+                    "（cc-switch 切换/手改）→ 代理已被绕过，降旗断开，不碰文件",
+                    current, _patched_listen)
+        _patched = False
+        _patched_listen = None
+        _patched_at = None
+        _clear_marker()
+        return _external_change
+
+
+def get_external_change() -> dict | None:
+    return _external_change
+
+
 # ===== 崩溃保护（三重）=====
 
 def _safe_restore(*args, **kwargs) -> None:
@@ -324,12 +374,19 @@ def _excepthook(exc_type, exc, tb):
     sys.__excepthook__(exc_type, exc, tb)
 
 
+def _atexit_restore() -> None:
+    """atexit 钩子：显式记一行退出事件再恢复——让 run.log 能回答「这次进程怎么结束的」。
+    强杀(TerminateProcess)/断电到不了这里，靠「启动横幅 + 无退出行 + 下次 orphan」组合反推。"""
+    log.info("exit: atexit fired（解释器正常收尾）")
+    _safe_restore()
+
+
 def install_crash_guards() -> None:
     """注册 atexit + SIGTERM/SIGINT + sys.excepthook 三重恢复。仅注册一次。"""
     global _guards_installed
     if _guards_installed:
         return
-    atexit.register(_safe_restore)
+    atexit.register(_atexit_restore)
     try:
         signal.signal(signal.SIGTERM, _signal_handler)
         signal.signal(signal.SIGINT, _signal_handler)
