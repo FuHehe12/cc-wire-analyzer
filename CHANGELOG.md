@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.3.1 - 2026-07-18
+
+### Fixed
+- **Self-reference loop that made the proxy forward requests to itself (P0 regression introduced in v0.3.0).**
+  When `~/.claude/settings.json`'s `ANTHROPIC_BASE_URL` pointed at the proxy's own local address
+  (leftover patch state / cc-switch switched to a "recording endpoint" profile / hand edit),
+  `snapshot_original()` accepted that self-referential URL as the "real upstream". `forward()` then
+  routed CC's requests to "the upstream" = itself → infinite recursion → every request
+  504 GATEWAY TIMEOUT. The marker persisted `original == listen`, so stop/restart couldn't recover
+  (restore wrote back the polluted original; cross-restart orphan recovery prolonged the deadlock).
+  v0.2.0 was unaffected — the code path wasn't reachable without the watcher. Three-layer fix:
+
+  1. **`snapshot_original()` self-reference guard.** A BASE_URL that resolves to the proxy's own
+     listener (loopback host + same port) now raises `SettingsGuardError` with a plain-language
+     hint instead of starting. Port-precise comparison, so legitimate local OpenAI-compatible
+     upstreams (e.g. a local vLLM at `:8080`) are still accepted.
+  2. **`check_orphan_backup()` marker.original guard.** If the marker's recorded `original` is a
+     loopback address (meaning it was polluted by the v0.3.0 bug), clear the marker only — never
+     write the self-reference back to settings.json (otherwise cross-restart recovery perpetuates
+     the loop).
+  3. **`proxy.forward()` deep defense.** If the upstream equals our own patched listen address,
+     refuse to forward and return 502 with a plain-language error (the snapshot guard is the first
+     line; this is the last).
+
+  Root cause is "guard function existed but caller was missing": `_is_local_proxy_url()` was
+  already used by `check_orphan_backup` and `restore`, but not by `snapshot_original` or
+  `recover_from_orphan` — the two entry points that write an externally-read URL into
+  `_original_base_url`. Hardened into a safety invariant: *any* entry point that reads a URL from
+  outside (file/marker) intending to record it as `original` or write it back to settings.json
+  must pass a self-reference check.
+
 ## v0.3.0 - 2026-07-17
 
 ### Added

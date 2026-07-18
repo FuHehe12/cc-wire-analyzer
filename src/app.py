@@ -25,7 +25,7 @@ import settings_guard
 
 log = logging.getLogger(__name__)
 
-VERSION = "0.3.0"   # 单一真源：/api/about 与 desktop 启动横幅共用
+VERSION = "0.3.1"   # 单一真源：/api/about 与 desktop 启动横幅共用
 
 # PyInstaller 冻结态兼容模板/静态资源路径（marked/DOMPurify vendored 在 static/，审计 260712 #3）
 if getattr(sys, "_MEIPASS", None):
@@ -45,6 +45,9 @@ _LISTEN_PORT: int | None = None
 def set_listen_port(port: int) -> None:
     global _LISTEN_PORT
     _LISTEN_PORT = port
+    # 260718：注入本代理端口给 settings_guard，让 snapshot 自指守卫做精确比对
+    # （只拦 upstream == 本代理端口，放行合法的本地 OpenAI 兼容上游）。
+    settings_guard.set_self_listen_port(port)
 
 
 # ===== 启动时：孤儿恢复 + 崩溃保护 + 保留天数清理 =====

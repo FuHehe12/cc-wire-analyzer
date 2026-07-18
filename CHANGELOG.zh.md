@@ -2,6 +2,31 @@
 
 > 本文件是 [`CHANGELOG.md`](CHANGELOG.md) 的中文翻译镜像，与英文版保持同步。英文版为源。
 
+## v0.3.1 - 2026-07-18
+
+### 修复
+- **snapshot 自指致代理把请求转发给自己（v0.3.0 的 P0 回归）。** 当 `~/.claude/settings.json`
+  的 `ANTHROPIC_BASE_URL` 指向本代理自己的本地地址（残留 patch 态 / cc-switch 切到"录制端点"
+  配置 / 手改）时，`snapshot_original()` 会把这个自指地址当成"真上游"记下。之后 `forward()`
+  把 CC 的请求转发给"上游"= 本代理自己 → 无限递归 → CC 所有请求 504 GATEWAY TIMEOUT。
+  而且 marker 会把 `original == listen` 的自指值持久化，stop/重启都无法解套（restore 恢复到
+  污染的 original；跨重启的孤儿自愈反而续命死循环）。v0.2.0 不受影响——没有 watcher 这条
+  代码路径当时不可达。三层修复：
+
+  1. **`snapshot_original()` 自指守卫。** BASE_URL 解析到本代理自身（loopback 主机 + 同端口）
+     时抛 `SettingsGuardError` 拒绝启动，带人话提示。端口精确比对，合法的本地 OpenAI 兼容
+     上游（如 `:8080` 的本地 vLLM）仍然放行。
+  2. **`check_orphan_backup()` 的 marker.original 守卫。** marker 记的 `original` 若是本地
+     回环地址（说明已被 v0.3.0 这个 bug 污染过），只清 marker，绝不把自指值写回 settings.json
+     （否则跨重启自愈反而让死循环续命）。
+  3. **`proxy.forward()` 深度防御。** upstream 若等于本代理 patch 进去的监听地址，拒绝转发，
+     返回 502 + 人话（snapshot 守卫是第一道，这是最后一道）。
+
+  根因是「守卫函数存在但调用点缺失」—— `_is_local_proxy_url()` 早就在 `check_orphan_backup`
+  和 `restore` 里用了，唯独 `snapshot_original` 和 `recover_from_orphan` 这两个"把外部读来的
+  URL 写进 `_original_base_url`"的入口漏了。补强为安全不变量：凡是从外部（文件/marker）读来
+  URL 准备当 original 记下或写回 settings.json 的入口，都必须过自指检查。
+
 ## v0.3.0 - 2026-07-17
 
 ### 新增

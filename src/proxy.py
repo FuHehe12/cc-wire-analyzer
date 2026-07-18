@@ -93,6 +93,21 @@ def forward(path: str) -> Response:
             status=503, mimetype="application/json",
         )
     upstream_base = upstream_base.rstrip("/")
+
+    # 260718 深度防御（Bug C）：upstream 若等于我们自己 patch 进去的本地监听地址，
+    # 说明 snapshot 守卫（Bug A）被绕过或 _original_base_url 被污染 —— 转发即无限递归。
+    # snapshot 守卫是第一道防线，这里是最后一道。宁可 502 也不递归。
+    listen = settings_guard.get_patched_listen()
+    if listen and upstream_base == listen.rstrip("/"):
+        log.error("拒绝自指转发：upstream=%s == 本代理监听地址（_original_base_url 被污染）",
+                  upstream_base)
+        return Response(
+            json.dumps({"error": "self_reference_upstream",
+                        "detail": f"上游地址 {upstream_base} 等于本代理自身监听地址，"
+                                  "转发将无限递归。请停止代理，把 settings.json 的 "
+                                  "ANTHROPIC_BASE_URL 改回真上游后重启。"}),
+            status=502, mimetype="application/json")
+
     url = f"{upstream_base}/{path}" if path else upstream_base
 
     req_body = request.get_data()  # bytes

@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import config as CFG
 
@@ -116,6 +117,34 @@ def _is_local_proxy_url(url: str) -> bool:
     return "127.0.0.1" in url or "localhost" in url
 
 
+# 本代理监听端口，由 app.set_listen_port 注入。snapshot 自指守卫用它做精确比对
+# （只拦"等于本代理端口的 loopback"，放行合法的本地 OpenAI 兼容上游如 :8080 的 vLLM）。
+# 未注入时守卫降级为不拦 —— 生产路径必经 set_listen_port，self_test 手动 set。
+_SELF_PORT: int | None = None
+
+
+def set_self_listen_port(port: int) -> None:
+    """app.py 启动时注入本代理监听端口。snapshot 自指守卫据此精确比对。"""
+    global _SELF_PORT
+    _SELF_PORT = port
+
+
+def _is_self_reference(url: str) -> bool:
+    """url 是否指向本代理自己（forward 给它 = 无限递归）。
+
+    精确比对 (host, port)：loopback host + port == _SELF_PORT 才算自指。
+    http://127.0.0.1:8080（本地 vLLM）端口不同 → 放行；
+    http://127.0.0.1:{_SELF_PORT}（残留 patch 态 / 被切到本地录制端点）→ 拒绝。
+    未注入 _SELF_PORT 时（self_test 未模拟）不拦，守卫降级。"""
+    if not _SELF_PORT or not url:
+        return False
+    try:
+        u = urlparse(url)
+        return u.hostname in ("127.0.0.1", "localhost") and u.port == _SELF_PORT
+    except Exception:
+        return False
+
+
 def _write_marker(original: str, listen: str, had_key: bool) -> None:
     """写 patch 态 marker（含原 BASE_URL + 原本是否有该键，供崩溃后恢复）。"""
     CFG.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -144,11 +173,25 @@ def snapshot_original(path: Path | None = None) -> str:
     返回上游转发目标（= 恢复值）。
 
     无该键时不再报错——CC 直连官方端点，fallback 到抓 DEFAULT_UPSTREAM，
-    记 _original_had_key=False（restore 时删键回到直连原状，260712 修复）。"""
+    记 _original_had_key=False（restore 时删键回到直连原状，260712 修复）。
+
+    260718 守卫：读到的 URL 若是本地回环地址（残留 patch 态 / cc-switch 切到
+    "录制端点" / 手改），拒绝启动。否则 forward 会把请求转发给本地代理自己
+    → 无限递归 → 全 504（v0.3.0 真机回归，run.log httpx POST 127.0.0.1:5051 铁证）。
+    _is_local_proxy_url 早就在 check_orphan_backup/restore 用了，唯独这里漏了
+    ——「守卫函数存在但调用点缺失」教训的又一复现。绝 不静默回退到 DEFAULT_UPSTREAM：
+    对第三方 token 用户等于拿 bigmodel 的 key 打 anthropic 官方，更糟。"""
     global _original_base_url, _original_had_key
     p = path or CFG.CLAUDE_SETTINGS
     url = _read_base_url(p)
     if url:
+        if _is_self_reference(url):
+            raise SettingsGuardError(
+                f"BASE_URL={url} 指向本代理自身（127.0.0.1/localhost:{_SELF_PORT}），"
+                "疑似残留 patch 态或被外部工具切到了本地录制端点。以此当上游会让代理"
+                "把请求转发给它自己 → 无限递归 → 全 504。"
+                "请先把 ~/.claude/settings.json 的 ANTHROPIC_BASE_URL 改回真上游"
+                "（例如 https://api.anthropic.com 或你的第三方网关），再启动代理。")
         _original_base_url = url
         _original_had_key = True
     else:
@@ -252,6 +295,17 @@ def check_orphan_backup(path: Path | None = None) -> dict | None:
     if not original:
         return None
 
+    # 260718 守卫：marker 的 original 若是本地回环地址，说明 marker 已被污染
+    # （snapshot 时上一版没守卫住，把残留 patch 值当 original 记下了 —— 正是
+    # v0.3.0 真机回归的锁死链：original==listen==http://127.0.0.1:5051）。
+    # 跨重启自愈若用它恢复，会把自指地址写回 settings.json 并记成 _original_base_url，
+    # 死循环跨重启续命。当陈旧 marker 处理：只清 marker，绝不写回文件。
+    if _is_local_proxy_url(original):
+        log.warning("污染 marker：original=%s 是本地回环地址（snapshot 时被注入的自指值）"
+                    "→ 只清 marker，不恢复，不动 settings.json", original)
+        _clear_marker()
+        return None
+
     current = _read_base_url(p)
     listen = info.get("listen")
     # 精确比对优先（marker 记着当初 patch 进去的确切地址）；老 marker 无 listen 时退回本地端点判断。
@@ -305,6 +359,15 @@ def get_original_base_url() -> str | None:
 
 def patched_at() -> str | None:
     return _patched_at
+
+
+def get_patched_listen() -> str | None:
+    """当前 patch 进 settings.json 的本地监听地址（未 patch 时 None）。
+
+    260718：给 proxy.forward 做自指兜底用 —— forward 必须拒绝把请求转发给
+    "等于自己 patch 进去的地址"的上游，那是无限递归。snapshot 守卫（Bug A）
+    是第一道防线，这里是第三道（深度防御）。"""
+    return _patched_listen
 
 
 def check_external_change(path: Path | None = None) -> dict | None:
@@ -561,6 +624,66 @@ def self_test() -> None:
         assert _read_base_url(live) == "https://user-switched.example.com", "用户的新上游被覆盖了!"
         assert not _PATCHED_MARKER.exists()
         print(f"[12] 代理运行期间用户换上游 → restore 跳过、不覆盖 ✓")
+
+        # 13. snapshot 自指守卫（260718 P0 回归）：读到的 BASE_URL 指向本代理自身
+        #     （loopback + 同端口）→ 拒绝。v0.3.0 缺这道守卫，cc-switch 切到"录制端点"
+        #     或残留 patch 态时 snapshot 把 127.0.0.1:5051 当真上游 → forward 无限递归 → 全 504。
+        #     守卫精确比对端口：合法的本地 OpenAI 兼容上游（:8080 vLLM）放行，只拦自指（case 16）。
+        set_self_listen_port(5051)   # 模拟 app.set_listen_port 注入本代理端口
+        selfref = tmpdir / "settings_selfref.json"
+        selfref.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:5051",
+                    "ANTHROPIC_AUTH_TOKEN": "tok"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _original_base_url = None
+        _original_had_key = True
+        raised = False
+        try:
+            snapshot_original(selfref)
+        except SettingsGuardError:
+            raised = True
+        assert raised, "snapshot 读到本代理自身地址应抛 SettingsGuardError"
+        assert _original_base_url is None, "_original_base_url 不应被自指值污染"
+        print(f"[13] snapshot 自指守卫 OK：读到 http://127.0.0.1:5051（本代理端口）→ 拒绝 ✓")
+
+        # 14. 污染 marker 的 original（本地回环）→ check_orphan_backup 只清不恢复。
+        #     v0.3.0 真机锁死链的跨重启续命点：marker 一旦记下 original==listen==5051，
+        #     重启后 recover 会把自指值写回 settings.json。必须拒绝恢复。
+        polluted = tmpdir / "settings_polluted_marker.json"
+        polluted.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:5051"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _PATCHED_MARKER.write_text(json.dumps({
+            "original": "http://127.0.0.1:5051", "listen": "http://127.0.0.1:5051",
+            "had_key": True, "at": "2026-07-18T10:11:55"}), encoding="utf-8")
+        assert check_orphan_backup(polluted) is None, "污染 marker（original 本地地址）不应触发恢复"
+        assert not _PATCHED_MARKER.exists(), "污染 marker 应被清掉"
+        assert _read_base_url(polluted) == "http://127.0.0.1:5051", "settings.json 不应被动"
+        print(f"[14] 污染 marker（original 本地）→ 只清不恢复，settings.json 不动 ✓")
+
+        # 15. hostname 变体（localhost）+ 同端口同样拦（urlparse.hostname 认 localhost）
+        localhost_case = tmpdir / "settings_localhost.json"
+        localhost_case.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "http://localhost:5051"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _original_base_url = None
+        raised15 = False
+        try:
+            snapshot_original(localhost_case)
+        except SettingsGuardError:
+            raised15 = True
+        assert raised15, "snapshot 读到 localhost:5051（同端口）应抛 SettingsGuardError"
+        print(f"[15] hostname 变体（localhost）+ 同端口同样拒绝 ✓")
+
+        # 16. 合法本地 OpenAI 兼容上游（端口 ≠ 本代理）→ 放行（不误伤本地 vLLM 等场景）
+        legal_local = tmpdir / "settings_legal_local.json"
+        legal_local.write_text(json.dumps({
+            "env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:8080"},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        _original_base_url = None
+        snapshot_original(legal_local)   # 不抛即通过
+        assert _original_base_url == "http://127.0.0.1:8080", "合法本地上游应被接受"
+        print(f"[16] 合法本地上游（http://127.0.0.1:8080，端口≠本代理）→ 放行 ✓")
 
         print("\n[ALL PASSED] ✓")
     finally:
