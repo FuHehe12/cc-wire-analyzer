@@ -413,7 +413,7 @@ def cmd_grep(a) -> None:
 
 
 def cmd_dag(a) -> None:
-    dag = classifier.build_dag(capture_store.list_full(a.date))
+    dag = classifier.build_dag(capture_store.list_index(a.date))
     _out({"ok": True, **dag,
           "caveat": "main/subagent 判别正在按真实流量迭代（见 issues），泳道可能把子代理算进主线。"})
 

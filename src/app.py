@@ -25,7 +25,7 @@ import settings_guard
 
 log = logging.getLogger(__name__)
 
-VERSION = "0.3.1"   # 单一真源：/api/about 与 desktop 启动横幅共用
+VERSION = "0.3.2"   # 单一真源：/api/about 与 desktop 启动横幅共用
 
 # PyInstaller 冻结态兼容模板/静态资源路径（marked/DOMPurify vendored 在 static/，审计 260712 #3）
 if getattr(sys, "_MEIPASS", None):
@@ -191,10 +191,12 @@ def capture_detail(rid):
 
 @app.route("/api/dag")
 def dag_view():
-    """View D 时序 DAG：当日全量捕获 → 分类 + 会话线 + 边推断。"""
+    """View D 时序 DAG：当日全量捕获 → 分类 + 会话线 + 边推断。
+    260719 改走写时索引（list_index）：此前 list_full 全量 parse 主文件且写死 1000 条上限，
+    大流量天（826MB/2993 条实测）单次 ~9s 且泳道直接丢后 2/3。"""
     import classifier
     date = request.args.get("date")
-    return jsonify(classifier.build_dag(capture_store.list_full(date)))
+    return jsonify(classifier.build_dag(capture_store.list_index(date)))
 
 
 @app.route("/api/captures/clear", methods=["POST"])

@@ -280,6 +280,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   border-radius:var(--radius-sm);background:var(--bg-card);}
 .dag-toolbar .btn{min-width:28px;padding:5px 0;text-align:center;font-family:var(--font-mono);}
 .dag-toolbar .btn.fit{min-width:0;padding:5px 12px;font-family:var(--font-body);}
+.dag-toolbar .btn.on{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);}
 .dag-zoom-val{font-family:var(--font-mono);font-size:11px;min-width:42px;text-align:center;
   color:var(--apple-secondary);font-variant-numeric:tabular-nums;}
 .lh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;}
@@ -303,7 +304,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dn-tags{display:inline-flex;gap:5px;align-items:center;flex-shrink:0;}
 .leg-svg{vertical-align:-1px;margin-right:3px;}
 .dag-node{position:absolute;width:260px;border-left:3px solid var(--accent);border-radius:8px;
-  background:var(--bg-softer);padding:8px 10px;cursor:pointer;transition:var(--apple-transition);
+  background:var(--bg-softer);padding:8px 10px;cursor:pointer;
+  transition:background .12s ease,transform .12s ease,opacity .12s ease;   /* 收窄自 transition:all——3000 个 transition-all 节点显著加重样式/布局成本（260719） */
   display:flex;flex-direction:column;gap:3px;box-shadow:var(--apple-shadow-sm);}
 .dag-node:hover{background:var(--bg-warm-3);transform:translateY(-1px);}
 .dag-node.new{animation:fadeIn .45s ease;}
@@ -312,6 +314,9 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-node.mid{padding:4px 10px;opacity:.68;}
 .dag-node.mid:hover{opacity:1;}
 .dag-node.chat{border-left-style:dashed;opacity:.88;}
+/* 连续错误折叠卡（260719）：刺眼（红底）但只占一格——错误洪峰天（实测 2029 连错）不把图撑爆 */
+.dag-node.err-run{background:var(--bg-error-soft);border-left-color:var(--err);}
+.dag-node.err-run:hover{background:#F8E2D9;transform:translateY(-1px);}
 .dag-node .dn-r1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
 .dag-node .dn-time{font-family:var(--font-mono);font-size:10.5px;color:var(--apple-secondary);
   font-variant-numeric:tabular-nums;}
@@ -461,6 +466,15 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
     <div class="dag-bar">
       <div class="dag-legend" id="dagLegend"></div>
       <div class="dag-toolbar">
+        <div class="dropdown" id="laneDropdown">
+          <button class="btn fit dropdown-trigger" id="laneBtn" onclick="laneBtnClick(event)"
+            data-i18n="dag.lanes" data-i18n-title="dag.lanesTitle">泳道</button>
+          <div class="dropdown-menu" id="laneMenu" hidden></div>
+        </div>
+        <button class="btn fit" id="dagMidBtn" onclick="dagToggleMid()"
+          data-i18n="dag.hideMid" data-i18n-title="dag.hideMidTitle">隐藏工具循环步</button>
+        <button class="btn fit" id="dagAuxBtn" onclick="dagToggleAux()"
+          data-i18n="dag.hideAux" data-i18n-title="dag.hideAuxTitle">隐藏辅助调用</button>
         <button class="btn" onclick="dagZoomBy(-0.1)" title="缩小" data-i18n-title="dag.zoomOut">−</button>
         <span class="dag-zoom-val" id="dagZoomVal">100%</span>
         <button class="btn" onclick="dagZoomBy(0.1)" title="放大" data-i18n-title="dag.zoomIn">+</button>
@@ -695,6 +709,13 @@ zh: {
   "dag.legTurn": "卡片 = 用户消息轮", "dag.legMid": "细条 = 工具循环步", "dag.legChat": "💬虚线 = 纯对话轮（没动手）",
   "dag.spawnedBy": "由主线 {n} 派生", "dag.assoc": "关联主线 {n}",
   "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
+  "dag.hideMid": "隐藏工具循环步", "dag.showMid": "显示工具循环步",
+  "dag.hideMidTitle": "隐藏工具循环中间步，只看用户消息轮——大流量天图立刻可读",
+  "dag.hideAux": "隐藏辅助调用", "dag.showAux": "显示辅助调用",
+  "dag.hideAuxTitle": "隐藏标题/安全/计数等辅助调用（实测可占节点数 1/4），只看主线与子代理",
+  "dag.lanes": "泳道", "dag.lanesTitle": "选择要显示的泳道——藏掉不看的主线，剩下的自然变大",
+  "dag.errRun": "连续错误", "dag.errRunTitle": "{n} 条连续错误，点击展开逐条查看",
+  "dag.collapseRun": "折叠",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
   "lane.main": "主线", "lane.subagent": "子代理", "lane.aux": "辅助",
@@ -789,6 +810,13 @@ en: {
   "dag.legTurn": "card = user turn", "dag.legMid": "slim = tool-loop step", "dag.legChat": "💬 dashed = chat-only turn (no tools)",
   "dag.spawnedBy": "spawned by session {n}", "dag.assoc": "related to session {n}",
   "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
+  "dag.hideMid": "Hide tool-loop steps", "dag.showMid": "Show tool-loop steps",
+  "dag.hideMidTitle": "Hide tool-loop middle steps, keep user turns only — makes busy days readable",
+  "dag.hideAux": "Hide auxiliary calls", "dag.showAux": "Show auxiliary calls",
+  "dag.hideAuxTitle": "Hide title/security/count auxiliary calls (can be 1/4 of all nodes), keep main & subagent lanes",
+  "dag.lanes": "Lanes", "dag.lanesTitle": "Choose visible lanes — hide mains you don't watch and the rest gets bigger",
+  "dag.errRun": "consecutive errors", "dag.errRunTitle": "{n} consecutive errors, click to expand",
+  "dag.collapseRun": "Collapse",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
   "lane.main": "Session", "lane.subagent": "Agent", "lane.aux": "Aux",
@@ -883,6 +911,13 @@ ja: {
   "dag.legTurn": "カード = ユーザーターン", "dag.legMid": "細行 = ツールループ", "dag.legChat": "💬破線 = 会話のみ（ツール未使用）",
   "dag.spawnedBy": "メイン {n} から派生", "dag.assoc": "メイン {n} に関連",
   "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
+  "dag.hideMid": "ツールループを隠す", "dag.showMid": "ツールループを表示",
+  "dag.hideMidTitle": "ツールループの中間ステップを隠してユーザーターンだけ表示——大量の日でも読みやすく",
+  "dag.hideAux": "補助呼び出しを隠す", "dag.showAux": "補助呼び出しを表示",
+  "dag.hideAuxTitle": "タイトル/安全/カウントなどの補助呼び出しを隠す（ノードの1/4を占めることも）——メインとサブエージェントだけ表示",
+  "dag.lanes": "レーン", "dag.lanesTitle": "表示するレーンを選択——見ないメインを隠すと残りが大きく表示されます",
+  "dag.errRun": "連続エラー", "dag.errRunTitle": "{n} 件の連続エラー、クリックで展開",
+  "dag.collapseRun": "折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
   "lane.main": "メイン", "lane.subagent": "エージェント", "lane.aux": "補助",
@@ -1382,7 +1417,7 @@ function rowHtml(it, isNew){
   const ttft = it.ttft_ms != null ? "ttft " + fmtMs(it.ttft_ms) : "";
   const isProbe = it.path && it.path.indexOf("count_tokens") >= 0;
   const sumCls = it.has_error ? "cap-summary err" : "cap-summary";
-  return '<div class="cap-row' + (isNew ? " new" : "") + (isProbe ? " probe" : "") + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
+  return '<div class="cap-row' + (isNew ? " new" : "") + (isProbe ? " probe" : "") + '" data-rid="' + esc(it.id) + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
     '<span class="cap-time">' + timePart(it.ts_start) + '</span>' +
     '<span class="cap-dot ' + dotCls + '"></span>' +
     '<span class="cap-path">' + esc((it.method || "POST") + " " + (it.path || "")) + '</span>' +
@@ -1475,6 +1510,9 @@ async function doClear(mode){
 document.addEventListener("click", e => {
   const dd = $("clearDropdown");
   if(dd && !dd.contains(e.target)) _closeClearMenu();
+  const ld = $("laneDropdown");
+  const lm = $("laneMenu");
+  if(ld && lm && !ld.contains(e.target)) lm.hidden = true;
 });
 
 /* ================= LIVE SSE ================= */
@@ -1498,11 +1536,14 @@ function flushSSE(){
   const empty = wrap.querySelector(".list-empty");
   if(empty) wrap.innerHTML = "";
   for(const it of buf){
-    /* 同 id 已存在则更新（请求完成事件），否则插入顶部 */
+    /* 同 id 已存在则更新（请求完成事件），否则插入顶部。
+       260719：更新只替换单行 DOM（data-rid 定位），不再整表 renderList()——
+       此前每条完成事件都全量重建列表，流量大了每条流量都卡一拍 */
     const idx = S.items.findIndex(x => x.id === it.id);
     if(idx >= 0){
       S.items[idx] = it;
-      renderList();
+      const row = wrap.querySelector('[data-rid="' + it.id + '"]');
+      if(row){ row.outerHTML = rowHtml(it, false); }else{ renderList(); }
     }else{
       S.items.unshift(it); S.total += 1;
       wrap.insertAdjacentHTML("afterbegin", rowHtml(it, true));
@@ -1793,150 +1834,369 @@ function renderDagLegend(lanes, laneColor, laneNum){
     '<span class="leg">' + t18("dag.legChat") + '</span></span>';
   el.innerHTML = h;
 }
-function renderDag(d){
-  const wrap = $("dagWrap");
-  const nodes = d.nodes || [], lanes = d.lanes || [], edges = d.edges || [];
-  renderDagDates();
-  $("dagMeta").textContent = t18("dag.meta", {n: nodes.length, m: lanes.length}) +
+/* ---- DAG 增量渲染（260719）----
+   此前 LIVE 每条新流量都全量重建：2993 节点实测产出 1.7MB innerHTML（JS 312ms + 布局 ≈1.1s），
+   800ms 防抖形同虚设，界面接近冻结。布局按 ts 全局递增、新节点只可能追加在底部，
+   所以 LIVE 稳态只 append 新节点/新边，已有 DOM 零改动；
+   仅当 lane 数变化 / 已有节点 tier 改判（pure_chat 轮回填）/ 数据变少（清理）才全量重渲。 */
+const DGX = { X0: 16, LW: 260, LG: 40, Y0: 52, NH: 62, NH_MID: 26, VG: 20 };
+const DG = {
+  date: null, rendered: false, hideMid: false, hideAux: false,
+  ids: new Set(), tier: {}, pos: {}, nodeById: {},
+  laneX: {}, laneLast: {}, laneKind: {}, laneColor: {}, laneNum: {},
+  parentLane: {}, auxAssoc: {}, laneCount: 0, yCur: DGX.Y0, lanes: [],
+  hiddenLanes: new Set(),     /* 泳道选择：用户显式藏掉的 lane（不占列，260719） */
+  runs: {}, openRun: {}, runOf: {},   /* 连续错误折叠：key=lane:firstId；openRun=各 lane 未闭合的 run */
+  expandedRuns: new Set(), suppressRun: {},
+};
+function dagTierOf(n){
+  /* 三档判定（260717）：中间步=工具循环回传（仅 main/subagent，错误节点不降档——必须刺眼）；
+     纯对话轮=classifier 轮聚合标记。 */
+  if(n.kind !== "main" && n.kind !== "subagent") return "";
+  if(n.has_error) return "";
+  if(!n.turn_start) return "mid";
+  return n.pure_chat ? "chat" : "";
+}
+function dagLaneStroke(id){
+  return DG.laneColor[id] || LANE_COLOR[DG.laneKind[id]] || LANE_COLOR.aux;
+}
+function dagMetaSet(d){
+  $("dagMeta").textContent = t18("dag.meta", {n: (d.nodes || []).length, m: (d.lanes || []).length}) +
     (S.status && S.status.running ? t18("dag.live") : "");
+}
+function dagSeqSvg(a, b, lane){
+  const cx = a.x + DGX.LW / 2;
+  return '<path class="e-seq" style="stroke:' + dagLaneStroke(lane) + '" d="M' +
+    cx + ' ' + (a.y + a.h) + ' L' + cx + ' ' + b.y + '"/>';
+}
+function dagPosOf(id){
+  /* 节点可见位置：普通节点取自身 pos；被折叠进 run 的成员解析到 run 卡位置（边端点用） */
+  if(DG.pos[id]) return DG.pos[id];
+  const rk = DG.runOf[id];
+  return rk ? DG.runs[rk].pos : null;
+}
+function dagEdgeSvg(e){   /* trigger / near（seq 走 dagPlace 的前端可见链，hideMid 时不指向隐藏节点） */
+  const a = dagPosOf(e.from), b = dagPosOf(e.to);
+  if(!a || !b) return "";
+  const x1 = a.x + DGX.LW, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
+  const mx = (x1 + x2) / 2;
+  if(e.type === "trigger"){
+    const tc = DG.laneColor[(DG.nodeById[e.from] || {}).lane] || "var(--info)";
+    return '<path class="e-trigger" style="stroke:' + tc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 +
+      ' ' + mx + ' ' + y2 + ' ' + (x2 - 8) + ' ' + y2 + '"/>' +
+      '<path class="arrow" style="fill:' + tc + '" d="M' + (x2 - 8) + ' ' + (y2 - 4) + ' L' + x2 + ' ' + y2 +
+      ' L' + (x2 - 8) + ' ' + (y2 + 4) + ' Z"/>';
+  }
+  const nc = DG.laneColor[(DG.nodeById[e.from] || {}).lane] || "var(--apple-secondary)";
+  return '<path class="e-near" style="stroke:' + nc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 +
+    ' ' + mx + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"/>';
+}
+function dagNodeHtml(n){
+  const p = DG.pos[n.id], tier = DG.tier[n.id];
+  const color = KIND_COLOR[n.kind] || KIND_COLOR.other;
+  const border = n.has_error ? "var(--err)" : (DG.laneColor[n.lane] || color);
+  const assoc = DG.auxAssoc[n.id]
+    ? '<span class="assoc-dot" style="background:' + DG.laneColor[DG.auxAssoc[n.id]] +
+      '" title="' + t18("dag.assoc", {n: DG.laneNum[DG.auxAssoc[n.id]]}) + '"></span>' : "";
+  /* 展开的连续错误 run 的首卡：带「折叠」徽章可收回（run key = lane:firstId） */
+  const expKey = n.lane + ":" + n.id;
+  const collapse = DG.expandedRuns.has(expKey)
+    ? '<span class="chip outline" style="cursor:pointer" onclick="event.stopPropagation();dagToggleRun(\'' +
+      expKey + '\')">▴ ' + t18("dag.collapseRun") + '</span>' : "";
+  const ur = n.usage || {};
+  const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
+  if(tier === "mid"){
+    /* 工具循环中间步：单行紧凑条（时间+耗时+token），无 chip 无 summary，点击照常进详情 */
+    return '<div class="dag-node mid" data-nid="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
+      border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
+      '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
+      '<span class="dn-meta">' + fmtMs(n.total_ms) +
+      (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") + '</span></div></div>';
+  }
+  const chat = tier === "chat" ? '💬 ' : "";
+  return '<div class="dag-node' + (tier === "chat" ? " chat" : "") + '" data-nid="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' +
+    p.y + 'px;border-left-color:' + border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
+    '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
+    '<span class="dn-tags">' + collapse + assoc +
+    '<span class="chip" style="background:' + color + '">' + esc(kindLabel(n.kind)) + '</span></span></div>' +
+    '<div class="dn-meta">' + esc(n.model || "?") + ' · ' + fmtMs(n.total_ms) +
+    (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") +
+    (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +
+    '<div class="dn-sum' + (n.has_error ? " err" : "") + '">' + chat + esc(n.summary || "") + '</div></div>';
+}
+/* 连续错误折叠卡：红底刺眼但只占一格；点击展开逐条（dagToggleRun → 全量重渲） */
+function dagRunCardHtml(run){
+  const first = DG.nodeById[run.ids[0]] || {};
+  const last = DG.nodeById[run.ids[run.ids.length - 1]] || {};
+  const p = run.pos;
+  return '<div class="dag-node err-run" data-run="' + esc(run.key) + '" style="left:' + p.x + 'px;top:' + p.y +
+    'px;border-left-color:var(--err)" title="' + esc(t18("dag.errRunTitle", {n: run.ids.length})) +
+    '" onclick="dagToggleRun(\'' + run.key + '\')">' +
+    '<div class="dn-r1"><span class="dn-time">' + timePart(first.ts_start) + ' → ' + timePart(last.ts_start) + '</span>' +
+    '<span class="chip" style="background:var(--err)">×' + run.ids.length + '</span></div>' +
+    '<div class="dn-sum err">' + esc((first.summary || t18("dag.errRun")).slice(0, 60)) + '</div></div>';
+}
+function dagToggleRun(key){
+  if(DG.expandedRuns.has(key)) DG.expandedRuns.delete(key); else DG.expandedRuns.add(key);
+  DG.rendered = false;   /* 折叠态变了：全量重排 */
+  loadDag();
+}
+/* 放一个节点：hideMid/hideAux/隐藏泳道过滤不占位；同 lane 连续错误（≥2）折叠成 ×N 卡只占一格；
+   否则算位置、推进 y、补同 lane seq 边（连上一个**可见**节点）。
+   全量与增量共用，保证两条路径布局完全一致。返回 "UNKNOWN_LANE" = lane 集合变了，调用方回退全量。 */
+function dagPlace(n){
+  const tier = DG.tier[n.id];
+  if(DG.hideMid && tier === "mid") return null;
+  if(DG.hiddenLanes.has(n.lane)) return null;
+  if(DG.hideAux && DG.laneKind[n.lane] === "aux") return null;
+  const x = DG.laneX[n.lane];
+  if(x == null) return "UNKNOWN_LANE";   /* lane 不存在（增量路径防御：lane 换血 → 全量重渲） */
+  const isErr = !!n.has_error && (n.kind === "main" || n.kind === "subagent");
+  if(isErr && !DG.suppressRun[n.lane]){
+    const openKey = DG.openRun[n.lane];
+    if(openKey){
+      if(DG.expandedRuns.has(openKey)){
+        DG.suppressRun[n.lane] = true;   /* 展开的 run：后续新错误不再折叠，保持视觉一致 */
+      }else{
+        const run = DG.runs[openKey];
+        run.ids.push(n.id); DG.runOf[n.id] = openKey;
+        DG.laneLast[n.lane] = n.id;
+        return { type: "extend", key: openKey };   /* 不占位，调用方更新 ×N 卡 */
+      }
+    }else{
+      const prevId = DG.laneLast[n.lane];
+      const prevErr = prevId && !DG.runOf[prevId] && (DG.nodeById[prevId] || {}).has_error && DG.pos[prevId];
+      if(prevErr){
+        const key = n.lane + ":" + prevId;
+        if(DG.expandedRuns.has(key)){
+          DG.suppressRun[n.lane] = true;
+        }else{
+          /* prev 是单张错误卡 → 合并成 run（prev 已占位，run 卡沿用其位置，高度同为 NH，布局不变） */
+          DG.runs[key] = { key, lane: n.lane, ids: [prevId, n.id],
+                           pos: { x, y: DG.pos[prevId].y, h: DGX.NH }, chunkIdx: null };
+          DG.openRun[n.lane] = key;
+          DG.runOf[prevId] = key; DG.runOf[n.id] = key;
+          DG.laneLast[n.lane] = n.id;
+          return { type: "start", key, prevId };
+        }
+      }
+    }
+  }
+  if(!isErr){ DG.openRun[n.lane] = null; DG.suppressRun[n.lane] = false; }   /* 连续错误被打断 */
+  const h = tier === "mid" ? DGX.NH_MID : DGX.NH;
+  DG.pos[n.id] = { x, y: DG.yCur, h };
+  DG.yCur += h + DGX.VG;
+  let svg = "";
+  const prev = DG.laneLast[n.lane];
+  if(prev){
+    const pa = dagPosOf(prev);   /* prev 可能被折叠 → seq 边从 run 卡出发 */
+    if(pa) svg += dagSeqSvg(pa, DG.pos[n.id], n.lane);
+  }
+  DG.laneLast[n.lane] = n.id;
+  return { type: "node", svg, html: dagNodeHtml(n) };
+}
+function dagApplyZoom(){
+  const wrap = $("dagWrap"), inner = wrap.querySelector(".dag-inner");
+  if(!inner) return;
+  const W = parseFloat(inner.style.width) || 600;
+  const fit = Math.min(1, (wrap.clientWidth - 24) / W);
+  const z = (S.dagZoom != null) ? S.dagZoom : fit;   /* 默认适应宽度，用户 +/- 后保持自定义（260712） */
+  inner.style.zoom = z;
+  const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
+}
+function renderDag(d){
+  renderDagDates();
+  dagMetaSet(d);
+  const nodes = d.nodes || [];
   if(!nodes.length){
+    DG.rendered = false; DG.date = null; DG.ids = new Set();
     $("dagLegend").innerHTML = "";
-    wrap.innerHTML = '<div class="list-empty">' + (S.date === todayStr()
+    $("dagWrap").innerHTML = '<div class="list-empty">' + (S.date === todayStr()
       ? t18("dag.emptyToday") : t18("dag.emptyDate")) + '</div>';
     return;
   }
-
-  /* --- 主线配色与关联解析（260712 item5）--- */
-  const nodeById = {};
-  nodes.forEach(n => nodeById[n.id] = n);
-  const laneKindOf = {};
-  lanes.forEach(l => laneKindOf[l.lane_id] = l.kind);
-  const laneColor = {}, laneNum = {};   /* 仅 main lane 取色板；lanes 已按首见时间排序 */
+  const canInc = DG.rendered && DG.date === S.date && nodes.length >= DG.ids.size
+    && (d.lanes || []).length === DG.laneCount;
+  if(canInc) renderDagIncremental(d); else renderDagFull(d);
+}
+function renderDagFull(d){
+  const wrap = $("dagWrap");
+  const nodes = d.nodes || [], lanes = d.lanes || [], edges = d.edges || [];
+  if(DG.date !== S.date){   /* 切日期：泳道选择与展开状态不跨天（lane id 每天不同） */
+    DG.hiddenLanes = new Set(); DG.expandedRuns = new Set();
+  }
+  DG.lanes = lanes;
+  /* 主线配色与关联解析（260712 item5） */
+  DG.nodeById = {}; nodes.forEach(n => DG.nodeById[n.id] = n);
+  DG.laneKind = {}; lanes.forEach(l => DG.laneKind[l.lane_id] = l.kind);
+  DG.laneColor = {}; DG.laneNum = {};
   let mi = 0;
   for(const l of lanes){
     if(l.kind !== "main") continue;
-    laneColor[l.lane_id] = LANE_PALETTE[mi % LANE_PALETTE.length];
-    laneNum[l.lane_id] = ++mi;
+    DG.laneColor[l.lane_id] = LANE_PALETTE[mi % LANE_PALETTE.length];
+    DG.laneNum[l.lane_id] = ++mi;
   }
-  /* 子代理 lane → 触发它的主线；aux 节点 → near 边来源主线（classifier 已算好，前端反查） */
-  const parentLane = {}, auxAssoc = {};
+  DG.parentLane = {}; DG.auxAssoc = {};
   for(const e of edges){
-    const a = nodeById[e.from], b = nodeById[e.to];
+    const a = DG.nodeById[e.from], b = DG.nodeById[e.to];
     if(!a || !b) continue;
-    if(e.type === "trigger" && laneColor[a.lane]) parentLane[b.lane] = a.lane;
-    if(e.type === "near" && laneColor[a.lane]) auxAssoc[b.id] = a.lane;
+    if(e.type === "trigger" && DG.laneColor[a.lane]) DG.parentLane[b.lane] = a.lane;
+    if(e.type === "near" && DG.laneColor[a.lane]) DG.auxAssoc[b.id] = a.lane;
   }
-  /* lane/边用色：main=专属色，其余按 lane kind 语义色 */
-  const laneStroke = id => laneColor[id] || LANE_COLOR[laneKindOf[id]] || LANE_COLOR.aux;
-  renderDagLegend(lanes, laneColor, laneNum);
-
-  const X0 = 16, LW = 260, LG = 40, Y0 = 52, NH = 62, NH_MID = 26, VG = 20;
-  const laneX = {};
-  lanes.forEach((l, i) => laneX[l.lane_id] = X0 + i * (LW + LG));
+  renderDagLegend(lanes, DG.laneColor, DG.laneNum);
+  renderLaneBadge();
+  /* 布局（行高非均匀：中间步压扁；过滤与隐藏泳道不占位、不占 lane 列；连续错误折叠只占一格） */
+  const visLanes = lanes.filter(l => !DG.hiddenLanes.has(l.lane_id) && !(DG.hideAux && l.kind === "aux"));
+  DG.laneX = {}; visLanes.forEach((l, i) => DG.laneX[l.lane_id] = DGX.X0 + i * (DGX.LW + DGX.LG));
+  DG.pos = {}; DG.ids = new Set(); DG.tier = {}; DG.laneLast = {}; DG.yCur = DGX.Y0;
+  DG.runs = {}; DG.openRun = {}; DG.runOf = {}; DG.suppressRun = {};
   const sorted = nodes.slice().sort((a, b) => (a.ts_start || "").localeCompare(b.ts_start || ""));
-  /* 三档判定（260717）：中间步=工具循环回传（仅 main/subagent，错误节点不降档——必须刺眼）；
-     纯对话轮=classifier 轮聚合标记。行高非均匀：中间步压扁，长工具循环段整体收紧。 */
-  const tierOf = n => {
-    if(n.kind !== "main" && n.kind !== "subagent") return "";
-    if(n.has_error) return "";
-    if(!n.turn_start) return "mid";
-    return n.pure_chat ? "chat" : "";
-  };
-  const pos = {};
-  let yCur = Y0;
-  sorted.forEach(n => {
-    const h = tierOf(n) === "mid" ? NH_MID : NH;
-    pos[n.id] = { x: laneX[n.lane] ?? X0, y: yCur, h };
-    yCur += h + VG;
-  });
-  const W = Math.max(X0 + lanes.length * (LW + LG) - LG + 16, 600);
-  const H = yCur + 4;
-
-  let svg = "", html = "";
-  for(const l of lanes){
-    const x = laneX[l.lane_id];
-    const label = laneLabel(l.kind) + (l.kind === "main" ? " " + laneNum[l.lane_id] : "");
-    const pDot = (l.kind === "subagent" && parentLane[l.lane_id])
-      ? '<span class="assoc-dot" style="background:' + laneColor[parentLane[l.lane_id]] +
-        '" title="' + t18("dag.spawnedBy", {n: laneNum[parentLane[l.lane_id]]}) + '"></span>'
-      : "";
-    html += '<div class="lane-head" style="left:' + x + 'px">' +
-      '<span class="lh-dot" style="background:' + laneStroke(l.lane_id) + '"></span>' +
+  const chunks = [];          /* 节点 HTML 按块收集：run 开始时回头把「单张错误卡」替换成 ×N 卡 */
+  const chunkIdxOf = {};
+  let svg = "";
+  for(const n of sorted){
+    DG.ids.add(n.id); DG.tier[n.id] = dagTierOf(n);
+    const placed = dagPlace(n);
+    if(!placed || placed === "UNKNOWN_LANE") continue;
+    if(placed.type === "start"){
+      const idx = chunkIdxOf[placed.prevId];
+      if(idx != null){ chunks[idx] = dagRunCardHtml(DG.runs[placed.key]); DG.runs[placed.key].chunkIdx = idx; }
+      continue;
+    }
+    if(placed.type === "extend"){
+      const run = DG.runs[placed.key];
+      if(run.chunkIdx != null) chunks[run.chunkIdx] = dagRunCardHtml(run);
+      continue;
+    }
+    chunkIdxOf[n.id] = chunks.length;
+    chunks.push(placed.html); svg += placed.svg;
+  }
+  for(const e of edges){   /* trigger/near：两端都可见才画（hideMid 时起点可能是隐藏的 mid 主线节点） */
+    if(e.type !== "seq") svg += dagEdgeSvg(e);
+  }
+  DG.date = S.date; DG.laneCount = lanes.length;
+  const W = Math.max(DGX.X0 + visLanes.length * (DGX.LW + DGX.LG) - DGX.LG + 16, 600);
+  const H = DG.yCur + 4;
+  let heads = "", axis = "";
+  for(const l of visLanes){
+    const x = DG.laneX[l.lane_id];
+    const label = laneLabel(l.kind) + (l.kind === "main" ? " " + DG.laneNum[l.lane_id] : "");
+    const pDot = (l.kind === "subagent" && DG.parentLane[l.lane_id])
+      ? '<span class="assoc-dot" style="background:' + DG.laneColor[DG.parentLane[l.lane_id]] +
+        '" title="' + t18("dag.spawnedBy", {n: DG.laneNum[DG.parentLane[l.lane_id]]}) + '"></span>' : "";
+    heads += '<div class="lane-head" data-lane="' + esc(l.lane_id) + '" style="left:' + x + 'px">' +
+      '<span class="lh-dot" style="background:' + dagLaneStroke(l.lane_id) + '"></span>' +
       '<b>' + label + '</b>' + pDot +
       '<span class="lh-count">' + l.count + '</span>' +
       '<span class="lh-id mono">' + esc(l.lane_id) + '</span></div>';
     /* 泳道背景轴线：主线用本 lane 色淡化，其余中性 */
-    svg += '<line x1="' + (x + LW / 2) + '" y1="' + (Y0 - 8) + '" x2="' + (x + LW / 2) + '" y2="' + (H - 12) +
-      '" stroke="' + (laneColor[l.lane_id] || "var(--border-soft)") + '"' +
-      (laneColor[l.lane_id] ? ' stroke-opacity="0.25"' : "") + ' stroke-width="1"/>';
+    axis += '<line x1="' + (x + DGX.LW / 2) + '" y1="' + (DGX.Y0 - 8) + '" x2="' + (x + DGX.LW / 2) +
+      '" y2="' + (H - 12) + '" stroke="' + (DG.laneColor[l.lane_id] || "var(--border-soft)") + '"' +
+      (DG.laneColor[l.lane_id] ? ' stroke-opacity="0.25"' : "") + ' stroke-width="1"/>';
   }
-  for(const e of edges){
-    const a = pos[e.from], b = pos[e.to];
-    if(!a || !b) continue;
-    if(e.type === "seq"){
-      const cx = a.x + LW / 2;
-      svg += '<path class="e-seq" style="stroke:' + laneStroke((nodeById[e.from] || {}).lane) + '" d="M' +
-        cx + ' ' + (a.y + a.h) + ' L' + cx + ' ' + b.y + '"/>';
-    }else if(e.type === "trigger"){
-      const tc = laneColor[(nodeById[e.from] || {}).lane] || "var(--info)";
-      const x1 = a.x + LW, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
-      const mx = (x1 + x2) / 2;
-      svg += '<path class="e-trigger" style="stroke:' + tc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 +
-        ' ' + (x2 - 8) + ' ' + y2 + '"/>' +
-        '<path class="arrow" style="fill:' + tc + '" d="M' + (x2 - 8) + ' ' + (y2 - 4) + ' L' + x2 + ' ' + y2 + ' L' + (x2 - 8) + ' ' + (y2 + 4) + ' Z"/>';
-    }else{ /* near：弱示意点线，随关联主线着色 */
-      const nc = laneColor[(nodeById[e.from] || {}).lane] || "var(--apple-secondary)";
-      const x1 = a.x + LW, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
-      const mx = (x1 + x2) / 2;
-      svg += '<path class="e-near" style="stroke:' + nc + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 +
-        ' ' + x2 + ' ' + y2 + '"/>';
-    }
-  }
-  for(const n of sorted){
-    const p = pos[n.id];
-    const tier = tierOf(n);
-    const color = KIND_COLOR[n.kind] || KIND_COLOR.other;
-    const border = n.has_error ? "var(--err)" : (laneColor[n.lane] || color);
-    const assoc = auxAssoc[n.id]
-      ? '<span class="assoc-dot" style="background:' + laneColor[auxAssoc[n.id]] +
-        '" title="' + t18("dag.assoc", {n: laneNum[auxAssoc[n.id]]}) + '"></span>'
-      : "";
-    const ur = n.usage || {};
-    const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
-    if(tier === "mid"){
-      /* 工具循环中间步：单行紧凑条（时间+耗时+token），无 chip 无 summary，点击照常进详情 */
-      html += '<div class="dag-node mid" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
-        border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
-        '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
-        '<span class="dn-meta">' + fmtMs(n.total_ms) +
-        (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") + '</span></div></div>';
-      continue;
-    }
-    const chat = tier === "chat" ? '💬 ' : "";
-    html += '<div class="dag-node' + (tier === "chat" ? " chat" : "") + '" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
-      border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
-      '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
-      '<span class="dn-tags">' + assoc +
-      '<span class="chip" style="background:' + color + '">' + esc(kindLabel(n.kind)) + '</span></span></div>' +
-      '<div class="dn-meta">' + esc(n.model || "?") + ' · ' + fmtMs(n.total_ms) +
-      (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") +
-      (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +
-      '<div class="dn-sum' + (n.has_error ? " err" : "") + '">' + chat + esc(n.summary || "") + '</div></div>';
-  }
-  /* LIVE 重绘保留滚动位置（审计 260712 #11），避免 800ms 防抖重绘打断浏览 */
+  /* LIVE 重绘保留滚动位置（审计 260712 #11） */
   const _sl = wrap.scrollLeft, _st = wrap.scrollTop;
   wrap.innerHTML = '<div class="dag-inner" style="width:' + W + 'px;height:' + H + 'px">' +
-    '<svg class="dag-svg" width="' + W + '" height="' + H + '">' + svg + '</svg>' + html + '</div>';
+    '<svg class="dag-svg" width="' + W + '" height="' + H + '">' + axis + svg + '</svg>' + heads +
+    chunks.join("") + '</div>';
   wrap.scrollLeft = _sl;
   wrap.scrollTop = _st;
-  /* 缩放：默认适应宽度（消除水平滚动），用户 +/- 后保持自定义（260712 需求2） */
-  const inner = wrap.querySelector(".dag-inner");
-  if(inner){
-    const fit = Math.min(1, (wrap.clientWidth - 24) / W);
-    const z = (S.dagZoom != null) ? S.dagZoom : fit;
-    inner.style.zoom = z;
-    const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
+  DG.rendered = true;
+  dagApplyZoom();
+}
+function renderDagIncremental(d){
+  const nodes = d.nodes || [], edges = d.edges || [];
+  /* 回退全量的条件：已有节点 tier 改判（pure_chat 轮聚合回填会改已渲染节点的档位） */
+  for(const n of nodes){
+    if(DG.ids.has(n.id) && DG.tier[n.id] !== dagTierOf(n)){ renderDagFull(d); return; }
   }
+  const fresh = nodes.filter(n => !DG.ids.has(n.id));
+  if(!fresh.length) return;   /* meta 已在 renderDag 更新 */
+  fresh.sort((a, b) => (a.ts_start || "").localeCompare(b.ts_start || ""));
+  const wrap = $("dagWrap"), inner = wrap.querySelector(".dag-inner");
+  if(!inner){ renderDagFull(d); return; }
+  const svgEl = inner.querySelector(".dag-svg");
+  let svgAdd = "", htmlAdd = "";
+  const freshVisible = new Set();
+  for(const n of fresh){
+    DG.ids.add(n.id); DG.tier[n.id] = dagTierOf(n); DG.nodeById[n.id] = n;
+    const placed = dagPlace(n);
+    if(placed === "UNKNOWN_LANE"){ renderDagFull(d); return; }   /* lane 换血（数量相同的成员变化），防御 */
+    if(!placed) continue;
+    if(placed.type === "start"){
+      /* 前一张单错误卡已在 DOM → 原地换成 ×N 卡（同位置同高，无需重排） */
+      const el = inner.querySelector('[data-nid="' + placed.prevId + '"]');
+      if(el) el.outerHTML = dagRunCardHtml(DG.runs[placed.key]);
+      continue;
+    }
+    if(placed.type === "extend"){
+      /* run 延展：只更新 ×N 卡文本，不新增 DOM、不动高度——错误洪峰时 LIVE 依然零重排 */
+      const el = inner.querySelector('[data-run="' + placed.key + '"]');
+      if(el) el.outerHTML = dagRunCardHtml(DG.runs[placed.key]);
+      continue;
+    }
+    svgAdd += placed.svg; htmlAdd += placed.html; freshVisible.add(n.id);
+  }
+  for(const e of edges){   /* 只补终点是新可见节点的 trigger/near 边 */
+    if(e.type !== "seq" && freshVisible.has(e.to)) svgAdd += dagEdgeSvg(e);
+  }
+  const H = DG.yCur + 4;
+  inner.style.height = H + "px";
+  svgEl.setAttribute("height", H);
+  svgEl.insertAdjacentHTML("beforeend", svgAdd);
+  inner.insertAdjacentHTML("beforeend", htmlAdd);
+  for(const l of (d.lanes || [])){   /* 泳道计数实时更新 */
+    const el = inner.querySelector('.lane-head[data-lane="' + l.lane_id + '"] .lh-count');
+    if(el) el.textContent = l.count;
+  }
+}
+function dagToggleMid(){
+  DG.hideMid = !DG.hideMid;
+  const b = $("dagMidBtn");
+  b.classList.toggle("on", DG.hideMid);
+  b.dataset.i18n = DG.hideMid ? "dag.showMid" : "dag.hideMid";
+  b.textContent = t18(b.dataset.i18n);
+  DG.rendered = false;   /* 可见性变了：强制全量重排（mid 占位规则不同） */
+  loadDag();
+}
+function dagToggleAux(){
+  DG.hideAux = !DG.hideAux;
+  const b = $("dagAuxBtn");
+  b.classList.toggle("on", DG.hideAux);
+  b.dataset.i18n = DG.hideAux ? "dag.showAux" : "dag.hideAux";
+  b.textContent = t18(b.dataset.i18n);
+  DG.rendered = false;   /* 可见性变了：强制全量重排（aux lane 整列去留影响布局） */
+  loadDag();
+}
+/* ---- 泳道选择（260719）：藏掉不看的主线，剩余泳道适应宽度后自然变大 ---- */
+function laneBtnClick(ev){
+  ev?.stopPropagation();
+  const m = $("laneMenu");
+  if(m.hidden) renderLaneMenu();
+  m.hidden = !m.hidden;
+}
+function renderLaneBadge(){
+  const b = $("laneBtn");
+  if(b) b.textContent = t18("dag.lanes") + (DG.hiddenLanes.size ? "（" + DG.hiddenLanes.size + "）" : "");
+}
+function renderLaneMenu(){
+  const m = $("laneMenu");
+  m.innerHTML = (DG.lanes || []).map(l => {
+    const hidden = DG.hiddenLanes.has(l.lane_id);
+    const color = DG.laneColor[l.lane_id] || LANE_COLOR[l.kind] || LANE_COLOR.aux;
+    const label = laneLabel(l.kind) + (l.kind === "main" ? " " + DG.laneNum[l.lane_id] : "");
+    return '<button onclick="dagToggleLane(\'' + l.lane_id + '\')">' +
+      '<span class="lh-dot" style="background:' + color + '"></span>' +
+      '<span style="flex:1;text-align:left' + (hidden ? ";opacity:.45;text-decoration:line-through" : "") + '">' +
+      label + ' <span class="dm-sub" style="display:inline;margin:0">' + l.count + '</span></span>' +
+      '<span>' + (hidden ? "☐" : "☑") + '</span></button>';
+  }).join("");
+}
+function dagToggleLane(laneId){
+  if(DG.hiddenLanes.has(laneId)) DG.hiddenLanes.delete(laneId); else DG.hiddenLanes.add(laneId);
+  renderLaneMenu(); renderLaneBadge();
+  DG.rendered = false;   /* lane 列数变了：全量重排 */
+  loadDag();
 }
 function dagZoomBy(delta){
   const inner = $("dagWrap").querySelector(".dag-inner");
@@ -1947,7 +2207,7 @@ function dagZoomBy(delta){
   inner.style.zoom = z;
   const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
 }
-function dagZoomFit(){ S.dagZoom = null; loadDag(); }
+function dagZoomFit(){ S.dagZoom = null; DG.rendered = false; loadDag(); }
 
 /* ================= View C 设置 ================= */
 async function loadConfig(){

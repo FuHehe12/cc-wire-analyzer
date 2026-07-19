@@ -1,7 +1,11 @@
-"""捕获记录存储：JSONL append-only 落盘 + 内存 deque + LIVE SSE 推送。
+"""捕获记录存储：JSONL append-only 落盘 + 写时轻量索引 + 内存 deque + LIVE SSE 推送。
 
 架构：
   - append-only jsonl（按天分文件，PyInstaller 冻结态持久位置 ~/.cc-wire-analyzer/captures/）
+  - 写时轻量索引 {date}.idx.jsonl（260719 大流量改造）：单条完整 record 可超 5MB，
+    一天录制能上 GB，而列表/DAG 只用其中几十个字段。append 时 record 本就在内存，
+    顺手提取成 1~2KB 索引记录（含主文件字节偏移 off/len）——列表/泳道只读索引（毫秒级），
+    详情按偏移直接 seek。索引缺失/落后按末尾偏移从主文件增量回填自愈。
   - threading.Lock 串行写盘
   - deque(maxlen=200) 供 LIVE 推送
   - 订阅者 queue.Queue 广播，SSE 客户端阻塞读
@@ -18,6 +22,7 @@ import time
 import uuid
 from pathlib import Path
 
+import classifier
 import config as CFG
 
 log = logging.getLogger(__name__)
@@ -38,6 +43,11 @@ _SUB_LOCK = threading.Lock()
 # 现在失败要计数 + 记日志 + 经 /api/proxy/status 顶到 UI 上。
 _WRITE_ERRORS = 0
 _LAST_WRITE_ERROR: str | None = None
+
+# 索引写失败独立计数（260719）：索引丢了不等于录制丢了（主文件完好），回填能自愈，
+# 但次数异常增长说明磁盘/权限有问题，要和主写失败一样看得见。
+_IDX_ERRORS = 0
+_LAST_IDX_ERROR: str | None = None
 
 
 def new_record_id() -> str:
@@ -65,30 +75,72 @@ def new_record() -> dict:
     }
 
 
+# 索引记录里不对外（列表/SSE/DAG 输出）的内部字段：
+# off/len 是 seek 锚点，其余是 DAG 分类原料（classifier 内部消费）
+_IDX_PRIVATE = ("off", "len", "sys_head", "first_user", "last_user",
+                "tools_n", "uid", "task_prompts", "turn_start", "tool_uses")
+
+
+def _public_summary(idx: dict) -> dict:
+    """索引记录 → 列表/SSE 摘要（剥掉内部字段，形状与旧 _summary(完整 record) 一致）。"""
+    return {k: v for k, v in idx.items() if k not in _IDX_PRIVATE}
+
+
+def _idx_file(date: str) -> Path:
+    return CAPTURES_DIR / f"{date}.idx.jsonl"
+
+
+# date → (covered_end, entries)：covered_end = 索引已覆盖到的主文件字节位置。
+# 主文件 size 不变直接命中缓存（/api/dag 被 LIVE 防抖反复调用时近乎零成本）。
+_IDX_CACHE: dict[str, tuple[int, list[dict]]] = {}
+
+
 def append(record: dict) -> None:
-    """落盘 + 推 LIVE。record 应已填完。
+    """落盘 + 写索引 + 推 LIVE。record 应已填完。
 
     落盘失败**不阻塞转发**（代理透明性优先），但必须留下痕迹：计数 + 日志 + 顶到 UI，
-    否则就是"界面在跳、盘上没有"的静默数据丢失（见 _WRITE_ERRORS 注释）。"""
-    global _WRITE_ERRORS, _LAST_WRITE_ERROR
+    否则就是"界面在跳、盘上没有"的静默数据丢失（见 _WRITE_ERRORS 注释）。
+    索引写失败同样不阻塞、独立计数——索引缺失由读取侧增量回填自愈。"""
+    global _WRITE_ERRORS, _LAST_WRITE_ERROR, _IDX_ERRORS, _LAST_IDX_ERROR
     date = time.strftime("%Y-%m-%d", time.localtime())
     f = CAPTURES_DIR / f"{date}.jsonl"
-    line = json.dumps(record, ensure_ascii=False)
+    data = (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
     ok = True
+    idx_entry = None
     with _LOCK:
         try:
             CAPTURES_DIR.mkdir(parents=True, exist_ok=True)   # 目录建不出来也算落盘失败，一并计入
-            with f.open("a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
+            with f.open("ab") as fh:          # 二进制 append：tell() 是真实字节偏移（索引 seek 锚点）
+                fh.seek(0, 2)
+                off = fh.tell()
+                fh.write(data)
         except OSError as e:
             ok = False
             _WRITE_ERRORS += 1
             _LAST_WRITE_ERROR = f"{type(e).__name__}: {e}"
             log.error("录制落盘失败（第 %d 次，转发不受影响）: %s", _WRITE_ERRORS, e)
+        else:
+            # 主写成功才写索引（off/len 才有意义）。索引 = classifier.index_record + 字节偏移
+            try:
+                idx_entry = classifier.index_record(record)
+                idx_entry["off"] = off
+                idx_entry["len"] = len(data)
+                with _idx_file(date).open("ab") as fh:
+                    fh.write((json.dumps(idx_entry, ensure_ascii=False) + "\n").encode("utf-8"))
+                cached = _IDX_CACHE.get(date)
+                if cached:
+                    cached[1].append(idx_entry)
+                    _IDX_CACHE[date] = (off + len(data), cached[1])
+            except Exception as e:      # 索引是优化不是事实源，失败不阻塞转发，回填自愈
+                idx_entry = None
+                _IDX_ERRORS += 1
+                _LAST_IDX_ERROR = f"{type(e).__name__}: {e}"
+                log.error("索引写入失败（第 %d 次，读取侧会回填自愈）: %s", _IDX_ERRORS, e)
     # 内存 deque + 广播（推摘要不推完整 record：契约规定 SSE 是列表项形状，
     # 且完整 body 可能 MB 级，推给 SSE 会拖垮 LIVE 通道）
     # 失败的记录照样推 LIVE —— 流量确实发生了，用户有权看到；但状态栏会同时告警"这些没存下来"。
-    summ = _summary(record)
+    summ = _public_summary(idx_entry) if idx_entry else _public_summary(
+        classifier.index_record(record))
     if not ok:
         summ["not_persisted"] = True
     _LIVE_DEQUE.append(summ)
@@ -102,48 +154,108 @@ def append(record: dict) -> None:
                 _LIVE_SUBSCRIBERS.discard(q)
 
 
-def _summary(rec: dict) -> dict:
-    """列表项摘要（去掉大字段 body/content_blocks）。"""
-    resp = rec.get("response") or {}
-    req_body = (rec.get("request") or {}).get("body") or {}
-    summary = ""
-    for blk in (resp.get("content_blocks") or []):
-        if blk.get("type") == "text" and blk.get("text"):
-            summary = blk["text"][:80]
-            break
-    return {
-        "id": rec.get("id"),
-        "ts_start": rec.get("ts_start"),
-        "method": rec.get("method"),
-        "path": rec.get("path"),
-        "model": req_body.get("model"),
-        "status": resp.get("status"),
-        "ttft_ms": resp.get("ttft_ms"),
-        "total_ms": resp.get("total_ms"),
-        "usage": resp.get("usage"),
-        "stop_reason": resp.get("stop_reason"),
-        "has_error": rec.get("error") is not None,
-        "summary": summary,
-    }
+def _read_idx_entries(fi: Path) -> tuple[list[dict], int]:
+    """读索引文件全部有效条目，返回 (entries, covered_end)。
+    崩溃残留的半行跳过（条目自带 off/len，covered_end 只认完整条目）。"""
+    entries: list[dict] = []
+    covered = 0
+    if fi.exists():
+        with fi.open("rb") as fh:
+            for raw in fh:
+                try:
+                    e = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                off, ln = e.get("off"), e.get("len")
+                if isinstance(off, int) and isinstance(ln, int):
+                    covered = max(covered, off + ln)
+                entries.append(e)
+    return entries, covered
+
+
+def _backfill_index(f: Path, fi: Path, start: int) -> tuple[list[dict], int]:
+    """从主文件 start 字节处续读，为完整行建索引并追加进 idx 文件（增量回填自愈）。
+
+    触发场景：旧录制没有索引 / 索引写失败落下几条 / 崩溃后索引落后。
+    返回 (新条目, 新的 covered_end)。不可解析的行（崩溃残留）跳过但仍推进 covered_end
+    ——与主文件读取侧行为一致（json 坏的行当不存在），避免每次读取都重复回填同一行。"""
+    new_entries: list[dict] = []
+    end = start
+    with f.open("rb") as fh:
+        fh.seek(start)
+        data = fh.read()
+    lines = data.split(b"\n")
+    trailing = lines.pop()          # 最后一段：data 以 \n 结尾时是 b""，否则是未写完的半行
+    off = start
+    for raw in lines:
+        ln = len(raw) + 1           # +1 是被 split 吃掉的 \n
+        if raw.strip():
+            try:
+                rec = json.loads(raw)
+            except json.JSONDecodeError:
+                pass                # 崩溃残留/合并坏行：跳过但推进偏移
+            else:
+                e = classifier.index_record(rec)
+                e["off"] = off
+                e["len"] = ln
+                new_entries.append(e)
+        off += ln
+        end = off
+    if new_entries:
+        with fi.open("ab") as fh:
+            for e in new_entries:
+                fh.write((json.dumps(e, ensure_ascii=False) + "\n").encode("utf-8"))
+    return new_entries, end
+
+
+def _load_index(date: str) -> list[dict]:
+    """读指定日期索引（缓存 + 按需增量回填）。**调用方须持 _LOCK**。"""
+    f = CAPTURES_DIR / f"{date}.jsonl"
+    fi = _idx_file(date)
+    if not f.exists():
+        if fi.exists():
+            try:
+                fi.unlink()         # 主文件被外部删了 → 陈旧索引一并清
+            except OSError:
+                pass
+        _IDX_CACHE.pop(date, None)
+        return []
+    size = f.stat().st_size
+    cached = _IDX_CACHE.get(date)
+    if cached and cached[0] == size:
+        return cached[1]
+    entries, covered = _read_idx_entries(fi)
+    if covered < size:
+        try:
+            new_entries, covered = _backfill_index(f, fi, covered)
+            entries.extend(new_entries)
+            if new_entries:
+                log.info("索引回填 %s：补 %d 条", date, len(new_entries))
+        except Exception as e:
+            # 回填失败不致命：返回已有部分（可能不全），下次读取再试
+            log.error("索引回填失败 %s: %s", date, e)
+    _IDX_CACHE[date] = (covered, entries)
+    return entries
+
+
+def list_index(date: str | None = None) -> list[dict]:
+    """指定日期的全部索引记录（DAG 构建用）。无 1000 条上限——260719 前 list_full
+    写死 limit=1000，大流量天（实测 2993 条）泳道图直接丢后 2/3。"""
+    if date is None:
+        date = time.strftime("%Y-%m-%d", time.localtime())
+    with _LOCK:
+        return list(_load_index(date))
 
 
 def list_captures(date: str | None = None, limit: int = 200, offset: int = 0) -> dict:
-    """读指定日期 jsonl，倒序分页返回摘要列表。"""
+    """读指定日期索引，倒序分页返回摘要列表。
+    260719 改读索引前：每次 readlines 整个主文件 + parse 倒序头 N 行（恰是最大的行），
+    826MB 录制实测峰值内存 3.3GB。"""
     if date is None:
         date = time.strftime("%Y-%m-%d", time.localtime())
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    items = []
-    total = 0
-    if f.exists():
-        with _LOCK:
-            with f.open("r", encoding="utf-8") as fh:
-                lines = fh.readlines()
-        total = len(lines)
-        for line in lines[::-1][offset:offset + limit]:
-            try:
-                items.append(_summary(json.loads(line)))
-            except json.JSONDecodeError:
-                continue
+    entries = list_index(date)
+    total = len(entries)
+    items = [_public_summary(e) for e in entries[::-1][offset:offset + limit]]
     return {
         "date": date,
         "total": total,
@@ -152,8 +264,9 @@ def list_captures(date: str | None = None, limit: int = 200, offset: int = 0) ->
     }
 
 
-def list_full(date: str | None = None, limit: int = 1000) -> list[dict]:
-    """读指定日期全量完整 records（供 DAG 分类分析用；nodes 只回摘要不含 body）。"""
+def list_full(date: str | None = None, limit: int = 100000) -> list[dict]:
+    """读指定日期全量**完整** records（含 body，MB 级/条，大流量天 parse 要秒级）。
+    仅供 tools/lane_probe.py 等需要 body 内部细节的 dev 工具；热路径一律走 list_index。"""
     if date is None:
         date = time.strftime("%Y-%m-%d", time.localtime())
     f = CAPTURES_DIR / f"{date}.jsonl"
@@ -173,7 +286,8 @@ def list_full(date: str | None = None, limit: int = 1000) -> list[dict]:
 
 
 def get_capture(rid: str, date: str | None = None) -> dict | None:
-    """线性扫描找 id 匹配（MVP 不建索引，单文件 < 10k 行可接受）。
+    """按 id 取完整 record。优先走索引 off/len 直接 seek（826MB 文件也是毫秒级）；
+    索引缺行时兜底子串预筛扫描（命中 `"<rid>"` 的行才 json.loads，不再逐行全量 parse）。
 
     date 指定则只扫该日；为 None 则先扫今天，找不到回退遍历所有历史日期
     （修复：原先写死今天，历史日期详情必然 404，审计 260712 #4）。
@@ -182,11 +296,25 @@ def get_capture(rid: str, date: str | None = None) -> dict | None:
         f = CAPTURES_DIR / f"{d}.jsonl"
         if not f.exists():
             return None
+        entries = list_index(d)
+        hit = next((e for e in entries if e.get("id") == rid), None)
+        if hit is not None and isinstance(hit.get("off"), int) and isinstance(hit.get("len"), int):
+            try:
+                with f.open("rb") as fh:
+                    fh.seek(hit["off"])
+                    rec = json.loads(fh.read(hit["len"]))
+                if rec.get("id") == rid:
+                    return rec
+            except (OSError, json.JSONDecodeError):
+                pass                # 偏移失效（文件被外部改动）→ 落到扫描兜底
+        needle = f'"{rid}"'.encode("utf-8")
         with _LOCK:
-            with f.open("r", encoding="utf-8") as fh:
-                for line in fh:
+            with f.open("rb") as fh:
+                for raw in fh:
+                    if needle not in raw:
+                        continue
                     try:
-                        rec = json.loads(line)
+                        rec = json.loads(raw)
                         if rec.get("id") == rid:
                             return rec
                     except json.JSONDecodeError:
@@ -211,7 +339,9 @@ def get_capture(rid: str, date: str | None = None) -> dict | None:
 def _available_dates() -> list[str]:
     if not CAPTURES_DIR.exists():
         return []
-    dates = [f.stem for f in CAPTURES_DIR.glob("*.jsonl")]
+    # 只认 YYYY-MM-DD 主文件：滤掉 {date}.idx.jsonl（索引）和 .archiving.* 临时文件，
+    # 否则它们会变成日期 chip 混进 UI（260719 索引文件引入后必现）
+    dates = [f.stem for f in CAPTURES_DIR.glob("*.jsonl") if _DATE_RE.match(f.stem)]
     dates.sort(reverse=True)
     return dates
 
@@ -249,19 +379,26 @@ def _validate_date(date: str) -> None:
 
 
 def purge_date(date: str) -> int:
-    """删除指定日期的录制文件，返回删除的记录条数。
+    """删除指定日期的录制文件（主文件 + 索引 + 缓存），返回删除的记录条数。
     持 _LOCK 防与 append 竞争；当天则一并清内存 deque（否则 SSE 客户端还看到旧摘要）。"""
     _validate_date(date)
     f = CAPTURES_DIR / f"{date}.jsonl"
+    fi = _idx_file(date)
     removed = 0
     today = time.strftime("%Y-%m-%d", time.localtime())
     with _LOCK:
         if f.exists():
-            removed = _count_lines(f)
+            removed = _count_lines(f)   # 只数行不 parse（删 826MB 文件不该先付 9s 回填）
             try:
                 f.unlink()
             except OSError as e:
                 raise StoreError("delete_failed", f"删除失败：{e}")
+        if fi.exists():
+            try:
+                fi.unlink()
+            except OSError:
+                pass            # 索引删不掉不致命：主文件已没，读取侧会清陈旧索引
+        _IDX_CACHE.pop(date, None)
         if date == today:
             _LIVE_DEQUE.clear()
     return removed
@@ -269,7 +406,8 @@ def purge_date(date: str) -> int:
 
 def write_errors() -> dict:
     """落盘失败统计（供 /api/proxy/status → UI 告警、CLI status → AI 健康检查）。"""
-    return {"count": _WRITE_ERRORS, "last": _LAST_WRITE_ERROR}
+    return {"count": _WRITE_ERRORS, "last": _LAST_WRITE_ERROR,
+            "idx_count": _IDX_ERRORS, "idx_last": _LAST_IDX_ERROR}
 
 
 def enforce_retention(days: int) -> list[str]:
@@ -323,14 +461,22 @@ def archive_date(date: str) -> dict:
         zmode, compressed = zipfile.ZIP_STORED, False
     ts = _t.strftime("%H%M%S", _t.localtime())
     staging = CAPTURES_DIR / f".{date}.archiving.{ts}.jsonl"
+    staging_idx = CAPTURES_DIR / f".{date}.archiving.{ts}.idx.jsonl"
     dst = ARCHIVES_DIR / f"{date}.{ts}.jsonl.zip"
     today = time.strftime("%Y-%m-%d", time.localtime())
-    # 锁内：复检 exists（TOCTOU）+ 数行 + rename 抢占 + 清 deque
+    # 锁内：复检 exists（TOCTOU）+ 数行 + rename 抢占（主文件与索引一起走）+ 清 deque/缓存
     with _LOCK:
         if not f.exists():
             raise StoreError("not_found", f"{date} 无录制文件")
         count = _count_lines(f)
         f.rename(staging)   # 原子抢占；此后 append 会建新 {date}.jsonl
+        fi = _idx_file(date)
+        if fi.exists():
+            try:
+                fi.rename(staging_idx)
+            except OSError:
+                pass        # 索引 rename 失败不阻断存档：残留索引会因主文件消失被读取侧清掉
+        _IDX_CACHE.pop(date, None)
         if date == today:
             _LIVE_DEQUE.clear()
     # 锁外：压缩 staging → dst，失败回退
@@ -338,11 +484,18 @@ def archive_date(date: str) -> dict:
         with zipfile.ZipFile(dst, "w", zmode) as zf:
             zf.write(staging, arcname=f"{date}.jsonl")
         staging.unlink()
+        if staging_idx.exists():
+            try:
+                staging_idx.unlink()    # 存档成功：索引已无主文件，一并清
+            except OSError:
+                pass
     except Exception as e:
         # 压缩失败/删除失败：把 staging 放回原位，不丢录制；dst 若已建则清掉
         try:
             if staging.exists():
                 staging.rename(f)
+            if staging_idx.exists():
+                staging_idx.rename(fi)
         except OSError:
             pass
         try:

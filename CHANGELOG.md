@@ -1,5 +1,68 @@
 # Changelog
 
+## v0.3.2 - 2026-07-19
+
+### Fixed
+- **Timeline (DAG) view silently truncated at 1000 records, and the whole UI got sluggish
+  on busy capture days.** A heavy day of recording easily exceeds 1000 requests (measured:
+  2993 records / 826 MB in a single day, ~276 KB average per record), and the pipeline had
+  four compounding bottlenecks:
+
+  1. `list_full()` hard-capped the DAG input at 1000 records — on the measured day the
+     timeline showed 1000 nodes / 5 lanes instead of the real 2993 nodes / 13 lanes;
+     the back two-thirds of the day never made it into the graph.
+  2. `list_captures()` `readlines()`-ed the entire main file and JSON-parsed the newest
+     200 lines (which are the largest ones — context grows over the day) on every list
+     request: measured 3.3 GB peak memory and 2.6 s of disk reading for one 826 MB day.
+  3. `/api/dag` re-read and re-parsed the whole capture file on every call, and the
+     frontend re-calls it (800 ms debounce) on every live capture event — more traffic
+     meant more calls, each slower than the last.
+  4. `get_capture()` linear-scanned and JSON-parsed line by line — worst case parsing the
+     entire 826 MB file to open one detail view.
+
+  Root fix: **write-time lightweight index**. `append()` already has the full record in
+  memory, so it now also writes a 1–2 KB index record (`{date}.idx.jsonl`) carrying every
+  field the list/DAG need plus the byte offset of the full record in the main file.
+  Lists and the timeline read only the index (2993 records ≈ 5 MB, ~50 ms), the 1000-record
+  cap is gone, and detail views seek directly to the record (measured 22 ms for the last
+  record of an 826 MB day). Index records hold their own offsets, so a missing/stale index
+  (old captures, crashed writes) self-heals by incremental backfill from the main file.
+  Index write failures never block forwarding (same invariant as the main write) — they are
+  counted, logged, surfaced via `/api/proxy/status` (`write_errors.idx_count`), and healed
+  by backfill. Frontend: live updates to an existing list row now replace that single row's
+  DOM instead of rebuilding the whole list per SSE event.
+
+  Measured on the 826 MB / 2993-record day: DAG 1000→2993 nodes (complete), build 147 ms
+  after a one-time 5 s backfill; capture list 2.6 s / 3.3 GB → 1 ms / 0.1 MB; detail open
+  seconds → 22 ms.
+
+- **Timeline view froze during live recording on busy days (frontend), and 3000-node graphs
+  were unreadable.** Even with the fast index backend, every live capture event triggered a
+  full frontend rebuild of the graph — measured 1.7 MB of innerHTML (2993 node divs + 3725
+  SVG paths), ~1.1 s of main-thread work every ~1 s while traffic flowed. The layout is
+  time-ordered and new nodes only ever append at the bottom, so live updates now **append
+  only the new nodes/edges** (measured 2 ms, layout verified identical to a full rebuild
+  node-by-node); a full re-render happens only on view/date/filter switches, lane-count
+  changes, or turn-tier reclassification. Two new toolbar filters keep big days readable:
+  **Hide tool-loop steps** (collapses tool-loop middle steps) and **Hide auxiliary calls**
+  (collapses title/security/count calls — measured 1/4 of all nodes on the reference day),
+  taking the 2993-node day down to 2050 visible nodes / 12 lanes. Node CSS `transition: all`
+  narrowed to specific properties. All labels in zh/en/ja.
+
+### Added
+- **Collapse runs of consecutive errors into one red "×N" card.** A dead-upstream day floods
+  the graph with retry errors (measured 2029 error nodes in one day — "errors never get
+  visually downgraded" is a deliberate design rule, but 2029 full-height cards made the graph
+  168k px tall and unreadable). Consecutive errors in the same lane (≥2) now fold into a
+  single striking red card with count, time span, and first summary — visible nodes on the
+  reference day drop 2993 → 969. Click to expand into individual error cards (first card
+  gets a collapse badge); live-appended errors extend the count in place with zero re-layout.
+  Sequence/trigger edges resolve folded members to the run card's position.
+- **Lane picker in the timeline toolbar.** Fit-width zoom on a 13-lane day is ~29% — text
+  unreadable. The new "Lanes" dropdown lists every lane (color dot, name, count) and toggles
+  visibility; hidden lanes free their column so remaining lanes fit at a larger zoom (one
+  main lane + agent + aux → 100%). Selection resets on date change (lane ids differ per day).
+
 ## v0.3.1 - 2026-07-18
 
 ### Fixed

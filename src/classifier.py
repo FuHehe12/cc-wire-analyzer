@@ -120,21 +120,69 @@ def _tool_use_count(record: dict) -> int:
                if isinstance(b, dict) and b.get("type") == "tool_use")
 
 
-# ===== 分类 =====
-def classify(record: dict) -> str:
-    # count_tokens 探针：path 即可判定（非对话，CC 估上下文 token 用，260712 实测）
-    if "count_tokens" in (record.get("path") or "").lower():
-        return "count_tokens"
-    body = (record.get("request") or {}).get("body") or {}
+# ===== 轻量索引记录（260719 大流量性能改造） =====
+# 单条完整 record 可超 5MB（system prompt + 上百个工具 schema），一天录制能上 GB。
+# build_dag / 列表摘要实际只用其中几十个字段——录制时（record 本就在内存）一次性提取
+# 成 1~2KB 的索引记录写进 {date}.idx.jsonl，之后 DAG/列表只读索引，
+# 不再每次全量 parse 主文件（实测 826MB/2993 条：全量 parse ~9s → 索引 ~50ms）。
+def index_record(rec: dict) -> dict:
+    """完整 record → 轻量索引记录（capture_store 写时/回填时调用）。
+
+    字段分两组：
+      - 列表/SSE 摘要组：id/ts_start/method/path/model/status/ttft_ms/total_ms/
+        usage(已归一)/stop_reason/has_error/summary
+      - DAG 分类原料组：sys_head/first_user/last_user/tools_n/uid/task_prompts/
+        turn_start/tool_uses（classify_idx/_lane_key/_node_summary 只吃这些，
+        不再碰完整 body）
+    capture_store 另补 off/len（主文件字节偏移），供 get_capture 直接 seek。
+    """
+    body = (rec.get("request") or {}).get("body") or {}
     if not isinstance(body, dict):
         body = {}
-    max_tok = body.get("max_tokens") or 0
+    resp = rec.get("response") or {}
     sys_text = _system_text(body)
     users = _user_texts(body)
-    last_u = users[-1] if users else ""
-    tools_n = len(body.get("tools") or [])
+    summary = ""
+    for blk in resp.get("content_blocks") or []:
+        if isinstance(blk, dict) and blk.get("type") == "text" and blk.get("text"):
+            summary = blk["text"][:80]
+            break
+    return {
+        "id": rec.get("id"),
+        "ts_start": rec.get("ts_start"),
+        "method": rec.get("method"),
+        "path": rec.get("path"),
+        "model": body.get("model"),
+        "status": resp.get("status"),
+        "ttft_ms": resp.get("ttft_ms"),
+        "total_ms": resp.get("total_ms"),
+        "usage": usage_norm(resp),
+        "stop_reason": resp.get("stop_reason"),
+        "has_error": rec.get("error") is not None,
+        "summary": summary,
+        # ---- DAG 分类原料 ----
+        "sys_head": sys_text[:2000],
+        "first_user": (users[0][:2000] if users else ""),
+        "last_user": (users[-1][:2000] if users else ""),
+        "tools_n": len(body.get("tools") or []),
+        "uid": (body.get("metadata") or {}).get("user_id") or "",
+        "task_prompts": [p[:PROMPT_MATCH_LEN] for p in _task_prompts(rec)],
+        "turn_start": _is_turn_start(body),
+        "tool_uses": _tool_use_count(rec),
+    }
 
-    blob = (sys_text[:2000] + "\n" + last_u[:2000]).lower()
+
+# ===== 分类 =====
+def classify_idx(idx: dict) -> str:
+    """索引记录 → kind。与旧 classify(完整 record) 逐条等价（原料已由 index_record 预提取）。"""
+    # count_tokens 探针：path 即可判定（非对话，CC 估上下文 token 用，260712 实测）
+    if "count_tokens" in (idx.get("path") or "").lower():
+        return "count_tokens"
+    sys_text = idx.get("sys_head") or ""
+    last_u = idx.get("last_user") or ""
+    tools_n = idx.get("tools_n") or 0
+
+    blob = (sys_text + "\n" + last_u).lower()
     sys_low = sys_text[:500].lower()
     # 安全分类器（system 含 security monitor，260712 实测）
     if any(h in blob for h in SECURITY_HINTS):
@@ -153,13 +201,16 @@ def classify(record: dict) -> str:
     return "other"
 
 
-def _lane_key(body: dict) -> str:
+def classify(record: dict) -> str:
+    """完整 record → kind（lane_probe 等直接吃完整记录的调用方保留入口）。"""
+    return classify_idx(index_record(record))
+
+
+def _lane_key(idx: dict) -> str:
     """会话线分组键：首条真实 user 文本 + user_id。
     已知局限：autocompact 压缩后 messages[0] 变化会断成新 lane（MVP 接受）。"""
-    users = _user_texts(body)
-    first_u = users[0][:2000] if users else ""
-    uid = (body.get("metadata") or {}).get("user_id") or ""
-    return hashlib.md5(f"{first_u}|{uid}".encode("utf-8", "replace")).hexdigest()[:8]
+    return hashlib.md5(f"{idx.get('first_user') or ''}|{idx.get('uid') or ''}".encode(
+        "utf-8", "replace")).hexdigest()[:8]
 
 
 def _task_prompts(record: dict) -> list[str]:
@@ -177,63 +228,51 @@ def _task_prompts(record: dict) -> list[str]:
     return out
 
 
-def _node_summary(record: dict, kind: str, lane: str) -> dict:
-    body = (record.get("request") or {}).get("body") or {}
-    resp = record.get("response") or {}
-    summary = ""
-    for blk in resp.get("content_blocks") or []:
-        if blk.get("type") == "text" and blk.get("text"):
-            summary = blk["text"][:60]
-            break
-    if not summary:
-        users = _user_texts(body)
-        summary = (users[-1][:60] if users else "")
+def _node_summary(idx: dict, kind: str, lane: str) -> dict:
+    """索引记录 → DAG 节点摘要。usage 在 index_record 里已归一（260719），
+    不再有「生产方写全名、消费方读短名」的键名错位空间。"""
+    summary = (idx.get("summary") or "")[:60] or (idx.get("last_user") or "")[:60]
     return {
-        "id": record.get("id"),
-        "ts_start": record.get("ts_start"),
+        "id": idx.get("id"),
+        "ts_start": idx.get("ts_start"),
         "kind": kind,
         "lane": lane,
-        "model": body.get("model"),
-        "status": resp.get("status"),
-        "total_ms": resp.get("total_ms"),
-        "usage": usage_norm(resp),   # 260713：原来读短名 u.get("input")，而 SSE 写的是 input_tokens
-                                     # → DAG 节点的 token 恒为 null（前端做了双键兼容也救不回来，
-                                     #   因为后端发出去的两个键都是空的）
-        "has_error": record.get("error") is not None,
+        "model": idx.get("model"),
+        "status": idx.get("status"),
+        "total_ms": idx.get("total_ms"),
+        "usage": idx.get("usage"),
+        "has_error": bool(idx.get("has_error")),
         "summary": summary,
         # 视觉分层三原料（260717）：turn_start=用户新消息触发；tool_uses=本响应动手次数；
         # pure_chat 由 build_dag 轮聚合后回填（整轮零动手 → 回顾/追问/澄清类轻量轮）
-        "turn_start": _is_turn_start(body),
-        "tool_uses": _tool_use_count(record),
+        "turn_start": bool(idx.get("turn_start")),
+        "tool_uses": idx.get("tool_uses") or 0,
         "pure_chat": False,
     }
 
 
 # ===== DAG 构建 =====
 def build_dag(records: list[dict]) -> dict:
-    """records（同一天全量、任意序）→ {nodes, edges, lanes}。"""
+    """索引记录（同一天全量、任意序，capture_store.list_index 提供）→ {nodes, edges, lanes}。"""
     recs = sorted(records, key=lambda r: r.get("ts_start") or "")
-    infos = []   # (record, kind, lane_key)
+    infos = []   # (idx, kind, lane_key)
     for r in recs:
-        body = (r.get("request") or {}).get("body") or {}
-        kind = classify(r)
-        infos.append([r, kind, _lane_key(body)])
+        kind = classify_idx(r)
+        infos.append([r, kind, _lane_key(r)])
 
     # 子代理后验修正：main 的 Task prompt 前缀匹配其他请求的首条 user 文本。
     # 命中则改判 subagent + 记 trigger 边（比 system 指纹启发式可靠，精确对齐）。
     prompts = []  # (main_node_id, prompt)
     for r, kind, _ in infos:
         if kind == "main":
-            for p in _task_prompts(r):
+            for p in r.get("task_prompts") or []:
                 prompts.append((r.get("id"), p))
     trigger_edges = []
     for info in infos:
         r, kind, _ = info
         if kind == "main":
             continue
-        body = (r.get("request") or {}).get("body") or {}
-        users = _user_texts(body)
-        fu = users[0] if users else ""
+        fu = r.get("first_user") or ""
         if not fu:
             continue
         for mid, p in prompts:
@@ -322,7 +361,7 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    recs = cs.list_full()
+    recs = cs.list_index()
     dag = build_dag(recs)
     print(json.dumps({"nodes": len(dag["nodes"]),
                       "edges": [(e["type"]) for e in dag["edges"]],
