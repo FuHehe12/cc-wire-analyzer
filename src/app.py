@@ -21,6 +21,7 @@ from flask import (Flask, Response, jsonify, render_template, request,
 
 import config as CFG
 import capture_store
+import diagnose
 import doctor
 import settings_guard
 
@@ -137,6 +138,26 @@ def proxy_status():
 def health_config():
     """配置体检（只读）。UI 顶部横幅 / 体检抽屉 / CLI `doctor` 同吃这一份结果。"""
     return jsonify(doctor.check(_LISTEN_PORT))
+
+
+@app.route("/api/diagnose/errors")
+def diagnose_errors():
+    """失败聚合：按上游错误消息归并当天失败 + 请求侧关键字段（给 agent 诊断用）。
+
+    与体检互补：体检看配置**应该**是什么样，这里看实际**发生了**什么失败——
+    后者不受「改了文件但 CC 没重启」那类滞后影响（见 doctor.check 的 scope 说明）。"""
+    date = request.args.get("date")
+    try:
+        limit = max(1, min(200, int(request.args.get("limit", diagnose.DEFAULT_LIMIT))))
+    except (TypeError, ValueError):
+        limit = diagnose.DEFAULT_LIMIT
+    try:
+        # date 走 capture_store 的校验（格式 + 语义，防路径穿越）——它 raise StoreError，不返回 bool
+        if date:
+            capture_store._validate_date(date)
+        return jsonify(diagnose.aggregate(capture_store.list_index(date), limit=limit))
+    except capture_store.StoreError as e:
+        return jsonify({"error": e.code, "detail": str(e)}), 400
 
 
 @app.route("/api/proxy/start", methods=["POST"])

@@ -69,7 +69,8 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 # 于是新字段在老录制上恒缺失、判别逻辑静默退化成回落分支，而中间没有任何东西会报错
 # （CLAUDE.md 教训②「键名错位」的同型）。带上版本号，读取侧发现不符就整体重建。
 #   v1 → v2（260725）：新增 is_subagent/entrypoint/session_id/agent_fp/first_user_task
-IDX_SCHEMA = 2
+#   v2 → v3（260725）：新增诊断原料 err_kind/err_msg/effort/thinking/stream/max_tokens
+IDX_SCHEMA = 3
 
 
 # ===== 请求体取文本 =====
@@ -219,6 +220,33 @@ def _tool_use_count(record: dict) -> int:
                if isinstance(b, dict) and b.get("type") == "tool_use")
 
 
+def _error_message(record: dict) -> str:
+    """失败请求的**人类可读原因**，归一成一句话（诊断聚合按它做指纹）。
+
+    上游的错误体形如 `{"type":"error","error":{"type":"...","message":"..."}}`，
+    但录制里存的是 `error.body_snippet`（截断过的原文字符串）——先按 JSON 解析取 message，
+    解析不动就退回原文片段。本地错误（连接失败/超时）没有 body，用 `error.detail`。"""
+    err = record.get("error")
+    if not isinstance(err, dict) or not err:
+        return ""
+    snippet = err.get("body_snippet") or ""
+    if snippet:
+        try:
+            data = json.loads(snippet)
+        except (json.JSONDecodeError, TypeError):
+            return snippet[:300]
+        if isinstance(data, dict):
+            inner = data.get("error")
+            if isinstance(inner, dict):
+                msg = inner.get("message") or inner.get("type") or ""
+                if msg:
+                    return str(msg)[:300]
+            if data.get("message"):
+                return str(data["message"])[:300]
+        return snippet[:300]
+    return str(err.get("detail") or err.get("kind") or "")[:300]
+
+
 # ===== 轻量索引记录（260719 大流量性能改造） =====
 # 单条完整 record 可超 5MB（system prompt + 上百个工具 schema），一天录制能上 GB。
 # build_dag / 列表摘要实际只用其中几十个字段——录制时（record 本就在内存）一次性提取
@@ -280,6 +308,19 @@ def index_record(rec: dict) -> dict:
         "agent_fp": _agent_fp(blocks),
         # 剥 reminder 后的首条 user 开头 = 派生 prompt 原文（对齐锚点，见 strip_reminders）
         "first_user_task": (strip_reminders(users[0])[:600] if users else ""),
+        # ---- 诊断原料（260725）----
+        # 失败聚合要按「错误消息指纹」归并，并同时摆出**请求侧的相关字段**，否则 agent 拿到
+        # 一句 "effort 'max' is not supported when thinking is disabled" 还得再去翻原始 record
+        # 才知道这个请求的 effort/thinking 到底是什么。实测这两个字段一摆出来，
+        # 「effort=max + thinking=disabled → 400」的因果一眼就能对上。
+        "err_kind": (rec.get("error") or {}).get("kind") or "",
+        "err_msg": _error_message(rec),
+        "effort": ((body.get("output_config") or {}).get("effort")
+                   if isinstance(body.get("output_config"), dict) else None),
+        "thinking": ((body.get("thinking") or {}).get("type")
+                     if isinstance(body.get("thinking"), dict) else None),
+        "stream": bool(body.get("stream")),
+        "max_tokens": body.get("max_tokens"),
     }
 
 

@@ -3,6 +3,36 @@
 ## Unreleased
 
 ### Added
+- **Failure groups — captured errors turned into something an agent can diagnose from.** A bad day
+  fills the timeline with red cards and nothing more: 2719 failed requests in one measured day, all of
+  them shown, none of them explained. Worse, the ones that matter get missed — the effort/400 finding
+  in this release sat in the timeline for days and was only noticed while screenshotting something
+  else. But a failed request is not noise: **the upstream already diagnosed it once**, naming the
+  offending field and what to use instead. `GET /api/diagnose/errors` (and `cc-wire-analyzer errors`)
+  groups a day's failures by error message — request ids and numbers normalized, so one root cause is
+  one group — and puts the request side next to the complaint:
+
+  ```json
+  {"count": 2, "status": 400, "message": "output_config.effort 'max' is not supported when thinking is disabled …",
+   "kinds": {"title": 2}, "samples": ["req_8421a7c", "req_1b66772"],
+   "req_fields": {"model": "claude-opus-5", "effort": "max", "thinking": "disabled", "tools_n": 0}}
+  ```
+
+  `req_fields` carries the diagnosis: a **single value** means every request in the group had it, a
+  **list** means the group spans several values. `effort: "max"` + `thinking: "disabled"` as single
+  values identify the cause; `model: ["glm-5.2", "glm-5v-turbo"]` says the model is not what these
+  failures share. `kinds` says which request types are hit — a failure confined to `title` breaks
+  session naming and nothing else.
+
+  Measured on the 2993-record day: **2719 failures → 7 groups in 0.09 s**, and the groups were
+  immediately informative — 2650 upstream 504 timeouts, plus 19 `401 令牌已过期或验证不正确` whose
+  `model` was `claude-fable-5`/`claude-sonnet-5`, i.e. official model names being sent to a
+  third-party endpoint. Output is bounded (`limit`, default 20, `truncated` flag) because a single
+  capture can exceed 5 MB and 2719 raw errors would bury an agent's context.
+
+  This module only shapes data — **no LLM call, no analysis**. The reasoning belongs to the agent
+  reading it, which is the same division of labour as the rest of the AI-facing surface.
+
 - **Config check — a read-only doctor for "CC suddenly can't connect".** Switching back and forth
   between an official subscription and a third-party endpoint leaves configurations half-finished,
   and each half-finished state fails in a way that is hard to attribute: BASE_URL pointing at a
@@ -112,6 +142,17 @@
   requests of one subagent land in one lane; previously the lane key was built from the
   record's own id, giving each request of the same subagent its own column.
 
+- **Self-tests grabbed a fixed port and, when it was taken, silently tested someone else's
+  instance.** `proxy_selftest` bound its app to 5051; with a `serve` daemon or dev server already
+  there, Flask's bind failed inside a background thread while the main flow printed "started" anyway
+  and sent its requests to **that other instance** — whose upstream is a real endpoint, so the fake
+  token came back 401 and the failure pointed at "forwarding is broken", which was not the problem at
+  all. It also wrote two fake requests into the other instance's captures. Self-tests now pick free
+  ports from 5150 (outside the tool's own 5051–5100 range), the mock upstream port is threaded through
+  the fake settings instead of hardcoded, and "the app is up" is a `/api/proxy/status` liveness
+  assertion rather than a `sleep` followed by an unconditional announcement. Verified by running the
+  suite green *while* a dev server held 5051, with that instance's capture count unchanged.
+
 - **Stale capture indexes were silently reused after the index schema changed.**
   `_read_idx_entries` validated only `off`/`len`, so adding fields to an index record left
   old indexes structurally "valid" — the new fields would read as missing on older captures,
@@ -122,6 +163,16 @@
   0.001 s from cache.
 
 ### Changed
+- **The config check now declares its own scope.** `check()` returns `scope: "settings_file"` plus a
+  note, and the UI drawer says it outright: the check reads the settings file, while a **running** CC
+  session keeps the environment it was started with. Right after a user edits `settings.json` the
+  check can report zero issues while the session they are talking to still behaves the old way —
+  observed live, when removing an effort setting turned the check green while the running session
+  stayed on `max`. Reading another process's environment to close that gap was deliberately rejected:
+  cross-platform, permission-sensitive, and this tool is often not CC's child process at all (it
+  isn't when launched by double-click). A rule that cannot tell the difference does not get added —
+  it says what it covers instead. (`/api/diagnose/errors` has no such blind spot: it looks at requests
+  that actually happened.)
 - **Timeline lane labels show the real CC session id** (first 8 characters, full id on
   hover) instead of the internal lane hash — it matches the `.jsonl` filenames under
   `~/.claude/projects/`, so a lane can be traced to its session. Subagent lanes keep their

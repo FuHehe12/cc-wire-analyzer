@@ -34,7 +34,8 @@ tmp = Path(tempfile.mkdtemp(prefix="ccwa_e2e_"))
 fake_settings = tmp / "settings.json"
 fake_settings.write_text(json.dumps({
     "env": {
-        "ANTHROPIC_BASE_URL": "http://127.0.0.1:5099/api/anthropic",
+        # 占位：真正的 mock 上游端口在下面选好后回写（自测不抢固定端口，见 _free_port）
+        "ANTHROPIC_BASE_URL": "http://127.0.0.1:0/api/anthropic",
         "ANTHROPIC_AUTH_TOKEN": "fake-token-secret",
     },
     "model": "opus",
@@ -114,24 +115,60 @@ def _mock_count():
     return Response(json.dumps({"input_tokens": 42}), status=200, mimetype="application/json")
 
 
+def _free_port(start: int) -> int:
+    """从 start 起找一个空闲端口。自测**不许抢固定端口**（260725）：
+    原先写死 5051，被正在跑的 daemon/dev server 占用时，Flask 在后台线程里 bind 失败、
+    异常死在那个线程,主流程照常打印「已起」,于是测试请求打到了**别人的实例**上
+    ——那个实例的上游是真端点，fake token 换回 401，报错指向「转发失败」这个完全错误的方向，
+    还往对方的录制里掺了两条假请求。用 5150+ 也避开工具自己的 5051-5100 区间。"""
+    import socket
+    for p in range(start, start + 60):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", p))
+                return p
+        except OSError:
+            continue
+    raise SystemExit(f"[setup] {start}-{start + 59} 全被占用，找不到空闲端口做自测")
+
+
 def _start(app_obj, port):
     app_obj.run(host="127.0.0.1", port=port, debug=False, use_reloader=False, threaded=True)
 
 
-threading.Thread(target=_start, args=(mock_app, 5099), daemon=True).start()
-flask_app.set_listen_port(5051)
-threading.Thread(target=_start, args=(flask_app.app, 5051), daemon=True).start()
-time.sleep(2.5)
-print("[setup] mock 上游 :5099 + 本软件 app :5051 已起")
+MOCK_PORT = _free_port(5150)
+APP_PORT = _free_port(MOCK_PORT + 1)
+MOCK_UPSTREAM = f"http://127.0.0.1:{MOCK_PORT}/api/anthropic"
+APP_BASE = f"http://127.0.0.1:{APP_PORT}"
+# fake settings 的 BASE_URL 要指向本次选中的 mock 端口（不能再写死）
+_s = json.loads(fake_settings.read_text(encoding="utf-8"))
+_s["env"]["ANTHROPIC_BASE_URL"] = MOCK_UPSTREAM
+fake_settings.write_text(json.dumps(_s, ensure_ascii=False, indent=2), encoding="utf-8")
+
+threading.Thread(target=_start, args=(mock_app, MOCK_PORT), daemon=True).start()
+flask_app.set_listen_port(APP_PORT)
+threading.Thread(target=_start, args=(flask_app.app, APP_PORT), daemon=True).start()
+
+# 探活断言取代 sleep+无条件宣布「已起」——起没起来必须由实际响应说话
+for _i in range(50):
+    try:
+        if httpx.get(f"{APP_BASE}/api/proxy/status", timeout=0.4).status_code == 200:
+            break
+    except httpx.HTTPError:
+        pass
+    time.sleep(0.1)
+else:
+    raise SystemExit(f"[setup] app 在 {APP_PORT} 没起来（/api/proxy/status 探活失败）")
+print(f"[setup] mock 上游 :{MOCK_PORT} + 本软件 app :{APP_PORT} 已起（探活通过）✓")
 
 
 # ===== 3. 启动代理（snapshot + patch）=====
 original = settings_guard.snapshot_original()
 settings_guard.backup_file()
-settings_guard.patch_base_url("http://127.0.0.1:5051")
+settings_guard.patch_base_url(APP_BASE)
 print(f"[setup] snapshot upstream={original}, patched BASE_URL→本地")
 patched = json.loads(fake_settings.read_text(encoding="utf-8"))["env"]["ANTHROPIC_BASE_URL"]
-assert patched == "http://127.0.0.1:5051", f"patch 没生效: {patched}"
+assert patched == APP_BASE, f"patch 没生效: {patched}"
 assert json.loads(fake_settings.read_text(encoding="utf-8"))["env"]["ANTHROPIC_AUTH_TOKEN"] == "fake-token-secret"
 print("[setup] patch OK，token 未动 ✓")
 
@@ -139,7 +176,7 @@ print("[setup] patch OK，token 未动 ✓")
 # ===== 4. 模拟 CC 发请求（流式）=====
 print("\n[1] POST /v1/messages（流式）...")
 resp = httpx.post(
-    "http://127.0.0.1:5051/v1/messages",
+    APP_BASE + "/v1/messages",
     headers={"content-type": "application/json",
              "authorization": "Bearer fake-token-secret",
              "anthropic-version": "2023-06-01"},
@@ -183,7 +220,7 @@ print("    SSE 聚合 + usage(真实键名) + 脱敏 ✓")
 # usage/content_blocks/stop_reason 三样全丢，测试却一路绿灯。
 print("\n[3] POST /v1/messages（非流式，usage 嵌套）...")
 r2 = httpx.post(
-    "http://127.0.0.1:5051/v1/messages",
+    APP_BASE + "/v1/messages",
     headers={"content-type": "application/json", "authorization": "Bearer fake"},
     json={"model": "glm-5.2", "max_tokens": 100,
           "messages": [{"role": "user", "content": "x"}], "stream": False},
@@ -208,7 +245,7 @@ print("    非流式 usage(嵌套) + stop_reason + content_blocks 全解析 ✓"
 # ===== 6b. count_tokens（顶层 token 键形状）不能被上面的改动带坏 =====
 print("\n[3b] POST /v1/messages/count_tokens（顶层 token 键）...")
 r3 = httpx.post(
-    "http://127.0.0.1:5051/v1/messages/count_tokens",
+    APP_BASE + "/v1/messages/count_tokens",
     headers={"content-type": "application/json", "authorization": "Bearer fake"},
     json={"model": "glm-5.2", "messages": [{"role": "user", "content": "x"}]},
     timeout=10.0,

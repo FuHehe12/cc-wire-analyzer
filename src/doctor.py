@@ -166,7 +166,16 @@ def check(listen_port: int | None = None) -> dict:
         if found:
             issues.append(found)
     return {"ok": not any(i["severity"] == "error" for i in issues),
-            "intent": intent, "patched": patched, "issues": issues}
+            "intent": intent, "patched": patched, "issues": issues,
+            # 结论的边界（260725）：我们读的是**文件**，而 CC 跑的是**启动时注入的进程环境**。
+            # 用户按建议改完 settings.json、还没重启 CC 的那段时间里，这里会说「没问题」而
+            # 正在跑的会话行为照旧（实测：删掉 effort 配置后体检立刻全绿，而当前会话仍是 max）。
+            # 不去读别的进程的环境变量来补这个缺口——跨平台、权限敏感，而且本工具未必是 CC 的
+            # 子进程（双击 exe 时就不是），判不准的规则一律不加（铁律 2）。改为如实交代 scope，
+            # 让 UI 与 agent 知道这份结论覆盖到哪。
+            "scope": "settings_file",
+            "scope_note": ("Reflects the settings file on disk. A running CC session keeps the "
+                           "environment it was started with — restart CC for changes to apply.")}
 
 
 def _issue(code: str, severity: str, field: str, value, hint: str) -> dict:

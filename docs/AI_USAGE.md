@@ -123,6 +123,7 @@ All return JSON. All are on `127.0.0.1:$port`.
 | GET | `/api/captures/<id>?date=...` | one full record (bodies included) |
 | GET | `/api/dag?date=YYYY-MM-DD` | lanes / nodes / edges of the session timeline |
 | GET | `/api/health/config` | **config check** (read-only): does CC's config contradict itself? |
+| GET | `/api/diagnose/errors?date=…&limit=N` | **failure groups**: what actually went wrong, grouped by upstream error message |
 | GET | `/api/config` / POST `/api/config` | read / update config (ui_lang, retention_days, translate…) |
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 
@@ -157,9 +158,16 @@ spawn-prompt matching, which is why `/api/dag` can still miss a lane in that cas
 
 ### Config check (`/api/health/config`)
 
-Returns `{ok, intent, patched, issues[]}`. `intent` is `subscription` / `third_party` / `unknown`
-(what the config *looks like* it is trying to do); each issue has `code`, `severity`
+Returns `{ok, intent, patched, issues[], scope}`. `intent` is `subscription` / `third_party` /
+`unknown` (what the config *looks like* it is trying to do); each issue has `code`, `severity`
 (`error`/`warning`/`info`), `field`, `current_value`, and an English `hint`.
+
+**Mind the `scope`.** It is `settings_file`: the check reads the settings file on disk, while a
+running CC session keeps the environment it was **started** with. So right after the user edits
+`settings.json`, this endpoint can report zero issues while the session they are talking to still
+behaves the old way — `settings.json` changes need a CC restart. Never tell a user "your config is
+fine now" on the strength of this endpoint alone if they have just edited the file; say the file is
+fine and the session needs a restart. (For what is *actually happening*, look at the captures.)
 
 It is **read-only** — it never modifies `settings.json` or credentials, and there is no auto-fix.
 Use it when the user reports "CC can't connect" / "auth fails" / a feature silently stopped
@@ -169,6 +177,34 @@ expired subscription OAuth, and effort settings the official endpoint will rejec
 `POST /api/proxy/start` runs the same check first and refuses with **409 `config_unhealthy`** (plus
 the full `health` payload) when an `error`-level issue exists. Pass `?force=1` to start anyway —
 the rules can be wrong, and the user's judgement outranks them.
+
+### Failure groups (`/api/diagnose/errors`)
+
+**Start here when the user says something is broken.** Captured failures are problem reports the
+upstream already diagnosed once — it says which field is wrong and what to use instead. This endpoint
+groups a day's failures by error message (request ids and numbers normalized, so one root cause is
+one group) and puts the **request side next to the complaint**:
+
+```json
+{"count": 2, "status": 400, "err_kind": "upstream_4xx",
+ "message": "output_config.effort 'max' is not supported when thinking is disabled …",
+ "kinds": {"title": 2}, "sessions": 2, "samples": ["req_8421a7c", "req_1b66772"],
+ "req_fields": {"model": "claude-opus-5", "effort": "max", "thinking": "disabled",
+                "stream": true, "max_tokens": 64000, "tools_n": 0}}
+```
+
+Read `req_fields` carefully — **a single value means every request in the group had it, a list means
+the group spans several values.** That distinction usually is the diagnosis: `effort: "max"` +
+`thinking: "disabled"` as single values against that message says the cause is the effort setting;
+`model: ["glm-5.2", "glm-5v-turbo"]` says the model is not what these failures have in common.
+
+`kinds` tells you which request types are affected (`main` / `title` / `security` / `count_tokens` …)
+— a failure that only hits `title` breaks session naming and nothing else, which is very different
+from one hitting `main`.
+
+Measured on a real bad day: 2719 failures collapsed into 7 groups in 0.09 s. Output is bounded
+(`limit`, default 20) and `truncated` says whether you are seeing everything; `groups` always reports
+the true group count. Follow up on a `samples` id with `/api/captures/<id>` for the full record.
 
 ---
 

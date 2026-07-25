@@ -451,7 +451,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
     <div class="doctor-drawer" id="doctorDrawer" hidden>
       <div class="dd-head">
         <b data-i18n="doctor.title">配置体检</b>
-        <span class="dd-note" data-i18n="doctor.readonly">只读检查，不会修改任何文件</span>
+        <span class="dd-note" data-i18n="doctor.readonly">只读检查，不会修改任何文件 · 改完配置需重启 CC 才生效（正在跑的会话保持启动时的设置）</span>
         <button class="btn tool" onclick="toggleDoctorDrawer()" data-i18n="doctor.close">收起</button>
       </div>
       <div id="doctorList"></div>
@@ -705,7 +705,7 @@ zh: {
   "external.bar": "检测到 settings.json 被外部修改（cc-switch 切换？）：BASE_URL 现为 {url}，CC 已绕过代理直连上游，监控已断档。点「重新接管」把新上游收编进代理。",
   "external.keyRemoved": "（键已删，直连官方）",
   "doctor.title": "配置体检", "doctor.detail": "查看详情", "doctor.close": "收起",
-  "doctor.readonly": "只读检查，不会修改任何文件",
+  "doctor.readonly": "只读检查，不会修改任何文件 · 改完配置需重启 CC 才生效（正在跑的会话保持启动时的设置）",
   "doctor.errBar": "配置有 {n} 个问题会让 CC 连不上或认证失败，代理暂不启动。",
   "doctor.warnBar": "配置有 {n} 处需要注意（不影响启动）。",
   "doctor.forceStart": "我知道风险，仍然启动",
@@ -831,7 +831,7 @@ en: {
   "external.bar": "settings.json was modified externally (cc-switch?): BASE_URL is now {url}. CC is bypassing the proxy — monitoring has stopped. Click \"Re-attach\" to capture the new upstream.",
   "external.keyRemoved": "(key removed — direct to official)",
   "doctor.title": "Config check", "doctor.detail": "Details", "doctor.close": "Collapse",
-  "doctor.readonly": "Read-only — no file is ever modified",
+  "doctor.readonly": "Read-only — no file is ever modified · restart CC for config changes to take effect (a running session keeps the settings it started with)",
   "doctor.errBar": "{n} config problem(s) would stop CC from connecting or authenticating; the proxy was not started.",
   "doctor.warnBar": "{n} thing(s) worth noting in your config (does not block startup).",
   "doctor.forceStart": "Start anyway",
@@ -956,7 +956,7 @@ ja: {
   "external.bar": "settings.json が外部で変更されました（cc-switch？）：BASE_URL は現在 {url} です。CC はプロキシを迂回しており、監視は停止しています。「再接続」で新しい上流を取り込みます。",
   "external.keyRemoved": "（キー削除、公式へ直結）",
   "doctor.title": "設定チェック", "doctor.detail": "詳細", "doctor.close": "閉じる",
-  "doctor.readonly": "読み取り専用——ファイルは一切変更しません",
+  "doctor.readonly": "読み取り専用——ファイルは一切変更しません · 設定変更は CC の再起動後に有効（稼働中のセッションは起動時の設定を保持）",
   "doctor.errBar": "設定に {n} 件の問題があり、CC が接続または認証できません。プロキシは起動していません。",
   "doctor.warnBar": "設定に {n} 件の注意点があります（起動は妨げません）。",
   "doctor.forceStart": "リスクを承知で起動",

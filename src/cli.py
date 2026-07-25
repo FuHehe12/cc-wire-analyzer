@@ -427,6 +427,12 @@ def cmd_doctor(a) -> None:
     _out(doctor.check(port))
 
 
+def cmd_errors(a) -> None:
+    """失败聚合：按上游错误消息归并当天所有失败，附请求侧关键字段。诊断入口。"""
+    import diagnose
+    _out(diagnose.aggregate(capture_store.list_index(a.date), limit=a.limit))
+
+
 def cmd_stats(a) -> None:
     from collections import Counter
     kinds, models, statuses = Counter(), Counter(), Counter()
@@ -552,6 +558,11 @@ def main(argv=None) -> None:
 
     pdoc = sub.add_parser("doctor", help="配置体检（只读，不改任何文件）")
     pdoc.set_defaults(fn=cmd_doctor)
+
+    perr = sub.add_parser("errors", help="失败聚合（按上游错误消息归并 + 请求侧字段）")
+    perr.add_argument("--date")
+    perr.add_argument("--limit", type=int, default=20, help="最多回几组（默认 20）")
+    perr.set_defaults(fn=cmd_errors)
 
     pt = sub.add_parser("stats", help="当日聚合：kind/模型/状态/token/耗时分位")
     pt.add_argument("--date"); pt.set_defaults(fn=cmd_stats)
