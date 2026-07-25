@@ -144,6 +144,26 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .fail-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
   background:var(--bg-error-soft);border:1px solid var(--err);font-size:11.5px;color:var(--err);
   font-weight:600;margin-bottom:14px;}
+/* 配置体检抽屉（260725）：横幅只说一句，明细在这里。每条给出 字段 + 当前值 + 怎么改，
+   但绝不提供「一键修复」——改配置是用户的决定（体检铁律 1）。 */
+.doctor-drawer{border:1px solid var(--border-soft);border-radius:var(--radius-sm);
+  background:var(--bg-card);padding:12px 14px;margin-bottom:14px;}
+.doctor-drawer .dd-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12px;}
+.doctor-drawer .dd-head b{font-size:12.5px;}
+.doctor-drawer .dd-note{color:var(--apple-secondary);font-size:11px;flex:1;}
+.dd-item{display:flex;gap:9px;padding:9px 0;border-top:1px solid var(--border-soft);font-size:11.5px;
+  line-height:1.55;}
+.dd-item:first-child{border-top:none;}
+.dd-sev{flex:0 0 auto;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;height:17px;
+  line-height:15px;border:1px solid transparent;}
+.dd-sev.error{color:var(--err);background:var(--bg-error-soft);border-color:var(--err);}
+.dd-sev.warning{color:var(--gold-text);background:var(--bg-permission);border-color:var(--border-warm);}
+.dd-sev.info{color:var(--info);background:var(--bg-ask);border-color:var(--border-ask);}
+.dd-body{flex:1;min-width:0;}
+.dd-msg{color:var(--apple-primary);}
+.dd-field{color:var(--apple-secondary);font-size:10.5px;margin-top:3px;word-break:break-all;}
+.dd-fix{margin-top:3px;}
+.dd-code{color:var(--apple-tertiary);font-size:10px;}
 
 /* ===== View A 日期与列表 ===== */
 .date-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
@@ -414,6 +434,28 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
     <div class="fail-bar" id="writeFailBar" hidden>
       <span>🛑</span><span id="writeFailText"></span>
     </div>
+    <!-- 配置体检（260725，只读）：CC 配置与本工具状态自相矛盾时提示。error 拦启动、
+         warning 可继续、info 收进抽屉。绝不自动改用户文件。 -->
+    <div class="fail-bar" id="doctorErrBar" hidden>
+      <span>🩺</span>
+      <span id="doctorErrText"></span>
+      <button class="btn tool" id="doctorErrDetail" onclick="toggleDoctorDrawer()"
+              data-i18n="doctor.detail">查看详情</button>
+    </div>
+    <div class="warn-bar" id="doctorWarnBar" hidden>
+      <span>🩺</span>
+      <span id="doctorWarnText"></span>
+      <button class="btn tool" id="doctorWarnDetail" onclick="toggleDoctorDrawer()"
+              data-i18n="doctor.detail">查看详情</button>
+    </div>
+    <div class="doctor-drawer" id="doctorDrawer" hidden>
+      <div class="dd-head">
+        <b data-i18n="doctor.title">配置体检</b>
+        <span class="dd-note" data-i18n="doctor.readonly">只读检查，不会修改任何文件</span>
+        <button class="btn tool" onclick="toggleDoctorDrawer()" data-i18n="doctor.close">收起</button>
+      </div>
+      <div id="doctorList"></div>
+    </div>
     <div class="date-row">
       <div class="date-chips" id="dateChips"></div>
       <div class="date-row-right">
@@ -662,6 +704,31 @@ zh: {
   "btn.retake": "重新接管",
   "external.bar": "检测到 settings.json 被外部修改（cc-switch 切换？）：BASE_URL 现为 {url}，CC 已绕过代理直连上游，监控已断档。点「重新接管」把新上游收编进代理。",
   "external.keyRemoved": "（键已删，直连官方）",
+  "doctor.title": "配置体检", "doctor.detail": "查看详情", "doctor.close": "收起",
+  "doctor.readonly": "只读检查，不会修改任何文件",
+  "doctor.errBar": "配置有 {n} 个问题会让 CC 连不上或认证失败，代理暂不启动。",
+  "doctor.warnBar": "配置有 {n} 处需要注意（不影响启动）。",
+  "doctor.forceStart": "我知道风险，仍然启动",
+  "doctor.confirmForce": "体检认为当前配置有问题。仍要启动代理吗？（规则也可能误判）",
+  "doctor.field": "字段", "doctor.fix": "建议",
+  "doctor.blocked": "代理未启动：配置体检发现 {n} 个问题",
+  /* 每条规则一句人话 + 一句怎么改。后端只给 code/字段/当前值，文案单一真源在这里 */
+  "dc.half_switch_to_subscription": "切了一半：BASE_URL 指向第三方端点，却没有配 token。CC 会把订阅的 OAuth 凭据发给第三方端点，必然被拒。",
+  "dcfix.half_switch_to_subscription": "要走订阅就删掉 BASE_URL；要走第三方就补上 ANTHROPIC_AUTH_TOKEN。",
+  "dc.dead_port_leftover": "死端口：BASE_URL 指向本机某个端口，但那个端口没有任何程序在监听，CC 根本连不上。",
+  "dcfix.dead_port_leftover": "把 BASE_URL 改回真实上游，或先启动本工具。",
+  "dc.self_reference_state": "状态不一致：BASE_URL 指向本工具自己的端口，但本工具并不在代理态（多半是上次退出残留）。",
+  "dcfix.self_reference_state": "点一次「停止代理」再「启动代理」即可复位。",
+  "dc.oauth_expired": "订阅登录（OAuth）已过期，请求会返回 401。",
+  "dcfix.oauth_expired": "在终端跑 claude login 重新登录。",
+  "dc.effort_level_conflict": "effort 两处设置矛盾：顶层 effortLevel 与环境变量不一致，环境变量优先，顶层那个不生效。",
+  "dcfix.effort_level_conflict": "把两处改成一致，或删掉不想要的那处。",
+  "dc.effort_max_rejected_upstream": "effort 设为 max 时，官方端点会拒绝「关闭 thinking」的请求（400）——会话标题生成就属于这类，标题功能会静默失效。",
+  "dcfix.effort_max_rejected_upstream": "改成 high 或更低（第三方端点不受此限）。",
+  "dc.oauth_expiring_soon": "订阅登录即将过期。",
+  "dcfix.oauth_expiring_soon": "可以先跑一次 claude login，免得中途断掉。",
+  "dc.token_overrides_oauth": "env 里的 token 优先于订阅登录，所以订阅其实没在用（如果这是你想要的，忽略即可）。",
+  "dcfix.token_overrides_oauth": "要走订阅就删掉 env 里的 token。",
   "orphan.recovered": "检测到上次异常退出，已自动恢复 BASE_URL（{info}）",
   "toast.stopped": "代理已停止，BASE_URL 已恢复",
   "toast.started": "代理已启动，settings.json 已指向本地代理",
@@ -763,6 +830,30 @@ en: {
   "btn.retake": "Re-attach",
   "external.bar": "settings.json was modified externally (cc-switch?): BASE_URL is now {url}. CC is bypassing the proxy — monitoring has stopped. Click \"Re-attach\" to capture the new upstream.",
   "external.keyRemoved": "(key removed — direct to official)",
+  "doctor.title": "Config check", "doctor.detail": "Details", "doctor.close": "Collapse",
+  "doctor.readonly": "Read-only — no file is ever modified",
+  "doctor.errBar": "{n} config problem(s) would stop CC from connecting or authenticating; the proxy was not started.",
+  "doctor.warnBar": "{n} thing(s) worth noting in your config (does not block startup).",
+  "doctor.forceStart": "Start anyway",
+  "doctor.confirmForce": "The config check found problems. Start the proxy anyway? (the rules can be wrong too)",
+  "doctor.field": "Field", "doctor.fix": "Suggested",
+  "doctor.blocked": "Proxy not started: the config check found {n} problem(s)",
+  "dc.half_switch_to_subscription": "Half-switched: BASE_URL points at a third-party endpoint but no token is set. CC will send its subscription OAuth bearer there and be rejected.",
+  "dcfix.half_switch_to_subscription": "Remove BASE_URL to use the subscription, or add ANTHROPIC_AUTH_TOKEN to use the third party.",
+  "dc.dead_port_leftover": "Dead port: BASE_URL points at a local port with nothing listening — CC cannot connect at all.",
+  "dcfix.dead_port_leftover": "Restore the real upstream in BASE_URL, or start this tool first.",
+  "dc.self_reference_state": "Inconsistent state: BASE_URL points at this tool's own port, but the tool is not proxying (most likely left over from a previous exit).",
+  "dcfix.self_reference_state": "Click Stop, then Start, to reset.",
+  "dc.oauth_expired": "Your subscription login (OAuth) has expired; requests will return 401.",
+  "dcfix.oauth_expired": "Run `claude login` in a terminal.",
+  "dc.effort_level_conflict": "Conflicting effort settings: top-level effortLevel disagrees with the environment variable. The env var wins, so the top-level value has no effect.",
+  "dcfix.effort_level_conflict": "Make both match, or delete the one you don't want.",
+  "dc.effort_max_rejected_upstream": "With effort set to max, the official endpoint rejects requests that have thinking disabled (HTTP 400) — session title generation is one of those, so titles silently stop working.",
+  "dcfix.effort_max_rejected_upstream": "Use 'high' or below (third-party endpoints are unaffected).",
+  "dc.oauth_expiring_soon": "Your subscription login expires soon.",
+  "dcfix.oauth_expiring_soon": "Consider running `claude login` now to avoid an interruption.",
+  "dc.token_overrides_oauth": "The token in env takes precedence over your subscription login, so the subscription is not actually being used (ignore this if that's intended).",
+  "dcfix.token_overrides_oauth": "Remove the token from env to use the subscription.",
   "orphan.recovered": "Abnormal exit detected last run; BASE_URL auto-restored ({info})",
   "toast.stopped": "Proxy stopped, BASE_URL restored",
   "toast.started": "Proxy started, settings.json now points to the local proxy",
@@ -864,6 +955,30 @@ ja: {
   "btn.retake": "再接続",
   "external.bar": "settings.json が外部で変更されました（cc-switch？）：BASE_URL は現在 {url} です。CC はプロキシを迂回しており、監視は停止しています。「再接続」で新しい上流を取り込みます。",
   "external.keyRemoved": "（キー削除、公式へ直結）",
+  "doctor.title": "設定チェック", "doctor.detail": "詳細", "doctor.close": "閉じる",
+  "doctor.readonly": "読み取り専用——ファイルは一切変更しません",
+  "doctor.errBar": "設定に {n} 件の問題があり、CC が接続または認証できません。プロキシは起動していません。",
+  "doctor.warnBar": "設定に {n} 件の注意点があります（起動は妨げません）。",
+  "doctor.forceStart": "リスクを承知で起動",
+  "doctor.confirmForce": "設定チェックで問題が見つかりました。それでもプロキシを起動しますか？（ルール側の誤検知もあり得ます）",
+  "doctor.field": "項目", "doctor.fix": "推奨",
+  "doctor.blocked": "プロキシ未起動：設定チェックで {n} 件の問題",
+  "dc.half_switch_to_subscription": "切り替え途中：BASE_URL がサードパーティを指しているのに token が未設定です。CC はサブスクの OAuth 資格情報をそこへ送り、必ず拒否されます。",
+  "dcfix.half_switch_to_subscription": "サブスクを使うなら BASE_URL を削除、サードパーティを使うなら ANTHROPIC_AUTH_TOKEN を設定してください。",
+  "dc.dead_port_leftover": "デッドポート：BASE_URL がローカルポートを指していますが、そのポートで待ち受けているプロセスがなく、CC は接続できません。",
+  "dcfix.dead_port_leftover": "BASE_URL を本来の上流に戻すか、本ツールを起動してください。",
+  "dc.self_reference_state": "状態不整合：BASE_URL が本ツール自身のポートを指していますが、本ツールはプロキシ状態ではありません（前回終了時の残留と思われます）。",
+  "dcfix.self_reference_state": "「停止」→「起動」で復帰します。",
+  "dc.oauth_expired": "サブスクリプションのログイン（OAuth）が期限切れです。リクエストは 401 になります。",
+  "dcfix.oauth_expired": "ターミナルで claude login を実行してください。",
+  "dc.effort_level_conflict": "effort の設定が矛盾しています：トップレベルの effortLevel と環境変数が異なります。環境変数が優先され、トップレベルは効きません。",
+  "dcfix.effort_level_conflict": "両方を揃えるか、不要な方を削除してください。",
+  "dc.effort_max_rejected_upstream": "effort が max の場合、公式エンドポイントは thinking 無効のリクエストを 400 で拒否します——セッションタイトル生成がこれに該当し、タイトル機能が静かに動かなくなります。",
+  "dcfix.effort_max_rejected_upstream": "high 以下にしてください（サードパーティは影響を受けません）。",
+  "dc.oauth_expiring_soon": "サブスクリプションのログインがまもなく期限切れになります。",
+  "dcfix.oauth_expiring_soon": "中断を避けるため、今のうちに claude login を実行しておくとよいです。",
+  "dc.token_overrides_oauth": "env の token がサブスクリプションのログインより優先されるため、サブスクは実際には使われていません（意図的なら無視してください）。",
+  "dcfix.token_overrides_oauth": "サブスクを使うなら env の token を削除してください。",
   "orphan.recovered": "前回の異常終了を検出し、BASE_URL を自動復元しました（{info}）",
   "toast.stopped": "プロキシを停止し、BASE_URL を復元しました",
   "toast.started": "プロキシを開始し、settings.json をローカルプロキシに向けました",
@@ -1284,17 +1399,22 @@ function showView(v){
   $("tabCaptures").classList.toggle("active", v === "list" || (v === "detail" && S.detailFrom === "list"));
   $("tabDag").classList.toggle("active", v === "dag" || (v === "detail" && S.detailFrom === "dag"));
   $("tabSettings").classList.toggle("active", v === "settings");
-  if(v === "settings") loadConfig();
+  if(v === "settings"){ loadConfig(); refreshHealth(); }   /* 打开设置页顺手体检一次 */
   if(v === "dag") loadDag();
 }
 
 /* ================= 代理状态 ================= */
 async function refreshStatus(){
+  let prevExt = S.status && S.status.external_change ? JSON.stringify(S.status.external_change) : "";
   try{
     const r = await fetch("/api/proxy/status");
     S.status = await r.json();
   }catch(e){ S.status = null; }
   renderStatus();
+  /* settings.json 被外部改动（cc-switch 切换/手改）→ 配置变了，重新体检。
+     只在「改动内容确实变化」时跑，别让 5 秒轮询变成 5 秒一次体检。 */
+  const nowExt = S.status && S.status.external_change ? JSON.stringify(S.status.external_change) : "";
+  if(nowExt !== prevExt) refreshHealth();
 }
 function renderStatus(){
   const st = S.status;
@@ -1356,7 +1476,7 @@ function renderStatus(){
     $("writeFailBar").hidden = true;
   }
 }
-async function toggleProxy(){
+async function toggleProxy(force){
   const btn = $("btnToggle");
   if(!S.status){ btn.disabled = true; await refreshStatus(); return; }
   if(S.toggling) return;   /* 防重入：启停进行中忽略再次点击（260712） */
@@ -1364,8 +1484,18 @@ async function toggleProxy(){
   S.toggling = true;
   btn.disabled = true; btn.textContent = running ? t18("btn.stopping") : t18("btn.starting");
   try{
-    const r = await fetch("/api/proxy/" + (running ? "stop" : "start"), {method:"POST"});
+    const path = running ? "stop" : ("start" + (force ? "?force=1" : ""));
+    const r = await fetch("/api/proxy/" + path, {method:"POST"});
     const d = await r.json().catch(() => ({}));
+    /* 体检拦下的启动也是 409。原来的 `r.status !== 409` 是为 already_running 开的口子，
+       若不区分 error 码，这里会当成功 toast「已启动」而其实什么都没启动（260725）。 */
+    if(r.status === 409 && d.error === "config_unhealthy"){
+      S.health = d.health;
+      renderDoctor(true);          /* 展开抽屉，用户点的就是启动，得看到为什么没启动 */
+      const n = (d.health.issues || []).filter(i => i.severity === "error").length;
+      toast(t18("doctor.blocked", {n: n}), true);
+      return;
+    }
     if(!r.ok && r.status !== 409){
       throw new Error(d.detail || d.error || ("HTTP " + r.status));
     }
@@ -1376,6 +1506,74 @@ async function toggleProxy(){
     S.toggling = false;
   }
   await refreshStatus();
+  refreshHealth();                 /* 启停会改 settings.json，体检结果随之变 */
+}
+
+/* ================= 配置体检（只读） ================= */
+async function refreshHealth(){
+  try{
+    const r = await fetch("/api/health/config");
+    if(!r.ok) return;              /* 体检自己挂了不许影响主界面 */
+    S.health = await r.json();
+    renderDoctor();
+  }catch(e){ /* 静默：体检是辅助信息，不是主功能 */ }
+}
+
+function toggleDoctorDrawer(){
+  const d = $("doctorDrawer");
+  d.hidden = !d.hidden;
+}
+
+/* 强制启动：体检可能误判，用户比规则更了解自己的环境（体检铁律 3）。二次确认后带 force */
+async function forceStartProxy(){
+  if(!confirm(t18("doctor.confirmForce"))) return;
+  await toggleProxy(true);
+}
+
+function renderDoctor(openDrawer){
+  const h = S.health;
+  const errBar = $("doctorErrBar"), warnBar = $("doctorWarnBar"), drawer = $("doctorDrawer");
+  if(!h || !(h.issues || []).length){
+    errBar.hidden = warnBar.hidden = drawer.hidden = true;
+    return;
+  }
+  const errs = h.issues.filter(i => i.severity === "error");
+  const warns = h.issues.filter(i => i.severity === "warning");
+  if(errs.length){
+    $("doctorErrText").textContent = t18("doctor.errBar", {n: errs.length});
+    errBar.hidden = false;
+    /* 逃生门：只在被拦住时出现，避免平时诱导用户忽略体检 */
+    let fb = $("doctorForceBtn");
+    if(!fb){
+      fb = document.createElement("button");
+      fb.id = "doctorForceBtn"; fb.className = "btn tool";
+      fb.onclick = forceStartProxy;
+      errBar.appendChild(fb);
+    }
+    fb.textContent = t18("doctor.forceStart");
+    fb.hidden = !!(S.status && S.status.running);
+  }else{
+    errBar.hidden = true;
+  }
+  warnBar.hidden = !warns.length;
+  if(warns.length) $("doctorWarnText").textContent = t18("doctor.warnBar", {n: warns.length});
+  /* 抽屉列全部（含 info）。顺序：error → warning → info */
+  const rank = {error: 0, warning: 1, info: 2};
+  const rows = h.issues.slice().sort((a, b) => rank[a.severity] - rank[b.severity]).map(i => {
+    /* t18 对未知 key 返回 key 本身（truthy），所以不能用 `||` 兜底 —— 按 kindLabel 的
+       既有模式先探测字典。后端将来新增规则而前端文案还没跟上时，显示英文 hint 而不是 "dc.xxx"。 */
+    const msg = (I18N.zh["dc." + i.code] != null) ? t18("dc." + i.code) : (i.hint || i.code);
+    const fix = (I18N.zh["dcfix." + i.code] != null) ? t18("dcfix." + i.code) : "";
+    return '<div class="dd-item"><span class="dd-sev ' + esc(i.severity) + '">' +
+      esc(i.severity) + '</span><div class="dd-body">' +
+      '<div class="dd-msg">' + esc(msg) + '</div>' +
+      '<div class="dd-field mono">' + esc(t18("doctor.field")) + ": " + esc(i.field || "—") +
+        (i.current_value == null ? "" : " = " + esc(String(i.current_value))) + '</div>' +
+      (fix ? '<div class="dd-fix">' + esc(t18("doctor.fix")) + ": " + esc(fix) + '</div>' : "") +
+      '<div class="dd-code mono">' + esc(i.code) + '</div></div></div>';
+  }).join("");
+  $("doctorList").innerHTML = rows;
+  if(openDrawer) drawer.hidden = false;
 }
 
 /* ================= 捕获列表 ================= */
@@ -2316,6 +2514,7 @@ function openBackupDir(){
   ctxInit();                  /* 自绘右键菜单 + Cmd/Ctrl+C 兜底（WebView2/WebKit 都不给原生的）*/
   await fetchCaptures();      /* 默认今天，含 dates_available */
   await refreshStatus();
+  await refreshHealth();      /* 启动横幅之后、自动启动代理之前体检（拦得住 auto_start） */
   initSSE();
   setInterval(refreshStatus, 5000);   /* 防状态漂移 */
 

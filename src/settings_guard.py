@@ -370,6 +370,21 @@ def get_patched_listen() -> str | None:
     return _patched_listen
 
 
+def read_marker() -> dict | None:
+    """读 patch 态 marker 文件（`{original, listen, had_key, at}`），无/损坏返回 None。
+
+    marker 是 patch 态的**跨进程**真源，而 `is_patched()` / `get_patched_listen()` 只反映
+    本进程的模块状态。独立进程（`cli.py doctor` 等）问「现在是不是代理开着」时必须读这里，
+    否则会把「别的进程 patch 出来的 loopback BASE_URL」当成残留配置误报（260725）。"""
+    if not _PATCHED_MARKER.exists():
+        return None
+    try:
+        info = json.loads(_PATCHED_MARKER.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return info if isinstance(info, dict) else None
+
+
 def check_external_change(path: Path | None = None) -> dict | None:
     """patch 态下检测 settings.json 是否被外部改动（cc-switch 切换 / 手改）。
 

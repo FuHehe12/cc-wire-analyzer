@@ -415,7 +415,16 @@ def cmd_grep(a) -> None:
 def cmd_dag(a) -> None:
     dag = classifier.build_dag(capture_store.list_index(a.date))
     _out({"ok": True, **dag,
-          "caveat": "main/subagent 判别正在按真实流量迭代（见 issues），泳道可能把子代理算进主线。"})
+          "note": "主线/子代理判别取自上游权威位（计费头 cc_is_subagent），泳道键=CC 会话 id；"
+                  "子代理另按派生实例分列，trigger 边指向该实例的首条请求。"
+                  "未实测：交互模式（cc_entrypoint=cli）的子代理，此时靠派生 prompt 对齐兜底。"})
+
+
+def cmd_doctor(a) -> None:
+    """配置体检（只读）。与 GUI 顶部横幅同一份结果。"""
+    import doctor
+    port = _read_port()          # 有实例在跑就带上监听口（self_reference 规则要用）
+    _out(doctor.check(port))
 
 
 def cmd_stats(a) -> None:
@@ -540,6 +549,9 @@ def main(argv=None) -> None:
 
     pd = sub.add_parser("dag", help="时序 DAG（泳道/节点/边）")
     pd.add_argument("--date"); pd.set_defaults(fn=cmd_dag)
+
+    pdoc = sub.add_parser("doctor", help="配置体检（只读，不改任何文件）")
+    pdoc.set_defaults(fn=cmd_doctor)
 
     pt = sub.add_parser("stats", help="当日聚合：kind/模型/状态/token/耗时分位")
     pt.add_argument("--date"); pt.set_defaults(fn=cmd_stats)

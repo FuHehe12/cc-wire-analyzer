@@ -4,6 +4,42 @@
 
 ## 未发布
 
+### 新增
+- **配置体检 —— 针对「CC 突然连不上」的只读诊断。** 在「官方订阅」与「第三方端点」之间来回切换，
+  很容易留下切一半的配置，而每一种「切一半」都以难以归因的方式失败：BASE_URL 指向第三方却没配
+  token（CC 把订阅的 OAuth 凭据发过去，必然被拒）、BASE_URL 还指着早已没人监听的本地端口、
+  订阅 OAuth 过期、effort 设置被上游拒绝。这些都不是本工具的 bug —— 但**只有本工具处在能看见
+  它们的位置**：它同时读 `settings.json`、知道自己有没有 patch、还看得见上游的真实响应。
+  与其一个个去修「切一半」引发的边界 case，不如在开代理之前就把矛盾指出来：
+
+  - `GET /api/health/config` → `{ok, intent, patched, issues[]}`；CLI 的
+    `cc-wire-analyzer doctor` 返回同一份数据给 agent。
+  - 界面：error 红色横幅、warning 黄色横幅，加一个**配置体检**抽屉，逐条列出具体字段、
+    当前值和该怎么改。
+  - `POST /api/proxy/start` 会先体检，遇到 error 级问题返回 **409 `config_unhealthy`**，
+    不让一个已经错的配置再被套上一层代理（这正是这类状态难查的原因——`snapshot` 会把死端口
+    当成上游记下来）。`?force=1` 可越过，横幅上也正是这个按钮：规则可能误判，
+    而用户比规则更了解自己的环境。
+
+  三条约束：**绝不写入** `settings.json` 或凭据文件，也不提供自动修复（改配置是用户的决定，
+  而「只撤销我们还能证明是自己做的那一笔」是本项目的既有不变量）；**宁可漏报不可误报**
+  （误报比漏报更伤——第二次之后就再也没人看横幅了）；**绝不把用户锁死**。凡是规则分不清的情况
+  就闭嘴：loopback BASE_URL 若那个端口**有人**在听，可能是另一个实例或 cc-switch，于是不报；
+  我们自己 patch 期间则穿透读 marker 里的真实上游，不把自己的地址当成残留；macOS 上凭据在
+  Keychain、文件确实不存在，OAuth 类规则静默跳过而不是报「找不到凭据」。
+
+  八条规则里有一条来自本次发版自己的录制数据，而非设计。真实录制显示每一次会话标题请求都在失败：
+
+  ```
+  400 invalid_request_error: output_config.effort 'max' is not supported when thinking is
+      disabled on this model. Use effort 'high' or below, or enable thinking.
+  ```
+
+  维护者本机的配置正是顶层 `effortLevel: low` + env `CLAUDE_CODE_EFFORT_LEVEL: max`——
+  env 优先，于是会话标题功能一直静默失效，而 CC 界面上看不出任何迹象。这现在是两条规则
+  （`effort_level_conflict` 报矛盾本身，`effort_max_rejected_upstream` 报后果），
+  后者以「上游确实是官方端点」为前提，因为第三方端点不会拒绝它。
+
 ### 修复
 - **时序视图把子代理显示成主线，而在 SDK 模式下又把真正的主线降级成子代理。** 这条来自 12 天前的
   真实使用反馈，一直没法修：手上没有任何一次录制包含 `Task`/`Agent` 派生（三天 194 条，派生数为 0），

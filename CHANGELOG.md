@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+### Added
+- **Config check — a read-only doctor for "CC suddenly can't connect".** Switching back and forth
+  between an official subscription and a third-party endpoint leaves configurations half-finished,
+  and each half-finished state fails in a way that is hard to attribute: BASE_URL pointing at a
+  third-party endpoint with no token (CC sends its subscription OAuth bearer there and is rejected),
+  BASE_URL left pointing at a local port nothing listens on any more, expired subscription OAuth,
+  effort settings the upstream rejects. None of these are bugs in this tool — but this tool is the
+  only thing positioned to see them, since it reads `settings.json`, knows its own patch state, and
+  watches the upstream's actual responses. Rather than keep patching the edge cases that
+  half-switching produces, it now points the contradiction out before you start the proxy:
+
+  - `GET /api/health/config` → `{ok, intent, patched, issues[]}`; `cc-wire-analyzer doctor` in the
+    CLI returns the same payload for agents.
+  - UI: a red banner for `error`, a yellow one for `warning`, and a **Config check** drawer listing
+    every finding with the exact field, its current value, and what to change.
+  - `POST /api/proxy/start` runs the check first and refuses with **409 `config_unhealthy`** on an
+    `error`-level finding, so a broken config does not get a proxy layered on top of it (which is
+    what makes these states so confusing to debug — `snapshot` would record the dead port as the
+    upstream). `?force=1` overrides it, and the banner offers exactly that: the rules can be wrong,
+    and the user knows their environment better than the rules do.
+
+  Three constraints it is built under: **it never writes** to `settings.json` or credentials and
+  offers no auto-fix (fixing configuration is the user's call, and "only ever undo the one change we
+  can still prove we made" is a standing invariant of this project); it **prefers missing a problem
+  to inventing one** (a false alarm is worse than a miss — after the second one, nobody reads the
+  banner again); and it **never locks the user out**. Where a rule cannot tell two situations apart,
+  it stays quiet: a loopback BASE_URL whose port *is* being listened on could be another instance or
+  cc-switch, so it says nothing; during our own patch it reads the real upstream out of the marker
+  instead of reporting its own address as a leftover; on macOS, where credentials live in the
+  Keychain and the file genuinely does not exist, the OAuth rules skip silently instead of reporting
+  "credentials missing".
+
+  One of the eight rules came out of this release's own capture data rather than from design.
+  Real recordings showed every session-title request failing:
+
+  ```
+  400 invalid_request_error: output_config.effort 'max' is not supported when thinking is
+      disabled on this model. Use effort 'high' or below, or enable thinking.
+  ```
+
+  The maintainer's own config had top-level `effortLevel: low` and env
+  `CLAUDE_CODE_EFFORT_LEVEL: max` — the env value wins, so session titles had been quietly broken
+  with no sign of it in the CC interface. That is now two rules (`effort_level_conflict` for the
+  contradiction, `effort_max_rejected_upstream` for the consequence), the second one gated on the
+  upstream actually being the official endpoint, since third-party endpoints do not reject it.
+
 ### Fixed
 - **The timeline showed subagents as main threads, and (in SDK mode) demoted real main
   threads to subagents.** Reported from real use twelve days earlier, but unfixable until

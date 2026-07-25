@@ -21,6 +21,7 @@ from flask import (Flask, Response, jsonify, render_template, request,
 
 import config as CFG
 import capture_store
+import doctor
 import settings_guard
 
 log = logging.getLogger(__name__)
@@ -132,6 +133,12 @@ def proxy_status():
     return jsonify(_proxy_state())
 
 
+@app.route("/api/health/config")
+def health_config():
+    """配置体检（只读）。UI 顶部横幅 / 体检抽屉 / CLI `doctor` 同吃这一份结果。"""
+    return jsonify(doctor.check(_LISTEN_PORT))
+
+
 @app.route("/api/proxy/start", methods=["POST"])
 def proxy_start():
     if settings_guard.is_patched():
@@ -139,6 +146,14 @@ def proxy_start():
                         "error": "already_running"}), 409
     if not _LISTEN_PORT:
         return jsonify({"running": False, "error": "no_listen_port"}), 500
+    # patch 之前先体检：有 error 级问题就别动用户的 settings.json —— 那种状态下开代理
+    # 只会把一个已经错的配置搅得更难查（典型：BASE_URL 还指着死端口，snapshot 会把它当上游）。
+    # 但**必须留 force 逃生门**：规则可能误报，而用户比规则更了解自己的环境（体检铁律 3）。
+    if not (request.args.get("force") or (request.get_json(silent=True) or {}).get("force")):
+        health = doctor.check(_LISTEN_PORT)
+        if not health["ok"]:
+            return jsonify({"running": False, "error": "config_unhealthy",
+                            "health": health}), 409
     try:
         upstream = settings_guard.snapshot_original()
         bkp = settings_guard.backup_file()

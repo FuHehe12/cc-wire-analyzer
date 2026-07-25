@@ -122,16 +122,53 @@ All return JSON. All are on `127.0.0.1:$port`.
 | GET | `/api/captures?date=YYYY-MM-DD&limit=N` | newest-first summaries — **no bodies**, safe to page |
 | GET | `/api/captures/<id>?date=...` | one full record (bodies included) |
 | GET | `/api/dag?date=YYYY-MM-DD` | lanes / nodes / edges of the session timeline |
+| GET | `/api/health/config` | **config check** (read-only): does CC's config contradict itself? |
 | GET | `/api/config` / POST `/api/config` | read / update config (ui_lang, retention_days, translate…) |
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 
 `/api/captures/<id>` returns the full body — so fetch a summary list first, pick an id, then fetch
 that one record. Don't fetch all records.
 
-> ⚠️ The `kind` field and the `dag` lanes come from heuristics that are **still being calibrated**
-> against real traffic — subagents are currently often mislabeled as `main`. Cross-check with
-> `X-Claude-Code-Session-Id`, whether the request's `tools` contain `Agent`/`Task`, and the second
-> `system` block before drawing conclusions about main-vs-subagent structure.
+### Main thread vs subagent (settled — don't re-derive it)
+
+`kind` and the `dag` lanes are no longer heuristic guesses for this distinction. **CC states
+subagent identity on the wire**, in the billing header that is `system` block[0]:
+
+```
+main:     x-anthropic-billing-header: cc_version=…; cc_entrypoint=cli;
+subagent: x-anthropic-billing-header: cc_version=…; cc_entrypoint=cli; cc_is_subagent=true;
+```
+
+If you are reading raw records yourself, use that field. The following signals **look** useful and
+are all wrong (measured against hand-recorded ground truth, 2026-07):
+
+- `X-Claude-Code-Session-Id` — subagents **reuse the parent's**; it identifies the session, not the role
+- `cc_entrypoint` — subagents **inherit** it from the parent process
+- whether `tools` contains `Agent`/`Task` — `general-purpose` subagents **do** carry it
+- the second `system` block's wording — identical for main and subagent
+
+Also: a subagent's first user message is prefixed with the same injected `<system-reminder>` blocks
+as a main thread, and the spawn prompt sits *after* them. To match a subagent to its spawner, strip
+`<system-reminder>…</system-reminder>` first, then look for the spawn prompt as a **substring**.
+
+Remaining gap: subagents under the interactive entrypoint (`cc_entrypoint=cli`) have not been
+observed yet, only `sdk-cli` ones. If `cc_is_subagent` is absent there, the tool falls back to
+spawn-prompt matching, which is why `/api/dag` can still miss a lane in that case.
+
+### Config check (`/api/health/config`)
+
+Returns `{ok, intent, patched, issues[]}`. `intent` is `subscription` / `third_party` / `unknown`
+(what the config *looks like* it is trying to do); each issue has `code`, `severity`
+(`error`/`warning`/`info`), `field`, `current_value`, and an English `hint`.
+
+It is **read-only** — it never modifies `settings.json` or credentials, and there is no auto-fix.
+Use it when the user reports "CC can't connect" / "auth fails" / a feature silently stopped
+working: it catches half-finished endpoint switches, BASE_URL left pointing at a dead local port,
+expired subscription OAuth, and effort settings the official endpoint will reject.
+
+`POST /api/proxy/start` runs the same check first and refuses with **409 `config_unhealthy`** (plus
+the full `health` payload) when an `error`-level issue exists. Pass `?force=1` to start anyway —
+the rules can be wrong, and the user's judgement outranks them.
 
 ---
 
