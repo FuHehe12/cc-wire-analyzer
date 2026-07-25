@@ -76,9 +76,11 @@ def new_record() -> dict:
 
 
 # 索引记录里不对外（列表/SSE/DAG 输出）的内部字段：
-# off/len 是 seek 锚点，其余是 DAG 分类原料（classifier 内部消费）
-_IDX_PRIVATE = ("off", "len", "sys_head", "first_user", "last_user",
-                "tools_n", "uid", "task_prompts", "turn_start", "tool_uses")
+# off/len 是 seek 锚点，v 是 schema 版本，其余是 DAG 分类原料（classifier 内部消费）。
+# 新增分类原料字段时也要登记到这里，否则会漏进列表/SSE 摘要（契约是「列表项形状」）。
+_IDX_PRIVATE = ("off", "len", "v", "sys_head", "first_user", "last_user",
+                "tools_n", "uid", "task_prompts", "turn_start", "tool_uses",
+                "is_subagent", "entrypoint", "session_id", "agent_fp", "first_user_task")
 
 
 def _public_summary(idx: dict) -> dict:
@@ -156,20 +158,38 @@ def append(record: dict) -> None:
 
 def _read_idx_entries(fi: Path) -> tuple[list[dict], int]:
     """读索引文件全部有效条目，返回 (entries, covered_end)。
-    崩溃残留的半行跳过（条目自带 off/len，covered_end 只认完整条目）。"""
+    崩溃残留的半行跳过（条目自带 off/len，covered_end 只认完整条目）。
+
+    **schema 版本不符 → 整个索引作废**（返回空 + covered=0，调用方会从 0 全量回填）。
+    只校验 off/len 是不够的：`classifier.index_record` 的字段集一变（260725 加了
+    is_subagent/session_id 等身份字段），旧索引仍然"结构有效"，于是新字段在老录制上
+    恒缺失、判别逻辑静默退化成回落分支，**没有任何东西会报错**——CLAUDE.md 教训②
+    「键名错位」的同型。宁可多花一次回填（826MB 天约 5s，有日志）也不要静默错。"""
     entries: list[dict] = []
     covered = 0
-    if fi.exists():
-        with fi.open("rb") as fh:
-            for raw in fh:
+    if not fi.exists():
+        return entries, covered
+    with fi.open("rb") as fh:
+        for raw in fh:
+            try:
+                e = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if e.get("v") != classifier.IDX_SCHEMA:
+                log.info("索引 schema 过期（%s: v=%r，当前 v=%d）→ 整体重建",
+                         fi.name, e.get("v"), classifier.IDX_SCHEMA)
+                # 必须先删文件再让调用方从 0 回填：_backfill_index 是 append 写，
+                # 不删的话旧条目留在文件里，下次读又判过期 → 每次读都重复回填一整天。
                 try:
-                    e = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-                off, ln = e.get("off"), e.get("len")
-                if isinstance(off, int) and isinstance(ln, int):
-                    covered = max(covered, off + ln)
-                entries.append(e)
+                    fh.close()
+                    fi.unlink()
+                except OSError as err:
+                    log.error("陈旧索引删除失败 %s: %s（本次仍走全量回填）", fi.name, err)
+                return [], 0
+            off, ln = e.get("off"), e.get("len")
+            if isinstance(off, int) and isinstance(ln, int):
+                covered = max(covered, off + ln)
+            entries.append(e)
     return entries, covered
 
 

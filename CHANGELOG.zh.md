@@ -2,6 +2,79 @@
 
 > 本文件是 [`CHANGELOG.md`](CHANGELOG.md) 的中文翻译镜像，与英文版保持同步。英文版为源。
 
+## 未发布
+
+### 修复
+- **时序视图把子代理显示成主线，而在 SDK 模式下又把真正的主线降级成子代理。** 这条来自 12 天前的
+  真实使用反馈，一直没法修：手上没有任何一次录制包含 `Task`/`Agent` 派生（三天 194 条，派生数为 0），
+  规则无从可定，不靠数据就改分类器等于闭着眼睛猜。本轮专门采集才定案 —— `claude -p` 串行派生
+  `Explore` / `general-purpose` / `Plan`，15 条录制，ground truth 人工记录 —— 并且发现
+  **CC 自己就在 wire 上标了子代理身份**，位置是 system block[0] 的计费头：
+
+  ```
+  main:     x-anthropic-billing-header: cc_version=2.1.220.8f8; cc_entrypoint=sdk-cli;
+  subagent: x-anthropic-billing-header: cc_version=2.1.220.a83; cc_entrypoint=sdk-cli; cc_is_subagent=true;
+  ```
+
+  8/8 子代理请求带它，7/7 非子代理不带。不需要任何启发式 —— 而同一批数据把此前所有假设都推翻了：
+
+  | 原假设 | 实测 |
+  |---|---|
+  | 子代理另起 `X-Claude-Code-Session-Id`，可作判别信号 | **复用父会话 id**（13 条同一个）→ session id 只能当泳道键 |
+  | `cc_entrypoint` 在子代理里变值 | 15/15 全是 `sdk-cli`，子代理**继承** |
+  | CC 不给子代理派生工具（禁套娃）→「无 Agent 工具 ≈ 子代理」 | `general-purpose` 子代理**带** Agent 工具（75 个） |
+  | `system` block[1] 措辞可区分 | 15/15 完全相同（`"You are a Claude agent…"`） |
+
+  工具数也不是信号：同一条主线在一个会话内从 40 涨到 77（deferred tool 按需加载），
+  与子代理的 62/75/71 完全重叠。
+
+  四处修复，每一处都有实测依据：
+
+  1. **`cc_is_subagent` 成为权威判据**，在任何主线指纹之前判定（子代理带着主线措辞，
+     所以按措辞排序必输）。
+  2. **主线指纹表新增 `"you are an interactive agent"`**，未知形状的 fallback 从 `subagent`
+     反转为 `main`。原来的 `MAIN_SYSTEM_FP = "you are claude code"` 只在交互模式命中；
+     SDK 模式两处都不含它，于是每条 `claude -p` 主线请求都落到 `tools_n > 0 → subagent`
+     被降级 —— 5/5 全错，正是旧准确率 10/15 的全部错项。
+  3. **`build_dag` 不再跳过已判 main 的记录。** 那一行短路把全场最强的信号锁在门外：
+     子代理一旦被误判成 main 就永远无法改判（「终身 main」），而每个被误判的子代理还各自
+     变成一条独立「主线」泳道 —— 正是用户看到的满屏主线。
+  4. **派生 prompt 对齐从前缀匹配改为「剥掉 `<system-reminder>` 后子串匹配」。**
+     子代理的首条 user 和主线一样被注入 reminder 前缀，派生 prompt 被推到其后，
+     两头 `startswith` 实测命中 **0/8**。剥掉 reminder 后派生 prompt 逐字就在开头：8/8。
+     （注入体量还随 agent 类型变——`Explore`/`Plan` 约 550 字，`general-purpose` 带完整
+     CLAUDE.md 约 9,960 字——所以定长前缀方案根本不可能成立。）
+
+  对照人工 ground truth 的准确率：**10/15 → 15/15**。采集当天的时序图从「0 主线 / 13 条
+  分不清的子代理」且**零**派生边，变成 5 主线 / 8 子代理、**3** 条派生边，与实际派生次数一一对应。
+
+- **同一个 CC 会话被切成多条「主线」泳道。** 旧泳道键是「首条 user 文本 + user_id」的 md5，
+  它自己的 docstring 就承认 autocompact 后会断。实际破得更广：866MB 基准天里这个 hash 分出
+  **42 个分组键，而真实会话只有 13 个**；更早一天把 2 个会话切成 7+2。现在泳道键改用 CC 会话 id
+  （`X-Claude-Code-Session-Id`，回落 `metadata.user_id` 内的 session id，两者都缺才回落旧文本 hash）
+  —— 实测覆盖率 15/15 与 2993/2993。子代理与父会话共用 session id，因此按派生实例分组
+  （派生者 id + 派生 prompt），同一个子代理的所有请求归到一条泳道；此前泳道键取的是记录自己的 id，
+  同一个子代理的每条请求各占一列。
+
+- **索引 schema 变化后，陈旧索引被静默复用。** `_read_idx_entries` 只校验 `off`/`len`，
+  所以给索引记录加字段后旧索引依然「结构有效」—— 新字段在老录制上读作缺失、分类器悄悄退化成
+  回落分支，而任何地方都不会报错。现在索引记录带 schema 版本号，版本不符即整体作废重建
+  （先删文件，否则 append 模式的回填会追加在陈旧行之后，导致每次读取都重新触发一次重建）。
+  实测重建：426MB 天 5.3 秒，之后缓存命中 0.001 秒。
+
+### 变更
+- **时序图泳道标签显示真实 CC 会话 id**（前 8 位，hover 看完整 id），不再显示内部泳道 hash ——
+  它与 `~/.claude/projects/` 下的 `.jsonl` 会话文件名一致，泳道可以直接对回具体会话。
+  子代理泳道仍显示派生实例码：它与父会话共用 session id，若也显示 session 就会和父主线标签一模一样。
+- **`dev_seed.py` 的样例录制改成真流量的形状**：3 块 system（计费头 / 身份声明 / 正文）、
+  `X-Claude-Code-Session-Id` 请求头、`metadata.user_id` 为 JSON 字符串，子代理则带
+  `cc_is_subagent=true` 计费头 + 被 `<system-reminder>` 包裹的首条 user。旧样例用的是现实中
+  不存在的形状（无计费头、无 session 头、裸派生 prompt），于是身份与会话逻辑在 UI 自测里一条都
+  测不到 —— 与 v0.2.0 放过四个 bug 的盲区同一类型。另外新增第二条子代理请求，覆盖「同一次派生的
+  多条请求归一条泳道」。
+- `tools/lane_probe.py` 输出权威位并与分类器判断双向交叉核对，不一致就标警告 ——
+  它从「定规则的工具」转为「换 CC 版本时的回归探针」。
+
 ## v0.3.2 - 2026-07-19
 
 ### 修复

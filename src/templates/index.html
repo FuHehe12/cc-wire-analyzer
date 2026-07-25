@@ -2084,11 +2084,17 @@ function renderDagFull(d){
     const pDot = (l.kind === "subagent" && DG.parentLane[l.lane_id])
       ? '<span class="assoc-dot" style="background:' + DG.laneColor[DG.parentLane[l.lane_id]] +
         '" title="' + t18("dag.spawnedBy", {n: DG.laneNum[DG.parentLane[l.lane_id]]}) + '"></span>' : "";
+    /* 主线副标签显示真实 CC 会话 id 短码：lane_id 是它的 md5，对人毫无意义，而 session_id
+       能直接对上 ~/.claude/projects/ 下的 jsonl 会话文件名（260725 lane 键换成 session_id 后）。
+       **只有主线这么显示**——子代理复用父会话 id，若也显示 session 就会和父主线的标签一模一样，
+       看着像同一条泳道；它显示派生实例码，会话归属放 hover。老录制无 session_id 时回落 lane_id。 */
+    const subId = (l.kind === "main" && l.session_id) ? l.session_id.slice(0, 8) : l.lane_id;
     heads += '<div class="lane-head" data-lane="' + esc(l.lane_id) + '" style="left:' + x + 'px">' +
       '<span class="lh-dot" style="background:' + dagLaneStroke(l.lane_id) + '"></span>' +
       '<b>' + label + '</b>' + pDot +
       '<span class="lh-count">' + l.count + '</span>' +
-      '<span class="lh-id mono">' + esc(l.lane_id) + '</span></div>';
+      '<span class="lh-id mono" title="' + esc(l.session_id ? "session " + l.session_id : l.lane_id) +
+      '">' + esc(subId) + '</span></div>';
     /* 泳道背景轴线：主线用本 lane 色淡化，其余中性 */
     axis += '<line x1="' + (x + DGX.LW / 2) + '" y1="' + (DGX.Y0 - 8) + '" x2="' + (x + DGX.LW / 2) +
       '" y2="' + (H - 12) + '" stroke="' + (DG.laneColor[l.lane_id] || "var(--border-soft)") + '"' +

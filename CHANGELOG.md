@@ -1,5 +1,98 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **The timeline showed subagents as main threads, and (in SDK mode) demoted real main
+  threads to subagents.** Reported from real use twelve days earlier, but unfixable until
+  now: no capture on hand contained a single `Task`/`Agent` spawn (194 records across three
+  days — zero spawns), so there was nothing to derive a rule from, and changing the
+  classifier without data would have been guessing. A dedicated capture settled it —
+  `claude -p` spawning `Explore` / `general-purpose` / `Plan` serially, 15 records, ground
+  truth written down by hand — and it showed that **CC states subagent identity on the wire
+  itself**, in the billing header of system block[0]:
+
+  ```
+  main:     x-anthropic-billing-header: cc_version=2.1.220.8f8; cc_entrypoint=sdk-cli;
+  subagent: x-anthropic-billing-header: cc_version=2.1.220.a83; cc_entrypoint=sdk-cli; cc_is_subagent=true;
+  ```
+
+  Present on 8/8 subagent requests, absent on 7/7 non-subagent ones. No heuristic needed —
+  and the same data refuted every previously assumed signal:
+
+  | Assumption | Measured |
+  |---|---|
+  | Subagents start their own `X-Claude-Code-Session-Id` → usable as a discriminator | They **reuse the parent's** (13 requests, one id) → session id is a *lane* key only |
+  | `cc_entrypoint` changes for subagents | 15/15 `sdk-cli` — subagents **inherit** it |
+  | CC withholds the Agent tool from subagents (no nesting) → "no Agent tool ≈ subagent" | `general-purpose` subagents **do** carry it (75 tools) |
+  | `system` block[1] wording distinguishes them | 15/15 identical (`"You are a Claude agent…"`) |
+
+  Tool count is no signal either: one main thread went 40 → 77 tools within a session
+  (deferred tool loading), overlapping the subagents' 62/75/71.
+
+  Four fixes, all evidence-driven:
+
+  1. **`cc_is_subagent` is now the authoritative check**, evaluated before any main-thread
+     fingerprint (subagents carry main-thread wording, so wording-based ordering must lose).
+  2. **The main-thread fingerprint list gained `"you are an interactive agent"`** and the
+     unknown-shape fallback flipped from `subagent` to `main`. `MAIN_SYSTEM_FP =
+     "you are claude code"` only ever matched interactive mode; in SDK mode nothing matched,
+     so every `claude -p` main request fell through to `tools_n > 0 → subagent` and was
+     demoted — 5/5 of them, and the entire error set behind the old 10/15 accuracy.
+  3. **`build_dag` no longer skips records already classified `main`.** That one-line
+     short-circuit locked out the strongest signal available: once a subagent was misread as
+     main it could never be corrected ("main for life"), and each misread subagent then
+     became its own "main" lane — exactly the wall of main threads that was reported.
+  4. **Spawn-prompt alignment switched from prefix match to substring match after stripping
+     `<system-reminder>` blocks.** Subagent first-user messages are injected with the same
+     reminder preamble as main threads, pushing the spawn prompt past the start, so
+     `startswith` in either direction matched **0 of 8**. Stripping the reminders leaves the
+     spawn prompt verbatim at the front: 8/8. (Injection size also varies by agent type —
+     `Explore`/`Plan` get ~550 characters, `general-purpose` gets the full CLAUDE.md at
+     ~9,960 — so a fixed-length prefix could never have worked.)
+
+  Accuracy against hand-recorded ground truth: **10/15 → 15/15**. On the capture day the
+  timeline goes from 0 main / 13 subagent lanes-worth of confusion and **zero** spawn edges
+  to 5 main / 8 subagent with **3** spawn edges, one per actual spawn.
+
+- **One CC session was split across many "main" lanes.** The lane key was an md5 of
+  "first user text + user_id", which its own docstring admitted broke on autocompact. It
+  breaks more widely than that: on the 866 MB reference day that hash yields **42 distinct
+  grouping keys for 13 real sessions**, and on an earlier day it split 2 sessions into 7+2.
+  The lane key is now the CC session id (`X-Claude-Code-Session-Id`, falling back to the
+  session id inside `metadata.user_id`, then to the old text hash for captures that have
+  neither) — measured coverage 15/15 and 2993/2993. Subagents, which share the parent's
+  session id, are keyed per spawn instance instead (spawner id + spawn prompt), so all
+  requests of one subagent land in one lane; previously the lane key was built from the
+  record's own id, giving each request of the same subagent its own column.
+
+- **Stale capture indexes were silently reused after the index schema changed.**
+  `_read_idx_entries` validated only `off`/`len`, so adding fields to an index record left
+  old indexes structurally "valid" — the new fields would read as missing on older captures,
+  the classifier would quietly fall back, and nothing anywhere would error. Index records
+  now carry a schema version; a mismatch discards and rebuilds the whole index (the file is
+  deleted first, otherwise the append-mode backfill would re-append behind the stale rows
+  and re-trigger a rebuild on every read). Measured rebuild: 5.3 s for a 426 MB day, then
+  0.001 s from cache.
+
+### Changed
+- **Timeline lane labels show the real CC session id** (first 8 characters, full id on
+  hover) instead of the internal lane hash — it matches the `.jsonl` filenames under
+  `~/.claude/projects/`, so a lane can be traced to its session. Subagent lanes keep their
+  spawn-instance code, since they share the parent's session id and would otherwise display
+  a label identical to their parent's.
+- **`dev_seed.py` sample captures now have the shape of real traffic**: 3-block system
+  (billing header / identity / body), `X-Claude-Code-Session-Id` request header,
+  `metadata.user_id` as a JSON string, and for subagents a `cc_is_subagent=true` billing
+  header plus a `<system-reminder>`-wrapped first user message. The old samples used shapes
+  that do not occur in reality (no billing header, no session header, bare spawn prompt), so
+  none of the identity or session logic was exercised by UI self-tests — the same class of
+  blind spot that shipped four bugs in v0.2.0. A second subagent request was added to cover
+  "multiple requests of one spawn share one lane".
+- `tools/lane_probe.py` reports the authoritative flag and cross-checks it against the
+  classifier's verdict, flagging disagreement in either direction — it is now a regression
+  probe for new CC versions rather than a rule-discovery tool.
+
 ## v0.3.2 - 2026-07-19
 
 ### Fixed
