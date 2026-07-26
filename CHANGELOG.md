@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-> Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below.
+> Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection.
 - **Current status**: **v0.3.2 released** (2026-07-19). The `Unreleased` section holds three pieces landing 2026-07-25/26: **lane identity finalized** (the billing-header flag `cc_is_subagent=true` is the authoritative signal, accuracy 10/15 → 15/15), **config doctor** (`doctor.py`, 8 read-only rules), and **failure grouping** (`diagnose.py`, measured 2719 failures → 7 groups). All six self-tests green, code recompiled. Pending release as v0.4.0.
