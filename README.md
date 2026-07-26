@@ -4,6 +4,15 @@ A local MITM proxy desktop app that transparently records and analyzes all HTTP 
 
 [中文](README.zh.md) · [日本語](README.ja.md)
 
+**Current version: v0.3.2** · [Releases](../../releases) · [Changelog](CHANGELOG.md)
+
+<!-- maintainer: bump the version line above on every release (zh/ja versions too) -->
+
+> First time here? **[docs/界面导览.md](docs/界面导览.md)** shows what humans see in the UI,
+> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** is for AI agents driving the tool,
+> **[docs/架构总览.md](docs/架构总览.md)** is the full architecture, and
+> **[docs/文档维护策略.md](docs/文档维护策略.md)** is how these docs stay in sync.
+
 ## What it shows that you can't otherwise see
 
 When Claude Code talks to an upstream (Anthropic official, or a third-party gateway), the outgoing requests hide link-level truth that jsonl/OTLP can't capture: the raw watermark fields in the system prompt, SSE chunk timing, the exact upstream response, security-classifier calls, precise token cost. This tool spins up a local proxy, temporarily points CC's `ANTHROPIC_BASE_URL` at it, and **records + forwards** everything — so those truths become observable.

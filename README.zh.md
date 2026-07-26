@@ -4,6 +4,15 @@
 
 [English](README.md) · [日本語](README.ja.md)
 
+**当前版本：v0.3.2** · [发版列表](../../releases) · [更新日志](CHANGELOG.zh.md)
+
+<!-- 维护者：每次发版改上一行版本号（三份 README 都要改） -->
+
+> 第一次来？**[docs/界面导览.md](docs/界面导览.md)** 讲人在 UI 里能看到什么，
+> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** 给驱动本工具的 AI agent 看，
+> **[docs/架构总览.md](docs/架构总览.md)** 是完整架构，
+> **[docs/文档维护策略.md](docs/文档维护策略.md)** 讲这些文档怎么保持同步。
+
 ## 它能让你看到原本看不到的东西
 
 Claude Code 与上游（Anthropic 官方或第三方网关）通信时，发出的请求里藏着 jsonl/OTLP 抓不到的链路级真相：system prompt 里原始的水印字段、SSE 分块时序、上游的确切响应、安全分类器调用、精确的 token 成本。本工具起一个本地代理，临时把 CC 的 `ANTHROPIC_BASE_URL` 指向它，**边录制边转发**全部流量——让这些真相变得可观测。

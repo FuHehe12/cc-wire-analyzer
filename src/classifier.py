@@ -58,9 +58,9 @@ SECURITY_HINTS = (
     "you are a security",
 )
 SECURITY_MAX_TOKENS = 2112   # 安全分类器 max_tokens 指纹（实测）
-PROMPT_MATCH_LEN = 200       # 派生 prompt 取样长度（lane 实例键用）
+PROMPT_MATCH_LEN = 1000      # 派生 prompt 取样长度（lane 实例键用，260726 从 200 加长以区分模板化并行派生）
 PROMPT_MATCH_MIN = 40        # 太短的派生 prompt 不参与子串匹配（防误命中）
-PROMPT_PROBE_LEN = 120       # 拿派生 prompt 的前多少字去子代理首条 user 里搜
+PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首条 user 里搜（260726 从 120 加长——前 120 字相同的模板化并行派生会让 N 个子代理挤到同一条 lane）
 
 KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens", "other")
 
@@ -70,7 +70,10 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 # （CLAUDE.md 教训②「键名错位」的同型）。带上版本号，读取侧发现不符就整体重建。
 #   v1 → v2（260725）：新增 is_subagent/entrypoint/session_id/agent_fp/first_user_task
 #   v2 → v3（260725）：新增诊断原料 err_kind/err_msg/effort/thinking/stream/max_tokens
-IDX_SCHEMA = 3
+#   v3 → v4（260726）：task_prompts 加长到 1000（原 200）、first_user_task 加长到 1500（原 600），
+#                     修并行同模板派生挤一条 lane 的 bug（前 120 字 probe 撞车，详见
+#                     issues/closed/260725_并行同模板子代理泳道撞车.md）
+IDX_SCHEMA = 4
 
 
 # ===== 请求体取文本 =====
@@ -306,8 +309,10 @@ def index_record(rec: dict) -> dict:
         "entrypoint": billing.get("cc_entrypoint") or "",
         "session_id": _session_id(rec, body),
         "agent_fp": _agent_fp(blocks),
-        # 剥 reminder 后的首条 user 开头 = 派生 prompt 原文（对齐锚点，见 strip_reminders）
-        "first_user_task": (strip_reminders(users[0])[:600] if users else ""),
+        # 剥 reminder 后的首条 user 开头 = 派生 prompt 原文（对齐锚点，见 strip_reminders）。
+        # 260726 从 600 加长到 1500：probe 加长到 300 后需要更宽匹配空间，否则长 reminder 场景
+        # 剥掉后剩余不足 300 字会漏命中。
+        "first_user_task": (strip_reminders(users[0])[:1500] if users else ""),
         # ---- 诊断原料（260725）----
         # 失败聚合要按「错误消息指纹」归并，并同时摆出**请求侧的相关字段**，否则 agent 拿到
         # 一句 "effort 'max' is not supported when thinking is disabled" 还得再去翻原始 record

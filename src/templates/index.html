@@ -786,6 +786,10 @@ zh: {
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
   "lane.main": "主线", "lane.subagent": "子代理", "lane.aux": "辅助",
+  "sr.end_turn": "自然结束", "sr.tool_use": "调用工具", "sr.max_tokens": "达到上限",
+  "sr.stop_sequence": "命中停止序列", "sr.content_filter": "内容过滤",
+  "ek.connect": "连接失败", "ek.timeout": "请求超时", "ek.http_error": "HTTP 错误",
+  "ek.upstream_4xx": "上游拒绝（4xx）", "ek.upstream_5xx": "上游错误（5xx）", "ek.parse": "解析失败",
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
   "set.proxy.title": "代理与数据",
@@ -797,6 +801,7 @@ zh: {
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
   "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）",
   "detail.respHeaders": "响应 Headers",
+  "detail.wireOnlyHint": "ⓘ 含 ratelimit / request-id 等只在 wire 层看得到的字段（CC jsonl 不记录）",
   "status.writeFail": "⚠ 录制写盘失败 {n} 次 —— 这些流量没有存下来！{msg}",
   "set.llm.title": "LLM 模型",
   "set.llm.sub": "供详情页 翻译与 AI 解读共用 · OpenAI 兼容 /chat/completions · 配好后点「测试连通」验证",
@@ -911,6 +916,10 @@ en: {
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
   "lane.main": "Session", "lane.subagent": "Agent", "lane.aux": "Aux",
+  "sr.end_turn": "natural stop", "sr.tool_use": "tool call", "sr.max_tokens": "hit limit",
+  "sr.stop_sequence": "stop sequence", "sr.content_filter": "content filter",
+  "ek.connect": "connection failed", "ek.timeout": "timeout", "ek.http_error": "HTTP error",
+  "ek.upstream_4xx": "upstream 4xx", "ek.upstream_5xx": "upstream 5xx", "ek.parse": "parse error",
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
   "set.proxy.title": "Proxy & data",
@@ -922,6 +931,7 @@ en: {
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
   "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default)",
   "detail.respHeaders": "Response headers",
+  "detail.wireOnlyHint": "ⓘ Includes ratelimit / request-id — only visible at wire layer (not in CC's jsonl)",
   "status.writeFail": "⚠ {n} capture(s) failed to write to disk — that traffic was NOT saved! {msg}",
   "set.llm.title": "LLM model",
   "set.llm.sub": "Shared by Translate and Ask AI · OpenAI-compatible /chat/completions · click Test after configuring",
@@ -1036,6 +1046,10 @@ ja: {
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
   "lane.main": "メイン", "lane.subagent": "エージェント", "lane.aux": "補助",
+  "sr.end_turn": "自然終了", "sr.tool_use": "ツール呼出", "sr.max_tokens": "上限到達",
+  "sr.stop_sequence": "停止シーケンス", "sr.content_filter": "コンテンツフィルタ",
+  "ek.connect": "接続失敗", "ek.timeout": "タイムアウト", "ek.http_error": "HTTPエラー",
+  "ek.upstream_4xx": "上流 4xx", "ek.upstream_5xx": "上流 5xx", "ek.parse": "解析エラー",
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
   "set.proxy.title": "プロキシとデータ",
@@ -1047,6 +1061,7 @@ ja: {
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
   "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上游デフォルト）",
   "detail.respHeaders": "レスポンス Headers",
+  "detail.wireOnlyHint": "ⓘ ratelimit / request-id など wire 層でのみ見えるフィールド（CC の jsonl には記録されない）",
   "status.writeFail": "⚠ 録画の書き込みに {n} 回失敗 —— そのトラフィックは保存されていません！{msg}",
   "set.llm.title": "LLM モデル",
   "set.llm.sub": "翻訳と AI 解説で共用 · OpenAI 互換 /chat/completions · 設定後「接続テスト」で確認",
@@ -1075,6 +1090,9 @@ function t18(key, params){
 }
 function kindLabel(k){ return (I18N.zh["kind." + k] != null) ? t18("kind." + k) : k; }
 function laneLabel(k){ return (I18N.zh["lane." + k] != null) ? t18("lane." + k) : k; }
+/* 260726 加：stop_reason / err_kind 三语查表（fallback 显示英文 raw 值，与 kindLabel 同风格） */
+function stopReasonLabel(v){ return (v && I18N.zh["sr." + v] != null) ? t18("sr." + v) : (v || ""); }
+function errKindLabel(v){ return (v && I18N.zh["ek." + v] != null) ? t18("ek." + v) : (v || ""); }
 /* 后端 error_code → 本地化文案；无对应码时回退原始诊断串 */
 function llmErrMsg(j){
   return (j && j.error_code && I18N.zh["err." + j.error_code] != null)
@@ -1851,7 +1869,7 @@ function renderDetail(d){
   /* 元信息 */
   R += '<div class="dcard meta-row">' +
     '<div class="chip-row">' + chipFor(resp.status) +
-    (resp.stop_reason ? '<span class="chip outline">stop: ' + esc(resp.stop_reason) + '</span>' : "") +
+    (resp.stop_reason ? '<span class="chip outline" title="stop_reason: ' + esc(resp.stop_reason) + '">' + esc(stopReasonLabel(resp.stop_reason)) + '</span>' : "") +
     (body.stream ? '<span class="chip outline">stream: true</span>' : "") +
     (body.model ? '<span class="chip outline">' + esc(body.model) + '</span>' : "") +
     '</div><span class="crumb-meta">' +
@@ -1864,9 +1882,18 @@ function renderDetail(d){
   const rhs = resp.headers_safe || {};
   const rhKeys = Object.keys(rhs);
   if(rhKeys.length){
-    R += '<details class="fold"><summary>' + t18("detail.respHeaders") + ' (' + rhKeys.length + ')</summary>' +
-      '<div class="fold-body"><table class="kv-table">' + rhKeys.map(k =>
-        '<tr><td class="k">' + esc(k) + '</td><td class="v">' + esc(rhs[k]) + '</td></tr>').join("") +
+    /* 260726 改：默认展开（open 属性）+ wire 层关键字段（ratelimit-/request-id/organization-id/
+       x-should-retry）加粗高亮 + 提示"只在 wire 层看得到"。这些字段是本工具相对 CC jsonl 的核心增量，
+       折叠状态让新手根本不知道这里有金矿。 */
+    const WIRE_KEY_PREFIXES = ["anthropic-ratelimit-", "request-id", "anthropic-organization-id", "x-should-retry"];
+    const isWireKey = (k) => { const lk = k.toLowerCase();
+      return WIRE_KEY_PREFIXES.some(p => lk === p || lk.startsWith(p)); };
+    R += '<details class="fold" open><summary>' + t18("detail.respHeaders") + ' (' + rhKeys.length + ')</summary>' +
+      '<div class="fold-body">' +
+      '<div style="font-size:11px;color:var(--text-faint);margin:6px 0 8px;">' + t18("detail.wireOnlyHint") + '</div>' +
+      '<table class="kv-table">' + rhKeys.map(k =>
+        '<tr><td class="k" style="' + (isWireKey(k) ? "font-weight:600;color:var(--brand,#d4a55a);" : "") + '">' +
+        esc(k) + '</td><td class="v">' + esc(rhs[k]) + '</td></tr>').join("") +
       '</table></div></details>';
   }
 
@@ -1892,7 +1919,7 @@ function renderDetail(d){
      原来只渲染 kind/status/body_snippet，**detail 一个字都不显示** → 上游连不上时界面只有一个
      光秃秃的 "connect"，为什么连不上被丢进垃圾桶。一个调试工具不该这样（260713 修）。*/
   if(d.error){
-    R += '<div class="err-card"><b>' + esc(d.error.kind || "error") + '</b>' +
+    R += '<div class="err-card"><b>' + esc(errKindLabel(d.error.kind) || "error") + '</b>' +
       (d.error.status ? " · HTTP " + d.error.status : "") +
       (d.error.detail ? '<pre>' + esc(d.error.detail) + '</pre>' : "") +
       (d.error.body_snippet ? '<pre>' + esc(d.error.body_snippet) + '</pre>' : "") + '</div>';

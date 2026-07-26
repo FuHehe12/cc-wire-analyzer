@@ -1,6 +1,71 @@
 # Changelog
 
+> Project overview (position / current status / key decisions / next steps) lives in [CLAUDE.md](CLAUDE.md) § 项目速览. This file keeps the change log only: the overview carries internal context (issue paths, maintainer decisions) that should not enter the public repo (CLAUDE.md is `.gitignore`'d), and is mirrored EN/ZH — keeping it in one place avoids drift.
+
 ## Unreleased
+
+### Changed
+- **UI readability pass — translate technical enums and surface wire-only headers.** Three small
+  UX improvements from the audit-driven optimization list ([docs/界面导览.md](docs/界面导览.md)
+  P1-P2). `stop_reason` (`end_turn`/`tool_use`/…) and `err_kind` (`upstream_4xx`/…) now render
+  through i18n lookup tables (`stopReasonLabel` / `errKindLabel`, mirroring the existing
+  `kindLabel`), with zh/en/ja coverage and English fallback — non-programmers no longer see raw
+  Anthropic API enum values. Response headers panel is now **open by default** (was collapsed)
+  and wire-only fields (`anthropic-ratelimit-*` / `request-id` / `anthropic-organization-id` /
+  `x-should-retry`) are bolded with a hint line "only visible at wire layer, not in CC's jsonl"
+  — the project's own code comments call these "the most valuable information at the wire
+  layer"; the collapsed state was hiding them from anyone who didn't know to look. Verified
+  lane head already uses "Session N" numbering. See issues/closed/260726_P1-P2_前端微调批次.md.
+
+### Fixed
+- **Parallel same-template subagent spawn no longer collapses into one lane.** When N same-type
+  agents (e.g. 4 Explore) were spawned in one main response with templated prompts that shared
+  their first ~120 chars (common opening + task description), the lane alignment matched all N
+  first-user messages to `prompts[0]` and hashed them all under the same lane key — N agents
+  ended up stacked on a single lane (visually: one color, one column). Root cause and fix in
+  `classifier.py`: bumped `PROMPT_PROBE_LEN` 120→300 and `PROMPT_MATCH_LEN` 200→1000,
+  `first_user_task` 600→1500, `IDX_SCHEMA` 3→4 (forces rebuild of stale v3 indexes on first
+  access — ~5s/day for the maintainer's 866MB day, jsonl untouched, no data loss). The remaining
+  edge case (first 300 chars still identical across prompts) is left to a future bidirectional
+  matching strategy. See issues/closed/260725_并行同模板子代理泳道撞车.md.
+
+### Docs
+- **Catch-up: docs back in line with the code, plus three new guides.** A 7-perspective audit
+  (frontend / backend API / data pipeline / recording core / shell & tests / evolution / design
+  tradeoffs) surfaced 8 places where docs had drifted from code. Fixed:
+  - `docs/API契约.md` — added missing `/api/health/config` and `/api/diagnose/errors` sections;
+    rewrote `/api/translate` and `/api/explain` as SSE (described as non-streaming); documented
+    the dual-track `usage` field names (raw JSONL = Anthropic full names, list/DAG API output =
+    normalized short names via `classifier.usage_norm`); documented `lane_id` naming rules;
+    removed dead `orphan_recovered` field on `start` and the deleted `redact_headers` config key;
+    supplemented `write_errors` and `external_change` on `/api/proxy/status`.
+  - `docs/AI_USAGE.md` — maintainer note on the dual-track `usage` names + sibling-doc links.
+  - `README` × 3 (en/zh/ja) — added a "Current version" line and a docs navigation block.
+  - `CLAUDE.md` — corrected the "dead config" lesson: all three (`retention_days` /
+    `auto_start_proxy` / `redact_headers`) were fixed in 260713 (first two wired up, third
+    deleted along with its UI toggle); kept as historical reference.
+- **Three new docs added**: [docs/界面导览.md](docs/界面导览.md) (human-audit view of all 4 UI
+  screens + 13 prioritized UX optimization opportunities), [docs/架构总览.md](docs/架构总览.md)
+  (5-layer architecture + data flow + evolution主线 + design philosophy + 8 invariants),
+  [docs/文档维护策略.md](docs/文档维护策略.md) (meta: 5 strategies for keeping docs from
+  diverging again, with a 12-item current-rot list). "Self-check sentences" appended to major
+  sections of each core doc ("if you change X, also update Y/Z") make the maintenance policy
+  actionable.
+- **CLAUDE.md restructured for clarity.** The local AI-onboarding file had accreted ~1700 words
+  of release-by-release narrative inside a single "current status" bullet, with the
+  repeated-bug-types lesson and the subagent-detection rules buried in the overview instead of
+  under "developer conventions" where they belong. Reorganized along the workspace's three-section
+  skeleton (overview / background / conventions): overview slimmed to four bullets, the four
+  recurring bug types pulled into a table, subagent rules given their own section, the
+  architecture sketch redrawn as an ASCII tree, the macOS-real-machine status corrected to
+  "260714 green". No facts removed — only relocated and rephrased. See
+  issues/closed/260726_CLAUDE_md_结构整理.md.
+- **Chinese changelog rephrased into a more formal register.** `CHANGELOG.zh.md` had carried over
+  the conversational, first-person tone of the English original ("a bad day", em-dash asides,
+  colloquial verbs) plus a few Anglicisms ("surface" → 抬出, "the complaint" → 抱怨,
+  "in a way that" → 以…的方式). Rephrased throughout into standard written Chinese while keeping
+  every fact, figure, code identifier, path, link, and the document structure unchanged. English
+  `CHANGELOG.md` is unaffected. See issues/closed/260726_CHANGELOG_zh_风格改正式文档腔.md.
 
 ### Added
 - **Failure groups — captured errors turned into something an agent can diagnose from.** A bad day

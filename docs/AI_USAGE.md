@@ -93,6 +93,7 @@ questions; reach for the raw file only when the service isn't running.
   "response": {
     "status": 200,
     "ttft_ms": 554, "total_ms": 63400,
+    // raw JSONL uses Anthropic full names; the list/DAG APIs normalize to short names — see below.
     "usage": { "input_tokens": ..., "output_tokens": ..., "cache_read_input_tokens": ... },
     "stop_reason": "tool_use",
     "content_blocks": [ ... ],
@@ -219,3 +220,22 @@ feature wraps captures in hardcoded delimiters for the same reason.)
 
 Headers are stored with `Authorization` redacted, but bodies are stored verbatim — assume a capture
 may contain secrets the user pasted into a session, and don't ship capture contents anywhere off-box.
+
+---
+
+## For the maintainer (you, when you edit this doc)
+
+- **`usage` field names are dual-track on purpose, not a contradiction**: the raw JSONL writes
+  Anthropic full names (`input_tokens` / `cache_read_input_tokens` …) exactly as the upstream
+  returned them; the `/api/captures` list and `/api/dag` endpoints normalize to short names
+  (`input` / `output` / `cache_read` / `cache_creation`) via `classifier.usage_norm` (single source
+  of truth). When you mention `usage` here, say which side you mean. See [API契约.md §4](API契约.md)
+  for the canonical statement.
+- **Sibling docs** (keep them aligned when this one changes): [API契约.md](API契约.md) (canonical
+  endpoint/field spec), [架构总览.md](架构总览.md) (how the software is built, including the
+  `kind` / `err_kind` enumerations and the design rationale for the rules above),
+  [界面导览.md](界面导览.md) (what humans see), [文档维护策略.md](文档维护策略.md) (how to
+  maintain these docs without divergence).
+- **The "don't re-derive" block above is itself a deliverable** — it cost 12 days of waiting for
+  real data plus a fully isolated capture session (260725). When a new CC version ships or a new
+  agent type appears, run `tools/lane_probe.py` against fresh recordings before editing that block.
