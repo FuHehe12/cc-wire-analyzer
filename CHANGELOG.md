@@ -1,6 +1,15 @@
 # Changelog
 
-> Project overview (position / current status / key decisions / next steps) lives in [CLAUDE.md](CLAUDE.md) § 项目速览. This file keeps the change log only: the overview carries internal context (issue paths, maintainer decisions) that should not enter the public repo (CLAUDE.md is `.gitignore`'d), and is mirrored EN/ZH — keeping it in one place avoids drift.
+## Project Overview
+
+> Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below.
+
+- **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection.
+- **Current status**: **v0.3.2 released** (2026-07-19). The `Unreleased` section holds three pieces landing 2026-07-25/26: **lane identity finalized** (the billing-header flag `cc_is_subagent=true` is the authoritative signal, accuracy 10/15 → 15/15), **config doctor** (`doctor.py`, 8 read-only rules), and **failure grouping** (`diagnose.py`, measured 2719 failures → 7 groups). All six self-tests green, code recompiled. Pending release as v0.4.0.
+- **Next steps**:
+  1. **Release v0.4.0** (CHANGELOG ready). Release strategy: verify against real traffic for false-positives before tagging; repackage the exe for a smoke test before the tag.
+  2. **Diagnosis loop**: ① a UI entry for failure grouping (currently API/CLI only); ② recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); ③ cross-day trends (furthest out, deferred).
+  3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (this round was all `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
 ## Unreleased
 
@@ -66,6 +75,11 @@
   "in a way that" → 以…的方式). Rephrased throughout into standard written Chinese while keeping
   every fact, figure, code identifier, path, link, and the document structure unchanged. English
   `CHANGELOG.md` is unaffected. See issues/closed/260726_CHANGELOG_zh_风格改正式文档腔.md.
+- **Project Overview section added at the top of the changelog.** The AI-onboarding
+  snapshot (position / current status / next steps) used to live in the local CLAUDE.md;
+  it now opens this file so anyone landing on the changelog sees the project's current
+  state first. Rule-type key decisions stay in CLAUDE.md (developer conventions); a
+  sanitized public navigation view lives here.
 
 ### Added
 - **Failure groups — captured errors turned into something an agent can diagnose from.** A bad day
