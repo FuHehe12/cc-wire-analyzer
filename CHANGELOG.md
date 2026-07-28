@@ -5,13 +5,12 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection.
-- **Current status**: **v0.3.2 released** (2026-07-19). The `Unreleased` section holds three pieces landing 2026-07-25/26: **lane identity finalized** (the billing-header flag `cc_is_subagent=true` is the authoritative signal, accuracy 10/15 → 15/15), **config doctor** (`doctor.py`, 8 read-only rules), and **failure grouping** (`diagnose.py`, measured 2719 failures → 7 groups). All six self-tests green, code recompiled. Pending release as v0.4.0.
+- **Current status**: **v0.4.0 released** (2026-07-28). Three additions landed together: **lane identity finalized** (the billing-header flag `cc_is_subagent=true` is the authoritative signal, accuracy 10/15 → 15/15), **config doctor** (`doctor.py`, 8 read-only rules), and **failure grouping** (`diagnose.py`, measured 2719 failures → 7 groups), plus a UI readability pass (i18n for `stop_reason`/`err_kind`, response-headers panel open by default with wire-only fields bolded) and a fix for parallel same-template subagent lanes collapsing into one. All six self-tests green; verified against real captures (the 866 MB day) and a repackaged-exe smoke test before tagging.
 - **Next steps**:
-  1. **Release v0.4.0** (CHANGELOG ready). Release strategy: verify against real traffic for false-positives before tagging; repackage the exe for a smoke test before the tag.
-  2. **Diagnosis loop**: ① a UI entry for failure grouping (currently API/CLI only); ② recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); ③ cross-day trends (furthest out, deferred).
-  3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (this round was all `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
+  1. **Diagnosis loop**: ① a UI entry for failure grouping (currently API/CLI only); ② recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); ③ cross-day trends (furthest out, deferred).
+  2. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (the v0.4.0 round was all `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
-## Unreleased
+## v0.4.0 - 2026-07-28
 
 ### Changed
 - **UI readability pass — translate technical enums and surface wire-only headers.** Three small
