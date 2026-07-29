@@ -557,7 +557,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           <div class="val" id="cfgBaseUrl">—</div>
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.backup">备份目录</div><div class="sub" data-i18n="set.backupSub">保留最近 5 份，孤儿备份启动时自动恢复</div></div>
+          <div><div class="lbl" data-i18n="set.backup">备份目录</div><div class="sub"><span data-i18n="set.backupSub">保留最近 5 份，孤儿备份启动时自动恢复</span> · <span id="cfgBackupCount"></span></div></div>
           <div class="in-group">
             <div class="val" id="cfgBackupDir">—</div>
             <button class="btn" onclick="openBackupDir()" data-i18n="set.backupOpen">打开</button>
@@ -623,7 +623,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
       <div class="scard">
         <h3 data-i18n="set.about.title">关于</h3>
         <div class="about-row">
-          <div class="about-item"><div class="l" data-i18n="set.about.version">版本</div><div class="v" id="aboutVersion">—</div></div>
+          <div class="about-item"><div class="l" data-i18n="set.about.version">版本</div><div class="v"><span id="aboutVersion">—</span> <button class="btn" id="aboutCheckBtn" onclick="checkUpdate()" data-i18n="set.about.checkBtn">检查更新</button> <span id="aboutUpdateResult" style="font-size:12px;color:var(--text-faint);word-break:break-all"></span></div></div>
           <div class="about-item"><div class="l" data-i18n="set.about.dataDir">数据目录</div><div class="v" id="aboutDataDir">—</div></div>
           <div class="about-item"><div class="l" data-i18n="set.about.log">运行日志</div><div class="v" id="aboutLogPath">—</div></div>
         </div>
@@ -660,8 +660,8 @@ const S = {
   detailSeq: 0,           // openDetail 请求序号（重入守卫，丢弃过期 fetch 响应）
   toggling: false,        // toggleProxy 进行中（防 5s 定时器击穿按钮 disabled）
 };
-/* 成本估算单价（¥ / 1M tokens），默认按常见上游估算；按你实际使用的上游刊例修改 */
-const PRICING = { input: 4.0, output: 16.0, cache_read: 0.8, cache_creation: 4.0 };
+/* 成本估算已移除：原 PRICING 是按官方刊例折算的金额估算，对走第三方网关的用户并不准；
+   usage 区只显示原始 token 数，不再折算 ¥（如需成本，按你实际单价自己算）。 */
 const $ = id => document.getElementById(id);
 
 /* ================= 线性图标（单色描边 SVG，跟随文字色，替代 emoji，260712）================= */
@@ -753,7 +753,7 @@ zh: {
   "detail.bodyChars": "body {n} 字符",
   "detail.system": "System（{n} 块 · {chars} 字符）",
   "detail.noTools": "无工具定义",
-  "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 显示最近 {m} 条）",
+  "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 显示最近 {m} 条）", "detail.ttft": "首字时间",
   "detail.showAllMsgs": "展开全部 {n} 条",
   "detail.sse": "SSE 流式 · {n} chunks", "detail.nonStream": "非流式",
   "detail.usageNote": "≈ ¥{cost} · 估算单价见源码 PRICING",
@@ -781,6 +781,7 @@ zh: {
   "dag.hideAux": "隐藏辅助调用", "dag.showAux": "显示辅助调用",
   "dag.hideAuxTitle": "隐藏标题/安全/计数等辅助调用（实测可占节点数 1/4），只看主线与子代理",
   "dag.lanes": "泳道", "dag.lanesTitle": "选择要显示的泳道——藏掉不看的主线，剩下的自然变大",
+  "dag.laneHint": "关闭一条主线会同时隐藏挂在它上面的辅助调用（标题/安全/计数/压缩）",
   "dag.errRun": "连续错误", "dag.errRunTitle": "{n} 条连续错误，点击展开逐条查看",
   "dag.collapseRun": "折叠",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
@@ -796,7 +797,7 @@ zh: {
   "set.proxy.sub": "代理只改 settings.json 的 env.ANTHROPIC_BASE_URL 一个字段，其余不碰",
   "set.path": "settings.json 路径", "set.pathSub": "CC 配置文件位置（只读）",
   "set.baseurl": "当前 BASE_URL", "set.baseurlSub": "停止代理后恢复为原值（只读）",
-  "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开",
+  "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开", "set.backupCount": "当前 {n} 份",
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
   "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）",
@@ -813,6 +814,7 @@ zh: {
   "set.test": "测试连通", "set.testing": "测试中…",
   "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
   "set.about.title": "关于", "set.about.version": "版本", "set.about.dataDir": "数据目录", "set.about.log": "运行日志",
+  "set.about.checkBtn": "检查更新", "set.about.checking": "检查中…", "set.about.upToDate": "已是最新版本", "set.about.newVersion": "发现新版本 {v}", "set.about.checkFailed": "检查失败（网络不通？）",
   "set.save": "保存配置",
   "err.no_api_key": "未配置 LLM API Key（设置页「LLM 模型」）",
   "err.no_base_url": "未配置 LLM Base URL（设置页「LLM 模型」）",
@@ -883,7 +885,7 @@ en: {
   "detail.bodyChars": "body {n} chars",
   "detail.system": "System ({n} blocks · {chars} chars)",
   "detail.noTools": "no tool definitions",
-  "detail.messages": "Messages ({n})", "detail.messagesRecent": "Messages ({n} · last {m})",
+  "detail.messages": "Messages ({n})", "detail.messagesRecent": "Messages ({n} · last {m})", "detail.ttft": "ttft",
   "detail.showAllMsgs": "Show all {n}",
   "detail.sse": "SSE stream · {n} chunks", "detail.nonStream": "non-stream",
   "detail.usageNote": "≈ ¥{cost} · unit prices in source PRICING",
@@ -911,6 +913,7 @@ en: {
   "dag.hideAux": "Hide auxiliary calls", "dag.showAux": "Show auxiliary calls",
   "dag.hideAuxTitle": "Hide title/security/count auxiliary calls (can be 1/4 of all nodes), keep main & subagent lanes",
   "dag.lanes": "Lanes", "dag.lanesTitle": "Choose visible lanes — hide mains you don't watch and the rest gets bigger",
+  "dag.laneHint": "Hiding a main lane also hides the auxiliary calls (title/security/count/compact) attached to it",
   "dag.errRun": "consecutive errors", "dag.errRunTitle": "{n} consecutive errors, click to expand",
   "dag.collapseRun": "Collapse",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
@@ -926,7 +929,7 @@ en: {
   "set.proxy.sub": "The proxy only edits env.ANTHROPIC_BASE_URL in settings.json; nothing else is touched",
   "set.path": "settings.json path", "set.pathSub": "CC config file location (read-only)",
   "set.baseurl": "Current BASE_URL", "set.baseurlSub": "Restored to original when the proxy stops (read-only)",
-  "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open",
+  "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open", "set.backupCount": "current {n}",
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
   "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default)",
@@ -943,6 +946,7 @@ en: {
   "set.test": "Test connection", "set.testing": "Testing…",
   "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
   "set.about.title": "About", "set.about.version": "Version", "set.about.dataDir": "Data dir", "set.about.log": "Log file",
+  "set.about.checkBtn": "Check for updates", "set.about.checking": "Checking…", "set.about.upToDate": "Up to date", "set.about.newVersion": "New version {v} available", "set.about.checkFailed": "Check failed (network blocked?)",
   "set.save": "Save settings",
   "err.no_api_key": "LLM API Key not configured (Settings → LLM model)",
   "err.no_base_url": "LLM Base URL not configured (Settings → LLM model)",
@@ -1013,7 +1017,7 @@ ja: {
   "detail.bodyChars": "body {n} 文字",
   "detail.system": "System（{n} ブロック · {chars} 文字）",
   "detail.noTools": "ツール定義なし",
-  "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 直近 {m} 件）",
+  "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 直近 {m} 件）", "detail.ttft": "初回応答",
   "detail.showAllMsgs": "全 {n} 件を表示",
   "detail.sse": "SSE ストリーム · {n} chunks", "detail.nonStream": "非ストリーム",
   "detail.usageNote": "≈ ¥{cost} · 単価はソースの PRICING 参照",
@@ -1041,6 +1045,7 @@ ja: {
   "dag.hideAux": "補助呼び出しを隠す", "dag.showAux": "補助呼び出しを表示",
   "dag.hideAuxTitle": "タイトル/安全/カウントなどの補助呼び出しを隠す（ノードの1/4を占めることも）——メインとサブエージェントだけ表示",
   "dag.lanes": "レーン", "dag.lanesTitle": "表示するレーンを選択——見ないメインを隠すと残りが大きく表示されます",
+  "dag.laneHint": "メインレーンを隠すと、そのメインに属する補助呼び出し（タイトル／セキュリティ／カウント／圧縮）も一緒に隠れます",
   "dag.errRun": "連続エラー", "dag.errRunTitle": "{n} 件の連続エラー、クリックで展開",
   "dag.collapseRun": "折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
@@ -1056,7 +1061,7 @@ ja: {
   "set.proxy.sub": "プロキシは settings.json の env.ANTHROPIC_BASE_URL のみを書き換えます",
   "set.path": "settings.json パス", "set.pathSub": "CC 設定ファイルの場所（読み取り専用）",
   "set.baseurl": "現在の BASE_URL", "set.baseurlSub": "プロキシ停止時に元の値へ復元（読み取り専用）",
-  "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く",
+  "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く", "set.backupCount": "現在 {n} 件",
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
   "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上游デフォルト）",
@@ -1073,6 +1078,7 @@ ja: {
   "set.test": "接続テスト", "set.testing": "テスト中…",
   "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
   "set.about.title": "情報", "set.about.version": "バージョン", "set.about.dataDir": "データ保存先", "set.about.log": "ログ",
+  "set.about.checkBtn": "更新を確認", "set.about.checking": "確認中…", "set.about.upToDate": "最新です", "set.about.newVersion": "新バージョン {v} があります", "set.about.checkFailed": "確認失敗（ネットワーク不通？）",
   "set.save": "設定を保存",
   "err.no_api_key": "LLM API Key が未設定です（設定 → LLM モデル）",
   "err.no_base_url": "LLM Base URL が未設定です（設定 → LLM モデル）",
@@ -1465,7 +1471,7 @@ function renderStatus(){
     : t18("status.upstream", {url: (ext && st.external_change.current)
         || st.original_base_url || st.upstream || "—"});
   const metaBits = [];
-  if(st.backups_count != null) metaBits.push(t18("status.backups", {n: st.backups_count}));
+  /* 备份份数移到设置页显示（260729：捕获页状态卡放"备份5份"语境不通） */
   if(on && st.started_at) metaBits.push(t18("status.startedAt", {t: timePart(st.started_at).slice(0,5)}));
   /* 计数标签如实反映当前选中日期：今日说"今日捕获"，历史日期带日期（260712 修 status.todayCount 误用） */
   metaBits.push(S.date === todayStr()
@@ -1630,14 +1636,15 @@ function rowHtml(it, isNew){
               cache_read: ur.cache_read_input_tokens ?? ur.cache_read };
   const tok = fmtTok(u.input) + "→" + fmtTok(u.output) +
     (u.cache_read ? ' <span class="cache">(+' + fmtTok(u.cache_read) + ' cache)</span>' : "");
-  const ttft = it.ttft_ms != null ? "ttft " + fmtMs(it.ttft_ms) : "";
-  const isProbe = it.path && it.path.indexOf("count_tokens") >= 0;
+  const ttft = it.ttft_ms != null ? t18("detail.ttft") + " " + fmtMs(it.ttft_ms) : "";
+  const kind = it.kind || "other";
+  const isAux = kind !== "main" && kind !== "subagent";
   const sumCls = it.has_error ? "cap-summary err" : "cap-summary";
-  return '<div class="cap-row' + (isNew ? " new" : "") + (isProbe ? " probe" : "") + '" data-rid="' + esc(it.id) + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
+  return '<div class="cap-row' + (isNew ? " new" : "") + (isAux ? " probe" : "") + '" data-rid="' + esc(it.id) + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
     '<span class="cap-time">' + timePart(it.ts_start) + '</span>' +
     '<span class="cap-dot ' + dotCls + '"></span>' +
     '<span class="cap-path">' + esc((it.method || "POST") + " " + (it.path || "")) + '</span>' +
-    (isProbe ? '<span class="chip probe">' + t18("row.probe") + '</span>' : "") +
+    (kind !== "main" ? '<span class="chip probe">' + esc(kindLabel(kind)) + '</span>' : "") +
     '<span class="chip outline">' + esc(it.model || "?") + '</span>' +
     '<span class="cap-dur">' + dur + '</span>' +
     '<span class="cap-tokens">' + tok + '</span>' +
@@ -1805,7 +1812,7 @@ function renderDetail(d){
   $("dTiming").textContent =
     timePart(d.ts_start) + (d.ts_end ? " → " + timePart(d.ts_end) : "") +
     (resp.total_ms != null ? " · " + fmtMs(resp.total_ms) : "") +
-    (resp.ttft_ms != null ? " · ttft " + fmtMs(resp.ttft_ms) : "");
+    (resp.ttft_ms != null ? " · " + t18("detail.ttft") + " " + fmtMs(resp.ttft_ms) : "");
 
   /* ---- 左栏 请求 ---- */
   let L = "";
@@ -1873,7 +1880,7 @@ function renderDetail(d){
     (body.stream ? '<span class="chip outline">stream: true</span>' : "") +
     (body.model ? '<span class="chip outline">' + esc(body.model) + '</span>' : "") +
     '</div><span class="crumb-meta">' +
-    (resp.ttft_ms != null ? "ttft " + fmtMs(resp.ttft_ms) : "") +
+    (resp.ttft_ms != null ? t18("detail.ttft") + " " + fmtMs(resp.ttft_ms) : "") +
     (resp.total_ms != null ? " · total " + fmtMs(resp.total_ms) : "") + '</span></div>';
 
   /* 响应 headers —— proxy.py 一直在录（response.headers_safe），但界面上从来没有入口看（260713 补）。
@@ -1903,10 +1910,7 @@ function renderDetail(d){
               cache_read: ur.cache_read_input_tokens ?? ur.cache_read,
               cache_creation: ur.cache_creation_input_tokens ?? ur.cache_creation };
   if(Object.values(u).some(v => v != null)){   /* 260712：原 Object.keys(u).length 恒真，无 usage 也渲染全"—" */
-    const cost = ((u.input||0) * PRICING.input + (u.output||0) * PRICING.output +
-      (u.cache_read||0) * PRICING.cache_read + (u.cache_creation||0) * PRICING.cache_creation) / 1e6;
-    R += '<div class="dcard"><div class="usage-head"><b>Usage</b><span class="usage-cost">' +
-      t18("detail.usageNote", {cost: cost.toFixed(4)}) + '</span></div><div class="stat-grid2">' +
+    R += '<div class="dcard"><div class="usage-head"><b>Usage</b></div><div class="stat-grid2">' +
       [["input", u.input], ["output", u.output], ["cache_read", u.cache_read], ["cache_creation", u.cache_creation]]
         .map(([l,v]) => '<div class="stat"><div class="v">' + (v != null ? v.toLocaleString("en-US") : "—") +
           '</div><div class="l">' + l + ' tokens</div></div>').join("") +
@@ -1948,7 +1952,8 @@ function renderMsg(m){
     if(b.type === "text"){
       inner += bigText(b.text || "", 4000);
     }else if(b.type === "thinking"){
-      inner += '<div class="thinking-text">' + esc((b.thinking || b.text || "").slice(0, 2000)) + '</div>';
+      inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--text-faint)">thinking</span></div>' +
+        bigText(b.thinking || b.text || "", 3000) + '</div>';
     }else if(b.type === "tool_use"){
       inner += '<div class="tooluse-box">→ ' + esc(b.name || "tool") + " " +
         esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
@@ -2174,6 +2179,10 @@ function dagPlace(n){
   if(DG.hideMid && tier === "mid") return null;
   if(DG.hiddenLanes.has(n.lane)) return null;
   if(DG.hideAux && DG.laneKind[n.lane] === "aux") return null;
+  /* 260729：辅助调用跟随其关联主线一起隐藏——关掉一条主线，挂在它上面的 title/security/
+     count_tokens/compact 等 aux 节点（auxAssoc 记的 near 关联）一并隐去，避免"主线没了、
+     辅助还在显示却不知属于谁"的困惑。auxAssoc 在 renderDagFull 由 near 边建立。 */
+  if(DG.laneKind[n.lane] === "aux" && DG.auxAssoc[n.id] && DG.hiddenLanes.has(DG.auxAssoc[n.id])) return null;
   const x = DG.laneX[n.lane];
   if(x == null) return "UNKNOWN_LANE";   /* lane 不存在（增量路径防御：lane 换血 → 全量重渲） */
   const isErr = !!n.has_error && (n.kind === "main" || n.kind === "subagent");
@@ -2271,7 +2280,13 @@ function renderDagFull(d){
   renderDagLegend(lanes, DG.laneColor, DG.laneNum);
   renderLaneBadge();
   /* 布局（行高非均匀：中间步压扁；过滤与隐藏泳道不占位、不占 lane 列；连续错误折叠只占一格） */
-  const visLanes = lanes.filter(l => !DG.hiddenLanes.has(l.lane_id) && !(DG.hideAux && l.kind === "aux"));
+  const visLanes = lanes.filter(l => {
+    if(DG.hiddenLanes.has(l.lane_id)) return false;
+    if(DG.hideAux && l.kind === "aux") return false;
+    /* 260729：aux lane 若所有节点都随其关联主线被隐藏了，整列也不再占位 */
+    if(l.kind === "aux") return nodes.some(n => n.lane === l.lane_id && !(DG.auxAssoc[n.id] && DG.hiddenLanes.has(DG.auxAssoc[n.id])));
+    return true;
+  });
   DG.laneX = {}; visLanes.forEach((l, i) => DG.laneX[l.lane_id] = DGX.X0 + i * (DGX.LW + DGX.LG));
   DG.pos = {}; DG.ids = new Set(); DG.tier = {}; DG.laneLast = {}; DG.yCur = DGX.Y0;
   DG.runs = {}; DG.openRun = {}; DG.runOf = {}; DG.suppressRun = {};
@@ -2412,7 +2427,7 @@ function renderLaneBadge(){
 }
 function renderLaneMenu(){
   const m = $("laneMenu");
-  m.innerHTML = (DG.lanes || []).map(l => {
+  m.innerHTML = '<div style="font-size:11px;color:var(--text-faint);padding:6px 10px 5px;line-height:1.5;border-bottom:1px solid var(--border-soft);margin-bottom:4px">' + t18("dag.laneHint") + '</div>' + (DG.lanes || []).map(l => {
     const hidden = DG.hiddenLanes.has(l.lane_id);
     const color = DG.laneColor[l.lane_id] || LANE_COLOR[l.kind] || LANE_COLOR.aux;
     const label = laneLabel(l.kind) + (l.kind === "main" ? " " + DG.laneNum[l.lane_id] : "");
@@ -2451,6 +2466,7 @@ async function loadConfig(){
     $("cfgSettingsPath").textContent = about.settings_path || "—";
     $("cfgBaseUrl").textContent = st.original_base_url || st.upstream || "—";
     $("cfgBackupDir").textContent = (about.data_dir || "~/.cc-wire-analyzer") + "/backups";
+    $("cfgBackupCount").textContent = t18("set.backupCount", {n: st.backups_count ?? 0});
     $("cfgAutoStart").classList.toggle("on", !!cfg.auto_start_proxy);
     $("cfgRetention").value = cfg.retention_days ?? 30;
     const tr = cfg.translate || {};
@@ -2462,11 +2478,47 @@ async function loadConfig(){
     $("cfgTransLang").value = tr.target_lang || "zh";
     $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
     $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
+    S.curVersion = about.version || "";
     $("aboutDataDir").textContent = about.data_dir || "—";
     $("aboutLogPath").textContent = about.log_path || "—";
   }catch(e){
     toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
   }
+}
+/* 检查更新：fetch GitHub 最新 release 比对版本号（260729）。
+   走 api.github.com（支持 CORS）；12s 超时；网络不通时降级为提示手动去 GitHub releases 看。 */
+async function checkUpdate(){
+  const btn = $("aboutCheckBtn"), res = $("aboutUpdateResult");
+  if(!btn) return;
+  btn.disabled = true; btn.textContent = t18("set.about.checking"); res.textContent = "";
+  const GH = "github.com/Fuhehe12/cc-wire-analyzer/releases";
+  try{
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 12000);
+    const r = await fetch("https://api.github.com/repos/Fuhehe12/cc-wire-analyzer/releases/latest", {signal: ctrl.signal});
+    clearTimeout(to);
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const latest = (j.tag_name || "").replace(/^v/, "");
+    if(latest && S.curVersion && cmpVer(latest, S.curVersion) > 0){
+      res.textContent = t18("set.about.newVersion", {v: j.tag_name}) + "  →  " + GH;
+    }else if(latest){
+      res.textContent = t18("set.about.upToDate");
+    }else{
+      throw new Error("no tag");
+    }
+  }catch(e){
+    res.textContent = t18("set.about.checkFailed") + "  →  " + GH;
+  }
+  btn.disabled = false; btn.textContent = t18("set.about.checkBtn");
+}
+function cmpVer(a, b){
+  const pa = String(a).split("."), pb = String(b).split(".");
+  for(let i = 0; i < Math.max(pa.length, pb.length); i++){
+    const da = parseInt(pa[i] || "0", 10), db = parseInt(pb[i] || "0", 10);
+    if(da !== db) return da - db;
+  }
+  return 0;
 }
 async function saveConfig(){
   const payload = {

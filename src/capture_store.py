@@ -84,8 +84,16 @@ _IDX_PRIVATE = ("off", "len", "v", "sys_head", "first_user", "last_user",
 
 
 def _public_summary(idx: dict) -> dict:
-    """索引记录 → 列表/SSE 摘要（剥掉内部字段，形状与旧 _summary(完整 record) 一致）。"""
-    return {k: v for k, v in idx.items() if k not in _IDX_PRIVATE}
+    """索引记录 → 列表/SSE 摘要（剥掉内部字段 + 补 kind）。
+
+    kind 由 classifier.classify_idx(idx) 现算（idx 里有 path/sys_head/is_subagent/tools_n
+    等判别原料）——让列表/SSE 一眼看出这条请求的角色，不必另查 DAG。"""
+    out = {k: v for k, v in idx.items() if k not in _IDX_PRIVATE}
+    try:
+        out["kind"] = classifier.classify_idx(idx)
+    except Exception:
+        out["kind"] = "other"
+    return out
 
 
 def _idx_file(date: str) -> Path:

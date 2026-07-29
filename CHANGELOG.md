@@ -10,6 +10,41 @@
   1. **Diagnosis loop**: ① a UI entry for failure grouping (currently API/CLI only); ② recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); ③ cross-day trends (furthest out, deferred).
   2. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (the v0.4.0 round was all `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
+## v0.4.1 - unreleased
+
+> In progress. This entry records the user-driven UI/doc batch from 260729; other v0.4.1 doc work
+> (README / AI_USAGE / API契约 / app.py) is still uncommitted in the working tree and will be folded in
+> before the version is tagged.
+
+### Added
+- **[docs/报文解读.md](docs/报文解读.md)** — a user-facing guide to the 7 request kinds CC sends
+  (main / subagent / title / compact / security / count_tokens / other): what each one is, its payload
+  shape, why CC sends it, how to recognize it, and the common confusion points. Includes a "don't trust
+  surface features" methodology section (count_tokens and security look alike on stream/output but are
+  unrelated) and the system three-block explainer. Cross-linked from 界面导览 / 架构总览 / 文档维护策略.
+- **Check for updates** in the About panel — fetches the latest GitHub release and compares versions
+  (12s timeout, degrades to a manual-link hint on network failure).
+
+### Changed
+- **Capture list now shows a kind chip for non-main rows.** main threads stay unmarked; the others get a
+  chip (计数 / 安全 / 标题 …) so a row's role is visible at a glance. Backend `_public_summary` now carries
+  `kind` (computed via `classifier.classify_idx`).
+- **Backup count moved from the capture status card to the Settings panel.** "备份 N 份" in the capture
+  header was contextually odd; it now shows under Settings → 备份目录 ("当前 N 份").
+- **ttft label localized** (zh 首字时间 / en ttft / ja 初回応答) in the list row and the detail header.
+- **Request-side thinking blocks** now render with a chip + bigText toolbar (translate / explain),
+  matching the response side. (CC usually omits thinking from request history, so this mainly matters
+  when it doesn't.)
+
+### Fixed
+- **Hiding a main lane now also hides its auxiliary calls.** Closing a main lane in the timeline used to
+  leave its title / security / count_tokens / compact calls visible in the shared aux column with no sign
+  of whom they belonged to. Aux nodes whose `near`-edge parent lane is hidden now hide too, an emptied aux
+  column no longer reserves space, and the lane menu carries a hint explaining the linkage.
+- **Removed the estimated cost (≈ ¥x · PRICING) from the response panel.** It was computed from official
+  list prices, which are wrong for users on third-party gateways (the common case for this tool's
+  audience). The raw Usage token counts remain.
+
 ## v0.4.0 - 2026-07-28
 
 ### Changed
