@@ -51,6 +51,31 @@
 - **Removed the estimated cost (≈ ¥x · PRICING) from the response panel.** It was computed from official
   list prices, which are wrong for users on third-party gateways (the common case for this tool's
   audience). The raw Usage token counts remain.
+- **A role hint that could never fire, and a classification error nothing would have reported.**
+  Post-v0.4.0 code review, each finding checked against real captures rather than reasoned about:
+  - The detail view's system-block role hint carried a `compact` rule matching on
+    `summarizing conversations` / `summary of the conversation`. Measured on real compact requests
+    (07-26 `req_fbab1f0` / `req_c012395`): their `system` is the ordinary main-thread prompt
+    (`You are an interactive agent…`) and the compaction instruction sits in the **last user
+    message** — which is what the classifier keys on too. So the branch, and its three
+    `sysRole.compact` strings, could never render. Removed, with the measurement written into the
+    function's comment so it does not get re-added on intuition.
+  - `_public_summary` degraded a failed `classify_idx` to `kind: "other"` with no log line. A change
+    to the index fields would have turned a whole day's capture list into `other` with nothing
+    anywhere to notice it by — the project's own recurring bug type ③. Now counted and logged like
+    the existing write/index failure counters, and bounded (first occurrence, then every 100th)
+    because the function runs once per list row and real failures come in sheets.
+  - Nine dead i18n keys removed, left behind by earlier removals: `detail.usageNote` (the dropped
+    cost estimate), `status.backups` (the relocated backup count), `row.probe` (superseded by
+    `kindLabel`). The three language tables are now key-for-key identical at 225 entries each.
+    The `.cap-row.probe` CSS class keeps its historical name — it is now driven by `isAux` (any
+    auxiliary call, not just token probes) — with a comment saying so.
+
+  Verified: all six self-tests green; `kind` measured at 0.033 ms/row and computed only over the
+  paged window (the DAG path does not use `_public_summary`), so no regression; the frontend
+  re-checked in a browser against a 510-record day in an isolated `CCWA_HOME` — kind chips, system
+  role labels in all three languages, no raw keys leaking, and lane-hiding still taking its
+  auxiliary nodes with it (56-node main lane hidden → 78 nodes gone).
 
 ## v0.4.0 - 2026-07-28
 

@@ -49,6 +49,10 @@ _LAST_WRITE_ERROR: str | None = None
 _IDX_ERRORS = 0
 _LAST_IDX_ERROR: str | None = None
 
+# kind 分类失败计数（260729）：列表/SSE 摘要按行现算 kind，失败降级 "other"——
+# 降级本身没问题（列表照常出），但不能没人知道，见 _public_summary。
+_KIND_ERRORS = 0
+
 
 def new_record_id() -> str:
     return "req_" + uuid.uuid4().hex[:7]
@@ -87,12 +91,20 @@ def _public_summary(idx: dict) -> dict:
     """索引记录 → 列表/SSE 摘要（剥掉内部字段 + 补 kind）。
 
     kind 由 classifier.classify_idx(idx) 现算（idx 里有 path/sys_head/is_subagent/tools_n
-    等判别原料）——让列表/SSE 一眼看出这条请求的角色，不必另查 DAG。"""
+    等判别原料）——让列表/SSE 一眼看出这条请求的角色，不必另查 DAG。
+
+    分类失败降级成 "other" 但**要记日志**（260729）：分类原料字段一旦变动，
+    整天的列表会静默全变 "other"，没人会怀疑。日志有界——本函数在列表路径上按行调用，
+    真出问题是成片失败，首次必打、之后每 100 次一条，免得刷爆 run.log。"""
+    global _KIND_ERRORS
     out = {k: v for k, v in idx.items() if k not in _IDX_PRIVATE}
     try:
         out["kind"] = classifier.classify_idx(idx)
-    except Exception:
+    except Exception as e:
         out["kind"] = "other"
+        _KIND_ERRORS += 1
+        if _KIND_ERRORS == 1 or _KIND_ERRORS % 100 == 0:
+            log.error("kind 分类失败（第 %d 次，该条降级为 other）: %s", _KIND_ERRORS, e)
     return out
 
 

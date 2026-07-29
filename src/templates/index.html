@@ -196,6 +196,8 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .cap-summary{font-size:12px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;min-width:0;flex:1;}
 .cap-summary.err{color:var(--err);}
+/* .probe：辅助调用行淡化（260729 起由 isAux 触发——标题/安全/计数/压缩全算，不再是计数探针专用；
+   类名沿用历史名字，改名要动多处且无功能收益） */
 .cap-row.probe{opacity:.72;}
 .list-footer{display:flex;justify-content:center;padding:10px 16px;background:var(--bg-softer);}
 .list-empty{padding:36px 16px;text-align:center;color:var(--apple-secondary);font-size:12.5px;}
@@ -695,7 +697,7 @@ zh: {
   "status.loading": "正在获取状态…", "status.unreachable": "后端不可达",
   "status.running": "代理运行中", "status.stopped": "代理已停止",
   "status.upstream": "上游端点 {url}",
-  "status.backups": "备份 {n} 份", "status.startedAt": "{t} 启动", "status.todayCount": "今日捕获 {n} 条",
+  "status.startedAt": "{t} 启动", "status.todayCount": "今日捕获 {n} 条",
   "status.dateCount": "{date} {n} 条",
   "btn.retry": "重试", "btn.start": "启动代理", "btn.stop": "停止代理",
   "btn.starting": "启动中…", "btn.stopping": "停止中…",
@@ -747,7 +749,7 @@ zh: {
   "list.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话即可看到请求。",
   "list.emptyDate": "该日期没有捕获记录。",
   "list.loadMore": "加载更多（还有 {n} 条）", "list.loadFailed": "列表加载失败：{msg}",
-  "row.probe": "计数探针", "row.error": "请求异常", "chip.pending": "进行中",
+  "row.error": "请求异常", "chip.pending": "进行中",
   "detail.back": "← 返回", "detail.loading": "加载中…", "detail.loadFailed": "详情加载失败：{msg}",
   "detail.request": "请求 Request", "detail.response": "响应 Response",
   "detail.bodyChars": "body {n} 字符",
@@ -756,7 +758,6 @@ zh: {
   "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 显示最近 {m} 条）", "detail.ttft": "首字时间",
   "detail.showAllMsgs": "展开全部 {n} 条",
   "detail.sse": "SSE 流式 · {n} chunks", "detail.nonStream": "非流式",
-  "detail.usageNote": "≈ ¥{cost} · 估算单价见源码 PRICING",
   "detail.blocks": "Content Blocks 回放（{n}）", "detail.noBlocks": "无内容块",
   "bt.expand": "展开全部 {n} 字符", "bt.collapse": "收起",
   "bt.format": "格式化", "bt.plain": "纯文本",
@@ -786,7 +787,7 @@ zh: {
   "dag.collapseRun": "折叠",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
-  "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.compact": "压缩指令", "sysRole.title": "标题指令",
+  "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.title": "标题指令",
   "lane.main": "主线", "lane.subagent": "子代理", "lane.aux": "辅助",
   "sr.end_turn": "自然结束", "sr.tool_use": "调用工具", "sr.max_tokens": "达到上限",
   "sr.stop_sequence": "命中停止序列", "sr.content_filter": "内容过滤",
@@ -829,7 +830,7 @@ en: {
   "status.loading": "Fetching status…", "status.unreachable": "Backend unreachable",
   "status.running": "Proxy running", "status.stopped": "Proxy stopped",
   "status.upstream": "Upstream {url}",
-  "status.backups": "{n} backups", "status.startedAt": "started {t}", "status.todayCount": "{n} captured today",
+  "status.startedAt": "started {t}", "status.todayCount": "{n} captured today",
   "status.dateCount": "{date} · {n}",
   "btn.retry": "Retry", "btn.start": "Start proxy", "btn.stop": "Stop proxy",
   "btn.starting": "Starting…", "btn.stopping": "Stopping…",
@@ -880,7 +881,7 @@ en: {
   "list.emptyToday": "No captures today — start the proxy, then open a new CC session to see requests.",
   "list.emptyDate": "No captures on this date.",
   "list.loadMore": "Load more ({n} left)", "list.loadFailed": "Failed to load list: {msg}",
-  "row.probe": "token probe", "row.error": "request error", "chip.pending": "pending",
+  "row.error": "request error", "chip.pending": "pending",
   "detail.back": "← Back", "detail.loading": "Loading…", "detail.loadFailed": "Failed to load detail: {msg}",
   "detail.request": "Request", "detail.response": "Response",
   "detail.bodyChars": "body {n} chars",
@@ -889,7 +890,6 @@ en: {
   "detail.messages": "Messages ({n})", "detail.messagesRecent": "Messages ({n} · last {m})", "detail.ttft": "ttft",
   "detail.showAllMsgs": "Show all {n}",
   "detail.sse": "SSE stream · {n} chunks", "detail.nonStream": "non-stream",
-  "detail.usageNote": "≈ ¥{cost} · unit prices in source PRICING",
   "detail.blocks": "Content Blocks ({n})", "detail.noBlocks": "no content blocks",
   "bt.expand": "Show all {n} chars", "bt.collapse": "Collapse",
   "bt.format": "Format", "bt.plain": "Plain text",
@@ -919,7 +919,7 @@ en: {
   "dag.collapseRun": "Collapse",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
-  "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.compact": "Compact", "sysRole.title": "Title",
+  "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.title": "Title",
   "lane.main": "Session", "lane.subagent": "Agent", "lane.aux": "Aux",
   "sr.end_turn": "natural stop", "sr.tool_use": "tool call", "sr.max_tokens": "hit limit",
   "sr.stop_sequence": "stop sequence", "sr.content_filter": "content filter",
@@ -962,7 +962,7 @@ ja: {
   "status.loading": "状態を取得中…", "status.unreachable": "バックエンドに接続できません",
   "status.running": "プロキシ稼働中", "status.stopped": "プロキシ停止中",
   "status.upstream": "上流エンドポイント {url}",
-  "status.backups": "バックアップ {n} 件", "status.startedAt": "{t} 開始", "status.todayCount": "本日 {n} 件",
+  "status.startedAt": "{t} 開始", "status.todayCount": "本日 {n} 件",
   "status.dateCount": "{date} · {n} 件",
   "btn.retry": "再試行", "btn.start": "プロキシ開始", "btn.stop": "プロキシ停止",
   "btn.starting": "開始中…", "btn.stopping": "停止中…",
@@ -1013,7 +1013,7 @@ ja: {
   "list.emptyToday": "本日のキャプチャはまだありません——プロキシを開始し、新しい CC セッションを開くとリクエストが表示されます。",
   "list.emptyDate": "この日付のキャプチャはありません。",
   "list.loadMore": "さらに読み込む（残り {n} 件）", "list.loadFailed": "一覧の読み込みに失敗：{msg}",
-  "row.probe": "カウントプローブ", "row.error": "リクエスト異常", "chip.pending": "進行中",
+  "row.error": "リクエスト異常", "chip.pending": "進行中",
   "detail.back": "← 戻る", "detail.loading": "読み込み中…", "detail.loadFailed": "詳細の読み込みに失敗：{msg}",
   "detail.request": "リクエスト", "detail.response": "レスポンス",
   "detail.bodyChars": "body {n} 文字",
@@ -1022,7 +1022,6 @@ ja: {
   "detail.messages": "Messages（{n}）", "detail.messagesRecent": "Messages（{n} · 直近 {m} 件）", "detail.ttft": "初回応答",
   "detail.showAllMsgs": "全 {n} 件を表示",
   "detail.sse": "SSE ストリーム · {n} chunks", "detail.nonStream": "非ストリーム",
-  "detail.usageNote": "≈ ¥{cost} · 単価はソースの PRICING 参照",
   "detail.blocks": "Content Blocks（{n}）", "detail.noBlocks": "内容ブロックなし",
   "bt.expand": "全 {n} 文字を表示", "bt.collapse": "折りたたむ",
   "bt.format": "整形", "bt.plain": "プレーン",
@@ -1052,7 +1051,7 @@ ja: {
   "dag.collapseRun": "折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
-  "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.compact": "圧縮指示", "sysRole.title": "タイトル指示",
+  "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.title": "タイトル指示",
   "lane.main": "メイン", "lane.subagent": "エージェント", "lane.aux": "補助",
   "sr.end_turn": "自然終了", "sr.tool_use": "ツール呼出", "sr.max_tokens": "上限到達",
   "sr.stop_sequence": "停止シーケンス", "sr.content_filter": "コンテンツフィルタ",
@@ -1099,13 +1098,15 @@ function t18(key, params){
 }
 function kindLabel(k){ return (I18N.zh["kind." + k] != null) ? t18("kind." + k) : k; }
 /* 260729：system block 内容角色推断——让 security 的 sys[1]（108K 规则库）等被标成
-   "安全审查指令"，用户一眼看出判断指令在哪块，不必逐块展开猜。main 的 sys[2] 主体不标。 */
+   "安全审查指令"，用户一眼看出判断指令在哪块，不必逐块展开猜。main 的 sys[2] 主体不标。
+   不设 compact 规则：实测（07-26 req_fbab1f0/req_c012395）压缩请求的 system 就是普通主体
+   prompt（"You are an interactive agent…"），压缩指令在**最后一条 user 消息**里，
+   classifier 判 compact 靠的也是 last_user——按 system 找压缩指令永远找不到，别再加。 */
 function sysBlockRole(text){
   const t = (text || "").slice(0, 300).toLowerCase();
   if(t.includes("billing-header") || t.includes("cc_version=")) return "sysRole.billing";
   if(t.includes("security monitor")) return "sysRole.security";
   if(t.includes("you are claude code") || t.includes("you are a claude agent")) return "sysRole.identity";
-  if(t.includes("summarizing conversations") || t.includes("summary of the conversation")) return "sysRole.compact";
   if(t.includes("sentence-case title") || t.includes("5-10 word title")) return "sysRole.title";
   return "";
 }
