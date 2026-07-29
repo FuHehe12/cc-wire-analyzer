@@ -12,9 +12,27 @@ A local MITM proxy desktop app that transparently records and analyzes all HTTP 
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** (ZH) is how these docs stay in sync.
 > *(Deep-dive docs are in Chinese; machine-translate if needed.)*
 
-## What it shows that you can't otherwise see
+## When you'd reach for this
 
-When Claude Code talks to an upstream (Anthropic official, or a third-party gateway), the outgoing requests hide link-level truth that jsonl/OTLP can't capture: the raw watermark fields in the system prompt, SSE chunk timing, the exact upstream response, security-classifier calls, precise token cost. This tool spins up a local proxy, temporarily points CC's `ANTHROPIC_BASE_URL` at it, and **records + forwards** everything — so those truths become observable.
+Claude Code shows you its own version of a session. The wire shows what was actually sent and
+what actually came back — and the two are not the same thing. You'd want the wire when:
+
+- **Claude Code goes through a third-party gateway and something is off.** A request fails, a
+  model answers differently than expected, costs look wrong — and CC's interface only tells you
+  that *something* happened. The upstream's actual response, including its error message, is on
+  the wire.
+- **You want to see what CC actually sends.** The full system prompt as transmitted (watermark
+  fields and all), which tools were declared on which request, when a subagent was spawned and
+  with what prompt, the background security-classifier calls you never see, SSE chunk timing,
+  and token counts as the upstream reported them — not as they were later summarized.
+- **You want a session on record.** Everything is written to plain JSONL on your machine, so you
+  (or another agent, over the HTTP API) can go back through it afterwards instead of trying to
+  reproduce the problem.
+
+**Probably not for you** if you use the official endpoint, nothing is going wrong, and you
+mainly want conversation history — `~/.claude/projects/*.jsonl` already has that, and it is
+easier to read. This tool earns its place when the question is *"what actually went over the
+wire?"*
 
 ## Screenshots
 
@@ -25,6 +43,56 @@ When Claude Code talks to an upstream (Anthropic official, or a third-party gate
 | Request detail | Settings |
 |---|---|
 | ![Detail](docs/screenshots/en/view-b-detail.png) | ![Settings](docs/screenshots/en/view-c-settings.png) |
+
+## A real example: session titles that were silently failing
+
+Recorded on the maintainer's own machine. Session titles had stopped being generated. Claude
+Code showed no error — titles simply never appeared, which is easy to not even notice.
+
+Every title request in the recording had come back `400`, and the upstream had already
+explained why:
+
+```
+output_config.effort 'max' is not supported when thinking is disabled on this model.
+Use effort 'high' or below, or enable thinking.
+```
+
+The cause was a config contradiction: `settings.json` had `effortLevel: low` at the top level,
+while the environment set `CLAUDE_CODE_EFFORT_LEVEL: max` — and the environment wins. Nothing
+in CC's own view showed this; the failing requests were only visible at the wire layer.
+
+That one finding turned into two rules in the built-in **config check**, so the same
+contradiction now gets flagged before you start the proxy rather than found by accident. This is
+the loop the tool is built around: a failure the upstream already diagnosed once, made visible,
+and then turned into a check. It does not fix anything for you — it shows you what happened and
+names the field.
+
+## Is it safe to point your traffic at it?
+
+Reasonable question to ask of anything calling itself a MITM proxy. The honest answer, in four
+points:
+
+- **No recording leaves your machine.** Recordings are written to `~/.cc-wire-analyzer/` as plain
+  JSONL, and traffic is forwarded to the same upstream CC was already using. There is no
+  telemetry, no account, no upload. The app makes exactly two outbound calls of its own, both
+  only when you click them: the optional translate / ask-AI feature in the detail view (sends the
+  selected content to an endpoint **you** configure) and "check for updates" in the About panel
+  (asks api.github.com for the latest release tag, sends nothing about you).
+- **One config field, restored on exit.** The proxy edits `ANTHROPIC_BASE_URL` in
+  `~/.claude/settings.json` and nothing else — token, model mapping and OTLP config are left
+  alone. The file is backed up before the edit, and restoration is hooked to the window-close
+  event, `atexit`, signals, and a startup orphan check; a `restore` command exists as a last
+  resort. Restoration only ever undoes the exact change it can still prove it made — if you or
+  cc-switch changed `BASE_URL` in the meantime, it leaves your file alone.
+- **Credentials are redacted, message content is not.** `Authorization` and similar headers are
+  stored redacted. Request and response bodies are stored **verbatim** — which is the point, but
+  it means a recording contains your prompts, your files' contents as quoted into the session,
+  and the full system prompt. Treat capture files as sensitive: don't paste them into a chat or
+  attach them to a bug report without reading them first.
+- **It coexists with your existing setup.** Official endpoint direct, a third-party gateway, or
+  cc-switch — all supported. While the proxy is running, don't switch endpoints with cc-switch:
+  that rewrites `BASE_URL` and CC would bypass the proxy. The app watches for exactly this and
+  tells you when it happens.
 
 ## Features
 

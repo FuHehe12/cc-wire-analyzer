@@ -76,6 +76,34 @@
   auxiliary nodes with it (56-node main lane hidden → 78 nodes gone).
 
 ### Docs
+- **The READMEs now open with when you'd want this, a case where it paid off, and what it does
+  with your traffic.** The repository has been public since 2026-07-12, and the landing page led
+  with its technical category — `MITM proxy`, `wire-level`, `SSE`. That is clear to someone who
+  already knows they need a packet capture, and opaque to a Claude Code user who does not yet
+  know which of their own bad afternoons this addresses — while "MITM" plus "records everything"
+  raises an entirely reasonable question about whether it is safe to point a session at it. All
+  three READMEs (en/zh/ja) now open with three sections instead:
+  - **When you'd reach for this** — three situations to recognize yourself in (CC going through
+    a third-party gateway when something is off; wanting to see what CC actually transmits —
+    system prompt as sent, spawned subagents, background security-classifier calls, upstream
+    token counts; wanting a session on record to go back through). It also says who should
+    *not* bother: if you are on the official endpoint, nothing is wrong, and you want
+    conversation history, `~/.claude/projects/*.jsonl` already has it and reads better.
+  - **A real example** — the effort/400 finding from v0.4.0, end to end: session titles silently
+    not generating, every title request coming back `400`, the upstream's own sentence naming
+    the field, the root cause (`effortLevel: low` in `settings.json` overridden by
+    `CLAUDE_CODE_EFFORT_LEVEL: max` in the environment), and how it became two rules in the
+    config check. Real redacted capture data, no mock — and it states plainly that the tool
+    fixes nothing for you; it shows what happened and names the field.
+  - **Is it safe to point your traffic at it?** — four points: no recording leaves the machine
+    (with the app's own outbound calls listed explicitly), one config field edited and restored
+    on exit, credentials redacted but bodies stored verbatim so captures are sensitive files,
+    and how it coexists with official-direct / third-party / cc-switch setups.
+
+  The screenshots moved up to sit right after the first section, since three new prose sections
+  had pushed them three screens down. See issues/open/260725_公开README入口与信任表达.md — the
+  remaining item there (a release kit for a target community) is deliberately left undone: it is
+  an outward-facing action and stays the maintainer's call.
 - **The README no longer carries a hand-written version number.** v0.4.0 added a
   `Current version: vX.Y.Z` line to all three READMEs because GitHub's rendered README does not
   show the current tag. **That line went stale at the very next release** — v0.4.0 shipped while
