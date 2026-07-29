@@ -786,6 +786,7 @@ zh: {
   "dag.collapseRun": "折叠",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
+  "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.compact": "压缩指令", "sysRole.title": "标题指令",
   "lane.main": "主线", "lane.subagent": "子代理", "lane.aux": "辅助",
   "sr.end_turn": "自然结束", "sr.tool_use": "调用工具", "sr.max_tokens": "达到上限",
   "sr.stop_sequence": "命中停止序列", "sr.content_filter": "内容过滤",
@@ -918,6 +919,7 @@ en: {
   "dag.collapseRun": "Collapse",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
+  "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.compact": "Compact", "sysRole.title": "Title",
   "lane.main": "Session", "lane.subagent": "Agent", "lane.aux": "Aux",
   "sr.end_turn": "natural stop", "sr.tool_use": "tool call", "sr.max_tokens": "hit limit",
   "sr.stop_sequence": "stop sequence", "sr.content_filter": "content filter",
@@ -1050,6 +1052,7 @@ ja: {
   "dag.collapseRun": "折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
+  "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.compact": "圧縮指示", "sysRole.title": "タイトル指示",
   "lane.main": "メイン", "lane.subagent": "エージェント", "lane.aux": "補助",
   "sr.end_turn": "自然終了", "sr.tool_use": "ツール呼出", "sr.max_tokens": "上限到達",
   "sr.stop_sequence": "停止シーケンス", "sr.content_filter": "コンテンツフィルタ",
@@ -1095,6 +1098,17 @@ function t18(key, params){
   return s;
 }
 function kindLabel(k){ return (I18N.zh["kind." + k] != null) ? t18("kind." + k) : k; }
+/* 260729：system block 内容角色推断——让 security 的 sys[1]（108K 规则库）等被标成
+   "安全审查指令"，用户一眼看出判断指令在哪块，不必逐块展开猜。main 的 sys[2] 主体不标。 */
+function sysBlockRole(text){
+  const t = (text || "").slice(0, 300).toLowerCase();
+  if(t.includes("billing-header") || t.includes("cc_version=")) return "sysRole.billing";
+  if(t.includes("security monitor")) return "sysRole.security";
+  if(t.includes("you are claude code") || t.includes("you are a claude agent")) return "sysRole.identity";
+  if(t.includes("summarizing conversations") || t.includes("summary of the conversation")) return "sysRole.compact";
+  if(t.includes("sentence-case title") || t.includes("5-10 word title")) return "sysRole.title";
+  return "";
+}
 function laneLabel(k){ return (I18N.zh["lane." + k] != null) ? t18("lane." + k) : k; }
 /* 260726 加：stop_reason / err_kind 三语查表（fallback 显示英文 raw 值，与 kindLabel 同风格） */
 function stopReasonLabel(v){ return (v && I18N.zh["sr." + v] != null) ? t18("sr." + v) : (v || ""); }
@@ -1819,6 +1833,10 @@ function renderDetail(d){
   const bodySize = JSON.stringify(body).length;
   L += '<div class="col-head"><h3>' + t18("detail.request") + '</h3><span class="meta">' +
     t18("detail.bodyChars", {n: fmtTok(bodySize)}) + '</span></div>';
+  /* 请求侧元信息：model / stream 来自请求体，归请求区（260729；原先误放在响应 meta-row） */
+  L += '<div class="chip-row" style="margin:2px 0 8px">' +
+    (body.model ? '<span class="chip outline">' + esc(body.model) + '</span>' : "") +
+    (body.stream ? '<span class="chip outline">stream: true</span>' : "") + '</div>';
 
   /* headers */
   const hs = req.headers_safe || {};
@@ -1834,8 +1852,9 @@ function renderDetail(d){
   L += '<details class="fold"><summary>' + t18("detail.system", {n: sys.length, chars: fmtTok(sysSize)}) + '</summary><div class="fold-body">' +
     sys.map((blk,i) => {
       const cache = blk.cache_control ? 'cache_control: ' + esc(blk.cache_control.type || JSON.stringify(blk.cache_control)) : "";
+      const role = sysBlockRole(blk.text || "");
       return '<div class="blk"><div class="blk-head">' +
-        '<span class="chip" style="background:var(--node-system)">system[' + i + ']</span>' +
+        '<span class="chip" style="background:var(--node-system)">system[' + i + ']' + (role ? ' · ' + t18(role) : "") + '</span>' +
         (cache ? '<span class="blk-meta">' + cache + '</span>' : "") +
         '</div>' + bigText(blk.text || "", 3000) + '</div>';
     }).join("") + '</div></details>';
@@ -1877,8 +1896,6 @@ function renderDetail(d){
   R += '<div class="dcard meta-row">' +
     '<div class="chip-row">' + chipFor(resp.status) +
     (resp.stop_reason ? '<span class="chip outline" title="stop_reason: ' + esc(resp.stop_reason) + '">' + esc(stopReasonLabel(resp.stop_reason)) + '</span>' : "") +
-    (body.stream ? '<span class="chip outline">stream: true</span>' : "") +
-    (body.model ? '<span class="chip outline">' + esc(body.model) + '</span>' : "") +
     '</div><span class="crumb-meta">' +
     (resp.ttft_ms != null ? t18("detail.ttft") + " " + fmtMs(resp.ttft_ms) : "") +
     (resp.total_ms != null ? " · total " + fmtMs(resp.total_ms) : "") + '</span></div>';

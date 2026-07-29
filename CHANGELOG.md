@@ -24,6 +24,9 @@
   unrelated) and the system three-block explainer. Cross-linked from 界面导览 / 架构总览 / 文档维护策略.
 - **Check for updates** in the About panel — fetches the latest GitHub release and compares versions
   (12s timeout, degrades to a manual-link hint on network failure).
+- **System blocks now show their role** in the detail view — each `system[i]` chip is annotated by content
+  (billing header / identity / security rules / compact / title), so e.g. a security request's ~108K-char
+  `sys[1]` is visibly labeled "Security rules" instead of being an inscrutable collapsed block.
 
 ### Changed
 - **Capture list now shows a kind chip for non-main rows.** main threads stay unmarked; the others get a
@@ -32,6 +35,10 @@
 - **Backup count moved from the capture status card to the Settings panel.** "备份 N 份" in the capture
   header was contextually odd; it now shows under Settings → 备份目录 ("当前 N 份").
 - **ttft label localized** (zh 首字时间 / en ttft / ja 初回応答) in the list row and the detail header.
+- **Detail-panel field placement fixed**: `model` and `stream` come from the request body, so they moved
+  from the response meta-row to the request side. The response meta-row now keeps only response-origin
+  fields (status / stop_reason / ttft / total) — `model` was never server-returned; this tool records no
+  response model field.
 - **Request-side thinking blocks** now render with a chip + bigText toolbar (translate / explain),
   matching the response side. (CC usually omits thinking from request history, so this mainly matters
   when it doesn't.)
