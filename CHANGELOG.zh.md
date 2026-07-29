@@ -12,6 +12,26 @@
   1. **诊断闭环**：① 失败聚合的 UI 入口（目前只有 API/CLI）；② 反复出现的失败模式固化成体检规则（`effort_max_rejected_upstream` 即由此而来——标准：可复现？能静态判定？误报风险？）；③ 跨天趋势（最远，暂缓）。
   2. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理**未实测**（v0.4.0 本轮全是 sdk-cli）。两层规则保证 flag 缺席也不会再让主线被误判为子代理，但要彻底闭环需采集一次交互会话派生子代理的流量。
 
+## v0.4.1 - 未发版
+
+> 进行中。本段记录 260729 用户驱动的 UI/文档批次；其余 v0.4.1 文档工作（README / AI_USAGE / API契约 / app.py）仍在工作区未提交，发版前并入。
+
+### 新增
+- **[docs/报文解读.md](docs/报文解读.md)**——面向使用者的「CC 7 种请求」解读指南（main / subagent / title / compact / security / count_tokens / other）：每种是什么、报文长什么样、CC 为什么发、怎么认、易混点。含「别被表面特征骗」识别方法论（count_tokens 与 security 在 stream/output 上撞脸但毫不相关）与 system 三 block 结构说明。已从 界面导览 / 架构总览 / 文档维护策略 交叉链接。
+- **关于页「检查更新」**——拉取 GitHub 最新 release 比对版本（12s 超时，网络不通降级为手动链接）。
+- **详情页 system block 标注角色**——每个 `system[i]` chip 按内容标角色（计费头 / 身份声明 / 安全审查指令 / 压缩指令 / 标题指令），例如 security 那条 ~108K 字符的 `sys[1]` 现在显眼地标成「安全审查指令」，不再是个看不出名堂的折叠块。
+
+### 变更
+- **捕获列表为非 main 行加 kind chip**。主线不加标记；其余（title / security / count_tokens / compact / subagent / other）各加一个 chip（计数 / 安全 / 标题…），一眼看出每行是什么角色。后端 `_public_summary` 现带 `kind`（经 `classifier.classify_idx` 现算）。
+- **备份份数从捕获状态卡移到设置页**。「备份 N 份」放在捕获页头部语境不通，现移至 设置 → 备份目录（「当前 N 份」）。
+- **ttft 本地化**（zh 首字时间 / en ttft / ja 初回応答），列表行与详情头。
+- **请求侧 thinking 块**改为 chip + bigText 工具条（翻译 / AI 解读），与响应侧统一。（CC 通常不在请求历史里带 thinking，故主要在它带的时候生效。）
+- **详情页字段归属纠正**：`model` 与 `stream` 来自请求体，从响应 meta-row 移到请求侧。响应 meta-row 现只留响应侧字段（status / stop_reason / ttft / total）——model 从来不是服务器返回的，本工具不录制响应 model。
+
+### 修复
+- **关闭主线泳道联动隐藏其辅助调用**。时序图里关掉一条主线，原先挂在它上面的 title / security / count_tokens / compact 调用仍留在共用的 aux 列里、看不出属于谁。现在 aux 节点若其 `near` 边父泳道被隐藏也一并隐藏，空的 aux 列不再占位，泳道菜单加了联动提示。
+- **移除响应区的成本估算（≈ ¥x · PRICING）**。它按官方刊例折算，对走第三方网关的用户（本工具受众的常见情形）并不准。原始 Usage token 数保留。
+
 ## v0.4.0 - 2026-07-28
 
 ### 变更
