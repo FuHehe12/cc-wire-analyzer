@@ -228,7 +228,7 @@ data: {...}
 > 一起删，脱敏改无条件恒开。老 config.json 里残留该键会被忽略。
 
 > **自检**：加新配置字段必须三处都接通——`config.py::_DEFAULTS` 默认值 + 前端设置页 UI +
-> 实际消费点。任何一处断了就是新的"死配置"（CLAUDE.md 教训①）。
+> 实际消费点。任何一处断了就是新的"死配置"（[开发指南.md](开发指南.md) 惯犯 bug ①）。
 
 ### `POST /api/config`
 
@@ -425,9 +425,9 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 **归并键** = `(err_kind, status, _fingerprint(err_msg))`，指纹归一规则：`req_[A-Za-z0-9]{6,}` →
 `<request-id>`、UUID → `<uuid>`、4 位以上数字 → `<n>`、截 200 字。
 
-**UI 未接入**（CLAUDE.md 待办③）：当前只有 API + CLI（`uv run python src/cli.py errors`）给
-agent。人看的界面里还没有"今天失败都是些什么"的入口——这是 [界面导览.md](界面导览.md) P0
-优化机会的来源。
+**UI 未接入**：当前只有 API + CLI（`uv run python src/cli.py errors`）给
+agent。人看的界面里还没有"今天失败都是些什么"的入口——补 UI 入口是当前的最高优先项，
+见 [CHANGELOG.md](../CHANGELOG.md) 顶部速览的「下一步」。
 
 > **自检**：改归并逻辑必须同步改 `diagnose.aggregate` + 此契约 + CLI `errors` 子命令。
 > 加新 req_field 必须同步加到 `diagnose._req_fields` + `classifier.index_record` + 此契约

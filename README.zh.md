@@ -6,10 +6,14 @@
 
 [发版列表](../../releases) · [更新日志](CHANGELOG.zh.md)
 
-> 第一次来？**[docs/界面导览.md](docs/界面导览.md)** 讲人在 UI 里能看到什么，
-> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** 给驱动本工具的 AI agent 看，
-> **[docs/架构总览.md](docs/架构总览.md)** 是完整架构，
-> **[docs/文档维护策略.md](docs/文档维护策略.md)** 讲这些文档怎么保持同步。
+> 第一次来？按你想干什么挑一份：
+> **[docs/界面导览.md](docs/界面导览.md)** 人在 UI 里能看到什么 ·
+> **[docs/报文解读.md](docs/报文解读.md)** Claude Code 到底发了什么出去 ·
+> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** 用 AI agent 驱动本工具 ·
+> **[docs/架构总览.md](docs/架构总览.md)** 这个软件怎么搭起来的 ·
+> **[docs/开发指南.md](docs/开发指南.md)** 改代码前必读 ·
+> **[docs/问题域手册.md](docs/问题域手册.md)** 想给别的 agent 工具做同类分析器 ·
+> **[docs/文档维护策略.md](docs/文档维护策略.md)** 这些文档怎么保持同步。
 
 ## 什么时候你会需要它
 

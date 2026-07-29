@@ -110,6 +110,52 @@
   auxiliary nodes with it (56-node main lane hidden → 78 nodes gone).
 
 ### Docs
+- **The documentation is now organised by what you're trying to do, and the development
+  conventions have exactly one home.** The `docs/` folder had grown to six files without anyone
+  asking what set of jobs it was supposed to cover. Answering that question surfaced a defect
+  worse than any single stale sentence: **the project's development conventions existed in three
+  places at once** — `CLAUDE.md` (local, not in this repo), `CONTRIBUTING.md` (a public summary),
+  and four chapters of `docs/架构总览.md`. Two of those were copies, and both had drifted.
+  `CONTRIBUTING.md` listed 2 self-tests when there were 6, listed 3 safety invariants when there
+  were 8, and stated twice that "the dev server reads templates live, no rebuild needed" — which
+  is false (Jinja caches templates under `debug=False`), and which actually misled someone on
+  2026-07-29 into debugging a cached page for half an hour. `docs/架构总览.md` carried a second,
+  fuller copy of the invariants plus the recurring-bug table and the module dependency tree, and
+  its further-reading appendix cited counts that no longer matched anything.
+  - **New: [`docs/开发指南.md`](docs/开发指南.md)** — the single source of truth for conventions:
+    eight safety invariants each paired with what it prevents, the four recurring bug types with
+    their first occurrence and their recurrence, the defensive-design table, the subagent-identity
+    ruling, all six self-tests, the frontend rules, the module dependency tree, and the
+    issue-first workflow. It was **migrated, not rewritten** — putting a fourth copy into the
+    world would have been the very disease being treated. `docs/架构总览.md` keeps the
+    architecture narrative (five layers, data flow, evolution, design philosophy) and now links
+    here for the rules; `CONTRIBUTING.md` is a thin shell covering setup, building and the PR
+    checklist, and stopped restating anything.
+  - **New: [`docs/问题域手册.md`](docs/问题域手册.md)** — for building the equivalent tool for a
+    different agent harness (Codex CLI, opencode, a bespoke agent). This is the one thing the
+    existing docs could not answer: `docs/架构总览.md` explains how *this* project is built,
+    which is the wrong layer for a port — `proxy.py` becomes irrelevant, while every problem it
+    solves remains. Distilled from 45 archived iteration records plus this changelog, it covers
+    nine capability units (non-invasive config takeover / lossless recording / request attribution
+    / semantic classification / indexing at volume / timeline visualisation / diagnosis /
+    dual-mode consumption / desktop packaging). Each unit states the problem, why the naive
+    approach fails, the ruling, and **which conclusions survive a change of harness**. Every
+    "naive approach" listed is one this project actually shipped and had to undo. The headline
+    finding: only two of the nine units are harness-specific, and they are exactly the two that
+    can only be settled with real traffic and human ground truth — the ones that cost this
+    project twelve days.
+  - **[`docs/界面导览.md`](docs/界面导览.md) is now only about using the app.** Its "layer three:
+    optimisation opportunities" chapter (about 150 lines) was a development backlog living inside
+    a user guide, and it had gone stale — three of its twelve entries were already implemented,
+    while the P0 it described is still open. Removed; the surviving entries were re-verified
+    against the code and moved out of the published docs.
+  - The four development-facing documents now differ by **when you reach for them**: understand
+    the project → 架构总览; about to change code → 开发指南; changing the docs → 文档维护策略;
+    building the same tool elsewhere → 问题域手册. That criterion (same audience, different
+    trigger) was added to `docs/文档维护策略.md`, along with two new rot entries and a
+    strengthened lesson: the "prescription that itself rots" pattern has now been observed three
+    times (the hand-written README version line, the CONTRIBUTING summary, the architecture
+    chapters), and the test for it is simply **is this content written down in a second place?**
 - **The READMEs now open with when you'd want this, a case where it paid off, and what it does
   with your traffic.** The repository has been public since 2026-07-12, and the landing page led
   with its technical category — `MITM proxy`, `wire-level`, `SSE`. That is clear to someone who

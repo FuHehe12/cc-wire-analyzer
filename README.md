@@ -6,10 +6,14 @@ A local MITM proxy desktop app that transparently records and analyzes all HTTP 
 
 [Releases](../../releases) · [Changelog](CHANGELOG.md)
 
-> First time here? **[docs/界面导览.md](docs/界面导览.md)** (ZH) shows what humans see in the UI,
-> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** (ZH) is for AI agents driving the tool,
-> **[docs/架构总览.md](docs/架构总览.md)** (ZH) is the full architecture, and
-> **[docs/文档维护策略.md](docs/文档维护策略.md)** (ZH) is how these docs stay in sync.
+> First time here? All docs are in Chinese.
+> **[docs/界面导览.md](docs/界面导览.md)** — what humans see in the UI ·
+> **[docs/报文解读.md](docs/报文解读.md)** — what Claude Code actually sends ·
+> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** — for AI agents driving the tool ·
+> **[docs/架构总览.md](docs/架构总览.md)** — how the app is built ·
+> **[docs/开发指南.md](docs/开发指南.md)** — read this before changing code ·
+> **[docs/问题域手册.md](docs/问题域手册.md)** — building the same tool for another agent harness ·
+> **[docs/文档维护策略.md](docs/文档维护策略.md)** — how these docs stay in sync.
 > *(Deep-dive docs are in Chinese; machine-translate if needed.)*
 
 ## When you'd reach for this
