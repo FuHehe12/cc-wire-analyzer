@@ -175,11 +175,19 @@ data: {...}
 
 ```json
 {
-  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…"}],
+  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false}],
   "edges": [{"from":"req_…","to":"req_…","type":"seq|trigger|near"}],
   "lanes": [{"lane_id":"s-…","kind":"main|subagent|aux","first_ts":"…","count":3}]
 }
 ```
+
+**`sec_action`（可选，260730）**：仅 `kind=security` 的节点带，形状与 `/api/captures` 列表项的
+`sec_action` 一致（`{tool, arg, truncated}`）。给前端渲染「审查：<待判定动作>」用——security 的响应
+正文是 `<severity>8` 这类残片，拿它当 `summary` 等于没有摘要。其余 kind 不带此键（一天几千个节点，
+不让它们各背一个恒 null 的字段）。
+
+> **自检**：`_node_summary` 加字段必须同步这里 + 前端 `dagNodeHtml`。字段只对部分 kind 存在时，
+> 明写「哪些 kind 带」——消费方不能靠试。
 
 ### `POST /api/captures/clear` — 清除录制（260712）
 

@@ -38,7 +38,7 @@ uv run python src/dev_seed.py         # seed demo captures to exercise the UI
 ## Building
 
 - Windows: `uv run pyinstaller build.spec` → `dist/cc-wire-analyzer.exe`
-- macOS: `uv run pyinstaller build-mac.spec` → `dist/CCWireAnalyzer.app`
+- macOS: `uv run pyinstaller build-mac.spec` → `dist/cc-wire-analyzer.app`
 - Tagging `v*` triggers CI to build both and publish a Release.
 
 The maintainer develops on Windows — **macOS builds are verified by CI

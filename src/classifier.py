@@ -511,7 +511,7 @@ def _node_summary(idx: dict, kind: str, lane: str) -> dict:
     """索引记录 → DAG 节点摘要。usage 在 index_record 里已归一（260719），
     不再有「生产方写全名、消费方读短名」的键名错位空间。"""
     summary = (idx.get("summary") or "")[:60] or (idx.get("last_user") or "")[:60]
-    return {
+    node = {
         "id": idx.get("id"),
         "ts_start": idx.get("ts_start"),
         "kind": kind,
@@ -528,6 +528,12 @@ def _node_summary(idx: dict, kind: str, lane: str) -> dict:
         "tool_uses": idx.get("tool_uses") or 0,
         "pure_chat": False,
     }
+    # 安全审查节点带上待判定动作（260730）：security 的响应正文是 `<severity>8` 这种残片，
+    # 拿它当摘要等于什么都没说（列表行 v0.4.1 已改，DAG 当时漏了）。只给 security 带，
+    # 其余 kind 不背这个恒 null 的字段——一天几千个节点，每个都带一次不划算。
+    if kind == "security" and idx.get("sec_action"):
+        node["sec_action"] = idx["sec_action"]
+    return node
 
 
 # ===== DAG 构建 =====

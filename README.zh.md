@@ -74,11 +74,11 @@ Use effort 'high' or below, or enable thinking.
 
 ### 方式 A —— 下载 release 构建
 
-从 [Releases](../../releases) 下载最新的 `cc-wire-analyzer-windows.exe` 或 `CCWireAnalyzer-mac.zip`。不需要 Python。
+从 [Releases](../../releases) 下载最新的 `cc-wire-analyzer-windows.exe` 或 `cc-wire-analyzer-macos.zip`。不需要 Python。
 
 - **Windows**：双击 `.exe`。如果提示 WebView2 缺失，装一下 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
-- **macOS**：解压，把 `CCWireAnalyzer.app` 拖到 `/Applications`。应用**未签名、未公证**（免费开源项目常态——签名要 $99/年），所以**首次启动会被 Gatekeeper 拦**。放行一次即可：
-  - 右键 `CCWireAnalyzer.app` →「打开」→ 弹窗点「打开」；**或**
+- **macOS**：解压，把 `cc-wire-analyzer.app` 拖到 `/Applications`。应用**未签名、未公证**（免费开源项目常态——签名要 $99/年），所以**首次启动会被 Gatekeeper 拦**。放行一次即可：
+  - 右键 `cc-wire-analyzer.app` →「打开」→ 弹窗点「打开」；**或**
   - 较新 macOS 没有上面那个选项时：**系统设置 → 隐私与安全性 → 拉到底 → 点「仍要打开」**。
   - 首次放行后正常打开，不再提示。（这是 Apple 的安全机制，不是 app 本身有问题。）
 
@@ -133,7 +133,7 @@ curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 单条录制可超过 5 MB，先查摘要、按 id 取单条。完整 API、记录 schema 与安全注意事项见
 **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
 
-macOS 同样是一个二进制 —— `CCWireAnalyzer.app/Contents/MacOS/CCWireAnalyzer serve`。
+macOS 同样是一个二进制 —— `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`。
 
 ## 可选：翻译 / 问 AI
 

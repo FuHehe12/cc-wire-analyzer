@@ -75,11 +75,11 @@ MITM プロキシを名乗るものに対して、当然聞くべき問いです
 
 ### 方法 A —— リリースビルドをダウンロード
 
-[Releases](../../releases) から最新の `cc-wire-analyzer-windows.exe` または `CCWireAnalyzer-mac.zip` を取得。Python は不要。
+[Releases](../../releases) から最新の `cc-wire-analyzer-windows.exe` または `cc-wire-analyzer-macos.zip` を取得。Python は不要。
 
 - **Windows**：`.exe` をダブルクリック。WebView2 不足を警告されたら [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) をインストール。
-- **macOS**：解凍し、`CCWireAnalyzer.app` を `/Applications` にドラッグ。アプリは**未署名・未公証**（無料 OSS プロジェクトの標準——署名は年 $99 かかります）のため、**初回起動は Gatekeeper にブロックされます**。一度だけ許可してください：
-  - `CCWireAnalyzer.app` を右クリック →「開く」→ダイアログで「開く」を確認、**または**
+- **macOS**：解凍し、`cc-wire-analyzer.app` を `/Applications` にドラッグ。アプリは**未署名・未公証**（無料 OSS プロジェクトの標準——署名は年 $99 かかります）のため、**初回起動は Gatekeeper にブロックされます**。一度だけ許可してください：
+  - `cc-wire-analyzer.app` を右クリック →「開く」→ダイアログで「開く」を確認、**または**
   - 新しい macOS で上記が出ない場合：**システム設定 → プライバシーとセキュリティ → 下部の「このまま開く」**をクリック。
   - 初回許可後は通常通り開き、以降プロンプトは出ません。（Apple のセキュリティ措置であり、アプリの不具合ではありません。）
 
@@ -135,7 +135,7 @@ curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 1 件の記録が 5 MB を超えることがあるため、まず概要を取得し id で個別取得します。
 API 全一覧・レコード schema・安全上の注意は **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
 
-macOS も同じバイナリ 1 つ —— `CCWireAnalyzer.app/Contents/MacOS/CCWireAnalyzer serve`。
+macOS も同じバイナリ 1 つ —— `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`。
 
 ## オプション：翻訳 / AI に聞く
 

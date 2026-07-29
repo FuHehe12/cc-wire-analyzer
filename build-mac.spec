@@ -1,9 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
-# macOS 打包脚本：pywebview WebKit（pyobjc）后端 → CCWireAnalyzer.app
+# macOS 打包脚本：pywebview WebKit（pyobjc）后端 → cc-wire-analyzer.app
 # 用法（macOS 构建机）：
 #   uv sync --extra mac          # 装 pyobjc（macOS 后端）
 #   uv run pyinstaller build-mac.spec --noconfirm --clean
-# 产出 dist/CCWireAnalyzer.app
+# 产出 dist/cc-wire-analyzer.app
+#
+# 命名（260730）：与 Windows 侧统一为 kebab-case（原 CCWireAnalyzer.app）。这样两平台的
+# serve 命令能写成同一套：cc-wire-analyzer.exe serve /
+# cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve。
 #
 # 注意：本开发环境为 Windows，此 spec 未在 macOS 实测——macOS 打包靠 GitHub Actions
 # macos runner（.github/workflows/release.yml）+ 用户 macOS 验证。
@@ -39,7 +43,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='CCWireAnalyzer',
+    name='cc-wire-analyzer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -52,7 +56,7 @@ exe = EXE(
 
 app = BUNDLE(
     exe,
-    name='CCWireAnalyzer.app',
+    name='cc-wire-analyzer.app',
     icon=None,
     bundle_identifier=None,
 )

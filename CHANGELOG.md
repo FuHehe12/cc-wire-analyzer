@@ -6,10 +6,51 @@
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection.
 - **Current status**: **v0.4.1 released** (2026-07-29). A consolidation release on top of v0.4.0: **security-classifier reviews are now readable** (the action under review, the verdict and the matched rule, and what got sent upstream — including your full CLAUDE.md; `IDX_SCHEMA` 4 → 5, indexes rebuild once), a **code review of everything since v0.4.0** (a role label that could never fire, a classification failure nobody would have seen, 9 dead i18n keys), and a **documentation restructure**: development conventions had drifted across three copies and now have exactly one home (`docs/开发指南.md`), plus a new `docs/问题域手册.md` for anyone building the same tool for a different agent harness. The READMEs were rewritten to open with when you'd want this tool and what it does with your traffic.
+  **Unreleased since then** (see the section below): a layout pass that put the detail view's two
+  columns and the capture list's columns back on a grid, plus one naming scheme for the release
+  assets of both platforms.
 - **Next steps**:
   1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller.
   2. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); cross-day trends further out.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
+
+## Unreleased
+
+### Fixed
+- **The two columns of the detail view line up again.** Moving `model` / `stream` to the request
+  side in v0.4.1 left them as a bare chip row (21 px tall) facing the response side's meta **card**
+  (46 px) — so from the second block down, **every card in the two columns was 27 px out of step**.
+  The request side now has a card of its own, and `stream` always states `true`/`false` instead of
+  vanishing when false (non-streaming is exactly what count_tokens and security requests are).
+  Measured across five request kinds (main / compact / security / title / error): both columns'
+  first three blocks now share identical y positions to the pixel. Chips also carry a transparent
+  1 px border now, so a bordered chip no longer sits 1 px taller than a solid one — that alone had
+  the two columns 1 px apart on error captures.
+- **The capture list is now a real table.** It was a flex row, so whether a row had a kind chip
+  (48 px) and how long its model name was (`glm-5.2` vs `glm-5v-turbo`, 32 px) shifted every column
+  after it: measured across 13 rows, the summary column started anywhere from 452 px to 753 px.
+  It is now a fixed-column CSS grid — every column starts at the same x on every row, in all three
+  languages, at both the 1080 px minimum window and full width. Long paths and model names ellipsize
+  with the full value on `title`. Column widths are sized for the **longest** language, not Chinese
+  (Japanese `エージェント` and `初回応答 550ms` were being cut mid-glyph).
+- **Timeline legend is left-aligned when it wraps.** `margin-left:auto` was meant to push the
+  line-style legend to the right on wide windows; after wrapping it kept pushing, so lines 2 and 3
+  hung off the right edge at ragged offsets (46 / 344 / 262 px).
+- **Settings: the "open" button no longer breaks into two lines** and a long `settings.json` path no
+  longer squashes its own label to 86 px across three lines. Buttons never wrap (`white-space:nowrap`);
+  the label column has a floor and long values wrap instead.
+- **Security nodes in the timeline now say what was being reviewed.** v0.4.1 fixed the list row but
+  not the DAG, which still showed the response fragment (`<severity>8`,
+  `<block>yes</block><category>…`) — the least informative summary available. The formatting is now
+  a single shared helper, and `_node_summary` carries `sec_action` for security nodes only.
+
+### Changed
+- **Release assets use one naming scheme on both platforms**: `cc-wire-analyzer-windows.exe` and
+  `cc-wire-analyzer-macos.zip` (was `CCWireAnalyzer-mac.zip`). The macOS bundle is renamed to
+  `cc-wire-analyzer.app` as well, so the serve command reads the same on both:
+  `cc-wire-analyzer.exe serve` / `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`.
+  Note for macOS users upgrading: the old `CCWireAnalyzer.app` in `/Applications` is not replaced —
+  delete it yourself.
 
 ## v0.4.1 - 2026-07-29
 
