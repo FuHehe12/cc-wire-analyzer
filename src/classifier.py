@@ -73,7 +73,10 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v3 → v4（260726）：task_prompts 加长到 1000（原 200）、first_user_task 加长到 1500（原 600），
 #                     修并行同模板派生挤一条 lane 的 bug（前 120 字 probe 撞车，详见
 #                     issues/closed/260725_并行同模板子代理泳道撞车.md）
-IDX_SCHEMA = 4
+#   v4 → v5（260729）：新增 sec_action/sec_verdict（安全审查的待判定动作与判定结果）。
+#                     待判定动作在 transcript **末尾**，而 last_user 只存前 2000 字，够不着，
+#                     所以只能加字段（详见 issues/open/260729_安全审查可读性.md）
+IDX_SCHEMA = 5
 
 
 # ===== 请求体取文本 =====
@@ -100,6 +103,97 @@ def _user_texts(body: dict) -> list[str]:
         if t.strip():
             out.append(t)
     return out
+
+
+# ===== 安全审查解析（260729，实测 07-29 打分式 + 07-26 判定式两种形态）=====
+# 解析**只此一份**，前端不再抄——`usage_norm` 的键名归一被抄三份、同一个 bug 犯两次的教训。
+SEC_ACTION_MAX = 400      # 待判定动作留多长（进索引，要控体积）
+SEC_REASON_MAX = 300
+
+
+def sec_request(body: dict) -> dict | None:
+    """安全审查请求 → {待判定动作, 本次审查的发送量}；不是安全审查则 None。
+
+    实测形状（issues/open/260729_安全审查可读性.md 有完整报文）：
+      system[1] 是 ~108K 的规则库，messages[0] 是用户 CLAUDE.md（意图上下文），
+      messages[-1] 是 `<transcript>` + N 块动作 + `</transcript>` + 判定指令。
+    **判定对象是 transcript 的最后一块**（CC 正要执行的那个动作），前面 170 多块都是历史。
+    每块形如 `{"工具名":"参数"}` 或 `{"user":"消息"}`。
+    """
+    if not isinstance(body, dict):
+        return None
+    sys_text = _system_text(body)
+    if not any(h in sys_text[:2000].lower() for h in SECURITY_HINTS):
+        return None
+    users = _user_texts(body)
+    if not users:
+        return None
+    # system 可能是 str，也可能是 block 数组（两种形态都实测到）——取最长的那块当规则库体量
+    rules_chars = max((len(b.get("text") or "") if isinstance(b, dict) else len(str(b))
+                       for b in _system_blocks(body)), default=0)
+    # transcript：取 `</transcript>` 之前的部分；没有闭合标签就退回整段（形态变了也不崩）
+    tail = users[-1]
+    end = tail.rfind("</transcript>")
+    inner = tail[:end] if end >= 0 else tail
+    start = inner.find("<transcript>")
+    if start >= 0:
+        inner = inner[start + len("<transcript>"):]
+    lines = [ln for ln in inner.split("\n") if ln.strip()]
+    tool, arg = "", ""
+    if lines:
+        last = lines[-1].strip()
+        try:                                  # 每块是一个单键 JSON 对象
+            obj = json.loads(last)
+            if isinstance(obj, dict) and len(obj) == 1:
+                k, v = next(iter(obj.items()))
+                tool = str(k)
+                arg = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+        except Exception:
+            pass
+        if not tool:                          # 不是预期形状：原样给出，别假装解析成功
+            arg = last
+    return {
+        "action_tool": tool,
+        "action_arg": arg[:SEC_ACTION_MAX],
+        "action_truncated": len(arg) > SEC_ACTION_MAX,
+        "n_actions": len(lines),
+        "rules_chars": rules_chars,
+        # 意图上下文（实测是用户 CLAUDE.md 全文）——本次审查连它一起发了出去
+        "ctx_chars": len(users[0]) if len(users) > 1 else 0,
+    }
+
+
+def sec_verdict(resp: dict) -> dict | None:
+    """安全审查响应 → {severity | blocked, category, reason}；解析不出则 None。
+
+    两种实测形态：`<severity>N</severity>`（0-100，**50 是放行/拦截分界**，两阶段的 stage 1）
+    与 `<block>yes|no</block><category>…</category><reason>…</reason>`（单阶段）。
+    **标签常常是残缺的**——响应 `stop_reason=stop_sequence`，闭合标签被 stop sequence 吃掉，
+    实测最常见的响应文本就是裸的 `<severity>8`。所以一律按「开标签 + 内容」宽松匹配，
+    不要求成对，否则真实流量上 100% 解析失败。
+    """
+    if not isinstance(resp, dict):
+        return None
+    text = ""
+    for blk in resp.get("content_blocks") or []:
+        if isinstance(blk, dict) and blk.get("type") == "text":
+            text += blk.get("text") or ""
+    if not text:
+        return None
+    out: dict = {}
+    m = re.search(r"<severity>\s*(\d+)", text, re.I)
+    if m:
+        out["severity"] = int(m.group(1))
+    m = re.search(r"<block>\s*(yes|no)", text, re.I)
+    if m:
+        out["blocked"] = m.group(1).lower() == "yes"
+    m = re.search(r"<category>\s*([^<]{1,80})", text, re.I)
+    if m:
+        out["category"] = m.group(1).strip()
+    m = re.search(r"<reason>\s*([^<]{1,%d})" % SEC_REASON_MAX, text, re.I)
+    if m:
+        out["reason"] = m.group(1).strip()
+    return out or None
 
 
 def usage_norm(resp: dict) -> dict:
@@ -326,7 +420,20 @@ def index_record(rec: dict) -> dict:
                      if isinstance(body.get("thinking"), dict) else None),
         "stream": bool(body.get("stream")),
         "max_tokens": body.get("max_tokens"),
+        # ---- 安全审查原料（260729）----
+        # 待判定动作在 transcript 末尾，last_user 只存前 2000 字够不着，只能单独提取。
+        # 列表行要一眼看出「AI 在确认什么、判了什么」，这两个字段就是那两句话的原料。
+        "sec_action": _sec_action_flat(body),
+        "sec_verdict": sec_verdict(resp),
     }
+
+
+def _sec_action_flat(body: dict) -> dict | None:
+    """index_record 用：只留列表行需要的几个字段，别把整个 sec_request 塞进索引记录。"""
+    s = sec_request(body)
+    if not s:
+        return None
+    return {"tool": s["action_tool"], "arg": s["action_arg"][:200], "n": s["n_actions"]}
 
 
 # ===== 分类 =====

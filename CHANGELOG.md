@@ -15,6 +15,40 @@
 > In progress — not yet tagged.
 
 ### Added
+- **Security reviews now say what was being reviewed and how it was judged.** Claude Code runs a
+  background security classifier on the agent's actions — on a busy day it is one request in six
+  (measured: 59 of 388, and 175 of 510 on another). The recording had all of it, and the UI showed
+  none of it: the request renders as a ~108,000-character collapsed `system` block plus 170-odd
+  flat `messages` blocks, so **the action actually under review is the 174th block** and you have
+  to scroll to it; the list row meanwhile summarized the response as `<block>yes</`, the least
+  informative 80 characters available. Three things are now surfaced, parsed once in
+  `classifier.py` (`sec_request` / `sec_verdict`) and only rendered by the frontend:
+  - **What is being judged** — the last block of the transcript, i.e. the command CC was about to
+    run, as tool + argument. The list row now reads `reviewing PowerShell · Set-Location …`
+    instead of a fragment of the answer.
+  - **How it was judged** — a chip carrying either the `severity` score (0-100, **50 is the
+    allow/block boundary**) or the block/allow verdict, with the matched rule name and the
+    upstream's stated reason in the detail card. Parsing matches on the opening tag only:
+    responses end on `stop_reason=stop_sequence`, so the real wire text is a bare `<severity>8`
+    with the closing tag eaten — requiring balanced tags would have failed on 100% of real traffic.
+  - **What the review sent upstream** — the rule base (~108 KB), **your CLAUDE.md in full**
+    (~14 KB, sent as "context about the user's environment and intent"), and how many prior actions
+    of the transcript went with it. This is exactly the kind of fact only a wire-level view can
+    state.
+
+  Measured against real captures: `sec_request` parsed 59/59 and 175/175, `sec_verdict` 56/59 and
+  172/175, with zero false positives on 120 sampled non-security requests. The six that produced no
+  verdict were checked rather than waved off — three were upstream timeouts, and **three were the
+  model ignoring the required output format**: asked to `Respond with <severity>N</severity> ONLY.
+  No other text.`, it began writing prose about the action and hit its 64-token ceiling, so that
+  review reached no conclusion at all. The card says so explicitly (`no verdict`, with the
+  `stop_reason`) rather than rendering blank — a security check failing silently is precisely the
+  kind of thing this tool exists to make visible. Index schema bumped 4 → 5 (the action lives at
+  the *end* of the transcript, past the 2,000-character `last_user` cutoff), so indexes rebuild
+  once on first access (~5 s for an 866 MB day, ~7 s for 1.18 GB; the jsonl is untouched).
+  `dev_seed.py` gained all three verdict shapes — its old security sample had a shape that does not
+  occur in reality, so none of this path would have been exercised by UI self-tests.
+  See issues/closed/260729_安全审查可读性.md.
 - **[docs/报文解读.md](docs/报文解读.md)** — a user-facing guide to the 7 request kinds CC sends
   (main / subagent / title / compact / security / count_tokens / other): what each one is, its payload
   shape, why CC sends it, how to recognize it, and the common confusion points. Includes a "don't trust

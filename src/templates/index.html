@@ -199,6 +199,18 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 /* .probe：辅助调用行淡化（260729 起由 isAux 触发——标题/安全/计数/压缩全算，不再是计数探针专用；
    类名沿用历史名字，改名要动多处且无功能收益） */
 .cap-row.probe{opacity:.72;}
+/* 安全审查（260729）：判定结果 chip + 详情卡片 */
+.chip.sec-allow{background:var(--bg-softer);color:var(--ok);border:1px solid var(--ok);}
+.chip.sec-block{background:var(--bg-error-soft);color:var(--err);border:1px solid var(--err);font-weight:600;}
+.chip.sec-none{background:transparent;color:var(--text-faint);border:1px dashed var(--border);}
+.sec-card{border-left:3px solid var(--accent);}
+.sec-head{font-weight:600;margin-bottom:8px;}
+.sec-sub{font-size:12px;color:var(--text-faint);margin:10px 0 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;}
+.sec-hint{font-size:11px;color:var(--text-faint);font-weight:400;line-height:1.5;}
+.sec-act{background:var(--bg-soft);border-radius:6px;padding:8px;}
+.sec-verdict{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.sec-kv{font-size:12px;margin-top:6px;line-height:1.6;}
+.sec-kv b{color:var(--text-faint);font-weight:500;margin-right:6px;}
 .list-footer{display:flex;justify-content:center;padding:10px 16px;background:var(--bg-softer);}
 .list-empty{padding:36px 16px;text-align:center;color:var(--apple-secondary);font-size:12.5px;}
 
@@ -788,6 +800,16 @@ zh: {
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
   "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.title": "标题指令",
+  "sec.title": "安全审查", "sec.action": "待判定动作", "sec.verdict": "判定结果", "sec.sent": "本次审查发送了",
+  "sec.reviewing": "审查：{a}", "sec.allow": "放行", "sec.block": "拦截",
+  "sec.scale": "50 分是放行/拦截分界，越低越像例行操作",
+  "sec.blockedYes": "判为应拦截", "sec.blockedNo": "判为可放行",
+  "sec.category": "命中规则", "sec.reason": "理由",
+  "sec.noVerdict": "未产出判定",
+  "sec.noVerdictHint": "上游没有按要求的格式回答（stop_reason: {sr}）——这次审查实际上没得出结论。响应原文在下方响应区。",
+  "sec.reasonCut": "（理由已截断，完整原文见下方响应区）", "sec.rules": "规则库 {n}", "sec.ctx": "你的 CLAUDE.md {n}", "sec.history": "历史动作 {n} 条",
+  "sec.sentHint": "这些内容都随本次审查发给了上游",
+  "sec.actionHint": "transcript 的最后一块——CC 正要执行、交给安全审查判定的就是它",
   "lane.main": "主线", "lane.subagent": "子代理", "lane.aux": "辅助",
   "sr.end_turn": "自然结束", "sr.tool_use": "调用工具", "sr.max_tokens": "达到上限",
   "sr.stop_sequence": "命中停止序列", "sr.content_filter": "内容过滤",
@@ -920,6 +942,16 @@ en: {
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
   "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.title": "Title",
+  "sec.title": "Security review", "sec.action": "Action under review", "sec.verdict": "Verdict", "sec.sent": "What this review sent",
+  "sec.reviewing": "reviewing {a}", "sec.allow": "allow", "sec.block": "block",
+  "sec.scale": "50 is the allow/block boundary; lower means more clearly routine",
+  "sec.blockedYes": "judged: block", "sec.blockedNo": "judged: allow",
+  "sec.category": "Matched rule", "sec.reason": "Reason",
+  "sec.noVerdict": "no verdict",
+  "sec.noVerdictHint": "The upstream did not answer in the required format (stop_reason: {sr}) — this review reached no conclusion. Raw response below.",
+  "sec.reasonCut": "(truncated; full text in the response panel below)", "sec.rules": "rule base {n}", "sec.ctx": "your CLAUDE.md {n}", "sec.history": "{n} prior actions",
+  "sec.sentHint": "all of this was sent upstream with this review",
+  "sec.actionHint": "the last block of the transcript — this is what CC was about to run and put up for review",
   "lane.main": "Session", "lane.subagent": "Agent", "lane.aux": "Aux",
   "sr.end_turn": "natural stop", "sr.tool_use": "tool call", "sr.max_tokens": "hit limit",
   "sr.stop_sequence": "stop sequence", "sr.content_filter": "content filter",
@@ -1052,6 +1084,16 @@ ja: {
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
   "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.title": "タイトル指示",
+  "sec.title": "セキュリティ審査", "sec.action": "判定対象の操作", "sec.verdict": "判定結果", "sec.sent": "この審査が送ったもの",
+  "sec.reviewing": "審査：{a}", "sec.allow": "許可", "sec.block": "ブロック",
+  "sec.scale": "50 が許可／ブロックの境界。低いほど明らかに日常的な操作",
+  "sec.blockedYes": "ブロック相当と判定", "sec.blockedNo": "許可相当と判定",
+  "sec.category": "該当ルール", "sec.reason": "理由",
+  "sec.noVerdict": "判定なし",
+  "sec.noVerdictHint": "上流が指定された形式で回答しませんでした（stop_reason: {sr}）——この審査は結論に至っていません。生のレスポンスは下の応答欄にあります。",
+  "sec.reasonCut": "（理由は切り詰められています。全文は下の応答欄）", "sec.rules": "ルール集 {n}", "sec.ctx": "あなたの CLAUDE.md {n}", "sec.history": "過去の操作 {n} 件",
+  "sec.sentHint": "これらはすべてこの審査とともに上流へ送信されました",
+  "sec.actionHint": "transcript の最後のブロック——CC がこれから実行しようとし、審査に回した操作です",
   "lane.main": "メイン", "lane.subagent": "エージェント", "lane.aux": "補助",
   "sr.end_turn": "自然終了", "sr.tool_use": "ツール呼出", "sr.max_tokens": "上限到達",
   "sr.stop_sequence": "停止シーケンス", "sr.content_filter": "コンテンツフィルタ",
@@ -1109,6 +1151,24 @@ function sysBlockRole(text){
   if(t.includes("you are claude code") || t.includes("you are a claude agent")) return "sysRole.identity";
   if(t.includes("sentence-case title") || t.includes("5-10 word title")) return "sysRole.title";
   return "";
+}
+/* 安全审查判定 → chip（260729）。列表行与详情卡片共用一份，别抄第二份。
+   两种上游形态：severity 0-100（50 是放行/拦截分界）与 block yes/no。
+   解析不出判定时**不留空**——如实标「未产出判定」，实测这就是上游没按格式回答的情形。 */
+function secVerdictChip(v, compact){
+  if(!v || (v.severity == null && v.blocked == null))
+    return '<span class="chip sec-none">' + t18("sec.noVerdict") + '</span>';
+  if(v.severity != null){
+    const hi = v.severity >= 50;
+    return '<span class="chip ' + (hi ? "sec-block" : "sec-allow") + '">' + v.severity + '/100 · ' +
+      t18(hi ? "sec.block" : "sec.allow") + '</span>';
+  }
+  /* compact（列表行）不带 category：规则名可以很长（"Irreversible Local Destruction"），
+     会把「审查的是什么」这个更该看的信息挤出可视区。规则名留给详情卡片。 */
+  return '<span class="chip ' + (v.blocked ? "sec-block" : "sec-allow") + '" title="' +
+    (v.category ? esc(v.category) : "") + '">' +
+    t18(v.blocked ? "sec.blockedYes" : "sec.blockedNo") +
+    (!compact && v.category ? " · " + esc(v.category) : "") + '</span>';
 }
 function laneLabel(k){ return (I18N.zh["lane." + k] != null) ? t18("lane." + k) : k; }
 /* 260726 加：stop_reason / err_kind 三语查表（fallback 显示英文 raw 值，与 kindLabel 同风格） */
@@ -1655,6 +1715,17 @@ function rowHtml(it, isNew){
   const kind = it.kind || "other";
   const isAux = kind !== "main" && kind !== "subagent";
   const sumCls = it.has_error ? "cap-summary err" : "cap-summary";
+  /* 安全审查行（260729）：原先摘要显示响应前 80 字（`<block>yes</` 这种残缺标签，最没信息量）。
+     改成「审查：<待判定动作>」+ 判定结果 chip —— 一眼看出 AI 在确认什么、判了什么。 */
+  let secSum = "", secChip = "";
+  if(kind === "security" && (it.sec_action || it.sec_verdict)){
+    const a = it.sec_action || {};
+    if(a.tool || a.arg){
+      secSum = t18("sec.reviewing", {a: (a.tool ? a.tool + " · " : "") +
+        (a.arg || "").replace(/\s+/g, " ").slice(0, 90)});
+    }
+    secChip = secVerdictChip(it.sec_verdict, true);
+  }
   return '<div class="cap-row' + (isNew ? " new" : "") + (isAux ? " probe" : "") + '" data-rid="' + esc(it.id) + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
     '<span class="cap-time">' + timePart(it.ts_start) + '</span>' +
     '<span class="cap-dot ' + dotCls + '"></span>' +
@@ -1664,7 +1735,9 @@ function rowHtml(it, isNew){
     '<span class="cap-dur">' + dur + '</span>' +
     '<span class="cap-tokens">' + tok + '</span>' +
     '<span class="cap-ttft">' + ttft + '</span>' +
-    '<span class="' + sumCls + '">' + esc(it.summary || (it.has_error ? t18("row.error") : "")) + '</span>' +
+    /* 摘要在前拿剩余宽度、结果 chip 收到行尾：审查的「是什么」比「判了什么」更需要读全 */
+    '<span class="' + sumCls + '">' + esc(secSum || it.summary || (it.has_error ? t18("row.error") : "")) + '</span>' +
+    secChip +
     '</div>';
 }
 function renderList(){
@@ -1838,6 +1911,32 @@ function renderDetail(d){
   L += '<div class="chip-row" style="margin:2px 0 8px">' +
     (body.model ? '<span class="chip outline">' + esc(body.model) + '</span>' : "") +
     (body.stream ? '<span class="chip outline">stream: true</span>' : "") + '</div>';
+
+  /* 安全审查卡片（260729）：security 请求的三件事原先全埋着——待判定动作要翻到第 170 多块
+     messages 才看得到、判定结果在列表里显示成残缺标签、而「这次审查把你的 CLAUDE.md 全文和
+     全部历史动作发了出去」根本无从得知。后端 classifier.sec_request/sec_verdict 解析，这里只渲染。 */
+  if(d.sec){
+    const s = d.sec, v = s.verdict;
+    let sec = '<div class="dcard sec-card"><div class="sec-head">' + t18("sec.title") + '</div>';
+    sec += '<div class="sec-sub">' + t18("sec.action") + '<span class="sec-hint">' + t18("sec.actionHint") + '</span></div>';
+    sec += '<div class="sec-act">' + (s.action_tool ? '<span class="chip outline">' + esc(s.action_tool) + '</span>' : "") +
+      bigText((s.action_arg || "") + (s.action_truncated ? " …" : ""), 1200) + '</div>';
+    sec += '<div class="sec-sub">' + t18("sec.verdict") + '</div><div class="sec-verdict">' + secVerdictChip(v, false);
+    if(v && v.severity != null) sec += '<span class="sec-hint">' + t18("sec.scale") + '</span>';
+    if(!v || (v.severity == null && v.blocked == null))
+      sec += '<span class="sec-hint">' + t18("sec.noVerdictHint", {sr: esc(resp.stop_reason || "—")}) + '</span>';
+    sec += '</div>';
+    if(v && v.category) sec += '<div class="sec-kv"><b>' + t18("sec.category") + '</b> ' + esc(v.category) + '</div>';
+    /* 理由后端截到 SEC_REASON_MAX（300）——截断了要说出来，否则读者以为上游就说了这么多 */
+    if(v && v.reason) sec += '<div class="sec-kv"><b>' + t18("sec.reason") + '</b> ' + esc(v.reason) +
+      (v.reason.length >= 300 ? ' <span class="sec-hint">' + t18("sec.reasonCut") + '</span>' : "") + '</div>';
+    sec += '<div class="sec-sub">' + t18("sec.sent") + '<span class="sec-hint">' + t18("sec.sentHint") + '</span></div>' +
+      '<div class="chip-row">' +
+      '<span class="chip outline">' + t18("sec.rules", {n: fmtTok(s.rules_chars)}) + '</span>' +
+      (s.ctx_chars ? '<span class="chip outline">' + t18("sec.ctx", {n: fmtTok(s.ctx_chars)}) + '</span>' : "") +
+      '<span class="chip outline">' + t18("sec.history", {n: s.n_actions}) + '</span></div>';
+    L += sec + '</div>';
+  }
 
   /* headers */
   const hs = req.headers_safe || {};

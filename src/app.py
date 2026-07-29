@@ -221,6 +221,13 @@ def capture_detail(rid):
     rec = capture_store.get_capture(rid, date)
     if rec is None:
         return jsonify({"error": "not_found", "id": rid}), 404
+    # 安全审查请求：附上解析好的「待判定动作 / 判定结果 / 本次发送量」（260729）。
+    # 解析收口在 classifier（前端只渲染），否则又是一份抄出来的解析逻辑。
+    import classifier
+    sec = classifier.sec_request((rec.get("request") or {}).get("body") or {})
+    if sec:
+        sec["verdict"] = classifier.sec_verdict(rec.get("response") or {})
+        rec = dict(rec, sec=sec)
     return jsonify(rec)
 
 

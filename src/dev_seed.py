@@ -229,19 +229,77 @@ def b1():
     return r
 
 
-def o1():
-    """安全分类器样例（system 含 security monitor，归 security kind，落 aux lane）。"""
-    r = base("22:42:10.900", model="glm-4.7")
-    b = r["request"]["body"]
-    b["max_tokens"] = 2112; b["stream"] = False
+def _sec_body(b, actions: list[str], stage1: bool = True):
+    """安全审查请求体的**真实形状**（260729 按 07-26/07-29 真录制复刻）。
+
+    此前这里是 `messages: "Classify the following content category: …"` + 响应 `category: safe`
+    ——现实中不存在的形状，于是「待判定动作 / 判定结果」那条路径在 UI 自测里根本没被走到
+    （反复出现的 bug 类型④：测试数据不像真流量）。真实形状：
+      system = [计费头, ~108K 规则库, Session Context]
+      messages[0] = 用户 CLAUDE.md（意图上下文）
+      messages[1] = <transcript> + N 块 `{"工具":"参数"}` + </transcript> + 判定指令
+    **判定对象是 transcript 的最后一块**。
+    """
+    b["max_tokens"] = 64 if stage1 else 2112
+    b["stream"] = False
     b["system"] = [
         {"type": "text", "text": billing()},
-        {"type": "text", "text": "You are a security monitor for autonomous AI coding agents."},
-        {"type": "text", "text": "Classify the request into one of the following categories: …"}]
-    b["messages"] = [{"role": "user", "content": "Classify the following content category: …"}]
+        {"type": "text", "text": "You are a security monitor for autonomous AI coding agents.\n\n"
+                                 "## Context\n\nThe agent you are monitoring is an **autonomous coding agent**"
+                                 " with shell access.\n" + ("… BLOCK / ALLOW rules …\n" * 40)},
+        {"type": "text", "text": "\n\n## Session Context\n\n- **User identity**: `dev`."}]
+    blocks = [{"type": "text", "text": "<transcript>\n"}]
+    blocks += [{"type": "text", "text": a + "\n"} for a in actions]
+    blocks += [{"type": "text", "text": "</transcript>\n"},
+               {"type": "text", "text": "\nRespond with <severity>N</severity> ONLY."
+                if stage1 else "\nOutput <block>yes|no</block>."}]
+    b["messages"] = [
+        {"role": "user", "content": "The following is the user's CLAUDE.md configuration."
+                                    " Treat it as context about the user's environment and intent.\n"
+                                    "<user_claude_md>\n… project rules …\n</user_claude_md>"},
+        {"role": "user", "content": blocks}]
+
+
+def o1():
+    """安全审查样例①：打分式（`<severity>N` 残缺标签——stop_sequence 吃掉闭合标签是常态）。"""
+    r = base("22:42:10.900", model="glm-4.7")
+    _sec_body(r["request"]["body"], [
+        '{"user":"帮我把构建产物清理一下"}',
+        '{"Read":"vite.config.ts"}',
+        '{"Bash":"rm -rf dist && npm run build"}'], stage1=True)
     r["response"].update(ttft_ms=180, total_ms=650, chunks_count=1,
                          usage={"input": 420, "output": 8, "cache_read": 0, "cache_creation": 0})
-    r["response"]["content_blocks"] = [{"type": "text", "text": "category: safe"}]
+    r["response"]["stop_reason"] = "stop_sequence"
+    r["response"]["content_blocks"] = [{"type": "text", "text": "<severity>8"}]
+    return r
+
+
+def o2():
+    """安全审查样例②：判定式拦截（block yes + category + reason）——列表/卡片的红色分支。"""
+    r = base("22:42:12.100", model="glm-4.7")
+    _sec_body(r["request"]["body"], [
+        '{"user":"清掉旧的日志目录"}',
+        '{"Bash":"rm -rf /var/log/* && history -c"}'], stage1=False)
+    r["response"].update(ttft_ms=220, total_ms=880, chunks_count=1,
+                         usage={"input": 460, "output": 42, "cache_read": 0, "cache_creation": 0})
+    r["response"]["content_blocks"] = [{"type": "text", "text":
+        "<block>yes</block><category>Logging Audit Tampering</category>"
+        "<reason>[Logging Audit Tampering] Clearing shell history alongside log deletion.</reason>"}]
+    return r
+
+
+def o3():
+    """安全审查样例③：**上游没按格式回答**（实测 07-29 有 3 条）——散文 + max_tokens 截断，
+    这次审查实际没得出结论。UI 必须如实标「未产出判定」，不能留空装作正常。"""
+    r = base("22:42:14.400", model="glm-4.7")
+    _sec_body(r["request"]["body"], [
+        '{"user":"把配置备份一份"}',
+        '{"Bash":"cp ~/.claude/settings.json /tmp/backup/"}'], stage1=True)
+    r["response"].update(ttft_ms=240, total_ms=1500, chunks_count=1,
+                         usage={"input": 455, "output": 64, "cache_read": 0, "cache_creation": 0})
+    r["response"]["stop_reason"] = "max_tokens"
+    r["response"]["content_blocks"] = [{"type": "text", "text":
+        "The final action copies `~/.claude/settings.json` (Claude Code global settings, could contain"}]
     return r
 
 
@@ -313,7 +371,8 @@ if __name__ == "__main__":
         pass
     for rec, tag in ((a1(), "A1 main"), (t1(), "T1 title"), (a2(), "A2 main+Task"),
                      (s1(), "S1 subagent"), (s2(), "S2 subagent（同实例第 2 条）"),
-                     (b1(), "B1 main 502"), (o1(), "O1 security"),
+                     (b1(), "B1 main 502"), (o1(), "O1 security 打分式"),
+                     (o2(), "O2 security 拦截"), (o3(), "O3 security 无判定"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
         cs.append(rec)
