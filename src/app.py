@@ -187,7 +187,6 @@ def proxy_start():
         "listen": local_listen,
         "upstream": upstream,
         "backup_created": str(bkp),
-        "orphan_recovered": None,
     })
 
 

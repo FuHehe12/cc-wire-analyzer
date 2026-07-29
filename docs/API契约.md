@@ -34,7 +34,7 @@
 
 **响应** `500`（启动失败，settings.json 未被改）：
 ```json
-{ "running": false, "error": "port_unavailable|write_failed|...", "detail": "..." }
+{ "running": false, "error": "no_listen_port|patch_failed", "detail": "..." }
 ```
 
 ### `POST /api/proxy/stop` — 停止代理
@@ -448,7 +448,7 @@ agent。人看的界面里还没有"今天失败都是些什么"的入口——�
   - 子代理泳道：`agent-<md5(派生者id + 派生prompt前200字)[:8]>`（对齐命中时）或 `agent-<agent_fp>`（对齐未命中回落，agent_fp = system block[2] md5 短码）
   - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/other 合一列）
 - **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
-- **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx` / `parse`。
+- **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx`。
 - **大字段**：`request.body` / `response.content_blocks` 可能很大（MB 级），详情接口一次性返回；前端用虚拟滚动/折叠渲染。
 - **错误透传**：上游 4xx/5xx 也要录（response 存原文 snippet），原样返回给 CC，不破坏 CC 错误处理。
 - **路径前缀**：UI 所有路由必须 `/api/` 开头，否则会被代理 catch-all 当成上游流量转发。

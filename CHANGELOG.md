@@ -12,9 +12,7 @@
 
 ## v0.4.1 - unreleased
 
-> In progress. This entry records the user-driven UI/doc batch from 260729; other v0.4.1 doc work
-> (README / AI_USAGE / API契约 / app.py) is still uncommitted in the working tree and will be folded in
-> before the version is tagged.
+> In progress — not yet tagged.
 
 ### Added
 - **[docs/报文解读.md](docs/报文解读.md)** — a user-facing guide to the 7 request kinds CC sends
@@ -76,6 +74,29 @@
   re-checked in a browser against a 510-record day in an isolated `CCWA_HOME` — kind chips, system
   role labels in all three languages, no raw keys leaking, and lane-hiding still taking its
   auxiliary nodes with it (56-node main lane hidden → 78 nodes gone).
+
+### Docs
+- **The README no longer carries a hand-written version number.** v0.4.0 added a
+  `Current version: vX.Y.Z` line to all three READMEs because GitHub's rendered README does not
+  show the current tag. **That line went stale at the very next release** — v0.4.0 shipped while
+  all three READMEs still said v0.3.2, and it took three independent doc audits to notice. The
+  fix was itself the rot: a version number's single source of truth is the git tag, so a copy in
+  the README is guaranteed to diverge, and "edit one line in three files on every release" is an
+  obligation nobody keeps. The line and its maintainer note are gone; the header keeps
+  `Releases · Changelog` links, and GitHub points the first one at the latest release for free.
+  The general lesson, now recorded in [docs/文档维护策略.md](docs/文档维护策略.md): **a remedy for
+  documentation rot that needs periodic human syncing is itself the next piece of rot** — prefer a
+  zero-maintenance pointer over a maintainable copy.
+- **`docs/AI_USAGE.md` translated to Chinese, and the en/ja READMEs now flag which docs are
+  Chinese.** The deep-dive docs are written in Chinese; the English and Japanese READMEs linked
+  them without saying so, leaving a reader to discover it by clicking. Each link is now marked
+  (ZH), with a line suggesting machine translation. A full multilingual docs policy is deferred to
+  its own release.
+- **`docs/API契约.md` corrections and one dead field removed from the code.** The `start` response
+  documented (and returned) `orphan_recovered`, permanently `null` — the frontend only ever reads
+  `orphan_recovered_at_startup` from `/api/proxy/status`. Field dropped from `src/app.py` and the
+  contract; error-code enumerations for `start` corrected against the code, and a non-existent
+  `parse` value removed from `err_kind`.
 
 ## v0.4.0 - 2026-07-28
 

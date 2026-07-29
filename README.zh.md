@@ -4,9 +4,7 @@
 
 [English](README.md) · [日本語](README.ja.md)
 
-**当前版本：v0.3.2** · [发版列表](../../releases) · [更新日志](CHANGELOG.zh.md)
-
-<!-- 维护者：每次发版改上一行版本号（三份 README 都要改） -->
+[发版列表](../../releases) · [更新日志](CHANGELOG.zh.md)
 
 > 第一次来？**[docs/界面导览.md](docs/界面导览.md)** 讲人在 UI 里能看到什么，
 > **[docs/AI_USAGE.md](docs/AI_USAGE.md)** 给驱动本工具的 AI agent 看，
