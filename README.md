@@ -180,10 +180,9 @@ The detail page can translate text or explain "what does this content do" via an
 
 ## Build from source
 
-- **Windows**: `uv run pyinstaller build.spec`
-- **macOS**: `uv sync --extra mac && uv run pyinstaller build-mac.spec`
-
-Releases are built automatically by [`.github/workflows/release.yml`](.github/workflows/release.yml) on every `v*` tag.
+Build steps live in [CONTRIBUTING.md](CONTRIBUTING.md#building) — kept in one place so the Windows
+and macOS instructions can't drift apart. Releases are built automatically by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) on every `v*` tag.
 
 ## Relationship to other observability tools
 

@@ -150,7 +150,7 @@
 
 `error` 非 null 时：
 ```json
-{ "error": { "kind": "upstream_5xx|upstream_4xx|connect|timeout|parse", "status": 502, "body_snippet": "..." } }
+{ "error": { "kind": "connect|timeout|http_error|upstream_4xx|upstream_5xx", "status": 502, "body_snippet": "..." } }
 ```
 
 ### `GET /api/captures/stream` — LIVE SSE 推送

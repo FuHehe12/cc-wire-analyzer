@@ -143,10 +143,7 @@ macOS も同じバイナリ 1 つ —— `cc-wire-analyzer.app/Contents/MacOS/cc
 
 ## ソースからビルド
 
-- **Windows**：`uv run pyinstaller build.spec`
-- **macOS**：`uv sync --extra mac && uv run pyinstaller build-mac.spec`
-
-リリースは [`.github/workflows/release.yml`](.github/workflows/release.yml) が各 `v*` タグで自動ビルドします。
+ビルド手順は [CONTRIBUTING.md](CONTRIBUTING.md#building) に一元化（Windows/macOS のコマンドが分岐しないよう単一ソース）。リリースは [`.github/workflows/release.yml`](.github/workflows/release.yml) が各 `v*` タグで自動ビルドします。
 
 ## 他の観測性ツールとの関係
 
@@ -159,4 +156,4 @@ macOS も同じバイナリ 1 つ —— `cc-wire-analyzer.app/Contents/MacOS/cc
 - 同梱フォント（Inter / JetBrains Mono / Noto Sans SC）：**SIL OFL 1.1**。
 - 同梱 JS（marked.js：MIT、DOMPurify：Apache-2.0/MPL-2.0）。
 
-全文は [LICENSE](LICENSE)（英語）を参照。
+全文は [LICENSE](LICENSE)（英語）を参照。技術ドキュメントは [docs/API契约.md](docs/API契约.md)、開発設定は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。

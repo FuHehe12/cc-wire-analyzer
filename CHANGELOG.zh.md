@@ -11,8 +11,14 @@
   **macOS 升级用户注意**：应用包由 `CCWireAnalyzer.app` 改名 `cc-wire-analyzer.app`，`/Applications` 里旧的那份不会被替换，需自行删除。
 - **下一步**：
   1. **失败聚合的 UI 入口**——当前最大的一道缝。后端把几千条失败压成几组只要 0.1 秒不到，人看的界面却连一个入口都没有。这条之外的都更小。
-  2. **诊断闭环续做**：反复出现的失败模式固化成体检规则（`effort_max_rejected_upstream` 即由此而来——标准：可复现？能静态判定？误报风险？）；跨天趋势更远。
+  2. **诊断闭环续做**：反复出现的失败模式固化成体检规则（`effort_max_rejected_upstream` 即由此而来）；跨天趋势更远。
   3. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理**未实测**（历次采集全是 sdk-cli）。两层规则保证 flag 缺席也不会再让主线被误判为子代理，但要彻底闭环需采集一次交互会话派生子代理的流量。
+
+## v0.4.3 - unreleased
+
+### 修复
+- **app 自报的版本号现在始终与发布 tag 一致。** 版本号曾手抄于三处（git tag / `src/app.py:VERSION` / `pyproject.toml`）却无机制保证同步，导致发布的 exe 显示错误版本——v0.4.2 的 exe 在「关于」页仍自报 v0.4.1。现在 tag 是唯一真源：CI 构建前从 tag 生成 `src/_version.py`（`release.yml` 的 `Inject version from tag` 步骤），`app.py` 运行时读它、本地无该文件时 fallback 到 `dev`，`pyproject.toml` 同步覆盖。`docs/开发指南.md` §9 铁律从「README 不写版本号」扩展为「任何地方都不写死」。
+- **文档一致性梳理。** 多 agent 审查发现 26 处自 v0.4.0 起积累的漂移：六重恢复清单在开发指南与架构总览之间分叉（开发指南误把第六道写成 CLI restore）、API 契约列了代码从不产出的幻值 `parse` 错误类型、`IDX_SCHEMA` 文档写 4 实际为 5、idx 字段截取长度与 i18n 键数（245 而非 225）过期、CONTRIBUTING 仍把端口写成固定 5051。跨 12 个文件修复；开发指南 §9「版本号不写死」铁律与文档维护策略的 SSOT 指针也一并收紧。
 
 ## v0.4.2 - 2026-07-30
 

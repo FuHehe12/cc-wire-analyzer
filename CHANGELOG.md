@@ -16,7 +16,7 @@
   `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
   1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller.
-  2. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); cross-day trends further out.
+  2. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way); cross-day trends further out.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
 ## v0.4.3 - unreleased
@@ -30,6 +30,14 @@
   `release.yml`), `app.py` reads it with a `dev` fallback for local runs, and `pyproject.toml`
   is synced in the same step. The convention in `docs/开发指南.md` §9 is widened from "no
   version in README" to "no hardcoded version anywhere".
+
+- **Documentation consistency pass.** A multi-agent audit caught 26 instances of drift accumulated
+  since v0.4.0: the six-way recovery list had diverged between the dev guide and the architecture
+  overview (the dev guide misnamed the sixth path as "CLI restore"), the API contract listed a
+  phantom `parse` error kind the code never produces, `IDX_SCHEMA` was documented as 4 (actually
+  5), idx field lengths and the i18n key count (245, not 225) were stale, and CONTRIBUTING still
+  hardcoded port 5051. Fixed across 12 files; the §9 "no hardcoded version" rule and the
+  doc-maintenance strategy's SSOT pointers were tightened at the same time.
 
 ## v0.4.2 - 2026-07-30
 
@@ -156,7 +164,7 @@
     because the function runs once per list row and real failures come in sheets.
   - Nine dead i18n keys removed, left behind by earlier removals: `detail.usageNote` (the dropped
     cost estimate), `status.backups` (the relocated backup count), `row.probe` (superseded by
-    `kindLabel`). The three language tables are now key-for-key identical at 225 entries each.
+    `kindLabel`). The three language tables are now key-for-key identical at 245 entries each.
     The `.cap-row.probe` CSS class keeps its historical name — it is now driven by `isAux` (any
     auxiliary call, not just token probes) — with a comment saying so.
 

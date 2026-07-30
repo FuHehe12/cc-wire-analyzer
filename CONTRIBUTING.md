@@ -4,9 +4,10 @@ Thanks for your interest in improving this tool! This page covers **environment 
 and the PR checklist**.
 
 > **Before you write any code, read [`docs/开发指南.md`](docs/开发指南.md) (Development Guide).**
-> It is the single source of truth for this project's conventions: eight safety invariants that
-> must never be broken, the four bug types that keep recurring here, the defensive-design table,
-> the subagent-identification ruling, the six self-tests, and the frontend rules. The guide is in
+> It is the single source of truth for this project's conventions — safety invariants, the
+> recurring bug types, the defensive-design table, the subagent-identification ruling, the
+> self-tests, and the frontend rules. Counts grow over time, so the guide holds them — not this
+> page. The guide is in
 > Chinese — if that's a barrier, open an issue and we'll help.
 >
 > Those conventions used to be summarised on this page too. That copy silently drifted: it listed
@@ -27,18 +28,18 @@ Run it:
 
 ```bash
 uv run python src/desktop.py          # desktop window (the real entry point)
-uv run python src/app.py              # server-only, for browser debugging at http://127.0.0.1:5051/
+uv run python src/app.py              # server-only, for browser debugging (port from startup log or ~/.cc-wire-analyzer/port.txt)
 uv run python src/dev_seed.py         # seed demo captures to exercise the UI
 ```
 
-> **Template edits need a dev-server restart.** `app.run(debug=False)` means Jinja caches
-> templates after the first render — editing `index.html` and refreshing the browser still shows
-> the old page. Verify with `curl -s http://127.0.0.1:5051/ | grep '<your new marker>'`.
+> **Template edits need a dev-server restart** — `app.run(debug=False)` caches Jinja templates, so
+> editing `index.html` and refreshing still shows the old page. Why this happens and how to verify
+> a change took effect: see [`docs/开发指南.md`](docs/开发指南.md) §5.
 
 ## Building
 
 - Windows: `uv run pyinstaller build.spec` → `dist/cc-wire-analyzer.exe`
-- macOS: `uv run pyinstaller build-mac.spec` → `dist/cc-wire-analyzer.app`
+- macOS: `uv sync --extra mac && uv run pyinstaller build-mac.spec` → `dist/cc-wire-analyzer.app` (the `--extra mac` installs pyobjc for the WebKit backend)
 - Tagging `v*` triggers CI to build both and publish a Release.
 
 The maintainer develops on Windows — **macOS builds are verified by CI
@@ -48,8 +49,8 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 
 ## Bundled assets
 
-- Fonts (`src/static/fonts/`): Inter, JetBrains Mono, Noto Sans SC — all SIL OFL. Don't replace
-  with non-redistributable fonts.
+- Fonts (`src/static/fonts/`): Inter, JetBrains Mono, Noto Sans SC (all SIL OFL; full list in the
+  README license section). Don't replace with non-redistributable fonts.
 - `marked.min.js`, `purify.min.js`: vendored for offline use. DOMPurify sanitisation of all
   upstream-rendered content is a security requirement — don't bypass it.
 
@@ -58,9 +59,9 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 1. **Run all six self-tests.** The commands are listed in
    [`docs/开发指南.md`](docs/开发指南.md) §5 — copy them from there rather than from memory,
    since the set has grown over time.
-2. If you touched the frontend, exercise the affected UI in a browser at
-   `http://127.0.0.1:5051/` — **restart the dev server first** (see the template-caching note
-   above).
+2. If you touched the frontend, exercise the affected UI in a browser (open the port from the
+   startup log or `~/.cc-wire-analyzer/port.txt`) — **restart the dev server first** (see the
+   template-caching note above).
 3. If you added or changed user-visible strings, update **all three** i18n locales
    (`zh` / `en` / `ja`) in `index.html`. The three key sets must match exactly.
 4. Check your change against the safety invariants in [`docs/开发指南.md`](docs/开发指南.md) §1.

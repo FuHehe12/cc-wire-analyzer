@@ -141,10 +141,7 @@ macOS 同样是一个二进制 —— `cc-wire-analyzer.app/Contents/MacOS/cc-wi
 
 ## 源码构建
 
-- **Windows**：`uv run pyinstaller build.spec`
-- **macOS**：`uv sync --extra mac && uv run pyinstaller build-mac.spec`
-
-Release 由 [`.github/workflows/release.yml`](.github/workflows/release.yml) 在每个 `v*` tag 上自动构建。
+构建步骤见 [CONTRIBUTING.md](CONTRIBUTING.md#building)（单一真源，避免 Windows/macOS 两套命令分叉）。Release 由 [`.github/workflows/release.yml`](.github/workflows/release.yml) 在每个 `v*` tag 上自动构建。
 
 ## 和其他可观测性工具的关系
 
@@ -157,4 +154,4 @@ Release 由 [`.github/workflows/release.yml`](.github/workflows/release.yml) 在
 - 打包字体（Inter / JetBrains Mono / Noto Sans SC）：**SIL OFL 1.1**。
 - 打包 JS（marked.js：MIT；DOMPurify：Apache-2.0/MPL-2.0）。
 
-全文见 [LICENSE](LICENSE)（英文）。API 契约等技术文档见 [docs/API契约.md](docs/API契约.md)（中文）。
+全文见 [LICENSE](LICENSE)（英文）。API 契约等技术文档见 [docs/API契约.md](docs/API契约.md)（中文）。开发设置见 [CONTRIBUTING.md](CONTRIBUTING.md)。
