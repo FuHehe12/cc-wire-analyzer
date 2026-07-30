@@ -9,6 +9,7 @@ __pycache__/
 dist/
 build/
 *.spec.bak
+src/_version.py   # CI 构建时从 tag 生成（见 release.yml），不入仓库
 
 # IDE
 .vscode/

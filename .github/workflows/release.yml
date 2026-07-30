@@ -39,6 +39,21 @@ jobs:
       - name: Sync dependencies
         run: uv sync ${{ matrix.extra }}
 
+      # 版本号唯一真源是 git tag（见 docs/开发指南.md 第九节）。构建前从 tag 生成 src/_version.py，
+      # exe 运行时 /api/about 因此永远与 tag 一致；顺带同步 pyproject.toml（仅改 CI 工作副本，不入仓库）。
+      # workflow_dispatch 无 tag 时用 0.0.0-dev 兜底（测试构建，不出 release）。
+      - name: Inject version from tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="0.0.0-dev"
+          fi
+          printf 'VERSION = "%s"  # CI 从 tag 注入，勿手改（见 docs/开发指南.md 第九节）\n' "$V" > src/_version.py
+          sed -i.bak "s/^version = \".*\"/version = \"$V\"/" pyproject.toml && rm pyproject.toml.bak
+          echo "Injected version: $V"
+
       # 单 exe（260713 合并）：无参/双击开 GUI，`serve` 子命令起 headless 服务给 AI。
       # 不再单独出 CLI 二进制——AI 走 HTTP API（/api/proxy/*、/api/captures…），
       # 不需要 stdout；Windows 的 noconsole GUI exe 本来也没 stdout 可用。

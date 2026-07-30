@@ -19,6 +19,18 @@
   2. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); cross-day trends further out.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
+## v0.4.3 - unreleased
+
+### Fixed
+- **The version the app reports now always matches the release tag.** The version had been
+  hand-copied in three places (git tag, `src/app.py:VERSION`, `pyproject.toml`) with nothing
+  keeping them in sync, so releases shipped showing the wrong version — v0.4.2's exe still
+  reported v0.4.1 in About. The tag is now the single source of truth: CI generates
+  `src/_version.py` from the tag before building (the `Inject version from tag` step in
+  `release.yml`), `app.py` reads it with a `dev` fallback for local runs, and `pyproject.toml`
+  is synced in the same step. The convention in `docs/开发指南.md` §9 is widened from "no
+  version in README" to "no hardcoded version anywhere".
+
 ## v0.4.2 - 2026-07-30
 
 ### Fixed

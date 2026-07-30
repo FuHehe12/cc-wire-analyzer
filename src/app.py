@@ -27,7 +27,12 @@ import settings_guard
 
 log = logging.getLogger(__name__)
 
-VERSION = "0.4.1"   # 单一真源：/api/about 与 desktop 启动横幅共用
+# 版本号唯一真源是 git tag。CI 构建时由 release.yml 从 tag 生成 src/_version.py（见
+# docs/开发指南.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
+try:
+    from _version import VERSION
+except ImportError:
+    VERSION = "dev"
 
 # PyInstaller 冻结态兼容模板/静态资源路径（marked/DOMPurify vendored 在 static/，审计 260712 #3）
 if getattr(sys, "_MEIPASS", None):
