@@ -5,16 +5,21 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection.
-- **Current status**: **v0.4.1 released** (2026-07-29). A consolidation release on top of v0.4.0: **security-classifier reviews are now readable** (the action under review, the verdict and the matched rule, and what got sent upstream — including your full CLAUDE.md; `IDX_SCHEMA` 4 → 5, indexes rebuild once), a **code review of everything since v0.4.0** (a role label that could never fire, a classification failure nobody would have seen, 9 dead i18n keys), and a **documentation restructure**: development conventions had drifted across three copies and now have exactly one home (`docs/开发指南.md`), plus a new `docs/问题域手册.md` for anyone building the same tool for a different agent harness. The READMEs were rewritten to open with when you'd want this tool and what it does with your traffic.
-  **Unreleased since then** (see the section below): a layout pass that put the detail view's two
-  columns and the capture list's columns back on a grid, plus one naming scheme for the release
-  assets of both platforms.
+- **Current status**: **v0.4.2 released** (2026-07-30). A layout and polish release: the two columns
+  of the detail view line up again (a bare chip row facing a card had them 27 px out of step from
+  the second block down), the capture list is a real fixed-column grid (flex had the summary column
+  wandering 300 px across rows), and the release assets use one naming scheme on both platforms
+  (`cc-wire-analyzer-{windows,macos}`, plus a renamed macOS bundle so the serve command reads the
+  same on both). Built on v0.4.1, which made security-classifier reviews readable and gave the
+  project a single home for its development conventions (`docs/开发指南.md`).
+  **Heads-up for macOS upgraders**: the bundle was renamed `CCWireAnalyzer.app` →
+  `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
   1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller.
   2. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way — the bar: reproducible? statically decidable? false-positive risk?); cross-day trends further out.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
-## Unreleased
+## v0.4.2 - 2026-07-30
 
 ### Fixed
 - **The two columns of the detail view line up again.** Moving `model` / `stream` to the request
