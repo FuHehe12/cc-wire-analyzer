@@ -471,6 +471,7 @@ agent。人看的界面里还没有"今天失败都是些什么"的入口——�
   - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/other 合一列）
 - **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
 - **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx` / `stream_error`（HTTP 200 但 SSE 流内报错，260731 补）。
+- **harness 声明面字段**（索引项，`IDX_SCHEMA=6` 起）：`beta`（`anthropic-beta` 拆成的特性数组——CC 声明启用了哪些协议扩展）/ `agent_id`（`x-claude-code-agent-id`，CC 给的子代理实例 ID）/ `ctx_mgmt` / `diagnostics` / `stop_seqs_n` / `thinking_budget`。这些是**发现录制盲区的信号源**，不是判别位——子代理判别仍以 system block[0] 计费头的 `cc_is_subagent` 为准（见 [开发指南.md](开发指南.md) 子代理判别定案）。
 - **大字段**：`request.body` / `response.content_blocks` 可能很大（MB 级），详情接口一次性返回；前端用虚拟滚动/折叠渲染。
 - **错误透传**：上游 4xx/5xx 也要录（response 存原文 snippet），原样返回给 CC，不破坏 CC 错误处理。
 - **路径前缀**：UI 所有路由必须 `/api/` 开头，否则会被代理 catch-all 当成上游流量转发。

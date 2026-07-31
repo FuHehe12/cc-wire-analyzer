@@ -76,7 +76,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v4 → v5（260729）：新增 sec_action/sec_verdict（安全审查的待判定动作与判定结果）。
 #                     待判定动作在 transcript **末尾**，而 last_user 只存前 2000 字，够不着，
 #                     所以只能加字段（详见 issues/open/260729_安全审查可读性.md）
-IDX_SCHEMA = 5
+#   v5 → v6（260731）：新增 harness 声明面 beta/agent_id + 请求体特性
+#                     ctx_mgmt/diagnostics/stop_seqs_n/thinking_budget。
+#                     CC 自己声明的东西此前一条都没进索引，等于放弃了「发现下一个盲区」
+#                     最直接的信号源（详见 issues/open/260731_harness事实对账_录制盲区全面审计.md）
+IDX_SCHEMA = 6
 
 
 # ===== 请求体取文本 =====
@@ -277,6 +281,25 @@ def _session_id(record: dict, body: dict) -> str:
     return ""
 
 
+def _header(record: dict, name: str) -> str:
+    """取请求头（大小写不敏感），缺失回空串。"""
+    hdrs = (record.get("request") or {}).get("headers_safe") or {}
+    for k, v in hdrs.items():
+        if k.lower() == name and isinstance(v, str):
+            return v
+    return ""
+
+
+def _beta_features(record: dict) -> list[str]:
+    """`anthropic-beta` 头 → 特性列表。
+
+    这是 CC 声明「我启用了哪些协议扩展」的地方，地位等同于 `Accept-Encoding` 之于解压格式：
+    **它就是我们必须留意的能力清单**。实测 10 天出现 18 个特性、18 种组合，随 CC 版本漂移
+    ——出现没见过的特性就是「可能有新盲区」的信号（docs/开发指南.md §2.5）。"""
+    raw = _header(record, "anthropic-beta")
+    return [s.strip() for s in raw.split(",") if s.strip()] if raw else []
+
+
 def _agent_fp(blocks: list[str]) -> str:
     """身份指纹：system block[2]（正文/agent 专属提示词）的 md5 短码。
 
@@ -425,6 +448,23 @@ def index_record(rec: dict) -> dict:
         # 列表行要一眼看出「AI 在确认什么、判了什么」，这两个字段就是那两句话的原料。
         "sec_action": _sec_action_flat(body),
         "sec_verdict": sec_verdict(resp),
+        # ---- harness 声明面（260731 对账审计）----
+        # CC 自己声明的东西，此前一条都没进索引。它们的用处不是当下判别，是**发现下一个盲区**：
+        # 出现没见过的 beta 特性或新的请求体字段，就意味着 CC 启用了新能力，
+        # 而新能力往往带来我们还不认识的请求字段或响应块（详见 docs/开发指南.md §2.5）。
+        "beta": _beta_features(rec),
+        # CC 直接在 HTTP 头上给的子代理实例 ID。**取证结论（9 天 4,629 条）：
+        # 它与计费头 cc_is_subagent=true 完全一致，225/225 零反例，且 225 条全部是
+        # cc_entrypoint=cli** —— 判别定案时悬着的「cli 模式未实测」由此有了实测数据。
+        # 这里只**记录**它作为交叉校验位，判别优先级仍以计费头为准（那是 260725 实测定案的，
+        # 不因为多一个一致信号就改结论）。
+        "agent_id": _header(rec, "x-claude-code-agent-id"),
+        # 请求体里 CC 实际在用、我们此前完全没解析的特性（G8）。只存小标量，不存内容。
+        "ctx_mgmt": bool(body.get("context_management")),
+        "diagnostics": bool(body.get("diagnostics")),
+        "stop_seqs_n": len(body.get("stop_sequences") or []),
+        "thinking_budget": ((body.get("thinking") or {}).get("budget_tokens")
+                            if isinstance(body.get("thinking"), dict) else None),
     }
 
 

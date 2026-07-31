@@ -11,9 +11,9 @@
   **macOS 升级用户注意**：应用包由 `CCWireAnalyzer.app` 改名 `cc-wire-analyzer.app`，`/Applications` 里旧的那份不会被替换，需自行删除。
 - **下一步**：
   1. **失败聚合的 UI 入口**——当前最大的一道缝。后端把几千条失败压成几组只要 0.1 秒不到，人看的界面却连一个入口都没有。这条之外的都更小。（它的输入现在可信了：流内错误此前被录成成功、根本没进过失败统计，已在未发版的 v0.4.3 修掉。）
-  2. **录制盲区审计收尾**：拿我们的实现去对账 CC 自己声明的东西（请求头、请求体字段、CC 源码里 SSE 累积器的分支清单），查出九个缺口、已修四个。未做：`signature_delta` / `citations_delta`、`anthropic-beta` 特性清单（18 个特性——发现**下一个**盲区的雷达）、请求体剩余未解析字段，以及 `x-claude-code-agent-id` 能否补上子代理判别在 cli 模式下的已知缺口。方法见 `docs/开发指南.md` 第二·五节。
+  2. **录制盲区审计：已收口。** 拿我们的实现去对账 CC 自己声明的东西（请求头、请求体字段、CC 源码里 SSE 累积器的分支清单），查出九个缺口、现已全部有交代——最后一条（对可疑记录保留原始字节）作为设计定案随存储治理留到 0.5.x。方法见 `docs/开发指南.md` 第二·五节；可迁移到其他 harness 的泛化版是 `docs/问题域手册.md` 的单元 0。
   3. **诊断闭环续做**：反复出现的失败模式固化成体检规则（`effort_max_rejected_upstream` 即由此而来）；跨天趋势更远。
-  4. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理**未实测**（历次采集全是 sdk-cli）。两层规则保证 flag 缺席也不会再让主线被误判为子代理，但要彻底闭环需采集一次交互会话派生子代理的流量。
+  4. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理仍缺一次人工核对过的采集。历史录制已能提供统计旁证——225 条子代理请求全部是 `cc_entrypoint=cli`、判别位全部在、零反例——但这与「采一次会话并逐条对照 ground truth」不是一回事，后者才是关闭这条所需要的。
 
 ## v0.4.3 - unreleased
 
@@ -24,7 +24,13 @@
 
 - **上下文压缩块与命中的停止序列现在录得到。** `compaction_delta` 聚合成 `compaction` 块（CC 声明了 `context-management-2025-06-27` beta，抽样 4,652 条里 3,488 条带 `context_management` 字段——这是在用的能力，而压缩何时发生正是 wire 层最该揭示的东西之一）。`message_delta.stop_sequence` 记为 `response.stop_sequence`：抽样中有 200 条响应以停止序列结束，却从没记下**命中的是哪个**，而这个值恰恰解释了正文为什么断在那里（安全分类器那个残缺的 `<severity>8` 就是这个机制的产物）。
 
-  这三条出自一次对账审计——对账的是 CC 自己声明的东西：请求头、请求体字段，以及 CC 源码里 SSE 累积器的分支清单。方法与尚未补齐的缺口写在 `docs/开发指南.md` 第二·五节。`proxy_selftest` 新增 `[3d]`/`[3e]` 用例验证（error 帧必须录成失败**且**能进失败聚合；compaction 块必须正确聚合且不被误判为失败），`dev_seed` 增三条样例。审计同时排除了 5 处误报，并清掉一个死 i18n 键（`ek.parse`，代码从不产出这个类型——v0.4.3 那轮文档修订改了契约却漏了这个键）。
+  这三条出自一次对账审计——对账的是 CC 自己声明的东西：请求头、请求体字段，以及 CC 源码里 SSE 累积器的分支清单。方法写在 `docs/开发指南.md` 第二·五节，泛化到其他 harness 的版本是 `docs/问题域手册.md` 的单元 0。`proxy_selftest` 新增 `[3d]`/`[3e]` 用例验证（error 帧必须录成失败**且**能进失败聚合；compaction 块必须正确聚合且不被误判为失败），`dev_seed` 增四条样例。审计同时排除了 5 处误报，并清掉一个死 i18n 键（`ek.parse`，代码从不产出这个类型——v0.4.3 那轮文档修订改了契约却漏了这个键）。
+
+- **CC 对自己的声明现在录得下、也看得见。** 每个请求都带 `anthropic-beta` 头，列着 CC 启用了哪些协议扩展（抽样里 18 个特性、18 种组合，随 CC 版本漂移）——它此前埋在折叠的 Headers 面板里一行长逗号串中，没有人会去读。现在它单独成行拆成 chips，基线之外的特性高亮并明确提示：**新启用的能力正是发现下一个录制盲区的入口**，而且通常早于那个陌生字段或响应块出现。索引同时记下 CC 实际在用、我们从没解析过的 `context_management` / `diagnostics` / `stop_sequences` / `thinking.budget_tokens`（`IDX_SCHEMA` 5 → 6）。
+
+- **`signature_delta` 与 `citations_delta` 现在会聚合**——thinking 块的签名（赋值）与 text 块的引用（追加）。两者累加语义不同，一律照 CC 自己的累积器实现，不按"看起来应该"写。
+
+- **`x-claude-code-agent-id` 作为子代理身份的交叉校验位录下来。** 4,629 条抽样里 225 条子代理请求全部与计费头判别位一致，零反例，且带实例区分度。**判别结论本身不变**——多一个一致的信号不构成推翻实测定案的理由。对那个仍挂着的判别悬案有一条值得记的：这 225 条全部是 `cc_entrypoint=cli`，正是从未实测过的那个模式。但这是从历史录制统计出的旁证，不是悬案真正要求的人工核对采集，所以悬案不关。
 
 - **录制现在覆盖 CC 声明的全部压缩格式**（`Accept-Encoding: gzip, deflate, br, zstd`）。DeepSeek 对非流式响应——恰好就是安全分类器请求——用 brotli 压缩；缺 `brotli` 包时代理录到的是压缩字节，`body` / `usage` / `content_blocks` 整个丢（安全请求全部显示为空）。已加 `brotli` + `zstandard` 依赖（其 C 扩展也进 `build.spec` hiddenimports），`_decode_body` 补 zstd 分支；`proxy_selftest` 新增 `[3c]` 用例：mock 上游返回 `Content-Encoding: br` 的响应必须转发透传**且**录制侧解压出来；`dev_seed` 增 O4 DeepSeek 形态安全样例。详见 `issues/open/260731_安全分类器响应丢失_brotli压缩盲区与harness分析不足.md`。*（本修复由 Claude Code 会话 `d61ee348`——实际上游模型 deepseek-v4-flash[1M]——于 2026-07-31 完成；真流量验证待 DeepSeek 分类器恢复后补做。）*
 - **app 自报的版本号现在始终与发布 tag 一致。** 版本号曾手抄于三处（git tag / `src/app.py:VERSION` / `pyproject.toml`）却无机制保证同步，导致发布的 exe 显示错误版本——v0.4.2 的 exe 在「关于」页仍自报 v0.4.1。现在 tag 是唯一真源：CI 构建前从 tag 生成 `src/_version.py`（`release.yml` 的 `Inject version from tag` 步骤），`app.py` 运行时读它、本地无该文件时 fallback 到 `dev`，`pyproject.toml` 同步覆盖。`docs/开发指南.md` §9 铁律从「README 不写版本号」扩展为「任何地方都不写死」。

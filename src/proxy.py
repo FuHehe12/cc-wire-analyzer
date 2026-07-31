@@ -298,9 +298,12 @@ def _parse_sse(text: str) -> dict:
     |---|---|
     | message_start / content_block_{start,delta,stop} / message_delta | ✅ |
     | error（`event: error` 帧 + data 内 `type=="error"`） | ✅ 260731 补 |
-    | text_delta / thinking_delta / input_json_delta / compaction_delta | ✅（compaction 260731 补）|
-    | signature_delta / citations_delta | ❌ 待补（G2/G4，第二批） |
+    | text_delta / thinking_delta / input_json_delta | ✅ |
+    | compaction_delta / signature_delta / citations_delta | ✅ 260731 补 |
     | message_stop / ping | ➖ 无信息损失，有意不处理 |
+
+    **累加还是赋值，一律照 CC 的累积器来**：text/thinking/input_json/compaction 累加，
+    signature 赋值，citations 追加进数组。别按"看起来应该"写。
 
     ⚠️ 注意 `agent_listing_delta` / `mcp_instructions_delta` / `deferred_tools_delta` 虽然也在
     bundle 里以 `case"..._delta"` 出现，但上下文是 React 渲染层，**不属于 wire 层**，别照着 grep
@@ -358,6 +361,17 @@ def _parse_sse(text: str) -> dict:
                 blk["thinking"] = (blk.get("thinking") or "") + (delta.get("thinking") or "")
             elif dtype == "input_json_delta":
                 blk["_input_raw"] = (blk.get("_input_raw") or "") + (delta.get("partial_json") or "")
+            elif dtype == "signature_delta":
+                # thinking 块的签名。CC 的累积器是**赋值**不是累加
+                # （bundle：`{...r, signature: t.delta.signature}`），照它来。
+                # 关系到字节级复原的完整性——这是本项目的立项承诺之一。
+                if delta.get("signature"):
+                    blk["signature"] = delta["signature"]
+            elif dtype == "citations_delta":
+                # 引用**追加**进 text 块的 citations 数组
+                # （bundle：`citations: [...(r.citations ?? []), t.delta.citation]`）。
+                if delta.get("citation") is not None:
+                    blk.setdefault("citations", []).append(delta["citation"])
             elif dtype == "compaction_delta":
                 # 上下文自动压缩产出的块。CC 声明 beta `context-management-2025-06-27`，
                 # 且实测 3,488/4,652 条请求带 `context_management` 字段——这是在用的能力，

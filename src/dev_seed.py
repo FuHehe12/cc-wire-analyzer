@@ -1,7 +1,7 @@
 """开发用：写一套覆盖 DAG 全要素的样例捕获，供 UI 自测。
 
 用法：uv run python src/dev_seed.py
-每次运行追加 17 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
+每次运行追加 18 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
 或用界面「清理」按钮（清除录制 / 清除并压缩存档）。
 
 时序设计（同一天，验证分类 + DAG 推断 + 泳道多色配色）：
@@ -94,6 +94,13 @@ def base(ts: str, model: str = "glm-5.2", session_id: str = SID_A,
     r["request"] = {
         "headers_safe": {"content-type": "application/json",
                          "anthropic-version": "2023-06-01",
+                         # 真流量每条请求都带 anthropic-beta（CC 声明启用了哪些协议扩展），
+                         # 260731 前样例一条都没有 → 界面的「协议扩展」区在自测里根本不出现
+                         # （惯犯 bug ④：测试数据不像真流量）。这里照真录制的常见组合复刻。
+                         "anthropic-beta": ("claude-code-20250219,oauth-2025-04-20,"
+                                            "context-1m-2025-08-07,interleaved-thinking-2025-05-14,"
+                                            "context-management-2025-06-27,effort-2025-11-24"),
+                         "accept-encoding": "gzip, deflate, br, zstd",
                          "authorization": "<redacted>",
                          "x-claude-code-session-id": session_id,
                          "user-agent": f"claude-cli/2.1 (external, {entrypoint})"},
@@ -368,6 +375,19 @@ def e3():
     return r
 
 
+def e4():
+    """CC 启用了没见过的协议扩展（issue 260731 G7）——界面应把它高亮成橙色并提示
+    「可能带来我们还不认识的字段或响应块」。这是发现下一个录制盲区的雷达：
+    beta 清单随 CC 版本漂移，新特性往往先于新字段出现。"""
+    r = base("22:42:31.900")
+    b = r["request"]["body"]
+    b["system"] = main_sys(); b["tools"] = TOOLS
+    b["messages"] = [{"role": "user", "content": "继续"}]
+    r["request"]["headers_safe"]["anthropic-beta"] += ",imaginary-feature-2026-09-01"
+    r["response"]["content_blocks"] = [{"type": "text", "text": "好的。"}]
+    return r
+
+
 def d1():
     r = base("22:42:30.300", session_id=SID_D)
     b = r["request"]["body"]
@@ -442,6 +462,7 @@ if __name__ == "__main__":
                      (e1(), "E1 流内error（200 却是失败）"),
                      (e2(), "E2 compaction块+stop_sequence"),
                      (e3(), "E3 解码失败落痕"),
+                     (e4(), "E4 未知beta特性"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
         cs.append(rec)

@@ -131,6 +131,32 @@ MOCK_SSE_COMPACT = "\n".join([
     'event: content_block_stop',
     'data: {"type":"content_block_stop","index":0}',
     '',
+    # thinking 块的 signature（赋值语义）+ text 块的 citations（追加语义）——两者的累加方式
+    # 不同，照 CC 累积器来，别按"看起来应该"写（issue 260731 G2/G4）。
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"想一下"}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":1,"delta":{"type":"signature_delta","signature":"sig_abc123"}}',
+    '',
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":1}',
+    '',
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"据此"}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":2,"delta":{"type":"citations_delta","citation":{"type":"web_search_result_location","title":"来源A"}}}',
+    '',
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":2}',
+    '',
     'event: message_delta',
     'data: {"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"</severity>"},"usage":{"output_tokens":3}}',
     '',
@@ -383,13 +409,20 @@ assert r6.status_code == 200
 caps6 = capture_store.list_captures()
 rec6 = capture_store.get_capture(caps6["items"][0]["id"])
 r6resp = rec6["response"]
-print(f"    blocks={r6resp.get('content_blocks')} stop_sequence={r6resp.get('stop_sequence')}")
-assert r6resp.get("content_blocks") == [{"type": "compaction", "content": "摘要前半摘要后半"}], \
-    f"compaction 块未聚合: {r6resp.get('content_blocks')}"
+b6 = r6resp.get("content_blocks") or []
+print(f"    blocks={b6} stop_sequence={r6resp.get('stop_sequence')}")
+assert b6[0] == {"type": "compaction", "content": "摘要前半摘要后半"}, \
+    f"compaction 块未聚合: {b6[:1]}"
 assert r6resp.get("stop_sequence") == "</severity>", \
     f"命中的 stop_sequence 没记下: {r6resp.get('stop_sequence')}"
 assert rec6.get("error") is None, "compaction 是正常响应，不该被判成失败"
-print("    compaction 块聚合 + stop_sequence 命中值 ✓")
+# signature 是**赋值**、citations 是**追加进数组**——两种累加语义都照 CC 累积器（G2/G4）
+assert b6[1] == {"type": "thinking", "thinking": "想一下", "signature": "sig_abc123"}, \
+    f"signature_delta 未写入 thinking 块: {b6[1] if len(b6) > 1 else None}"
+assert b6[2] == {"type": "text", "text": "据此",
+                 "citations": [{"type": "web_search_result_location", "title": "来源A"}]}, \
+    f"citations_delta 未追加进 text 块: {b6[2] if len(b6) > 2 else None}"
+print("    compaction 聚合 + stop_sequence + signature(赋值) + citations(追加) ✓")
 
 
 # ===== 7. 恢复 =====

@@ -16,9 +16,9 @@
   `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
   1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller. (Its input is now trustworthy: in-stream errors used to be recorded as successes and never reached the statistics at all — fixed in the unreleased v0.4.3.)
-  2. **Finish the recording-blind-spot audit.** Auditing our implementation against what CC itself declares (request headers, body fields, the SSE accumulator branches in CC's own source) found nine gaps; four are fixed. Still open: `signature_delta` / `citations_delta`, the `anthropic-beta` feature list (18 features — the radar for spotting the *next* blind spot), the unparsed request-body fields, and whether `x-claude-code-agent-id` closes the known subagent-identity gap in cli mode. Method in `docs/开发指南.md` §2.5.
+  2. **Recording-blind-spot audit: closed.** Auditing our implementation against what CC itself declares (request headers, body fields, the SSE accumulator branches in CC's own source) found nine gaps; all nine are now addressed, the last of them (retaining raw bytes for suspect records) as a design decision deferred to 0.5.x alongside storage governance. Method in `docs/开发指南.md` §2.5; the portable version for other harnesses is unit 0 of `docs/问题域手册.md`.
   3. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way); cross-day trends further out.
-  4. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
+  4. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
 ## v0.4.3 - unreleased
 
@@ -53,13 +53,35 @@
   `<severity>8` is this mechanism at work).
 
   These three came out of a full audit against what CC itself declares — request headers,
-  request body fields, and the SSE accumulator branches in CC's own source. The method and the
-  remaining gaps are written up in `docs/开发指南.md` §2.5. Verified by new `proxy_selftest`
-  cases `[3d]`/`[3e]` (an error frame must be recorded as a failure *and* reach failure
-  grouping; a compaction block must aggregate and not be judged a failure) and three new
-  `dev_seed` samples. The audit also found five suspected gaps that turned out to be
+  request body fields, and the SSE accumulator branches in CC's own source. The method is
+  written up in `docs/开发指南.md` §2.5, and generalised for other harnesses as unit 0 of
+  `docs/问题域手册.md`. Verified by new `proxy_selftest` cases `[3d]`/`[3e]` (an error frame
+  must be recorded as a failure *and* reach failure grouping; a compaction block must
+  aggregate and not be judged a failure) and four new `dev_seed` samples. The audit also found five suspected gaps that turned out to be
   non-issues, and one dead i18n key (`ek.parse`, a kind the code never produces — the v0.4.3
   doc pass fixed the contract but left the key) which is now gone.
+
+- **What CC declares about itself is now recorded and surfaced.** Every request carries an
+  `anthropic-beta` header listing the protocol extensions CC has enabled (18 distinct features
+  across the sample, in 18 combinations, drifting with CC's version) — it was buried in one
+  long comma-separated line inside a collapsed Headers panel, where nobody would ever read it.
+  It now renders as its own row of chips, with anything outside the known baseline highlighted
+  and called out: **a newly enabled capability is how you find the next recording blind spot**,
+  usually before the unfamiliar field or response block shows up. The index also keeps
+  `context_management` / `diagnostics` / `stop_sequences` / `thinking.budget_tokens`, which CC
+  actively uses and we had never parsed (`IDX_SCHEMA` 5 → 6).
+
+- **`signature_delta` and `citations_delta` are aggregated** — a thinking block's signature
+  (assignment) and a text block's citations (append). The two accumulate differently; both
+  follow CC's own accumulator rather than what looks reasonable.
+
+- **`x-claude-code-agent-id` is recorded as a cross-check on subagent identity.** It agrees
+  with the billing-header flag in all 225 subagent requests across 4,629 sampled captures,
+  with no counterexample, and carries per-instance resolution. **The identity verdict itself is
+  unchanged** — one more agreeing signal is not grounds to overturn a measured finding. Worth
+  noting for the open identity question: those 225 were all `cc_entrypoint=cli`, the mode that
+  had never been measured. That is statistical evidence from historical captures, not the
+  hand-verified capture the question actually calls for, so the question stays open.
 
 - **Recording now covers every compression format CC advertises** (`Accept-Encoding:
   gzip, deflate, br, zstd`). DeepSeek compresses non-streaming responses — exactly the
