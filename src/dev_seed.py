@@ -1,7 +1,7 @@
 """开发用：写一套覆盖 DAG 全要素的样例捕获，供 UI 自测。
 
 用法：uv run python src/dev_seed.py
-每次运行追加 14 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
+每次运行追加 17 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
 或用界面「清理」按钮（清除录制 / 清除并压缩存档）。
 
 时序设计（同一天，验证分类 + DAG 推断 + 泳道多色配色）：
@@ -320,6 +320,54 @@ def o4():
     return r
 
 
+def e1():
+    """流内 error 帧（issue 260731 G1）：HTTP 200，错误藏在 SSE 里。
+    修复前这条会显示成一次成功的请求、正文莫名空着，且**不进失败聚合**。
+    UI 侧要验的是：列表行标异常、详情有 err-card、失败聚合里能查到。"""
+    r = base("22:42:25.100")
+    b = r["request"]["body"]
+    b["system"] = main_sys(); b["tools"] = TOOLS
+    b["messages"] = [{"role": "user", "content": "继续实现主题切换"}]
+    r["response"].update(ttft_ms=612, total_ms=640, chunks_count=1,
+                         stop_reason=None, usage=None, content_blocks=[])
+    r["error"] = {"kind": "stream_error", "status": 200,
+                  "body_snippet": "overloaded_error: Overloaded"}
+    return r
+
+
+def e2():
+    """compaction 块 + 命中的 stop_sequence（G3/G5）。上下文自动压缩产出的块此前完全录不到；
+    stop_sequence 命中值此前也没记——正文断在哪个序列上，界面上看不出来。"""
+    r = base("22:42:27.400")
+    b = r["request"]["body"]
+    b["system"] = main_sys(); b["tools"] = TOOLS
+    b["context_management"] = {"type": "auto"}
+    b["messages"] = [{"role": "user", "content": "继续"}]
+    r["response"].update(ttft_ms=880, total_ms=3100, chunks_count=12,
+                         stop_reason="stop_sequence")
+    r["response"]["stop_sequence"] = "</severity>"
+    r["response"]["content_blocks"] = [
+        {"type": "compaction",
+         "content": "已压缩前 18 轮：主要围绕主题切换实现与样式变量重构。"}]
+    return r
+
+
+def e3():
+    """解码失败如实落痕（G6）。此前解压/解码一失败，正文/usage/content_blocks 一起消失，
+    界面上却毫无痕迹——看起来就像"上游没返回内容"。现在应显示 decode_error 卡片。"""
+    r = base("22:42:29.700", model="deepseek-v4-flash")
+    b = r["request"]["body"]
+    b["system"] = main_sys()
+    b["messages"] = [{"role": "user", "content": "检查工作区状态"}]
+    del b["stream"]                      # 非流式（真流量里非流式是"没有 stream 键"）
+    r["response"].update(ttft_ms=210, total_ms=430, chunks_count=1,
+                         stop_reason=None, usage=None, content_blocks=[],
+                         headers_safe={"content-type": "application/json",
+                                       "content-encoding": "zstd"})
+    r["response"]["decode_error"] = "missing_codec:zstd"
+    return r
+
+
 def d1():
     r = base("22:42:30.300", session_id=SID_D)
     b = r["request"]["body"]
@@ -391,6 +439,9 @@ if __name__ == "__main__":
                      (b1(), "B1 main 502"), (o1(), "O1 security 打分式"),
                      (o2(), "O2 security 拦截"), (o3(), "O3 security 无判定"),
                      (o4(), "O4 security DeepSeek形态"),
+                     (e1(), "E1 流内error（200 却是失败）"),
+                     (e2(), "E2 compaction块+stop_sequence"),
+                     (e3(), "E3 解码失败落痕"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
         cs.append(rec)

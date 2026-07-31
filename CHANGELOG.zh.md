@@ -17,6 +17,14 @@
 ## v0.4.3 - unreleased
 
 ### 修复
+- **失败的请求此前被录成了成功。** 上游在 SSE 流**内部**报错时，HTTP 状态仍是 200——错误藏在 `event: error` 帧里。我们的 SSE 解析器没有对应分支，这一帧直接被跳过，`error` 不写（此前只有 `status >= 400` 才写），于是这条请求在录制里是一次**成功**，只是正文莫名空着。危害从来不止单条记录失真：失败聚合以 `has_error` 为判据，流内错误因此**从来没有进过失败统计**——我们报的上游失败率一直偏低，而一个观测工具报错误率偏低，比不报更糟。现在 CC 自己 SDK 会抛错的两条路径都认（`event: error` 帧名，以及 data 内 `type == "error"`），录成新的错误类型 `stream_error`，`status` 为 200。**消费方判断请求是否失败必须看 `error`/`has_error`，不能只看 status。**
+
+- **解压/解码失败现在如实落痕，不再静默留空。** 此前一旦失败，`body_text` / `usage` / `content_blocks` 一起消失，界面上却毫无痕迹——看起来就像上游没返回内容。现在响应带 `decode_error`（`missing_codec:br` / `unknown_encoding:…` / `decompress_failed:…` / `utf8_decode_failed`），详情页如实显示。CC 声明清单之外的编码也会明确报出来，不再被当成未压缩正文往下走。
+
+- **上下文压缩块与命中的停止序列现在录得到。** `compaction_delta` 聚合成 `compaction` 块（CC 声明了 `context-management-2025-06-27` beta，抽样 4,652 条里 3,488 条带 `context_management` 字段——这是在用的能力，而压缩何时发生正是 wire 层最该揭示的东西之一）。`message_delta.stop_sequence` 记为 `response.stop_sequence`：抽样中有 200 条响应以停止序列结束，却从没记下**命中的是哪个**，而这个值恰恰解释了正文为什么断在那里（安全分类器那个残缺的 `<severity>8` 就是这个机制的产物）。
+
+  这三条出自一次对账审计——对账的是 CC 自己声明的东西：请求头、请求体字段，以及 CC 源码里 SSE 累积器的分支清单。方法与尚未补齐的缺口写在 `docs/开发指南.md` 第二·五节。`proxy_selftest` 新增 `[3d]`/`[3e]` 用例验证（error 帧必须录成失败**且**能进失败聚合；compaction 块必须正确聚合且不被误判为失败），`dev_seed` 增三条样例。审计同时排除了 5 处误报，并清掉一个死 i18n 键（`ek.parse`，代码从不产出这个类型——v0.4.3 那轮文档修订改了契约却漏了这个键）。
+
 - **录制现在覆盖 CC 声明的全部压缩格式**（`Accept-Encoding: gzip, deflate, br, zstd`）。DeepSeek 对非流式响应——恰好就是安全分类器请求——用 brotli 压缩；缺 `brotli` 包时代理录到的是压缩字节，`body` / `usage` / `content_blocks` 整个丢（安全请求全部显示为空）。已加 `brotli` + `zstandard` 依赖（其 C 扩展也进 `build.spec` hiddenimports），`_decode_body` 补 zstd 分支；`proxy_selftest` 新增 `[3c]` 用例：mock 上游返回 `Content-Encoding: br` 的响应必须转发透传**且**录制侧解压出来；`dev_seed` 增 O4 DeepSeek 形态安全样例。详见 `issues/open/260731_安全分类器响应丢失_brotli压缩盲区与harness分析不足.md`。*（本修复由 Claude Code 会话 `d61ee348`——实际上游模型 deepseek-v4-flash[1M]——于 2026-07-31 完成；真流量验证待 DeepSeek 分类器恢复后补做。）*
 - **app 自报的版本号现在始终与发布 tag 一致。** 版本号曾手抄于三处（git tag / `src/app.py:VERSION` / `pyproject.toml`）却无机制保证同步，导致发布的 exe 显示错误版本——v0.4.2 的 exe 在「关于」页仍自报 v0.4.1。现在 tag 是唯一真源：CI 构建前从 tag 生成 `src/_version.py`（`release.yml` 的 `Inject version from tag` 步骤），`app.py` 运行时读它、本地无该文件时 fallback 到 `dev`，`pyproject.toml` 同步覆盖。`docs/开发指南.md` §9 铁律从「README 不写版本号」扩展为「任何地方都不写死」。
 - **文档一致性梳理。** 多 agent 审查发现 26 处自 v0.4.0 起积累的漂移：六重恢复清单在开发指南与架构总览之间分叉（开发指南误把第六道写成 CLI restore）、API 契约列了代码从不产出的幻值 `parse` 错误类型、`IDX_SCHEMA` 文档写 4 实际为 5、idx 字段截取长度与 i18n 键数（245 而非 225）过期、CONTRIBUTING 仍把端口写成固定 5051。跨 12 个文件修复；开发指南 §9「版本号不写死」铁律与文档维护策略的 SSOT 指针也一并收紧。

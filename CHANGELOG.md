@@ -22,6 +22,44 @@
 ## v0.4.3 - unreleased
 
 ### Fixed
+- **A failed request was being recorded as a successful one.** When an upstream reports an
+  error *inside* the SSE stream, the HTTP status is still 200 — the error rides in an
+  `event: error` frame. Our SSE parser had no branch for it, so the frame was skipped, no
+  `error` was written (only `status >= 400` wrote one), and the request went into the
+  recording as a **success** that merely happened to have no content. The damage was never
+  limited to the single record: failure grouping keys off `has_error`, so in-stream errors
+  have never entered the failure statistics at all — **we have been under-reporting the
+  upstream failure rate**, and an observability tool that under-reports errors is worse than
+  one that reports none. Both of the paths CC's own SDK throws on are now recognised (the
+  `event: error` frame name, and `type == "error"` in the data), recorded as a new error kind
+  `stream_error` with `status: 200`. **Consumers must judge failure by `error`/`has_error`,
+  never by status alone.**
+
+- **Decompression and decode failures now leave a trace instead of a blank.** Previously a
+  failure meant `body_text` / `usage` / `content_blocks` all silently went missing, with
+  nothing on screen to say why — it looked like the upstream had returned nothing. The
+  response now carries `decode_error` (`missing_codec:br` / `unknown_encoding:…` /
+  `decompress_failed:…` / `utf8_decode_failed`) and the detail view shows it. An encoding
+  outside the list CC advertises is now reported rather than passed off as plain text.
+
+- **Context-compaction blocks and the matched stop sequence are recorded.** `compaction_delta`
+  is aggregated into a `compaction` block (CC advertises the `context-management-2025-06-27`
+  beta and 3,488 of 4,652 sampled requests carry a `context_management` field — this is a
+  feature in active use, and when compaction happens is exactly what the wire layer should
+  reveal). `message_delta.stop_sequence` is kept as `response.stop_sequence`: 200 responses in
+  the sample ended on a stop sequence without our ever recording *which* one, and that value
+  is what explains why the body cuts off where it does (the security classifier's truncated
+  `<severity>8` is this mechanism at work).
+
+  These three came out of a full audit against what CC itself declares — request headers,
+  request body fields, and the SSE accumulator branches in CC's own source. The method and the
+  remaining gaps are written up in `docs/开发指南.md` §2.5. Verified by new `proxy_selftest`
+  cases `[3d]`/`[3e]` (an error frame must be recorded as a failure *and* reach failure
+  grouping; a compaction block must aggregate and not be judged a failure) and three new
+  `dev_seed` samples. The audit also found five suspected gaps that turned out to be
+  non-issues, and one dead i18n key (`ek.parse`, a kind the code never produces — the v0.4.3
+  doc pass fixed the contract but left the key) which is now gone.
+
 - **Recording now covers every compression format CC advertises** (`Accept-Encoding:
   gzip, deflate, br, zstd`). DeepSeek compresses non-streaming responses — exactly the
   security-classifier requests — with brotli; without the `brotli` package the proxy logged

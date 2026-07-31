@@ -98,6 +98,45 @@ MOCK_JSON_MSG = {
     "usage": {"input_tokens": 551, "output_tokens": 7, "cache_read_input_tokens": 28224},
 }
 
+# 流内 error 帧：HTTP 200，错误藏在 SSE 里（上游过载/内部错误的常见形态）。
+# CC 的 SDK 对此**抛异常**（bundle v2.1.183 的流迭代器有 `event==="error"` 与 data
+# `type==="error"` 两条路径），所以这绝不是"成功的 200"。260731 前我们两条都不认，
+# 这类请求被录成成功——失败聚合因此长期漏统计（issue 260731 G1）。
+MOCK_SSE_ERROR = "\n".join([
+    'event: message_start',
+    'data: {"type":"message_start","message":{"id":"msg_e","usage":{"input_tokens":9}}}',
+    '',
+    'event: error',
+    'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+    '',
+    '',
+])
+
+# compaction 块 + 命中 stop_sequence：CC 声明 beta `context-management-2025-06-27`，
+# 实测 3,488/4,652 条请求带 `context_management` 字段——自动压缩是在用的能力（G3）。
+# stop_sequence 则是安全分类器截断输出的机制，10 天 200 条响应以它结束却从没记下命中值（G5）。
+MOCK_SSE_COMPACT = "\n".join([
+    'event: message_start',
+    'data: {"type":"message_start","message":{"id":"msg_c","usage":{"input_tokens":12}}}',
+    '',
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"compaction","content":""}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"compaction_delta","content":"摘要前半"}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"compaction_delta","content":"摘要后半"}}',
+    '',
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":0}',
+    '',
+    'event: message_delta',
+    'data: {"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"</severity>"},"usage":{"output_tokens":3}}',
+    '',
+    '',
+])
+
 mock_app = Flask("mock_upstream")
 
 
@@ -115,6 +154,10 @@ def _mock_messages():
             headers={"Content-Encoding": "br"})
     if not body.get("stream"):        # 非流式：返回普通 JSON（安全分类器就走这条）
         return Response(json.dumps(MOCK_JSON_MSG), status=200, mimetype="application/json")
+    if _rq.headers.get("x-stream-error"):     # 流内 error 帧（HTTP 仍是 200）
+        return Response(MOCK_SSE_ERROR, status=200, mimetype="text/event-stream")
+    if _rq.headers.get("x-compaction"):       # compaction 块 + 命中 stop_sequence
+        return Response(MOCK_SSE_COMPACT, status=200, mimetype="text/event-stream")
     return Response(MOCK_SSE, status=200, mimetype="text/event-stream")
 
 
@@ -291,6 +334,62 @@ assert r4resp.get("content_blocks") == [{"type": "text", "text": "safe"}], \
     f"br 录制侧未解压（缺 brotli 包？）: {r4resp.get('content_blocks')}"
 assert classifier.usage_norm(r4resp)["input"] == 551, f"br usage 丢失: {classifier.usage_norm(r4resp)}"
 print("    br 压缩响应：转发透传 + 录制解压出 content/usage ✓")
+
+
+# ===== 6d. 流内 error 帧 —— 必须录成失败，不能录成成功的 200（issue 260731 G1）=====
+# 这条用例守的是本工具最难堪的一种失真：**把失败录成成功**。HTTP 状态是 200，错误藏在
+# SSE 帧里；修复前 _parse_sse 不认 error 事件，rec["error"] 不写，于是失败聚合从来看不见它。
+print("\n[3d] 流内 error 帧（HTTP 200，错误在 SSE 里）...")
+r5 = httpx.post(
+    APP_BASE + "/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake",
+             "x-stream-error": "1"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": True},
+    timeout=10.0,
+)
+assert r5.status_code == 200, f"流内 error 场景 HTTP 应仍是 200: {r5.status_code}"
+caps5 = capture_store.list_captures()
+rec5 = capture_store.get_capture(caps5["items"][0]["id"])
+err5 = rec5.get("error") or {}
+print(f"    error={err5}")
+assert err5.get("kind") == "stream_error", \
+    f"流内 error 未被录成失败（这条请求会被统计成成功）: {rec5.get('error')}"
+assert "overloaded_error" in (err5.get("body_snippet") or ""), \
+    f"错误类型/消息没留下: {err5.get('body_snippet')}"
+# 失败聚合必须认它——G1 的要害不是单条记录失真，是失败统计长期偏低。
+# 一路验到 diagnose：index_record → has_error → aggregate 的失败组里能查到。
+import diagnose                                        # noqa: E402
+idx5 = classifier.index_record(rec5)
+assert idx5.get("has_error") and idx5.get("err_kind") == "stream_error", \
+    f"索引没带上错误，聚合看不到: has_error={idx5.get('has_error')} kind={idx5.get('err_kind')}"
+agg5 = diagnose.aggregate([idx5])
+assert agg5["failures"] == 1, f"失败聚合仍把流内 error 当成功: {agg5}"
+assert agg5["items"][0]["err_kind"] == "stream_error", f"聚合分组键不对: {agg5['items'][0]}"
+print(f"    流内 error：录成 stream_error 失败、进失败聚合（failures={agg5['failures']}）✓")
+
+
+# ===== 6e. compaction 块 + 命中的 stop_sequence（issue 260731 G3/G5）=====
+print("\n[3e] compaction 块 + stop_sequence 命中值...")
+r6 = httpx.post(
+    APP_BASE + "/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake",
+             "x-compaction": "1"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": True},
+    timeout=10.0,
+)
+assert r6.status_code == 200
+caps6 = capture_store.list_captures()
+rec6 = capture_store.get_capture(caps6["items"][0]["id"])
+r6resp = rec6["response"]
+print(f"    blocks={r6resp.get('content_blocks')} stop_sequence={r6resp.get('stop_sequence')}")
+assert r6resp.get("content_blocks") == [{"type": "compaction", "content": "摘要前半摘要后半"}], \
+    f"compaction 块未聚合: {r6resp.get('content_blocks')}"
+assert r6resp.get("stop_sequence") == "</severity>", \
+    f"命中的 stop_sequence 没记下: {r6resp.get('stop_sequence')}"
+assert rec6.get("error") is None, "compaction 是正常响应，不该被判成失败"
+print("    compaction 块聚合 + stop_sequence 命中值 ✓")
 
 
 # ===== 7. 恢复 =====

@@ -59,35 +59,47 @@ def _redact(headers) -> dict:
     return out
 
 
-def _decode_body(body: bytes, encoding: str) -> bytes:
-    """按 content-encoding 解压响应体。转发侧 iter_raw 给的是压缩字节（CC 自解压），
-    录制侧需解压才能正确 decode/解析 SSE（审计 260712 #5）。"""
+def _decode_body(body: bytes, encoding: str) -> tuple[bytes, str | None]:
+    """按 content-encoding 解压响应体 → (bytes, 失败原因或 None)。
+
+    转发侧 iter_raw 给的是压缩字节（CC 自解压），录制侧需解压才能正确 decode/解析 SSE
+    （审计 260712 #5）。
+
+    260731 起返回失败原因而非只返回原字节：br 事件的实际表现是"解压没成功 → 正文 decode
+    失败 → body/usage/content_blocks 一个都不写"，而界面上看不出任何异常，等于**静默丢数据**
+    （惯犯 bug ③）。调用方拿到原因后写进 `response.decode_error`，界面如实标出来。
+    格式必须支持 CC 声明的全部编码（`Accept-Encoding: gzip, deflate, br, zstd`）——
+    这份清单从 CC 的请求头就能确定，不需要等某个上游踩出来（issue 260731）。
+    """
     if not encoding:
-        return body
+        return body, None
     try:
         if "gzip" in encoding:
             import gzip
-            return gzip.decompress(body)
+            return gzip.decompress(body), None
         if "deflate" in encoding:
             import zlib
-            return zlib.decompress(body)
+            return zlib.decompress(body), None
         if "br" in encoding:
             try:
                 import brotli
-                return brotli.decompress(body)
+                return brotli.decompress(body), None
             except ImportError:
                 log.warning("brotli 响应未解压（缺 brotli 包），录制 body 暂为压缩字节")
-                return body
+                return body, "missing_codec:br"
         if "zstd" in encoding:
             try:
                 import zstandard
-                return zstandard.ZstdDecompressor().decompress(body)
+                return zstandard.ZstdDecompressor().decompress(body), None
             except ImportError:
                 log.warning("zstd 响应未解压（缺 zstandard 包），录制 body 暂为压缩字节")
-                return body
+                return body, "missing_codec:zstd"
+        # CC 声明清单之外的编码：不认识就如实说，别当成未压缩正文往下走
+        log.warning("未知 content-encoding=%s，录制 body 保持原字节", encoding)
+        return body, f"unknown_encoding:{encoding}"
     except Exception as e:
         log.warning("body 解压失败 encoding=%s: %s", encoding, e)
-    return body
+        return body, f"decompress_failed:{encoding}:{type(e).__name__}"
 
 
 def forward(path: str) -> Response:
@@ -204,18 +216,28 @@ def _finalize(rec, status, resp_headers_raw, content_type, is_sse,
     body_bytes = b"".join(chunks)
     # 录制侧按 content-encoding 解压（转发给 CC 的是压缩字节，录制/解析需解压——审计 260712 #5）
     encoding = "".join(v for k, v in resp_headers_raw if k.lower() == "content-encoding").lower()
-    body_bytes = _decode_body(body_bytes, encoding)
+    body_bytes, decode_err = _decode_body(body_bytes, encoding)
+    if decode_err:
+        # 解压没成功 → 下面的解析必然全空。把原因写进记录，界面才能如实标出来，
+        # 不再是"响应莫名其妙没有正文"（issue 260731 G6）。
+        resp["decode_error"] = decode_err
+    stream_error = None
     if is_sse:
         parsed = _parse_sse(body_bytes.decode("utf-8", errors="replace"))
         resp["stop_reason"] = parsed.get("stop_reason")
         resp["usage"] = parsed.get("usage")
         resp["content_blocks"] = parsed.get("content_blocks")
+        if parsed.get("stop_sequence"):
+            resp["stop_sequence"] = parsed["stop_sequence"]
+        stream_error = parsed.get("stream_error")
     else:
         text = None
         try:
             text = body_bytes.decode("utf-8")
         except UnicodeDecodeError:
+            # 解压成功但不是 UTF-8（或压根没解压成功）。同样别静默留空。
             text = None
+            resp.setdefault("decode_error", "utf8_decode_failed")
         if text:
             resp["body_text"] = text[:2000]
             try:
@@ -248,26 +270,56 @@ def _finalize(rec, status, resp_headers_raw, content_type, is_sse,
             "status": status,
             "body_snippet": body_bytes.decode("utf-8", errors="replace")[:500],
         }
+    elif stream_error:
+        # HTTP 200 但流里报了错。写 error 后 `has_error` 为真，这条才会进失败聚合
+        # （diagnose.py 的 `_is_failure` 认 has_error）——这正是 G1 要修的：
+        # 此前这类请求被统计成成功。
+        rec["error"] = {
+            "kind": "stream_error",
+            "status": status,
+            "body_snippet": (f"{stream_error.get('type') or 'error'}: "
+                             f"{stream_error.get('message') or ''}")[:500],
+        }
     rec["response"] = resp
     capture_store.append(rec)
 
 
 def _parse_sse(text: str) -> dict:
-    """解析 Anthropic Messages SSE 流 → content_blocks/stop_reason/usage。
+    """解析 Anthropic Messages SSE 流 → content_blocks/stop_reason/stop_sequence/usage/stream_error。
 
-    SSE event 间用空行分隔，每 event 含 data: 行（可能多行）。
+    SSE event 间用空行分隔，每 event 含 data: 行（可能多行），可能还有 event: 行给帧名。
     block 按 index 聚合：content_block_start 建 block，content_block_delta 累加，
     input_json_delta 累加字符串、content_block_stop 时 json.loads。
+
+    **覆盖范围以 CC 自己能处理的分支为准**（issue 260731：反编译 bundle v2.1.183 的 SSE 累积器，
+    它有几个 case，就是响应形态的完整清单——我们少一个，那种响应就在录制里凭空消失）：
+
+    | CC 的分支 | 这里 |
+    |---|---|
+    | message_start / content_block_{start,delta,stop} / message_delta | ✅ |
+    | error（`event: error` 帧 + data 内 `type=="error"`） | ✅ 260731 补 |
+    | text_delta / thinking_delta / input_json_delta / compaction_delta | ✅（compaction 260731 补）|
+    | signature_delta / citations_delta | ❌ 待补（G2/G4，第二批） |
+    | message_stop / ping | ➖ 无信息损失，有意不处理 |
+
+    ⚠️ 注意 `agent_listing_delta` / `mcp_instructions_delta` / `deferred_tools_delta` 虽然也在
+    bundle 里以 `case"..._delta"` 出现，但上下文是 React 渲染层，**不属于 wire 层**，别照着 grep
+    结果盲目补。
     """
     blocks: dict[int, dict] = {}
     stop_reason = None
+    stop_sequence = None
     usage: dict | None = None
+    stream_error = None
 
     for raw_event in text.split("\n\n"):
         data_lines = []
+        event_name = None
         for line in raw_event.split("\n"):
             if line.startswith("data:"):
                 data_lines.append(line[5:].strip())
+            elif line.startswith("event:"):
+                event_name = line[6:].strip()
         if not data_lines:
             continue
         try:
@@ -275,6 +327,20 @@ def _parse_sse(text: str) -> dict:
         except json.JSONDecodeError:
             continue
         etype = evt.get("type")
+
+        # 流内错误：HTTP 状态是 200，错误藏在 SSE 帧里。CC 的 SDK 有两条抛错路径
+        # （bundle v2.1.183 的流迭代器）：`event: error` 帧名，以及 data 的 `type=="error"`
+        # ——两条都要认。260731 前一条都不认，`etype` 匹配不上任何分支就跳过，于是这类请求
+        # 在录制里是一次**成功的 200**，只是正文莫名空着。后果不止单条记录失真：失败聚合
+        # （diagnose.py）的输入里从来没有过流内错误，我们报的失败数一直偏低。
+        # 一个观测工具报错误率偏低，比不报更糟。详见 issue 260731 harness 事实对账 G1。
+        if event_name == "error" or etype == "error":
+            err = evt.get("error") if isinstance(evt.get("error"), dict) else {}
+            stream_error = {
+                "type": err.get("type") or etype or event_name,
+                "message": err.get("message") or "",
+            }
+            continue
 
         if etype == "content_block_start":
             idx = evt.get("index", 0)
@@ -292,6 +358,12 @@ def _parse_sse(text: str) -> dict:
                 blk["thinking"] = (blk.get("thinking") or "") + (delta.get("thinking") or "")
             elif dtype == "input_json_delta":
                 blk["_input_raw"] = (blk.get("_input_raw") or "") + (delta.get("partial_json") or "")
+            elif dtype == "compaction_delta":
+                # 上下文自动压缩产出的块。CC 声明 beta `context-management-2025-06-27`，
+                # 且实测 3,488/4,652 条请求带 `context_management` 字段——这是在用的能力，
+                # 不是边角。压缩何时发生、压出了什么，正是 wire 层最该揭示的东西之一。
+                blk["type"] = blk.get("type", "compaction")
+                blk["content"] = (blk.get("content") or "") + (delta.get("content") or "")
         elif etype == "content_block_stop":
             idx = evt.get("index", 0)
             blk = blocks.get(idx, {})
@@ -306,6 +378,12 @@ def _parse_sse(text: str) -> dict:
             d = evt.get("delta") or {}
             if "stop_reason" in d:
                 stop_reason = d["stop_reason"]
+            if d.get("stop_sequence"):
+                # 命中的是哪个停止序列。安全分类器正是靠 stop_sequences 截断输出的
+                # （残缺的 `<severity>N` 就是这么来的，见 classifier.py 的说明），
+                # 知道命中哪个序列对解读审查结果直接有用。实测 10 天 200 条响应以
+                # stop_sequence 结束，此前一条都没记下命中值。
+                stop_sequence = d["stop_sequence"]
             u = evt.get("usage")
             if isinstance(u, dict):
                 usage = _merge_usage(usage, u)
@@ -318,7 +396,9 @@ def _parse_sse(text: str) -> dict:
     return {
         "content_blocks": [blocks[i] for i in sorted(blocks.keys())],
         "stop_reason": stop_reason,
+        "stop_sequence": stop_sequence,
         "usage": usage,
+        "stream_error": stream_error,
     }
 
 

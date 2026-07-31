@@ -140,7 +140,8 @@
     "content_blocks": [
       {"type":"thinking","text":"..."},
       {"type":"text","text":"..."},
-      {"type":"tool_use","id":"toolu_xxx","name":"Read","input":{...}}
+      {"type":"tool_use","id":"toolu_xxx","name":"Read","input":{...}},
+      {"type":"compaction","content":"..."}
     ],
     "chunks_count": 42
   },
@@ -148,10 +149,23 @@
 }
 ```
 
+**可选响应字段**（只在相应情况下出现，消费方不能假设一定有）：
+
+| 字段 | 何时出现 | 含义 |
+|---|---|---|
+| `stop_sequence` | `stop_reason == "stop_sequence"` | 命中的是哪个停止序列。安全分类器的残缺输出（`<severity>8`）就是被它截断的 |
+| `decode_error` | 响应体解压/解码失败 | 失败原因（`missing_codec:br` / `unknown_encoding:…` / `decompress_failed:…` / `utf8_decode_failed`）。**出现它就意味着同一条记录的 `body_text`/`usage`/`content_blocks` 不完整**——不是上游没返回，是我们没解出来 |
+
+`content_blocks` 的 `type` 取值随上游协议扩展，不是封闭枚举。目前见过：`text` / `thinking` /
+`tool_use` / `tool_result` / `server_tool_use` / `web_search_tool_result` / `compaction`。
+
 `error` 非 null 时：
 ```json
-{ "error": { "kind": "connect|timeout|http_error|upstream_4xx|upstream_5xx", "status": 502, "body_snippet": "..." } }
+{ "error": { "kind": "connect|timeout|http_error|upstream_4xx|upstream_5xx|stream_error", "status": 502, "body_snippet": "..." } }
 ```
+
+> ⚠️ `stream_error` 的 `status` 是 **200** —— 错误藏在 SSE 帧里，HTTP 层看不出来。
+> **判断一条请求是否失败必须看 `error`/`has_error`，不能只看 status**。
 
 ### `GET /api/captures/stream` — LIVE SSE 推送
 
@@ -456,7 +470,7 @@ agent。人看的界面里还没有"今天失败都是些什么"的入口——�
   - 子代理泳道：`agent-<md5(派生者id + 派生prompt前200字)[:8]>`（对齐命中时）或 `agent-<agent_fp>`（对齐未命中回落，agent_fp = system block[2] md5 短码）
   - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/other 合一列）
 - **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
-- **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx`。
+- **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx` / `stream_error`（HTTP 200 但 SSE 流内报错，260731 补）。
 - **大字段**：`request.body` / `response.content_blocks` 可能很大（MB 级），详情接口一次性返回；前端用虚拟滚动/折叠渲染。
 - **错误透传**：上游 4xx/5xx 也要录（response 存原文 snippet），原样返回给 CC，不破坏 CC 错误处理。
 - **路径前缀**：UI 所有路由必须 `/api/` 开头，否则会被代理 catch-all 当成上游流量转发。

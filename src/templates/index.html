@@ -852,7 +852,9 @@ zh: {
   "sr.end_turn": "自然结束", "sr.tool_use": "调用工具", "sr.max_tokens": "达到上限",
   "sr.stop_sequence": "命中停止序列", "sr.content_filter": "内容过滤",
   "ek.connect": "连接失败", "ek.timeout": "请求超时", "ek.http_error": "HTTP 错误",
-  "ek.upstream_4xx": "上游拒绝（4xx）", "ek.upstream_5xx": "上游错误（5xx）", "ek.parse": "解析失败",
+  "ek.upstream_4xx": "上游拒绝（4xx）", "ek.upstream_5xx": "上游错误（5xx）",
+  "ek.stream_error": "流内错误（HTTP 200）",
+  "detail.decodeError": "响应正文未能解码，下面的解析结果不完整",
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
   "set.proxy.title": "代理与数据",
@@ -994,7 +996,9 @@ en: {
   "sr.end_turn": "natural stop", "sr.tool_use": "tool call", "sr.max_tokens": "hit limit",
   "sr.stop_sequence": "stop sequence", "sr.content_filter": "content filter",
   "ek.connect": "connection failed", "ek.timeout": "timeout", "ek.http_error": "HTTP error",
-  "ek.upstream_4xx": "upstream 4xx", "ek.upstream_5xx": "upstream 5xx", "ek.parse": "parse error",
+  "ek.upstream_4xx": "upstream 4xx", "ek.upstream_5xx": "upstream 5xx",
+  "ek.stream_error": "in-stream error (HTTP 200)",
+  "detail.decodeError": "Response body could not be decoded — the parsed result below is incomplete",
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
   "set.proxy.title": "Proxy & data",
@@ -1136,7 +1140,9 @@ ja: {
   "sr.end_turn": "自然終了", "sr.tool_use": "ツール呼出", "sr.max_tokens": "上限到達",
   "sr.stop_sequence": "停止シーケンス", "sr.content_filter": "コンテンツフィルタ",
   "ek.connect": "接続失敗", "ek.timeout": "タイムアウト", "ek.http_error": "HTTPエラー",
-  "ek.upstream_4xx": "上流 4xx", "ek.upstream_5xx": "上流 5xx", "ek.parse": "解析エラー",
+  "ek.upstream_4xx": "上流 4xx", "ek.upstream_5xx": "上流 5xx",
+  "ek.stream_error": "ストリーム内エラー（HTTP 200）",
+  "detail.decodeError": "レスポンス本文をデコードできませんでした。下の解析結果は不完全です",
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
   "set.proxy.title": "プロキシとデータ",
@@ -2050,9 +2056,18 @@ function renderDetail(d){
   R += '<div class="dcard meta-row">' +
     '<div class="chip-row">' + chipFor(resp.status) +
     (resp.stop_reason ? '<span class="chip outline" title="stop_reason: ' + esc(resp.stop_reason) + '">' + esc(stopReasonLabel(resp.stop_reason)) + '</span>' : "") +
+    /* 命中的停止序列（260731 G5）：stop_reason=stop_sequence 时才知道是被哪个序列截断的。
+       安全分类器的残缺 `<severity>N` 就是这么来的，这个值直接解释了正文为什么断在那里。 */
+    (resp.stop_sequence ? '<span class="chip outline" title="stop_sequence">⊣ ' + esc(resp.stop_sequence) + '</span>' : "") +
     '</div><span class="crumb-meta">' +
     (resp.ttft_ms != null ? t18("detail.ttft") + " " + fmtMs(resp.ttft_ms) : "") +
     (resp.total_ms != null ? " · total " + fmtMs(resp.total_ms) : "") + '</span></div>';
+
+  /* 解码失败如实标出（260731 G6）——此前解压/解码失败时正文、usage、content_blocks 一起消失，
+     界面上却毫无痕迹，看起来就像"上游没返回内容"。静默留空是本项目的惯犯 bug ③。 */
+  if(resp.decode_error){
+    R += '<div class="err-card"><b>' + t18("detail.decodeError") + '</b><pre>' + esc(resp.decode_error) + '</pre></div>';
+  }
 
   /* 响应 headers —— proxy.py 一直在录（response.headers_safe），但界面上从来没有入口看（260713 补）。
      这里恰恰是 wire 层最值钱的信息：anthropic-ratelimit-*（限流余量）、request-id（找上游对账）、
