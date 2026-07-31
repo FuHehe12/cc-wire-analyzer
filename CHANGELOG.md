@@ -15,9 +15,10 @@
   **Heads-up for macOS upgraders**: the bundle was renamed `CCWireAnalyzer.app` →
   `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
-  1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller.
-  2. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way); cross-day trends further out.
-  3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
+  1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller. (Its input is now trustworthy: in-stream errors used to be recorded as successes and never reached the statistics at all — fixed in the unreleased v0.4.3.)
+  2. **Finish the recording-blind-spot audit.** Auditing our implementation against what CC itself declares (request headers, body fields, the SSE accumulator branches in CC's own source) found nine gaps; four are fixed. Still open: `signature_delta` / `citations_delta`, the `anthropic-beta` feature list (18 features — the radar for spotting the *next* blind spot), the unparsed request-body fields, and whether `x-claude-code-agent-id` closes the known subagent-identity gap in cli mode. Method in `docs/开发指南.md` §2.5.
+  3. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way); cross-day trends further out.
+  4. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents are **not yet measured** (all measured rounds were `sdk-cli`). The two-layer rule means a missing flag can no longer cause a main thread to be misread as a subagent, but fully closing the loop needs a capture of an interactive session spawning subagents.
 
 ## v0.4.3 - unreleased
 
