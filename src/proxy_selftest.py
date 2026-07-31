@@ -178,6 +178,15 @@ def _mock_messages():
             brotli.compress(json.dumps(MOCK_JSON_MSG).encode("utf-8")),
             status=200, mimetype="application/json",
             headers={"Content-Encoding": "br"})
+    # zstd 与 br 是同一批补上的（CC 的 Accept-Encoding 同时声明了两者），但此前只有 br 有
+    # 用例——zstd 分支从没被任何测试覆盖过，是 260731 打包冒烟时才第一次真跑到的。
+    # 补齐格式清单时，测试也要跟着补齐整份清单，别只测踩出来的那一个。
+    if _rq.headers.get("x-zstd") and not body.get("stream"):
+        import zstandard
+        return Response(
+            zstandard.ZstdCompressor().compress(json.dumps(MOCK_JSON_MSG).encode("utf-8")),
+            status=200, mimetype="application/json",
+            headers={"Content-Encoding": "zstd"})
     if not body.get("stream"):        # 非流式：返回普通 JSON（安全分类器就走这条）
         return Response(json.dumps(MOCK_JSON_MSG), status=200, mimetype="application/json")
     if _rq.headers.get("x-stream-error"):     # 流内 error 帧（HTTP 仍是 200）
@@ -360,6 +369,25 @@ assert r4resp.get("content_blocks") == [{"type": "text", "text": "safe"}], \
     f"br 录制侧未解压（缺 brotli 包？）: {r4resp.get('content_blocks')}"
 assert classifier.usage_norm(r4resp)["input"] == 551, f"br usage 丢失: {classifier.usage_norm(r4resp)}"
 print("    br 压缩响应：转发透传 + 录制解压出 content/usage ✓")
+
+# zstd 走同一条路径，断言同形（CC 的 Accept-Encoding 同时声明 br 和 zstd，两条都得测）
+print("\n[3c'] 非流式 + Content-Encoding: zstd...")
+r4z = httpx.post(
+    APP_BASE + "/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake",
+             "x-zstd": "1", "accept-encoding": "gzip, deflate, br, zstd"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": False},
+    timeout=10.0,
+)
+assert r4z.status_code == 200, f"zstd 转发失败: {r4z.status_code}"
+recz = capture_store.get_capture(capture_store.list_captures()["items"][0]["id"])
+rzresp = recz["response"]
+assert rzresp.get("content_blocks") == [{"type": "text", "text": "safe"}], \
+    f"zstd 录制侧未解压（缺 zstandard 包？）: {rzresp.get('content_blocks')}"
+assert not rzresp.get("decode_error"), f"zstd 不该有 decode_error: {rzresp.get('decode_error')}"
+assert classifier.usage_norm(rzresp)["input"] == 551, f"zstd usage 丢失: {classifier.usage_norm(rzresp)}"
+print("    zstd 压缩响应：录制解压出 content/usage ✓")
 
 
 # ===== 6d. 流内 error 帧 —— 必须录成失败，不能录成成功的 200（issue 260731 G1）=====
