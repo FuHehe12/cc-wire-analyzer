@@ -22,6 +22,20 @@
 ## v0.4.3 - unreleased
 
 ### Fixed
+- **Recording now covers every compression format CC advertises** (`Accept-Encoding:
+  gzip, deflate, br, zstd`). DeepSeek compresses non-streaming responses — exactly the
+  security-classifier requests — with brotli; without the `brotli` package the proxy logged
+  the compressed bytes and the recording dropped `body` / `usage` / `content_blocks`
+  entirely (every security request showed up empty). Added `brotli` + `zstandard` deps
+  (their C extensions also go into `build.spec` hiddenimports) and a zstd branch in
+  `_decode_body`. `proxy_selftest` gains a `[3c]` case: a mock upstream returning
+  `Content-Encoding: br` must round-trip transparently to the client **and** be decompressed
+  into the recording. `dev_seed` gains an O4 DeepSeek-shaped security sample.
+  See `issues/open/260731_安全分类器响应丢失_brotli压缩盲区与harness分析不足.md`.
+  *(Fix authored by Claude Code session `d61ee348` — actual upstream model
+  deepseek-v4-flash[1M] — on 2026-07-31; real-traffic verification still pending because the
+  security classifier kept failing while the fix was verified.)*
+
 - **The version the app reports now always matches the release tag.** The version had been
   hand-copied in three places (git tag, `src/app.py:VERSION`, `pyproject.toml`) with nothing
   keeping them in sync, so releases shipped showing the wrong version — v0.4.2's exe still

@@ -78,6 +78,13 @@ def _decode_body(body: bytes, encoding: str) -> bytes:
             except ImportError:
                 log.warning("brotli 响应未解压（缺 brotli 包），录制 body 暂为压缩字节")
                 return body
+        if "zstd" in encoding:
+            try:
+                import zstandard
+                return zstandard.ZstdDecompressor().decompress(body)
+            except ImportError:
+                log.warning("zstd 响应未解压（缺 zstandard 包），录制 body 暂为压缩字节")
+                return body
     except Exception as e:
         log.warning("body 解压失败 encoding=%s: %s", encoding, e)
     return body

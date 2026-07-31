@@ -17,6 +17,7 @@
 ## v0.4.3 - unreleased
 
 ### 修复
+- **录制现在覆盖 CC 声明的全部压缩格式**（`Accept-Encoding: gzip, deflate, br, zstd`）。DeepSeek 对非流式响应——恰好就是安全分类器请求——用 brotli 压缩；缺 `brotli` 包时代理录到的是压缩字节，`body` / `usage` / `content_blocks` 整个丢（安全请求全部显示为空）。已加 `brotli` + `zstandard` 依赖（其 C 扩展也进 `build.spec` hiddenimports），`_decode_body` 补 zstd 分支；`proxy_selftest` 新增 `[3c]` 用例：mock 上游返回 `Content-Encoding: br` 的响应必须转发透传**且**录制侧解压出来；`dev_seed` 增 O4 DeepSeek 形态安全样例。详见 `issues/open/260731_安全分类器响应丢失_brotli压缩盲区与harness分析不足.md`。*（本修复由 Claude Code 会话 `d61ee348`——实际上游模型 deepseek-v4-flash[1M]——于 2026-07-31 完成；真流量验证待 DeepSeek 分类器恢复后补做。）*
 - **app 自报的版本号现在始终与发布 tag 一致。** 版本号曾手抄于三处（git tag / `src/app.py:VERSION` / `pyproject.toml`）却无机制保证同步，导致发布的 exe 显示错误版本——v0.4.2 的 exe 在「关于」页仍自报 v0.4.1。现在 tag 是唯一真源：CI 构建前从 tag 生成 `src/_version.py`（`release.yml` 的 `Inject version from tag` 步骤），`app.py` 运行时读它、本地无该文件时 fallback 到 `dev`，`pyproject.toml` 同步覆盖。`docs/开发指南.md` §9 铁律从「README 不写版本号」扩展为「任何地方都不写死」。
 - **文档一致性梳理。** 多 agent 审查发现 26 处自 v0.4.0 起积累的漂移：六重恢复清单在开发指南与架构总览之间分叉（开发指南误把第六道写成 CLI restore）、API 契约列了代码从不产出的幻值 `parse` 错误类型、`IDX_SCHEMA` 文档写 4 实际为 5、idx 字段截取长度与 i18n 键数（245 而非 225）过期、CONTRIBUTING 仍把端口写成固定 5051。跨 12 个文件修复；开发指南 §9「版本号不写死」铁律与文档维护策略的 SSOT 指针也一并收紧。
 

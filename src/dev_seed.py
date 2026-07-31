@@ -1,7 +1,7 @@
 """开发用：写一套覆盖 DAG 全要素的样例捕获，供 UI 自测。
 
 用法：uv run python src/dev_seed.py
-每次运行追加 11 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
+每次运行追加 14 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
 或用界面「清理」按钮（清除录制 / 清除并压缩存档）。
 
 时序设计（同一天，验证分类 + DAG 推断 + 泳道多色配色）：
@@ -303,6 +303,23 @@ def o3():
     return r
 
 
+def o4():
+    """安全审查样例④：DeepSeek 形态（260731 真录制）——security 响应被上游用 brotli 压缩，
+    代理解压后才能录到正文；deepseek-v4-flash 打分式，残缺 `<severity>N`（stop_sequence 吃掉
+    闭合标签，与 o1 同型但模型/上游不同）。修复前（缺 brotli 包）这条响应 body/usage 全丢。
+    注意动作里的 Windows 路径要写成合法 JSON 转义（`D:\\Claude`），否则 sec_request 的
+    `json.loads` 解析失败、tool 提取不到。"""
+    r = base("22:42:16.200", model="deepseek-v4-flash")
+    _sec_body(r["request"]["body"], [
+        '{"user":"检查一下工作区状态"}',
+        '{"PowerShell":"Get-ChildItem -Directory -Path D:\\\\Claude\\\\lab"}'], stage1=True)
+    r["response"].update(ttft_ms=947, total_ms=5302, chunks_count=3,
+                         usage={"input": 46181, "output": 8, "cache_read": 0, "cache_creation": 0})
+    r["response"]["stop_reason"] = "stop_sequence"
+    r["response"]["content_blocks"] = [{"type": "text", "text": "<severity>8"}]
+    return r
+
+
 def d1():
     r = base("22:42:30.300", session_id=SID_D)
     b = r["request"]["body"]
@@ -373,6 +390,7 @@ if __name__ == "__main__":
                      (s1(), "S1 subagent"), (s2(), "S2 subagent（同实例第 2 条）"),
                      (b1(), "B1 main 502"), (o1(), "O1 security 打分式"),
                      (o2(), "O2 security 拦截"), (o3(), "O3 security 无判定"),
+                     (o4(), "O4 security DeepSeek形态"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
         cs.append(rec)

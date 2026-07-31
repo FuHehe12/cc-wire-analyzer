@@ -105,6 +105,14 @@ mock_app = Flask("mock_upstream")
 def _mock_messages():
     from flask import request as _rq
     body = _rq.get_json(silent=True) or {}
+    # 带 x-br 头 + 非流式：模拟 DeepSeek 对 security 响应用 brotli 压缩（issue 260731）。
+    # 真实上游读 CC 的 Accept-Encoding 协商选 br；这里用显式头触发，绕过协商逻辑更稳。
+    if _rq.headers.get("x-br") and not body.get("stream"):
+        import brotli
+        return Response(
+            brotli.compress(json.dumps(MOCK_JSON_MSG).encode("utf-8")),
+            status=200, mimetype="application/json",
+            headers={"Content-Encoding": "br"})
     if not body.get("stream"):        # 非流式：返回普通 JSON（安全分类器就走这条）
         return Response(json.dumps(MOCK_JSON_MSG), status=200, mimetype="application/json")
     return Response(MOCK_SSE, status=200, mimetype="text/event-stream")
@@ -256,6 +264,33 @@ assert caps3["total"] == 3, f"应录 3 条: {caps3['total']}"
 rec3 = capture_store.get_capture(caps3["items"][0]["id"])
 assert classifier.usage_norm(rec3["response"])["input"] == 42, "count_tokens 顶层形状被带坏了"
 print("    count_tokens 顶层 token 键仍正常 ✓")
+
+
+# ===== 6c. br 压缩的非流式响应 —— 录制侧必须解压出 content/usage（issue 260731）=====
+# 转发侧：代理 iter_raw 原样透传压缩字节，测试客户端 httpx（装了 brotli）自动解压。
+# 录制侧：_decode_body 解压 br 后解析 content_blocks/usage —— 本次修复的核心路径。
+# 修复前这条路径 body/usage/content_blocks 全丢（DeepSeek 对 security 的真实行为）。
+print("\n[3c] 非流式 + Content-Encoding: br（DeepSeek 对 security 的行为）...")
+r4 = httpx.post(
+    APP_BASE + "/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake",
+             "x-br": "1", "accept-encoding": "gzip, deflate, br, zstd"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": False},
+    timeout=10.0,
+)
+assert r4.status_code == 200, f"br 转发失败: {r4.status_code}"
+fwd = json.loads(r4.content)  # 转发侧客户端收到的应是解压后的明文
+assert fwd.get("content") == MOCK_JSON_MSG["content"], f"br 转发侧未解压: {r4.content[:120]}"
+caps4 = capture_store.list_captures()
+assert caps4["total"] == 4, f"应录 4 条: {caps4['total']}"
+rec4 = capture_store.get_capture(caps4["items"][0]["id"])
+r4resp = rec4["response"]
+print(f"    usage={r4resp.get('usage')} stop={r4resp.get('stop_reason')} blocks={r4resp.get('content_blocks')}")
+assert r4resp.get("content_blocks") == [{"type": "text", "text": "safe"}], \
+    f"br 录制侧未解压（缺 brotli 包？）: {r4resp.get('content_blocks')}"
+assert classifier.usage_norm(r4resp)["input"] == 551, f"br usage 丢失: {classifier.usage_norm(r4resp)}"
+print("    br 压缩响应：转发透传 + 录制解压出 content/usage ✓")
 
 
 # ===== 7. 恢复 =====

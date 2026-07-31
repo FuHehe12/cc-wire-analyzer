@@ -11,7 +11,9 @@ datas = [
 ]
 
 # pywebview 在 Windows 用 EdgeChromium（WebView2）后端
-hiddenimports = collect_submodules('webview.platforms.edgechromium')
+# 录制侧解压能力覆盖 CC 声明的全部 Accept-Encoding（gzip/deflate/br/zstd，见 issue 260731）。
+# brotli / zstandard 是 C 扩展，必须在 hiddenimports 显式带上，否则打包后 import 失败。
+hiddenimports = collect_submodules('webview.platforms.edgechromium') + ['brotli', 'zstandard']
 
 
 a = Analysis(
