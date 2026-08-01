@@ -35,6 +35,16 @@
 
 ## Unreleased
 
+### Added
+- **Session filters on every inspection surface.** `/api/captures`, `/api/dag` and
+  `/api/diagnose/errors` accept `session` / `exclude_session`, and CLI `list` / `dag` / `errors`
+  accept `--session` / `--exclude-session`. The driving scenario is two Claude Code instances
+  side by side — one doing work, one auditing it through the proxy: the auditor's own requests
+  land in the same capture and pollute every view. Matching is by prefix, so the first few
+  characters of a session id are enough; filtering happens before pagination, so `total` stays
+  honest. Point `exclude_session` at the auditor's own session id and every surface shows only
+  the audited traffic.
+
 ### Changed
 - **`grep` searched 14% of a request and could not say so.** `--in all` covered three places —
   the `system` field, `role=user` text, and the response's text blocks — while the rest of the
@@ -73,6 +83,15 @@
   and fixed on the GUI path — `capture_store._available_dates()` has filtered by date regex since
   the index was introduced (260719), with a comment saying it shows up "the moment index files
   exist"; the config-side twin was simply missed.
+- **A response that could not be decoded was invisible to failure statistics.** When the upstream
+  body fails to decompress — a gzip stream truncated mid-transfer is the observed case — the
+  record keeps `status: 200` and no `error`: the detail page honestly showed `decode_error`,
+  but failure aggregation reads only the index, and the index never carried the field. The
+  request counted as a success while its body was gone (one sat recorded for days before being
+  spotted by hand). `decode_error` is now indexed (schema v8 — old indexes rebuild automatically)
+  and counts as a failure of its own kind, `decode_failed` — deliberately not merged into the
+  upstream error kinds, because "the upstream refused us" and "we could not read the upstream's
+  answer" are different conclusions. A real upstream error kind still wins when both are present.
 
 ## v0.4.5 - 2026-08-01
 

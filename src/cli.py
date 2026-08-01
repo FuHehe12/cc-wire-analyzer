@@ -308,6 +308,19 @@ def cmd_restore(a) -> None:
 
 def cmd_list(a) -> None:
     lines = _lines(a.date)
+    if a.session or a.exclude_session:
+        # 会话过滤走索引（与 HTTP API 同一套前缀匹配语义），先取保留 id 集再滤原始行。
+        # 只在意过滤场景才全量解析，热路径（无过滤）不受影响。
+        keep = {e.get("id") for e in capture_store.list_index(
+            a.date, exclude_session=a.exclude_session, session=a.session)}
+        kept = []
+        for ln in lines:
+            try:
+                if json.loads(ln).get("id") in keep:
+                    kept.append(ln)
+            except json.JSONDecodeError:
+                continue
+        lines = kept
     total = len(lines)
     sel = lines[::-1][a.offset:a.offset + a.limit]   # 最新的在前
     items = []
@@ -480,7 +493,8 @@ def cmd_grep(a) -> None:
 
 
 def cmd_dag(a) -> None:
-    dag = classifier.build_dag(capture_store.list_index(a.date))
+    dag = classifier.build_dag(capture_store.list_index(
+        a.date, exclude_session=a.exclude_session, session=a.session))
     _out({"ok": True, **dag,
           "note": "主线/子代理判别取自上游权威位（计费头 cc_is_subagent），泳道键=CC 会话 id；"
                   "子代理另按派生实例分列，trigger 边指向该实例的首条请求。"
@@ -497,7 +511,8 @@ def cmd_doctor(a) -> None:
 def cmd_errors(a) -> None:
     """失败聚合：按上游错误消息归并当天所有失败，附请求侧关键字段。诊断入口。"""
     import diagnose
-    _out(diagnose.aggregate(capture_store.list_index(a.date), limit=a.limit))
+    _out(diagnose.aggregate(capture_store.list_index(
+        a.date, exclude_session=a.exclude_session, session=a.session), limit=a.limit))
 
 
 def cmd_stats(a) -> None:
@@ -585,6 +600,15 @@ def _serve() -> None:
                       use_reloader=False, threaded=True)
 
 
+def _session_args(sp) -> None:
+    """list/dag/errors 共用的会话过滤参数（与 HTTP API 的 session/exclude_session 同语义，
+    前缀匹配）。典型场景：一个 CC 干活、另一个 CC 审计时，排除审计者自身的会话线。"""
+    sp.add_argument("--session", default="",
+                    help="只看该会话 id（前缀匹配，可只给前几字符）")
+    sp.add_argument("--exclude-session", dest="exclude_session", default="",
+                    help="排除该会话 id（前缀匹配）——审计别的 CC 时排除审计者自身")
+
+
 def main(argv=None) -> None:
     try:
         sys.stdout.reconfigure(encoding="utf-8")   # Windows 控制台默认 GBK，中文/✓ 会炸
@@ -613,6 +637,7 @@ def main(argv=None) -> None:
     pl.add_argument("--date"); pl.add_argument("--limit", type=int, default=50)
     pl.add_argument("--offset", type=int, default=0)
     pl.add_argument("--kind", choices=classifier.KIND_ORDER)
+    _session_args(pl)
     pl.set_defaults(fn=cmd_list)
 
     pg = sub.add_parser("get", help="取单条记录（默认截断长文本，防炸上下文）")
@@ -634,7 +659,8 @@ def main(argv=None) -> None:
     pr.set_defaults(fn=cmd_grep)
 
     pd = sub.add_parser("dag", help="时序 DAG（泳道/节点/边）")
-    pd.add_argument("--date"); pd.set_defaults(fn=cmd_dag)
+    pd.add_argument("--date"); _session_args(pd)
+    pd.set_defaults(fn=cmd_dag)
 
     pdoc = sub.add_parser("doctor", help="配置体检（只读，不改任何文件）")
     pdoc.set_defaults(fn=cmd_doctor)
@@ -642,6 +668,7 @@ def main(argv=None) -> None:
     perr = sub.add_parser("errors", help="失败聚合（按上游错误消息归并 + 请求侧字段）")
     perr.add_argument("--date")
     perr.add_argument("--limit", type=int, default=20, help="最多回几组（默认 20）")
+    _session_args(perr)
     perr.set_defaults(fn=cmd_errors)
 
     pt = sub.add_parser("stats", help="当日聚合：kind/模型/状态/token/耗时分位")

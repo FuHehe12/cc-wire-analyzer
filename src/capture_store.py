@@ -278,22 +278,42 @@ def _load_index(date: str) -> list[dict]:
     return entries
 
 
-def list_index(date: str | None = None) -> list[dict]:
+def _session_filter(entries: list[dict], exclude_session: str = "",
+                    session: str = "") -> list[dict]:
+    """按会话 id 筛索引记录。前缀匹配（给完整 id 或前 8 位都行）。
+
+    存在的理由是「一个 CC 干活、另一个 CC 录制审计」这个场景：审计方自己也在被录，
+    每查一次 API 就产生新的请求进同一份录制，不排除的话结果里全是自己、而且越查越多
+    （自我污染是递增的）。审计方的 session id 在它自己的 scratchpad 路径里就有。"""
+    if exclude_session:
+        entries = [e for e in entries
+                   if not (e.get("session_id") or "").startswith(exclude_session)]
+    if session:
+        entries = [e for e in entries
+                   if (e.get("session_id") or "").startswith(session)]
+    return entries
+
+
+def list_index(date: str | None = None, exclude_session: str = "",
+               session: str = "") -> list[dict]:
     """指定日期的全部索引记录（DAG 构建用）。无 1000 条上限——260719 前 list_full
     写死 limit=1000，大流量天（实测 2993 条）泳道图直接丢后 2/3。"""
     if date is None:
         date = time.strftime("%Y-%m-%d", time.localtime())
     with _LOCK:
-        return list(_load_index(date))
+        entries = list(_load_index(date))
+    return _session_filter(entries, exclude_session, session)
 
 
-def list_captures(date: str | None = None, limit: int = 200, offset: int = 0) -> dict:
+def list_captures(date: str | None = None, limit: int = 200, offset: int = 0,
+                  exclude_session: str = "", session: str = "") -> dict:
     """读指定日期索引，倒序分页返回摘要列表。
     260719 改读索引前：每次 readlines 整个主文件 + parse 倒序头 N 行（恰是最大的行），
     826MB 录制实测峰值内存 3.3GB。"""
     if date is None:
         date = time.strftime("%Y-%m-%d", time.localtime())
-    entries = list_index(date)
+    # 过滤必须在 total 之前——total 是分页依据，若算的是过滤前的数量，翻页会翻出空页。
+    entries = list_index(date, exclude_session, session)
     total = len(entries)
     items = [_public_summary(e) for e in entries[::-1][offset:offset + limit]]
     return {

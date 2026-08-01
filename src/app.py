@@ -160,7 +160,9 @@ def diagnose_errors():
         # date 走 capture_store 的校验（格式 + 语义，防路径穿越）——它 raise StoreError，不返回 bool
         if date:
             capture_store._validate_date(date)
-        return jsonify(diagnose.aggregate(capture_store.list_index(date), limit=limit))
+        return jsonify(diagnose.aggregate(capture_store.list_index(
+            date, request.args.get("exclude_session", ""),
+            request.args.get("session", "")), limit=limit))
     except capture_store.StoreError as e:
         return jsonify({"error": e.code, "detail": str(e)}), 400
 
@@ -217,7 +219,9 @@ def captures_list():
             return default  # 非数字入参回退默认，避免 500（审计 260712 #10）
     limit = min(_to_int(request.args.get("limit", 200), 200), 1000)
     offset = max(_to_int(request.args.get("offset", 0), 0), 0)
-    return jsonify(capture_store.list_captures(date, limit, offset))
+    return jsonify(capture_store.list_captures(
+        date, limit, offset,
+        request.args.get("exclude_session", ""), request.args.get("session", "")))
 
 
 @app.route("/api/captures/<rid>")
@@ -243,7 +247,8 @@ def dag_view():
     大流量天（826MB/2993 条实测）单次 ~9s 且泳道直接丢后 2/3。"""
     import classifier
     date = request.args.get("date")
-    return jsonify(classifier.build_dag(capture_store.list_index(date)))
+    return jsonify(classifier.build_dag(capture_store.list_index(
+        date, request.args.get("exclude_session", ""), request.args.get("session", ""))))
 
 
 @app.route("/api/captures/clear", methods=["POST"])

@@ -83,7 +83,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v6 → v7（260801）：summary 生成逻辑变更——纯工具调用轮（无 text block）fallback 到首个
 #                     tool_use 工具名。字段集没变，但 summary 语义变了，旧索引要重建才能让
 #                     历史工具调用轮也获得非空 summary（详见 issues/open/260801_列表summary与usage展示补全.md）
-IDX_SCHEMA = 7
+#   v7 → v8（260801）：新增 decode_error。响应体解不开时（gzip 流被截断等）上游仍是 200、
+#                     转发也无 error，于是失败聚合（只读索引）完全看不见，而那条录制的正文
+#                     其实是丢的。与 v0.4.3 修的「流内错误被录成成功致失败率低报」同型，
+#                     是它漏掉的另一半（详见 issues/open/260801_decode_error不计入失败统计.md）
+IDX_SCHEMA = 8
 
 
 # ===== 请求体取文本 =====
@@ -448,6 +452,12 @@ def index_record(rec: dict) -> dict:
         # 「effort=max + thinking=disabled → 400」的因果一眼就能对上。
         "err_kind": (rec.get("error") or {}).get("kind") or "",
         "err_msg": _error_message(rec),
+        # 解码失败：上游给了 2xx、转发也没报错，但响应体解不开（gzip 流被截断、utf8 解码
+        # 失败……），于是 content_blocks/usage 全空——**这条录制的正文是丢的**。
+        # 不进索引的话，失败聚合（只读索引）永远看不见它：详情页如实标着 decode_error，
+        # 首页却说一切正常（260801 用户实测 req_49f51e4）。存原始字符串而非布尔，
+        # 因为归并时要按具体原因分组（gzip 截断 ≠ utf8 失败）。
+        "decode_error": (resp.get("decode_error") or ""),
         "effort": ((body.get("output_config") or {}).get("effort")
                    if isinstance(body.get("output_config"), dict) else None),
         "thinking": ((body.get("thinking") or {}).get("type")

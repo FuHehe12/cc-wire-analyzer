@@ -55,12 +55,25 @@ def _req_fields(idx: dict) -> dict:
 
 
 def _is_failure(idx: dict) -> bool:
-    """失败 = 有错误记录，或 HTTP 状态非 2xx。两个条件都要看：
-    本地错误（连不上/超时）没有 status，上游 4xx/5xx 则可能没填 error。"""
-    if idx.get("has_error"):
+    """失败 = 有错误记录，或 HTTP 状态非 2xx，或响应体没解开。三个条件都要看：
+    本地错误（连不上/超时）没有 status，上游 4xx/5xx 则可能没填 error，
+    而解码失败**两者都不是**——上游 200、转发无异常，但正文丢了（260801）。"""
+    if idx.get("has_error") or idx.get("decode_error"):
         return True
     st = idx.get("status")
     return isinstance(st, int) and not (200 <= st < 300)
+
+
+def _kind_and_msg(idx: dict) -> tuple:
+    """(err_kind, err_msg)。解码失败单列一类，**不并进上游的 err_kind**——
+    「上游拒绝了我们」和「我们没解开上游的回答」是两个完全不同的结论，混在一组里
+    会让「上游健康度」这个判断失真。有真 err_kind 时以它为准（解码失败往往是次生的）。"""
+    kind = idx.get("err_kind") or ""
+    msg = idx.get("err_msg") or ""
+    dec = idx.get("decode_error") or ""
+    if dec and not kind:
+        return "decode_failed", dec
+    return kind, msg
 
 
 def aggregate(records: list[dict], limit: int = DEFAULT_LIMIT) -> dict:
@@ -74,13 +87,13 @@ def aggregate(records: list[dict], limit: int = DEFAULT_LIMIT) -> dict:
     failures = [r for r in records if _is_failure(r)]
     groups: dict[tuple, dict] = {}
     for r in failures:
-        msg = r.get("err_msg") or ""
+        kind, msg = _kind_and_msg(r)
         fp = _fingerprint(msg)
-        key = (r.get("err_kind") or "", r.get("status"), fp)
+        key = (kind, r.get("status"), fp)
         g = groups.get(key)
         if g is None:
             g = groups[key] = {
-                "err_kind": r.get("err_kind") or "",
+                "err_kind": kind,
                 "status": r.get("status"),
                 "message": msg[:300],
                 "fingerprint": hashlib.md5(fp.encode("utf-8", "replace")).hexdigest()[:8],

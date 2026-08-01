@@ -36,7 +36,7 @@ def check(name: str, cond: bool, detail: str = "") -> None:
         FAILED.append(name)
 
 
-def rec(rid: str, ts: str, *, status=200, err=None, model="claude-opus-5",
+def rec(rid: str, ts: str, *, status=200, err=None, dec=None, model="claude-opus-5",
         effort=None, thinking=None, stream=True, max_tokens=64000, tools=0,
         session="s-1", sys_text="You are an interactive agent that helps users"):
     """造一条**真形状**的完整 record，再走 index_record（与生产同一条路径）。"""
@@ -53,10 +53,13 @@ def rec(rid: str, ts: str, *, status=200, err=None, model="claude-opus-5",
         body["output_config"] = {"effort": effort}
     if thinking is not None:
         body["thinking"] = {"type": thinking}
+    resp = {"status": status, "content_blocks": [], "usage": {}} if status else None
+    if resp is not None and dec:
+        resp["decode_error"] = dec          # 真形状：解码失败写在 response 上（260801）
     r = {
         "id": rid, "ts_start": ts, "method": "POST", "path": "/v1/messages",
         "request": {"headers_safe": {"x-claude-code-session-id": session}, "body": body},
-        "response": {"status": status, "content_blocks": [], "usage": {}} if status else None,
+        "response": resp,
         "error": err,
     }
     return classifier.index_record(r)
@@ -89,6 +92,23 @@ a = diagnose.aggregate([rec("req_t", "2026-07-25T10:00:03.000", status=None,
 check("本地错误（status=None）也算失败", a["failures"] == 1)
 check("本地错误取 detail 当消息",
       a["items"][0]["message"] == "read timeout", a["items"][0]["message"])
+
+# 解码失败：上游 200、无 error 记录，但响应体没解开（260801 req_49f51e4 实例——
+# gzip 流中段被截断，此前首页失败统计完全看不见）
+a = diagnose.aggregate([rec("req_d", "2026-07-25T10:00:04.000",
+                            dec="decompress_failed:gzip:EOFError")])
+check("解码失败（200 无 error）也算失败", a["failures"] == 1)
+check("解码失败单列 err_kind=decode_failed",
+      a["items"][0]["err_kind"] == "decode_failed", a["items"][0]["err_kind"])
+check("解码失败消息取 decode_error 原文",
+      a["items"][0]["message"] == "decompress_failed:gzip:EOFError", a["items"][0]["message"])
+# 同时有真 err_kind 时以真 err_kind 为准（解码失败往往是次生的，不能盖掉上游结论）
+a = diagnose.aggregate([rec("req_d2", "2026-07-25T10:00:05.000", status=500,
+                            err={"kind": "upstream_5xx", "status": 500,
+                                 "body_snippet": '{"error":{"message":"boom"}}'},
+                            dec="decompress_failed:gzip:EOFError")])
+check("有真 err_kind 时 decode_error 不盖掉它",
+      a["items"][0]["err_kind"] == "upstream_5xx", a["items"][0]["err_kind"])
 
 # ---- 2. 归并：同因异 id/数字 → 一组 ----
 print("\n[2] 归并（指纹归一）")
