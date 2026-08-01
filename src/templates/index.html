@@ -2595,10 +2595,17 @@ async function loadDag(){
   try{
     /* dates_available 来自列表接口；首次直进 dag 时先补拉一次 */
     if(!S.dates.length) await fetchCaptures(S.date);
-    const q = S.date ? ("?date=" + encodeURIComponent(S.date)) : "";
+    /* 序号守卫（260801）：两个 loadDag 交叠时（直进 dag 与紧接点日期芯片），
+       慢的那份响应若晚到会用旧日期数据盖掉新视图。记本次的日期 + 自增序号，
+       响应落地前比对，过期即丢。myDate 必须在 fetchCaptures 之后取——它会把
+       S.date 设成后端裁定值（如 null→今天），取早了守卫会误杀首次加载。 */
+    const myDate = S.date;
+    const seq = ++DG.loadSeq;
+    const q = myDate ? ("?date=" + encodeURIComponent(myDate)) : "";
     const r = await fetch("/api/dag" + q);
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
+    if(myDate !== S.date || seq !== DG.loadSeq) return;           /* 期间改了日期/重发了请求，这份过期 */
     renderDag(d);
   }catch(e){
     $("dagWrap").innerHTML = '<div class="list-empty">' + esc(t18("dag.loadFailed", {msg: e.message})) + '</div>';
@@ -2658,6 +2665,7 @@ const DG = {
   shownLanes: new Set(),      /* 用户显式勾回的 lane：父被（级联）关闭也照显（260801 级联关闭） */
   runs: {}, openRun: {}, runOf: {},   /* 连续错误折叠：key=lane:firstId；openRun=各 lane 未闭合的 run */
   expandedRuns: new Set(), suppressRun: {},
+  loadSeq: 0,   /* DAG 加载序号：交叠请求里慢的那份落地前丢弃，防旧数据盖新视图（260801） */
 };
 function dagTierOf(n){
   /* 三档判定（260717）：中间步=工具循环回传（仅 main/subagent，错误节点不降档——必须刺眼）；
