@@ -5,7 +5,17 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed to use it from an agent.
-- **Current status**: **v0.4.5 released** (2026-08-01). A correctness and readability
+- **Current status**: **v0.4.6 released** (2026-08-01). A correctness pass driven by using the
+  tool the way an agent does: `grep` searched only 14% of a request and could not say so (it now
+  covers every region, and every result declares its coverage); `stats` left `cache_creation`
+  out of its totals (~38% of the cost); `get` without `--date` could silently return a
+  stripped-down index row in place of the real record; a response whose body failed to
+  decompress counted as a success in failure statistics (now its own `decode_failed` kind);
+  and every inspection surface — API and CLI alike — can be filtered by session, so a second
+  Claude Code can audit a first one through the proxy without seeing its own traffic. On the
+  human side: a loading badge now shows while a slow date loads, and the protocol-extension
+  baseline no longer false-alarms on recordings from before a beta flag was renamed.
+  The preceding **v0.4.5** was a correctness and readability
   pass for the timeline when a capture holds more than one session and spawned subagents — the
   chart now matches what actually happened. Auxiliary calls (title / security / count_tokens)
   attach to their owning session lane by session id, not to whichever main lane was latest in
@@ -33,7 +43,7 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
-## Unreleased
+## v0.4.6 - 2026-08-01
 
 ### Added
 - **Session filters on every inspection surface.** `/api/captures`, `/api/dag` and
@@ -44,6 +54,13 @@
   characters of a session id are enough; filtering happens before pagination, so `total` stays
   honest. Point `exclude_session` at the auditor's own session id and every surface shows only
   the audited traffic.
+- **A loading badge while a date loads.** Switching to a date whose index needs (re)building —
+  first view after an upgrade, or a big day — can take seconds to tens of seconds with zero
+  feedback, and the app looked dead. A small pill bottom-right (spinner + "Loading {date}…")
+  now shows whenever a capture-list or DAG request is in flight. A reference counter handles
+  the overlapping pair that the DAG date chips fire, so the badge hides only when the last
+  response lands, and a `finally` guarantees it never sticks. No progress bar: an index
+  rebuild has no progress signal, and fake progress is worse than none.
 
 ### Changed
 - **`grep` searched 14% of a request and could not say so.** `--in all` covered three places —
@@ -92,6 +109,11 @@
   and counts as a failure of its own kind, `decode_failed` — deliberately not merged into the
   upstream error kinds, because "the upstream refused us" and "we could not read the upstream's
   answer" are different conclusions. A real upstream error kind still wins when both are present.
+- **The protocol-extension baseline no longer false-alarms on pre-rename recordings.**
+  `server-side-fallback-2026-06-01` is the old name of `fallback-credit-2026-06-01` (old name
+  last seen 2026-07-14, new name first seen 2026-07-25 — same date stamp, renamed between CC
+  versions). The baseline held only the new name, so opening a recording from before the rename
+  flagged the old one as an unknown extension. Both names are in now.
 
 ## v0.4.5 - 2026-08-01
 

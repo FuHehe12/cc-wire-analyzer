@@ -242,6 +242,17 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .cap-row:last-of-type{border-bottom:none;}
 .cap-row.new{animation:fadeIn .45s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+/* 全局加载徽标（260801）：切日期触发索引重建时后端要数秒~数十秒才响应，期间界面毫无反馈，
+   看起来就像软件死了。右下角浮动小胶囊：旋转环 + 「正在加载 {date}…」。只回答「活着，在干活」
+   ——不做进度条：索引重建没有进度信号，假进度比没进度更糟。 */
+#loadBadge{position:fixed;right:16px;bottom:16px;z-index:200;display:none;align-items:center;gap:8px;
+  background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:7px 14px;
+  font-family:var(--font-body);font-size:11.5px;font-weight:600;color:var(--apple-text-secondary);
+  box-shadow:0 4px 16px rgba(0,0,0,.12);animation:fadeIn .18s ease;}
+#loadBadge.on{display:flex;}
+#loadBadge .ring{width:13px;height:13px;border-radius:50%;flex-shrink:0;
+  border:2px solid var(--border);border-top-color:var(--gold-text);animation:lbRot .8s linear infinite;}
+@keyframes lbRot{to{transform:rotate(360deg);}}
 .cap-time{font-family:var(--font-mono);font-size:11px;color:var(--apple-secondary);
   font-variant-numeric:tabular-nums;}
 .cap-dot{width:8px;height:8px;border-radius:50%;}
@@ -792,6 +803,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 
 <div id="toast"></div>
 
+<div id="loadBadge"><span class="ring"></span><span id="loadBadgeText"></span></div>
+
 <script src="/static/marked.min.js"></script><!-- vendored：离线 exe 可用（审计 260712 #3） -->
 <script src="/static/purify.min.js"></script><!-- DOMPurify：md 渲染消毒防 XSS（审计 260712 #5） -->
 <script>
@@ -920,6 +933,7 @@ zh: {
   "clear.purgeOk": "已清除 {n} 条录制", "clear.archiveOk": "已压缩存档并清除 {n} 条（{kb} KB）",
   "clear.fail": "清除失败", "clear.empty": "当天无录制可清除",
   "list.loading": "加载中…",
+  "loading.badge": "正在加载 {date}…",
   "list.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话即可看到请求。",
   "list.emptyDate": "该日期没有捕获记录。",
   "list.loadMore": "加载更多（还有 {n} 条）", "list.loadFailed": "列表加载失败：{msg}",
@@ -1085,6 +1099,7 @@ en: {
   "clear.purgeOk": "Cleared {n} records", "clear.archiveOk": "Archived & cleared {n} records ({kb} KB)",
   "clear.fail": "Clear failed", "clear.empty": "No records to clear for this date",
   "list.loading": "Loading…",
+  "loading.badge": "Loading {date}…",
   "list.emptyToday": "No captures today — start the proxy, then open a new CC session to see requests.",
   "list.emptyDate": "No captures on this date.",
   "list.loadMore": "Load more ({n} left)", "list.loadFailed": "Failed to load list: {msg}",
@@ -1250,6 +1265,7 @@ ja: {
   "clear.purgeOk": "{n} 件を削除しました", "clear.archiveOk": "{n} 件を圧縮保存して削除しました（{kb} KB）",
   "clear.fail": "削除に失敗", "clear.empty": "この日付の録画はありません",
   "list.loading": "読み込み中…",
+  "loading.badge": "{date} を読み込み中…",
   "list.emptyToday": "本日のキャプチャはまだありません——プロキシを開始し、新しい CC セッションを開くとリクエストが表示されます。",
   "list.emptyDate": "この日付のキャプチャはありません。",
   "list.loadMore": "さらに読み込む（残り {n} 件）", "list.loadFailed": "一覧の読み込みに失敗：{msg}",
@@ -1412,6 +1428,9 @@ const KNOWN_BETAS = [
   "advisor-tool-2026-03-01", "advanced-tool-use-2025-11-20", "effort-2025-11-24",
   "fallback-credit-2026-06-01", "afk-mode-2026-01-31", "extended-cache-ttl-2025-04-11",
   "cache-diagnosis-2026-04-07", "structured-outputs-2025-12-15", "token-counting-2024-11-01",
+  /* server-side-fallback 是 fallback-credit 的旧名（同日期段 2026-06-01）：旧名 07-14 最后
+     出现、新名 07-25 首次出现，CC 版本间改了名。留着它，浏览改名前的老录制才不会误报。 */
+  "server-side-fallback-2026-06-01",
 ];
 function stopReasonLabel(v){ return (v && I18N.zh["sr." + v] != null) ? t18("sr." + v) : (v || ""); }
 function errKindLabel(v){ return (v && I18N.zh["ek." + v] != null) ? t18("ek." + v) : (v || ""); }
@@ -2063,7 +2082,20 @@ function renderDiag(){
 }
 
 /* ================= 捕获列表 ================= */
+/* 全局加载徽标（260801）：切日期触发索引重建时后端要数秒~数十秒才响应，期间界面毫无反馈像
+   死机。计数器式——fetchCaptures 与 loadDag 可交叠（dagPickDate 同时发两个），归零才隐藏。 */
+let __loadN = 0;
+function loadBegin(dateStr){
+  __loadN++;
+  $("loadBadgeText").textContent = t18("loading.badge", {date: dateStr || todayStr()});
+  $("loadBadge").classList.add("on");
+}
+function loadEnd(){
+  __loadN = Math.max(0, __loadN - 1);
+  if(!__loadN) $("loadBadge").classList.remove("on");
+}
 async function fetchCaptures(date){
+  loadBegin(date);
   try{
     const q = date ? ("?date=" + encodeURIComponent(date)) : "";
     const r = await fetch("/api/captures" + q);
@@ -2078,7 +2110,7 @@ async function fetchCaptures(date){
     refreshDiag();
   }catch(e){
     $("captureList").innerHTML = '<div class="list-empty">' + esc(t18("list.loadFailed", {msg: e.message})) + '</div>';
-  }
+  }finally{ loadEnd(); }
 }
 /* 当前查看的日期**一定**要有 chip：新一天的 jsonl 还没写出来时 dates_available 里没有今天，
    原来的 `S.dates.length ? S.dates : [S.date]` 会让选中态落在一个不存在的格子上（260801）。 */
@@ -2595,6 +2627,7 @@ const LANE_COLOR = { main: "var(--accent)", subagent: "var(--info)", aux: "var(-
 const LANE_PALETTE = ["#C2882B", "#24A0B2", "#8F63B0", "#B25578", "#48923F", "#96540E"];
 
 async function loadDag(){
+  loadBegin(S.date);
   try{
     /* dates_available 来自列表接口；首次直进 dag 时先补拉一次 */
     if(!S.dates.length) await fetchCaptures(S.date);
@@ -2612,7 +2645,7 @@ async function loadDag(){
     renderDag(d);
   }catch(e){
     $("dagWrap").innerHTML = '<div class="list-empty">' + esc(t18("dag.loadFailed", {msg: e.message})) + '</div>';
-  }
+  }finally{ loadEnd(); }
 }
 function dagPickDate(d){ S.date = d; fetchCaptures(d); loadDag(); }
 function renderDagDates(){
