@@ -8,7 +8,8 @@
   A 会话线（主线 1）3 轮 + 派生子代理（子代理 2 条请求）；B 会话线（主线 2）502；
   D 会话线（主线 3）2 轮；辅助调用（title / security / compact）落 aux lane，near 边挂最近主线。
 预期 DAG：lanes = [main×3, subagent×1, aux×1]，三条主线各取色板不同色；trigger 边 A2→S1
-（S1/S2 同属一次派生 → 同一条子代理泳道，S1→S2 走 seq 边）。
+（S1/S2 同属一次派生 → 同一条子代理泳道，S1→S2 走 seq 边；泳道键 = agent-<AGENT_ID>，
+走 260801 的 agent_id 主路径）。
 
 **样例数据必须长得像真流量**（260725）：这里每条记录的形状都照实测录制复刻——
 system 恒 3 块（[0] 计费头 / [1] 身份声明 / [2] 正文）、请求头带
@@ -32,6 +33,8 @@ CC_VERSION = "2.1.220.a1b"
 SID_A = "a1b2c3d4-1111-4aaa-8bbb-0123456789ab"
 SID_B = "b2c3d4e5-2222-4bbb-8ccc-123456789abc"
 SID_D = "d4e5f6a7-3333-4ccc-8ddd-23456789abcd"
+# 子代理实例 id（X-Claude-Code-Agent-Id 头，07-31 起每条子代理请求都带；泳道键主路径）
+AGENT_ID = "a5eed1e5501dba5e1"
 
 
 def billing(entrypoint: str = "cli", subagent: bool = False) -> str:
@@ -184,6 +187,7 @@ def _subagent_sys() -> list[dict]:
 def s1():
     """子代理第 1 条请求（同一次派生的多条请求应归同一条泳道）。"""
     r = base("22:41:35.800", model="glm-5v-turbo", session_id=SID_A)  # 子代理复用父会话 id
+    r["request"]["headers_safe"]["x-claude-code-agent-id"] = AGENT_ID
     b = r["request"]["body"]
     b["system"] = _subagent_sys()
     b["tools"] = TOOLS[:4]
@@ -202,6 +206,7 @@ def s2():
     """子代理第 2 条请求（工具回传后继续）。验证：与 S1 同泳道、S1→S2 走 seq 边、
     trigger 边只连 S1 一条（不是每条请求都挂一条 trigger）。"""
     r = base("22:41:44.200", model="glm-5v-turbo", session_id=SID_A)
+    r["request"]["headers_safe"]["x-claude-code-agent-id"] = AGENT_ID
     b = r["request"]["body"]
     b["system"] = _subagent_sys()
     b["tools"] = TOOLS[:4]

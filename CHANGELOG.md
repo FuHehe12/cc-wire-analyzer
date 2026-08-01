@@ -40,6 +40,16 @@
 ## Unreleased
 
 ### Changed
+- **Subagent lanes are now keyed by CC's own agent id** (`X-Claude-Code-Agent-Id` header) whenever
+  it is present, instead of the `md5(spawner|prompt)` key derived from prompt alignment. Evidence
+  over 10 days of real captures (225 subagent requests): the header appears on every subagent
+  request since CC added it (23/23 on 2026-07-31), is stable within a spawn instance, is never
+  reused across instances, and — cross-checked against `~/.claude/projects/` — is the *same id*
+  CC writes into `subagents/agent-<id>.jsonl` transcript filenames and async `toolUseResult.agentId`
+  (3/3 match). The lane id can now be joined straight to the subagent's own jsonl transcript.
+  Recordings from before the header existed keep the md5 lane key (prompt alignment stays as the
+  fallback), and trigger edges — the only source of parent linkage — are still inferred by prompt
+  alignment either way. The main-vs-subagent *kind* decision is unchanged (billing header).
 - **Hiding a timeline lane now cascades through everything it spawned.** Hiding 主线 N also hides
   the subagent lanes it spawned — including nested chains where a subagent spawned another
   subagent — and the auxiliary calls attached to it; those rows in the lane dropdown are marked

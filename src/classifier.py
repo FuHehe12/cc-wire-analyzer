@@ -467,8 +467,9 @@ def index_record(rec: dict) -> dict:
         # CC 直接在 HTTP 头上给的子代理实例 ID。**取证结论（9 天 4,629 条）：
         # 它与计费头 cc_is_subagent=true 完全一致，225/225 零反例，且 225 条全部是
         # cc_entrypoint=cli** —— 判别定案时悬着的「cli 模式未实测」由此有了实测数据。
-        # 这里只**记录**它作为交叉校验位，判别优先级仍以计费头为准（那是 260725 实测定案的，
-        # 不因为多一个一致信号就改结论）。
+        # kind 判别仍以计费头为准（260725 定案，不因多一个一致信号改结论）；
+        # 但**泳道实例键 260801 起以它优先**（build_dag：官方实例 ID 比 md5(派生者|prompt)
+        # 精确，且能 join CC jsonl 的 subagents/agent-<id>.jsonl），老录制无头时回落对齐键。
         "agent_id": _header(rec, "x-claude-code-agent-id"),
         # 请求体里 CC 实际在用、我们此前完全没解析的特性（G8）。只存小标量，不存内容。
         "ctx_mgmt": bool(body.get("context_management")),
@@ -632,6 +633,21 @@ def build_dag(records: list[dict]) -> dict:
                 triggered_lanes.add(info[2])
                 trigger_edges.append({"from": mid, "to": r.get("id"), "type": "trigger"})
             break
+
+    # 260801：泳道键 agent_id 优先（X-Claude-Code-Agent-Id 头，CC 官方实例 ID）。
+    # 取证（tools/agent_id_probe.py，10 天 225 条）：07-31 起 23/23 全带、实例内稳定、
+    # 跨实例零复用，且与 ~/.claude/projects/<proj>/<session>/subagents/agent-<id>.jsonl
+    # 文件名 3/3 对上——同一 ID 空间，泳道键能直接 join 子代理完整对话。
+    # 对齐循环仍先按 md5 键归位（trigger 边是父子推断的唯一来源，agent_id 不含父信息），
+    # 这里把带头的实例统一改写到官方键：同实例混合录制（部分记录有头、部分没有）不裂两列。
+    # 老录制（07-31 前的 CC 没这个头）自然留在 md5 键上，兜底路径不变。
+    aid_of_aligned: dict[str, str] = {}
+    for r, kind, lk in infos:
+        if kind == "subagent" and lk.startswith("agent-") and r.get("agent_id"):
+            aid_of_aligned[lk] = "agent-" + r["agent_id"]
+    for info in infos:
+        if info[1] == "subagent" and info[2] in aid_of_aligned:
+            info[2] = aid_of_aligned[info[2]]
 
     # 有权威位但没对齐命中的子代理（老录制缺 prompt、派生方未录到、跨天截断、Workflow
     # 派生 prompt 藏在 JS script 里对不上）：优先用 agent-id（CC 给的实例 ID，Workflow/
