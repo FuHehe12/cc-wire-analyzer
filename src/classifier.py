@@ -80,7 +80,10 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     ctx_mgmt/diagnostics/stop_seqs_n/thinking_budget。
 #                     CC 自己声明的东西此前一条都没进索引，等于放弃了「发现下一个盲区」
 #                     最直接的信号源（详见 issues/open/260731_harness事实对账_录制盲区全面审计.md）
-IDX_SCHEMA = 6
+#   v6 → v7（260801）：summary 生成逻辑变更——纯工具调用轮（无 text block）fallback 到首个
+#                     tool_use 工具名。字段集没变，但 summary 语义变了，旧索引要重建才能让
+#                     历史工具调用轮也获得非空 summary（详见 issues/open/260801_列表summary与usage展示补全.md）
+IDX_SCHEMA = 7
 
 
 # ===== 请求体取文本 =====
@@ -398,6 +401,14 @@ def index_record(rec: dict) -> dict:
         if isinstance(blk, dict) and blk.get("type") == "text" and blk.get("text"):
             summary = blk["text"][:80]
             break
+    if not summary:
+        # 纯工具调用轮（thinking + tool_use，无 text）——子代理中间步、主对话工具循环几乎都这样。
+        # 列表/DAG 摘要空白就看不出这一轮做了什么；fallback 到首个 tool_use 工具名才描述动作。
+        # 与 💬 chat-only turn 的 emoji 风格一致（260801 能力面审计 A4）。
+        for blk in resp.get("content_blocks") or []:
+            if isinstance(blk, dict) and blk.get("type") == "tool_use" and blk.get("name"):
+                summary = "🔧 " + blk["name"]
+                break
     return {
         "v": IDX_SCHEMA,
         "id": rec.get("id"),
@@ -622,13 +633,16 @@ def build_dag(records: list[dict]) -> dict:
                 trigger_edges.append({"from": mid, "to": r.get("id"), "type": "trigger"})
             break
 
-    # 有权威位但没对齐命中的子代理（老录制缺 prompt、派生方未录到、跨天截断）：
-    # 用 agent_fp（system 正文指纹）分实例，至少同类型子代理归一列，不会每条一列。
+    # 有权威位但没对齐命中的子代理（老录制缺 prompt、派生方未录到、跨天截断、Workflow
+    # 派生 prompt 藏在 JS script 里对不上）：优先用 agent-id（CC 给的实例 ID，Workflow/
+    # Agent 派生都带、能区分实例），退到 agent_fp（system 指纹，类型级）。前者让 Workflow
+    # 的 wf_a/wf_b 两个并行实例分两列，后者至少同类型合一列。Workflow 子代理无 trigger
+    # 边是 A6 设计限制（不修），但 agent-id 至少不让不同实例挤一列（260801）。
     for info in infos:
         r, kind, lk = info
         if kind == "subagent" and not lk.startswith("agent-"):
-            fp = r.get("agent_fp") or lk
-            info[2] = "agent-" + fp
+            key = r.get("agent_id") or r.get("agent_fp") or lk
+            info[2] = "agent-" + key
 
     # lane 组装：main 每会话一列、subagent 每派生实例一列、辅助合一列
     # （subagent 的 lane_key 到这里必然已是 "agent-" 开头：对齐命中时设成派生实例键，

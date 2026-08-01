@@ -18,10 +18,13 @@
     export CCWA_HOME='<临时目录>'                            # 录制/marker 落临时目录
     export CCWA_CLAUDE_SETTINGS="$CCWA_HOME/settings.json"   # 真 settings.json 的副本
     uv run python src/desktop.py serve
-    ANTHROPIC_BASE_URL=http://127.0.0.1:5051 claude -p "<会派生子代理的任务>"
+    claude -p "<会派生子代理的任务>" \
+      --settings '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:5051"}}'
 
-进程 env 优先于 settings.json，所以被测 CC 用的是真配置（真 CLAUDE.md / 真模型 / 真凭据），
-只有 BASE_URL 被盖掉；工具读写的全是副本。**记 ground truth**（第几次派生、什么 agent、几点）。
+被测 CC 用 `--settings` 把 BASE_URL 盖成代理（进程级 `ANTHROPIC_BASE_URL` 在 CC 2.1.220 实测
+**被无视**——设死端口仍直连、录不到；必须走 `--settings`，它深度合并进真 settings，只盖 BASE_URL，
+保留真凭据/模型）。所以被测 CC 用的是真配置（真 CLAUDE.md / 真模型 / 真凭据），只有 BASE_URL
+被盖掉；工具读写的全是副本。**记 ground truth**（第几次派生、什么 agent、几点）。
 """
 from __future__ import annotations
 

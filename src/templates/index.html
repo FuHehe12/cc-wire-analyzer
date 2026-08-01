@@ -2028,12 +2028,14 @@ function renderDetail(d){
   const betas = betaRaw ? betaRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
   if(betas.length){
     const unknown = betas.filter(b => KNOWN_BETAS.indexOf(b) < 0);
-    L += '<div class="dcard"><div class="chip-row">' +
-      '<span class="crumb-meta">' + t18("detail.betaTitle") + '</span>' +
+    L += '<details class="fold"><summary>' + t18("detail.betaTitle") + ' (' + betas.length +
+      (unknown.length ? ' · <span style="color:var(--warn,#b26a00)">' + t18("detail.betaNew", {n: unknown.length}) + '</span>' : '') +
+      ')</summary><div class="fold-body">' +
+      '<div class="chip-row">' +
       betas.map(b => '<span class="chip outline' + (KNOWN_BETAS.indexOf(b) < 0 ? ' beta-new' : '') + '">' + esc(b) + '</span>').join("") +
       '</div>' +
       (unknown.length ? '<span class="sec-hint">' + t18("detail.betaNew", {n: unknown.length}) + '</span>' : "") +
-      '</div>';
+      '</div></details>';
   }
 
   /* headers */
@@ -2112,13 +2114,14 @@ function renderDetail(d){
   const rhs = resp.headers_safe || {};
   const rhKeys = Object.keys(rhs);
   if(rhKeys.length){
-    /* 260726 改：默认展开（open 属性）+ wire 层关键字段（ratelimit-/request-id/organization-id/
-       x-should-retry）加粗高亮 + 提示"只在 wire 层看得到"。这些字段是本工具相对 CC jsonl 的核心增量，
-       折叠状态让新手根本不知道这里有金矿。 */
+    /* wire 层关键字段（ratelimit-/request-id/organization-id/x-should-retry）加粗高亮 + 提示"只在
+       wire 层看得到"——这些是本工具相对 CC jsonl 的核心增量。
+       260726 曾默认展开让新手看见；260801 改回默认折叠——协议扩展区已单独展示 beta 信号，
+       响应 Headers 的 ratelimit 等相对次要，折叠省空间（点开后 wire 字段仍高亮）。 */
     const WIRE_KEY_PREFIXES = ["anthropic-ratelimit-", "request-id", "anthropic-organization-id", "x-should-retry"];
     const isWireKey = (k) => { const lk = k.toLowerCase();
       return WIRE_KEY_PREFIXES.some(p => lk === p || lk.startsWith(p)); };
-    R += '<details class="fold" open><summary>' + t18("detail.respHeaders") + ' (' + rhKeys.length + ')</summary>' +
+    R += '<details class="fold"><summary>' + t18("detail.respHeaders") + ' (' + rhKeys.length + ')</summary>' +
       '<div class="fold-body">' +
       '<div style="font-size:11px;color:var(--text-faint);margin:6px 0 8px;">' + t18("detail.wireOnlyHint") + '</div>' +
       '<table class="kv-table">' + rhKeys.map(k =>
@@ -2133,11 +2136,18 @@ function renderDetail(d){
               cache_read: ur.cache_read_input_tokens ?? ur.cache_read,
               cache_creation: ur.cache_creation_input_tokens ?? ur.cache_creation };
   if(Object.values(u).some(v => v != null)){   /* 260712：原 Object.keys(u).length 恒真，无 usage 也渲染全"—" */
+    /* server_tool_use / service_tier：usage 原始字段，不经 usage_norm（那四个是归一短名）。
+       web_search_requests > 0 正是发现 server-side web search 流量的雷达（260801 能力面审计 A2）。 */
+    const stu = ur.server_tool_use || null, stier = ur.service_tier || null;
+    let extra = "";
+    if (stier) extra += '<span>tier: ' + esc(String(stier)) + '</span>';
+    if (stu && typeof stu === "object" && stu.web_search_requests != null)
+      extra += '<span>web_search: ' + stu.web_search_requests + '</span>';
     R += '<div class="dcard"><div class="usage-head"><b>Usage</b></div><div class="stat-grid2">' +
       [["input", u.input], ["output", u.output], ["cache_read", u.cache_read], ["cache_creation", u.cache_creation]]
         .map(([l,v]) => '<div class="stat"><div class="v">' + (v != null ? v.toLocaleString("en-US") : "—") +
           '</div><div class="l">' + l + ' tokens</div></div>').join("") +
-      '</div></div>';
+      '</div>' + (extra ? '<div style="font-size:11px;color:var(--text-faint);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;">' + extra + '</div>' : '') + '</div>';
   }
 
   /* error —— proxy 写的 error 有两种形状：

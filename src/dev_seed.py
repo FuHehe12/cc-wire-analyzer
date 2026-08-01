@@ -110,7 +110,8 @@ def base(ts: str, model: str = "glm-5.2", session_id: str = SID_A,
     r["response"] = {
         "status": 200, "headers_safe": {"content-type": "text/event-stream"},
         "ttft_ms": 340, "total_ms": 4500, "stop_reason": "end_turn",
-        "usage": {"input": 45000, "output": 800, "cache_read": 44000, "cache_creation": 0},
+        "usage": {"input": 45000, "output": 800, "cache_read": 44000, "cache_creation": 0,
+                  "service_tier": "standard", "server_tool_use": {"web_search_requests": 0}},
         "content_blocks": [], "chunks_count": 40,
     }
     return r

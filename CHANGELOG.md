@@ -16,13 +16,54 @@
   `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
   1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller. (Its input is now trustworthy: in-stream errors used to be recorded as successes and never reached the statistics at all — fixed in the unreleased v0.4.3.)
-  2. **Recording-blind-spot audit: closed.** Auditing our implementation against what CC itself declares (request headers, body fields, the SSE accumulator branches in CC's own source) found nine gaps; all nine are now addressed, the last of them (retaining raw bytes for suspect records) as a design decision deferred to 0.5.x alongside storage governance. Method in `docs/开发指南.md` §2.5; the portable version for other harnesses is unit 0 of `docs/问题域手册.md`.
+  2. **Recording-blind-spot audit: closed (both halves).** The 260731 *protocol-side* audit
+  (against what CC declares: headers, body fields, SSE branches) found nine gaps, all addressed.
+  The *capability-side* half — running each CC ability through the proxy and checking the recording
+  — is now done too: 14 captures across 7 dimensions, core parsing zero hard bugs, one
+  documentation posture fixed (see v0.4.3). Method in `docs/开发指南.md` §2.5; portable version in
+  unit 0 of `docs/问题域手册.md`.
   3. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way); cross-day trends further out.
   4. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
 ## v0.4.3 - unreleased
 
+### Added
+- **The detail view now shows the two usage fields CC reports that we were dropping.** Every
+  response from a third-party gateway carries `server_tool_use` (with `web_search_requests`) and
+  `service_tier` inside `usage`; we recorded them verbatim, but `usage_norm` and the detail panel
+  surfaced only input/output/cache_read/cache_creation, so the server-side tool-call count and the
+  service tier were invisible. The Usage card now appends a `tier:` / `web_search:` line straight
+  from the raw `resp.usage` (not the normalised short names). `web_search_requests > 0` is exactly
+  the signal that server-side web search happened — a radar for the next blind spot. Surfaced by
+  the capability audit; the 260731 protocol audit had no such traffic to see it.
+- **The protocol-extensions panel now folds, collapsed by default.** It was a flat chip row occupying vertical space; it now folds like the other sections and starts collapsed, with the extension count (and any unknown-extension warning) in the summary, so the "new extension = next blind spot" radar survives being collapsed.
+- **Response headers are collapsed by default again.** v0.4.0 had opened them so the wire-only fields (ratelimit / request-id) weren't hidden; with the protocol-extensions panel now surfacing the capability radar on its own, the response headers demote back to collapsed (wire fields still bolded when expanded).
+
 ### Fixed
+- **Capability-side recording audit: run, and one documentation posture fixed.** The 260731 audit
+  was *protocol-side* (what CC declares). This runs the other half — *capability-side*: spawn a
+  real `claude -p` for each CC ability (tool calls, parallel tools, thinking, subagents, vision)
+  through the proxy and check the recording parses it. 14 captures across 7 dimensions;
+  **core parsing had zero hard bugs** — tool_use/tool_result, parallel tool_use in one response,
+  thinking blocks with signatures, subagent identity (`cc_is_subagent` + `x-claude-code-agent-id`,
+  zero counterexamples again), the spawn edge (including multi-level A→B→C nested subagent chains), and base64 image blocks were all recorded and
+  classified correctly. The Workflow tool's subagents are recorded too, but their spawn relation does not resolve — prompts live in a dynamic JS template literal inside `input.script` (`${VAR}` runtime-interpolated), invisible to the wire layer; the trigger edge stays unresolved by design (see issue A6), but the fallback lane now keys on `agent-id` (instance-level) instead of the type-level `agent_fp` fingerprint, so Workflow's parallel subagents at least split into separate columns instead of merging into one. `issues/closed/260801_能力面录制盲区审计.md`. The audit did surface one
+  documentation P0: the "isolated capture" posture in `CLAUDE.md` / `docs/开发指南.md` §5 /
+  `tools/lane_probe.py` claimed `ANTHROPIC_BASE_URL=… claude -p` works because "process env takes
+  precedence over settings.json". It does not — CC 2.1.220 ignores the process-level var (a dead
+  port still connects straight through, records nothing, raises no error; reproduced in bash and
+  PowerShell), so anyone following the docs silently captured nothing. Fixed to `claude -p …
+  --settings '{"env":{"ANTHROPIC_BASE_URL":…}}'`, with a note on *why* the process env fails.
+
+- **A tool-call turn no longer shows a blank summary in the capture list.** `index_record` took
+  the response's first text block as the summary, so a pure tool-call turn (thinking + tool_use,
+  no text — subagent middle steps, tool loops) left the list row empty; the list (`_public_summary`)
+  had no fallback while the DAG (`_node_summary`) fell back to `last_user`, so the two disagreed.
+  The summary now falls back to the first tool_use's name (`🔧 Glob`, `🔧 Agent`) — that describes
+  what the turn *did*, which is what the summary is for. `IDX_SCHEMA` 6→7 so old captures rebuild
+  with the fallback (~5 s/day, jsonl untouched). Verified on real captures: two previously-blank
+  rows now read `🔧 Glob` / `🔧 Agent`.
+
 - **A failed request was being recorded as a successful one.** When an upstream reports an
   error *inside* the SSE stream, the HTTP status is still 200 — the error rides in an
   `event: error` frame. Our SSE parser had no branch for it, so the frame was skipped, no

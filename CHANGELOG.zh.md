@@ -11,13 +11,22 @@
   **macOS 升级用户注意**：应用包由 `CCWireAnalyzer.app` 改名 `cc-wire-analyzer.app`，`/Applications` 里旧的那份不会被替换，需自行删除。
 - **下一步**：
   1. **失败聚合的 UI 入口**——当前最大的一道缝。后端把几千条失败压成几组只要 0.1 秒不到，人看的界面却连一个入口都没有。这条之外的都更小。（它的输入现在可信了：流内错误此前被录成成功、根本没进过失败统计，已在未发版的 v0.4.3 修掉。）
-  2. **录制盲区审计：已收口。** 拿我们的实现去对账 CC 自己声明的东西（请求头、请求体字段、CC 源码里 SSE 累积器的分支清单），查出九个缺口、现已全部有交代——最后一条（对可疑记录保留原始字节）作为设计定案随存储治理留到 0.5.x。方法见 `docs/开发指南.md` 第二·五节；可迁移到其他 harness 的泛化版是 `docs/问题域手册.md` 的单元 0。
+  2. **录制盲区审计：已收口（协议面 + 能力面两半都完成）。** 260731 的协议面对账（对账 CC 声明的请求头、请求体字段、SSE 分支）查出九个缺口、现已全部有交代；能力面这半——把 CC 每个能力实际跑一遍录制、检查解析——也已完成：7 个维度 14 条录制，核心解析零硬 bug，并修掉一处文档姿势失效（见 v0.4.3）。方法见 `docs/开发指南.md` 第二·五节；泛化版是 `docs/问题域手册.md` 单元 0。最后一条（对可疑记录保留原始字节）作为设计定案随存储治理留到 0.5.x。
   3. **诊断闭环续做**：反复出现的失败模式固化成体检规则（`effort_max_rejected_upstream` 即由此而来）；跨天趋势更远。
   4. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理仍缺一次人工核对过的采集。历史录制已能提供统计旁证——225 条子代理请求全部是 `cc_entrypoint=cli`、判别位全部在、零反例——但这与「采一次会话并逐条对照 ground truth」不是一回事，后者才是关闭这条所需要的。
 
 ## v0.4.3 - unreleased
 
+### 新增
+- **详情页现在展示 CC 报给我们的两个 usage 字段。** 第三方网关每个响应的 usage 里都带 `server_tool_use`（含 `web_search_requests`）和 `service_tier`；我们原样录了，但 `usage_norm` 和详情页只摆出 input/output/cache_read/cache_creation，于是服务端工具调用次数和服务档一直看不见。Usage 卡片现在从原始 `resp.usage` 直接追加一行 `tier:` / `web_search:`（不走归一短名）。`web_search_requests > 0` 正是 server 端 web search 流量发生的信号——发现下一个盲区的雷达。由能力面审计发现；协议面审计当时没有这类流量可看。
+- **协议扩展区现在可折叠，默认收起。** 此前是平铺的 chip 行占着空间；现在像其他区块一样可折叠且**默认折叠**，摘要里显示扩展数量（及未知特性警告），「新扩展 = 下一个盲区」的雷达信号收起后仍可见。
+- **响应 Headers 改回默认折叠。** v0.4.0 曾默认展开，让 wire 层独有字段（ratelimit / request-id）不被藏起来；现在协议扩展区已单独扛起能力雷达的展示，响应 Headers 退回默认折叠（展开后 wire 字段仍高亮）。
+
 ### 修复
+- **能力面录制审计：跑完了，并修掉一处文档姿势。** 260731 的审计是协议面（CC 声明了什么）。这次跑另一半——能力面：把 `claude -p` 实际跑 CC 每个能力（工具调用、并行工具、thinking、子代理、视觉）过代理，检查录制解析对不对。7 个维度 14 条录制；**核心解析零硬 bug**——tool_use/tool_result、单响应里的并行 tool_use、带签名的 thinking 块、子代理身份（`cc_is_subagent` + `x-claude-code-agent-id`，再次零反例）、spawn 边（含多级 A→B→C 嵌套子代理链）、base64 图片块全部正确录制与分类。Workflow 工具的子代理也录得到，但派生关系推断不出——派生 prompt 藏在 `input.script` 的 JS 反引号 template literal 里（`${VAR}` 运行时插值），wire 层看不到变量值；trigger 边是设计限制不修（见 A6），但 fallback lane 已改用 `agent-id`（实例级）而非 `agent_fp`（类型级），Workflow 的并行子代理至少分成各自的列、不再挤一列。详见 `issues/closed/260801_能力面录制盲区审计.md`。审计也暴露了一处文档 P0：`CLAUDE.md` / `docs/开发指南.md` §五 / `tools/lane_probe.py` 的「隔离采集」姿势声称 `ANTHROPIC_BASE_URL=… claude -p` 能用，理由是「进程 env 优先于 settings.json」。并不——CC 2.1.220 无视进程级该变量（设死端口仍直连、录不到、无报错；bash 与 PowerShell 双 shell 复现），照文档做的人会静默录不到任何东西。已改为 `claude -p … --settings '{"env":{"ANTHROPIC_BASE_URL":…}}'`，并写明进程 env 为何不生效。
+
+- **工具调用轮在捕获列表里不再是空白摘要。** `index_record` 取响应第一个 text block 作摘要，于是纯工具调用轮（thinking + tool_use，无 text——子代理中间步、工具循环）列表行空着；列表（`_public_summary`）没有兜底，而 DAG（`_node_summary`）兜底用 `last_user`——两者不一致。摘要现在兜底取首个 tool_use 的工具名（`🔧 Glob`、`🔧 Agent`）——这描述了这一轮「做了什么」，正是摘要该干的。`IDX_SCHEMA` 6→7 让旧录制重建获得兜底（~5 秒/天，jsonl 不动）。真流量验证：此前两条空行现在显示 `🔧 Glob` / `🔧 Agent`。
+
 - **失败的请求此前被录成了成功。** 上游在 SSE 流**内部**报错时，HTTP 状态仍是 200——错误藏在 `event: error` 帧里。我们的 SSE 解析器没有对应分支，这一帧直接被跳过，`error` 不写（此前只有 `status >= 400` 才写），于是这条请求在录制里是一次**成功**，只是正文莫名空着。危害从来不止单条记录失真：失败聚合以 `has_error` 为判据，流内错误因此**从来没有进过失败统计**——我们报的上游失败率一直偏低，而一个观测工具报错误率偏低，比不报更糟。现在 CC 自己 SDK 会抛错的两条路径都认（`event: error` 帧名，以及 data 内 `type == "error"`），录成新的错误类型 `stream_error`，`status` 为 200。**消费方判断请求是否失败必须看 `error`/`has_error`，不能只看 status。**
 
 - **解压/解码失败现在如实落痕，不再静默留空。** 此前一旦失败，`body_text` / `usage` / `content_blocks` 一起消失，界面上却毫无痕迹——看起来就像上游没返回内容。现在响应带 `decode_error`（`missing_codec:br` / `unknown_encoding:…` / `decompress_failed:…` / `utf8_decode_failed`），详情页如实显示。CC 声明清单之外的编码也会明确报出来，不再被当成未压缩正文往下走。
