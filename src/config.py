@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re as _re
 from pathlib import Path
 
 # 两个环境变量覆盖（默认值不变，普通用户无感）：
@@ -103,8 +104,13 @@ def set_config(updates: dict) -> dict:
     return current
 
 
+# 录制主文件名形态。与 capture_store._DATE_RE 同一约定（那边还用于入参校验防路径穿越）；
+# 两处各自 compile 而非互相 import——config 是最底层模块，不能反向依赖 capture_store。
+_DATE_STEM_RE = _re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+
+
 def list_capture_dates() -> list[dict]:
-    """扫描 ~/.cc-wire-analyzer/captures/ 下所有按天 jsonl 文件。
+    """扫描 ~/.cc-wire-analyzer/captures/ 下所有按天 jsonl 文件（只认主文件，不含索引/临时）。
 
     返回 [{date, size, capture_count, last_mtime}]，按日期降序。
     capture_count = 文件行数（粗略，不解析 JSON）。
@@ -114,6 +120,14 @@ def list_capture_dates() -> list[dict]:
         return []
     out = []
     for f in captures_dir.glob("*.jsonl"):
+        # 只认 YYYY-MM-DD 主文件。派生文件同样以 .jsonl 结尾——{date}.idx.jsonl（写时索引，
+        # 260719 引入）和 .archiving.* 临时文件——glob 会一并匹配，f.stem 于是变成
+        # "2026-08-01.idx" 这种假日期。按**形态**收口（而非单挡 .idx）：再加派生文件不必改这里。
+        # capture_store._available_dates() 早已这么做（那边 260719 当场就发现了），
+        # 本函数是同型漏网：cmd_get 的历史回落会命中索引行（同 id、排序还在主文件之前），
+        # 静默返回 ok:true + data:null，并把 kind 误判成 other（260801）。
+        if not _DATE_STEM_RE.match(f.stem):
+            continue
         try:
             st = f.stat()
             with f.open("r", encoding="utf-8") as fh:

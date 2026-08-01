@@ -33,6 +33,8 @@ port.txt
 
 # 本地维护文件（工作区规范，不上传开源仓库）
 # CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
+# .claude/ = 本地操作规程（workflows/self-audit.md 等，含本机路径与采集姿势）
 CLAUDE.md
 issues/
 promo/
+.claude/

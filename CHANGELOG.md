@@ -33,6 +33,24 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
+## Unreleased
+
+### Fixed
+- **`get <id>` without `--date` could silently return a stripped-down record.** The date scan
+  behind the CLI (`list_capture_dates`) globbed `*.jsonl`, which also matches the write-time
+  index files named `<date>.idx.jsonl` — so `f.stem` yielded pseudo-dates like `2026-08-01.idx`.
+  Harmless as noise in `dates`, but `get` falls back to walking history when no `--date` is
+  given, index lines carry **the same `id` as the real record**, and reverse sort puts
+  `"2026-07-31.idx"` *ahead of* `"2026-07-31"` — so the index line always won. The result was
+  the worst kind of failure: not an error but `ok: true` with `data: null` for every body-bearing
+  part (`system`, `messages`, `tools`, `request`, `response`), plus a `kind` misread as `other`
+  because the classifier had no body to work with. An agent reading that would conclude "this
+  request carried no system prompt". The scan now accepts only `YYYY-MM-DD` stems, which also
+  covers `.archiving.*` temp files and any future derived name. Note this bug was already known
+  and fixed on the GUI path — `capture_store._available_dates()` has filtered by date regex since
+  the index was introduced (260719), with a comment saying it shows up "the moment index files
+  exist"; the config-side twin was simply missed.
+
 ## v0.4.5 - 2026-08-01
 
 ### Changed
