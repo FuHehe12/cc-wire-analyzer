@@ -54,9 +54,11 @@ jobs:
           sed -i.bak "s/^version = \".*\"/version = \"$V\"/" pyproject.toml && rm pyproject.toml.bak
           echo "Injected version: $V"
 
-      # 单 exe（260713 合并）：无参/双击开 GUI，`serve` 子命令起 headless 服务给 AI。
+      # 单 exe（260713 合并）：无参/双击开 GUI，`serve` 起 headless 服务给 AI，`--help` 打印说明。
       # 不再单独出 CLI 二进制——AI 走 HTTP API（/api/proxy/*、/api/captures…），
-      # 不需要 stdout；Windows 的 noconsole GUI exe 本来也没 stdout 可用。
+      # 结构化 JSON 比 stdout 更合适，也免得维护第二套面向 agent 的接口。
+      # （别写"noconsole 没有 stdout"——260801 实测：管道/重定向启动时 fd 1 有效，
+      #   `--help` 正是靠这个打印的。见 docs/开发指南.md「单 exe，三种调用」。）
       - name: Build with PyInstaller
         run: uv run pyinstaller ${{ matrix.spec }} --noconfirm --clean
 

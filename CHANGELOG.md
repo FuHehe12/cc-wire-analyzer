@@ -5,30 +5,33 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed to use it from an agent.
-- **Current status**: **v0.4.2 released** (2026-07-30). A layout and polish release: the two columns
-  of the detail view line up again (a bare chip row facing a card had them 27 px out of step from
-  the second block down), the capture list is a real fixed-column grid (flex had the summary column
-  wandering 300 px across rows), and the release assets use one naming scheme on both platforms
-  (`cc-wire-analyzer-{windows,macos}`, plus a renamed macOS bundle so the serve command reads the
-  same on both). Built on v0.4.1, which made security-classifier reviews readable and gave the
-  project a single home for its development conventions (`docs/开发指南.md`).
-  **Heads-up for macOS upgraders**: the bundle was renamed `CCWireAnalyzer.app` →
-  `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
+- **Current status**: **v0.4.3 released** (2026-08-01). The release that closed the recording
+  blind-spot audit and stopped under-reporting failures. Three things matter most: an upstream
+  error *inside* an SSE stream (HTTP 200) used to be recorded as a **success**, so in-stream
+  failures had never entered the failure statistics — **this tool had been under-reporting the
+  upstream failure rate**; failure grouping finally has a way in from the UI, after six weeks of
+  being the project's self-declared largest gap; and the agent-facing manual now ships inside the
+  binary (`--help`, and `GET /api/ai-guide` once running), so an AI on a machine that only has the
+  executable can learn to drive it. Also: recording now covers every compression format CC
+  advertises (a missing brotli had been dropping every security-classifier body), what CC declares
+  about itself (`anthropic-beta`) is recorded and surfaced as a blind-spot radar, and the version
+  the app reports finally always matches the release tag.
+  **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed
+  `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
+  delete it yourself.
 - **Next steps**:
-  1. **Failure grouping now has a UI entry (done, unreleased v0.4.3)** — what had been this
-  project's self-declared largest gap for six weeks. Its input is trustworthy too: in-stream errors
-  used to be recorded as successes and never reached the statistics at all, also fixed in v0.4.3.
-  What is left on this line is the *cross-day* view: trends and recurrence, not a single day.
+  1. **Failure grouping across days.** The single-day view landed in v0.4.3; what it cannot answer
+  is whether today's failures are new or a pattern — trends, recurrence, and hardening recurring
+  patterns into doctor rules (`effort_max_rejected_upstream` originated exactly that way).
   2. **Recording-blind-spot audit: closed (both halves).** The 260731 *protocol-side* audit
   (against what CC declares: headers, body fields, SSE branches) found nine gaps, all addressed.
   The *capability-side* half — running each CC ability through the proxy and checking the recording
   — is now done too: 14 captures across 7 dimensions, core parsing zero hard bugs, one
   documentation posture fixed (see v0.4.3). Method in `docs/开发指南.md` §2.5; portable version in
   unit 0 of `docs/问题域手册.md`.
-  3. **Diagnosis loop, continued**: recurring failure patterns hardened into doctor rules (`effort_max_rejected_upstream` originated this way); cross-day trends further out.
-  4. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
+  3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
-## v0.4.3 - unreleased
+## v0.4.3 - 2026-08-01
 
 ### Added
 - **Failure grouping finally has a way in from the UI — the gap this project had been calling its
