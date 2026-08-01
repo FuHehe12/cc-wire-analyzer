@@ -37,6 +37,44 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
+## Unreleased
+
+### Fixed
+- **The one line you hand to your AI stayed Chinese no matter the interface language.** The
+  translations had been there all along; the rendering was the problem. That sentence embeds this
+  machine's guide URL (the port is picked dynamically), so it cannot live in a static `data-i18n`
+  node — it is written by JS inside `loadConfig()`. `setLang` re-renders every other JS-built panel
+  and misses the settings page, so the sentence froze in whatever language was active when the page
+  was opened. Worse than a display bug: the copy button copies `S.aiPrompt`, so the interface could
+  be English while the clipboard held Chinese. There is now one `renderSettingsI18n()` that owns
+  every derived string on the settings page (that sentence and the backup count), called from
+  `setLang`. Deliberately **not** `loadConfig()` — that would overwrite form fields the user is
+  editing but has not saved yet.
+- **"I raised max output tokens, saved it, and the output is still cut off."** Persistence was never
+  the problem (`set_config` writes, `_llm_request` re-reads the config on every call). The setting
+  did reach the upstream; what was missing is any way to tell **why** the text stopped. Three
+  different causes looked identical on screen — the source text was cut by *this tool* before
+  sending (20 000 characters, a cost guard that no `max_tokens` can undo), the upstream stopped at
+  `max_tokens` (and the model has its own ceiling, so a larger local value may change nothing), or
+  upstream content filtering intervened. All three now say so, in a notice at the top of the result
+  block. The stream path had never read `finish_reason` at all: only the non-streaming path — used
+  solely by the "test connection" button — reported truncation, while translate and explain, the
+  ones people actually use, are streaming. Two optional SSE events were added
+  (`input_truncated` / `truncated`; see `docs/API契约.md`). Separately, `HTTPError` is now caught
+  ahead of `URLError` and its body is read, so an upstream 400 that says "max_tokens must be
+  <= 8192" reaches the user instead of a bare `HTTP Error 400: Bad Request`.
+- **Text you could read but not select or copy**, in the packaged app: the `req_xxxxxx` id at the
+  top of the detail view, the settings page's paths and BASE_URL, the data directory and log path in
+  About. Selectability was an **allow-list** of CSS classes whose neighbouring comment already
+  described the opposite intent ("interactive controls not selectable, body text always
+  selectable") — so every display component added since missed the list. WebView2 gives no native
+  context menu, and the self-drawn one bails out when it finds neither a selection nor a known
+  block, which is why those elements had no copy path at all: not merely awkward, impossible. The
+  rule is now a **deny-list** — body text selectable by default, `user-select: none` only on
+  buttons, tabs, date chips, toggles and DAG nodes/lane heads — and the right-click "copy block"
+  selector covers the crumb bar, settings rows, the About row and DAG nodes. Button labels
+  ("← Back", "Open", "Check for updates") are stripped from a copied block.
+
 ## v0.4.4 - 2026-08-01
 
 ### Fixed

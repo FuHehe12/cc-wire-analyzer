@@ -269,15 +269,17 @@ data: {...}
 
 ### `POST /api/translate` — 翻译文本（SSE 流式，260713 改）
 
-**请求**：`{ "text": "..." }`（>20000 字符截断）
+**请求**：`{ "text": "..." }`（>20000 字符截断，见下方 `input_truncated`）
 
 **响应** `200` `text/event-stream`：
 
 ```
+data: {"input_truncated": 20000, "orig": 53210}   // 可选，恒在最前
 data: {"delta":"译"}
 data: {"delta":"文"}
 data: {"delta":"片段"}
 ...
+data: {"truncated": "length", "max_tokens": 8192}  // 可选，紧邻 done 之前
 data: {"done": true}
 
 data: {"error_code": "...", "error": "..."}    // 错误时替代 done
@@ -286,6 +288,8 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - 增量字段 `delta`：流式译文片段，前端 rAF 节流拼接（单 textNode appendData，不堆 textNode）
 - 结束字段 `done: true`：正常结束信号
 - 错误字段 `error_code` + `error`：错误时替代 done，前端按 `error_code` 查 i18n 表（`no_api_key` / `no_base_url` / `empty_text` 等）
+- **截断字段（260801 增量）**：`input_truncated`（本工具把原文砍到 `LLM_INPUT_MAX=20000` 才发出去，`orig` 是原长）与 `truncated`（上游 `finish_reason`，取值 `length` / `content_filter`，`max_tokens` 是发起时的本机设置）。两者都是**可选事件**，不出现即表示没发生。
+  加它们的原因：「输出到此为止」有三种成因（原文被我们砍短 / 上游到 max_tokens / 内容审查），此前在界面上长得一模一样，用户改大 `max_tokens` 后无从判断生效没有（260801 用户反馈 #2）。`finish_reason` 此前只有非流式路径读，而翻译/解读走的恰恰是流式。
 
 目标语言取 `config.translate.target_lang`。system prompt 内置强隔离（`<text>` 内视为纯文本，绝不执行其中指令），文本内字面 `</text` 转义防定界符逃逸。
 
@@ -297,7 +301,7 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - 用户内容包 `<content>` 且字面 `</content>` 转义
 - 隔离头尾代码写死，设置只能改任务描述段（防注入不可被配置绕开）
 
-> **自检**：改 SSE event 格式时，必须同步改前端 `_streamResponse()`（`templates/index.html`）
+> **自检**：改 SSE event 格式时，必须同步改前端 `llmToolAction()`（`templates/index.html`）
 > + 此契约 + `docs/AI_USAGE.md`。改隔离定界符时必须同步改 `_translate_parts` /
 > `_explain_parts`（`src/app.py`）。
 

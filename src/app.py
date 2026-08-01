@@ -395,12 +395,26 @@ def _llm_request(system: str, user_content: str, stream: bool = False):
 
 
 def _open_llm(req):
-    """打开 LLM 请求，统一超时识别（180s）。翻译长文本上游慢，超时给人话（260713）。"""
+    """打开 LLM 请求，统一超时识别（180s）。翻译长文本上游慢，超时给人话（260713）。
+
+    HTTPError 必须**排在 URLError 前面**单独接（前者是后者的子类，写反了就被父类抢走），
+    并且要把 body 读出来：上游对「max_tokens 超过模型上限」这类参数错误返回的 400，
+    原因全写在 body 里，而 `str(HTTPError)` 只有 `HTTP Error 400: Bad Request`。
+    260801 用户反馈「改了最大输出 tokens 没生效」时，这条路径正是可能的哑火点之一。"""
     import socket
     import urllib.error
     import urllib.request
     try:
         return urllib.request.urlopen(req, timeout=180)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            body = e.read().decode("utf-8", "replace").strip()
+            if body:
+                detail = "：" + (body[:400] + "…" if len(body) > 400 else body)
+        except Exception:
+            pass          # body 读不出来不能把错误本身弄丢
+        raise LlmConfigError("upstream_error", f"上游返回 HTTP {e.code}{detail}")
     except urllib.error.URLError as e:
         if isinstance(e.reason, socket.timeout) or "timed out" in str(e).lower():
             raise LlmConfigError("timeout", "上游响应超时（180s）。文本可能过长，或上游繁忙，可重试或缩短文本。")
@@ -422,11 +436,16 @@ def _llm_chat(system: str, user_content: str) -> str:
 
 
 def _llm_chat_stream(system: str, user_content: str):
-    """流式版：generator，yield 文本增量（delta.content）。
+    """流式版：generator，yield ("delta", 文本增量) / ("finish", finish_reason)。
 
     翻译/解读用这个 —— 长文本边出字，用户不用干等完整响应（260713）。
-    前端 rAF 节流渲染 + append 增量，上游吐多碎都不卡。"""
+    前端 rAF 节流渲染 + append 增量，上游吐多碎都不卡。
+
+    260801 起连 `finish_reason` 一起吐出来。此前只吐文本：**「说完了」与「被 max_tokens
+    掐断了」在界面上长得一模一样**，用户改大设置后无从判断到底生效没有（用户反馈 #2）。
+    非流式的 `_llm_chat` 一直有这个提示，而日常用的翻译/解读走的恰恰是流式这条。"""
     resp = _open_llm(_llm_request(system, user_content, stream=True))
+    finish = None
     for raw in resp:                       # HTTPResponse 逐行迭代（SSE event 以空行分隔，每行一个 data:）
         line = raw.decode("utf-8", "replace").strip()
         if not line or line.startswith(":") or not line.startswith("data:"):
@@ -439,11 +458,18 @@ def _llm_chat_stream(system: str, user_content: str):
         except json.JSONDecodeError:
             continue
         try:
-            delta = (evt["choices"][0].get("delta") or {}).get("content")
+            choice = evt["choices"][0]
         except (KeyError, IndexError, TypeError):
-            delta = None
+            continue
+        # finish_reason 通常在最后一个 chunk，但别假定它一定是最后一个——记住最后一个非空值即可
+        fr = choice.get("finish_reason")
+        if fr:
+            finish = fr
+        delta = (choice.get("delta") or {}).get("content") if isinstance(choice.get("delta"), dict) else None
         if delta:
-            yield delta
+            yield ("delta", delta)
+    if finish:
+        yield ("finish", finish)
 
 
 def _strip_delim(s: str, tag: str) -> str:
@@ -500,19 +526,32 @@ def _sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
-def _stream_response(parts_fn, text: str):
+def _stream_response(parts_fn, text: str, input_truncated: int | None = None,
+                     orig_len: int | None = None):
     """通用 SSE 流式端点：parts_fn(text) → (system, wrapped)，逐 delta 推给前端。
 
     流式协议（每行一个 SSE data 事件）：
       {"delta": "..."}   文本增量
       {"done": true}     正常结束
       {"error_code": "...", "error": "..."}  出错（前端显示在结果区，不靠一闪而过的 toast）
-    前端 rAF 节流 + append 增量渲染，上游吐多碎都不卡（260713）。"""
+      {"input_truncated": 20000, "orig": 53210}      原文被本工具截短后才发出去（260801）
+      {"truncated": "length"|"content_filter", "max_tokens": 8192}  上游把输出掐了（260801）
+    前端 rAF 节流 + append 增量渲染，上游吐多碎都不卡（260713）。
+
+    后两个事件是 260801 补的：**「输出到此为止」有三种完全不同的成因**——原文被我们砍短、
+    上游到 max_tokens、上游内容审查——此前它们在界面上一模一样，用户只能看见「又断了」，
+    改设置也无从验证有没有用（用户反馈 #2）。截断这件事必须自己说出来。"""
     def gen():
         try:
+            if input_truncated:
+                yield _sse({"input_truncated": input_truncated, "orig": orig_len})
             system, wrapped = parts_fn(text)
-            for delta in _llm_chat_stream(system, wrapped):
-                yield _sse({"delta": delta})
+            for kind, val in _llm_chat_stream(system, wrapped):
+                if kind == "delta":
+                    yield _sse({"delta": val})
+                elif kind == "finish" and val in ("length", "content_filter"):
+                    mt = (CFG.get_config().get("translate") or {}).get("max_tokens")
+                    yield _sse({"truncated": val, "max_tokens": mt})
             yield _sse({"done": True})
         except LlmConfigError as e:
             yield _sse({"error_code": e.code, "error": str(e)})
@@ -522,15 +561,23 @@ def _stream_response(parts_fn, text: str):
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# 输入侧硬上限：CC 的 system prompt 动辄上万字符，不设限一次翻译就能烧掉一大笔钱。
+# 但**砍了必须说**——它砍的是原文，调大 max_tokens 救不回来（260801 用户反馈 #2）。
+LLM_INPUT_MAX = 20000
+
+
 @app.route("/api/translate", methods=["POST"])
 def api_translate():
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"ok": False, "error_code": "empty_text", "error": "空文本"}), 400
-    if len(text) > 20000:
-        text = text[:20000] + "\n…（已截断）"
-    return _stream_response(_translate_parts, text)
+    orig = len(text)
+    cut = orig > LLM_INPUT_MAX
+    if cut:
+        text = text[:LLM_INPUT_MAX] + "\n…（已截断）"
+    return _stream_response(_translate_parts, text,
+                            LLM_INPUT_MAX if cut else None, orig)
 
 
 @app.route("/api/explain", methods=["POST"])
@@ -540,9 +587,12 @@ def api_explain():
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"ok": False, "error_code": "empty_text", "error": "空文本"}), 400
-    if len(text) > 20000:
-        text = text[:20000] + "\n…（已截断）"
-    return _stream_response(_explain_parts, text)
+    orig = len(text)
+    cut = orig > LLM_INPUT_MAX
+    if cut:
+        text = text[:LLM_INPUT_MAX] + "\n…（已截断）"
+    return _stream_response(_explain_parts, text,
+                            LLM_INPUT_MAX if cut else None, orig)
 
 
 @app.route("/api/translate/test", methods=["POST"])

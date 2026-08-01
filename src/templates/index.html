@@ -55,11 +55,19 @@
 body{font-family:var(--font-body);background:var(--bg-canvas);color:var(--apple-text);
   line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;}
 ::selection{background:rgba(214,154,54,0.28);color:#1A1A1A;}
-/* 内容区显式可选：交互控件（按钮/标签页/折叠头/泳道图）不可选，正文一律可选。
+/* 正文默认可选，交互控件显式不可选（260801 把白名单反转成黑名单）。
    -webkit- 前缀是给 macOS WebKit 后端的。见 ctxInit() 注释：两个后端都不给原生复制，
-   所以「能选中」是复制链路的第一环，不能靠默认值碰运气。 */
-pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.mono{
-  user-select:text;-webkit-user-select:text;cursor:auto;}
+   所以「能选中」是复制链路的第一环，不能靠默认值碰运气。
+   原来这里是白名单（只列出的类可选），意图与本注释一致但实现不等价：每加一个展示组件就漏
+   一个——`.crumb-id`（详情页的 req_xxxxxx）、设置页的 `.val`（路径/BASE_URL）、关于卡片的
+   `.v` 全都漏了，用户直接报「很多界面拷不了文字」。**默认值必须是能复制**：这软件里绝大多数
+   文本（ID/路径/报文/日志）就是给人拿走的，忘了标注的代价应该是「多一处能选中」而不是「拷不走」。*/
+body{user-select:text;-webkit-user-select:text;}
+button,.btn,.tab-btn,.date-chip,.toggle,.ctx-item,select,
+.dag-node,.lane-head,.dag-legend,.dag-toolbar{user-select:none;-webkit-user-select:none;}
+/* `.chip` 不在上面那行：`#dPath` 就是个 chip，而 API 路径正是用户会想拷的东西。
+   `.dag-node` 在图上要点/要拖，划中反而碍事——它的复制入口是右键「复制整块」（见 blockTextOf）。*/
+pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.mono{cursor:auto;}
 /* 自绘右键菜单（原生的被 WebView2 禁掉了）*/
 .ctx-menu{position:fixed;z-index:9999;min-width:150px;padding:4px;border:1px solid var(--border);
   border-radius:var(--radius-sm);background:var(--bg-card);box-shadow:0 6px 24px rgba(0,0,0,0.14);
@@ -359,6 +367,12 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .llm-err-body{font-size:12px;color:var(--apple-text);line-height:1.5;}
 .llm-err-body code{font-family:var(--font-mono);font-size:11px;background:var(--bg-softer);
   padding:1px 5px;border-radius:3px;color:var(--err);margin-right:4px;}
+/* 截断提示（260801）：原文被本工具砍短 / 上游到 max_tokens / 被内容审查——三种成因此前在
+   界面上长得一模一样（都是文本停在半截），用户改了设置也无从判断生效没有。深金字配浅金底，
+   两个背景上都过 AA（#6B4A12 on #FFF7E6 ≈ 9.6:1）。 */
+.llm-notice{font-size:11.5px;line-height:1.5;color:var(--gold-text);background:var(--bg-permission);
+  border:1px solid var(--border-warm);border-radius:5px;padding:5px 9px;margin-bottom:6px;
+  white-space:pre-line;}
 /* 流式渲染区（260713）：纯文本增量，结束后替换为 md-body。pre 用正文字体、自动换行。 */
 .llm-result.llm-streaming .llm-stream-text{font-family:var(--font-body);font-size:13px;
   white-space:pre-wrap;word-break:break-word;margin:0;color:var(--apple-text);min-height:1em;}
@@ -715,7 +729,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           <input type="number" id="cfgTransTemp" min="0" max="2" step="0.1" value="0.3">
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.maxTokens">最大输出 tokens</div><div class="sub" data-i18n="set.maxTokensSub">长文本翻译/解读需要足够大，否则输出被截断</div></div>
+          <div><div class="lbl" data-i18n="set.maxTokens">最大输出 tokens</div><div class="sub" data-i18n="set.maxTokensSub">长文本翻译/解读需要足够大，否则输出被截断；上游模型自身也有上限</div></div>
           <input type="number" id="cfgTransMaxTokens" min="256" max="65536" step="256" value="8192">
         </div>
         <div class="srow">
@@ -929,6 +943,9 @@ zh: {
   "llm.translated": "↓ 翻译",
   "llm.explaining": "解读中…", "llm.reexplain": "再问一次", "llm.explainFail": "解读失败",
   "llm.explained": "AI 解读",
+  "llm.cutInput": "原文过长，只发送了前 {n} 字符（原文共 {orig}）——这一刀是本工具砍的，调大「最大输出 tokens」救不回来。",
+  "llm.cutOutput": "输出到达上限被截断（当前设置 {n}）。上游模型自身也有输出上限，调大本机设置未必能突破。",
+  "llm.cutFilter": "上游内容审查中断了输出，结果不完整。",
   "dag.meta": "{n} 请求 · {m} 泳道", "dag.live": " · LIVE 自动重绘",
   "dag.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话，交互时序会实时出现在这里。",
   "dag.emptyDate": "该日期没有捕获记录。", "dag.loadFailed": "时序图加载失败：{msg}",
@@ -977,7 +994,7 @@ zh: {
   "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开", "set.backupCount": "当前 {n} 份",
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
-  "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）",
+  "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）。上游模型自身也有输出上限，填得再大也不会超过它",
   "detail.respHeaders": "响应 Headers",
   "detail.wireOnlyHint": "ⓘ 含 ratelimit / request-id 等只在 wire 层看得到的字段（CC jsonl 不记录）",
   "status.writeFail": "⚠ 录制写盘失败 {n} 次 —— 这些流量没有存下来！{msg}",
@@ -1089,6 +1106,9 @@ en: {
   "llm.translated": "↓ Translation",
   "llm.explaining": "Asking…", "llm.reexplain": "Ask again", "llm.explainFail": "Ask AI failed",
   "llm.explained": "AI explanation",
+  "llm.cutInput": "Source too long — only the first {n} characters were sent (of {orig}). This tool made that cut; raising “Max output tokens” will not undo it.",
+  "llm.cutOutput": "Output hit the limit and was truncated (current setting {n}). The upstream model has its own output ceiling, so raising this setting may not lift it.",
+  "llm.cutFilter": "Upstream content filtering cut the output short — the result is incomplete.",
   "dag.meta": "{n} requests · {m} lanes", "dag.live": " · LIVE redraw",
   "dag.emptyToday": "No captures today — start the proxy and open a new CC session; the timeline appears here live.",
   "dag.emptyDate": "No captures on this date.", "dag.loadFailed": "Failed to load timeline: {msg}",
@@ -1137,7 +1157,7 @@ en: {
   "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open", "set.backupCount": "current {n}",
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
-  "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default)",
+  "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default). The upstream model has its own ceiling — a larger value here cannot exceed it",
   "detail.respHeaders": "Response headers",
   "detail.wireOnlyHint": "ⓘ Includes ratelimit / request-id — only visible at wire layer (not in CC's jsonl)",
   "status.writeFail": "⚠ {n} capture(s) failed to write to disk — that traffic was NOT saved! {msg}",
@@ -1249,6 +1269,9 @@ ja: {
   "llm.translated": "↓ 翻訳",
   "llm.explaining": "解析中…", "llm.reexplain": "もう一度", "llm.explainFail": "AI 解説に失敗",
   "llm.explained": "AI 解説",
+  "llm.cutInput": "原文が長すぎるため、先頭 {n} 文字のみ送信しました（原文は全 {orig}）。これは本ツール側の切り詰めで、「最大出力トークン」を上げても戻りません。",
+  "llm.cutOutput": "出力が上限に達して切り詰められました（現在の設定 {n}）。上流モデル自体にも出力上限があり、本機の設定を上げても超えられない場合があります。",
+  "llm.cutFilter": "上流のコンテンツ審査により出力が途中で打ち切られました。結果は不完全です。",
   "dag.meta": "{n} リクエスト · {m} レーン", "dag.live": " · LIVE 再描画",
   "dag.emptyToday": "本日のキャプチャはまだありません——プロキシを開始して新しい CC セッションを開くと、タイムラインがここに表示されます。",
   "dag.emptyDate": "この日付のキャプチャはありません。", "dag.loadFailed": "タイムラインの読み込みに失敗：{msg}",
@@ -1297,7 +1320,7 @@ ja: {
   "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く", "set.backupCount": "現在 {n} 件",
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
-  "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上游デフォルト）",
+  "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上流のデフォルト）。上流モデル自体にも出力上限があり、これを超えることはできません",
   "detail.respHeaders": "レスポンス Headers",
   "detail.wireOnlyHint": "ⓘ ratelimit / request-id など wire 層でのみ見えるフィールド（CC の jsonl には記録されない）",
   "status.writeFail": "⚠ 録画の書き込みに {n} 回失敗 —— そのトラフィックは保存されていません！{msg}",
@@ -1417,13 +1440,28 @@ async function setUiScale(scale){
   }catch(e){ toast(t18("toast.cfgSaveFailed", {msg: e.message}), true); }
 }
 
+/* 设置页里由 JS 拼出来的文案（没有 data-i18n，applyI18n 管不着）——切语言时必须一起重算。
+   260801 用户反馈 #1：「复制给 AI 的一句话」切成英文/日文后仍是中文。它三语译文齐全，
+   只是渲染在 loadConfig() 里（文案要插入本机 guide URL，端口是动态挑的，写不进静态节点）。
+   **只重算派生文本，绝不 loadConfig()**：那会把用户正在编辑、还没保存的表单输入冲回旧值。
+   新增设置页 JS 文案往这里加一行，别再往 setLang 末尾散着堆。 */
+function renderSettingsI18n(){
+  const bc = $("cfgBackupCount");
+  if(bc && S.backupsCount != null) bc.textContent = t18("set.backupCount", {n: S.backupsCount});
+  const ap = $("aiPromptText");
+  if(ap && S.aiGuideUrl){
+    S.aiPrompt = t18("set.ai.promptText", {url: S.aiGuideUrl});   /* 复制按钮拷的是它，必须同步 */
+    ap.textContent = S.aiPrompt;
+  }
+}
+
 async function setLang(lang){
   LANG = lang;
   applyI18n();
   /* 静态文案已换，动态渲染的视图全部重渲（切换立即生效，无需重启）。
      体检与失败聚合的条目也是 JS 拼的，applyI18n 只管 data-i18n 的静态节点——
      漏掉它们就会出现「界面已切英文、抽屉里还是中文」（260801 补） */
-  renderStatus(); renderDates(); renderList(); renderDoctor(); renderDiag();
+  renderStatus(); renderDates(); renderList(); renderDoctor(); renderDiag(); renderSettingsI18n();
   if(S.view === "dag") loadDag();
   if(S.view === "detail" && S.captureId) openDetail(S.captureId);
   try{
@@ -1542,8 +1580,23 @@ function blockTextOf(el){
   if(!el || !el.closest) return "";
   const ex = el.closest(".excerpt");
   if(ex) return _excerptRaw(ex);                     /* excerpt 特判：拿原始全文而非可见片段 */
-  const blk = el.closest("pre, .md-body, .msg, .err-card, .dcard, .node-card, .lane");
-  return blk ? blk.innerText : "";
+  /* 260801 补 .crumb-bar / .srow / .about-row / .dag-node：
+     前三个是「一行只读信息」（req id + 路径 + 时序、设置页的每一行、关于卡片），此前右键
+     `sel` 与 `blk` 双空 → ctxInit 直接不劫持 → 右键什么都不弹，那块文字彻底拿不走；
+     .dag-node 有意不可选，右键复制整块是它唯一的复制入口。 */
+  const blk = el.closest("pre, .md-body, .msg, .err-card, .dcard, .node-card, .lane,"
+                       + " .crumb-bar, .srow, .about-row, .dag-node");
+  if(!blk) return "";
+  /* 这些块里混着按钮（详情页的「← 返回」、设置页的「打开」「检查更新」），拷进去纯是噪音。
+     临时 display:none 再读 innerText——比 cloneNode 可靠：脱离文档的节点没有布局，
+     innerText 会退化成 textContent，换行全丢。只在右键那一刻走一次，重排代价可忽略。 */
+  const btns = [...blk.querySelectorAll("button")];
+  if(!btns.length) return blk.innerText;
+  const saved = btns.map(b => [b, b.style.display]);
+  saved.forEach(([b]) => { b.style.display = "none"; });
+  const txt = blk.innerText;
+  saved.forEach(([b, d]) => { b.style.display = d; });
+  return txt;
 }
 function selText(){ return String(window.getSelection() ? window.getSelection().toString() : ""); }
 
@@ -1562,7 +1615,8 @@ function ctxInit(){
     if(sel) items.push([t18("ctx.copySel"), () => copyAndReport(sel)]);
     if(blk) items.push([t18("ctx.copyBlock", {n: fmtTok(blk.length)}), () => copyAndReport(blk)]);
     if(blk) items.push([t18("ctx.selectBlock"), () => {
-      const el = e.target.closest(".excerpt, pre, .md-body, .msg, .err-card, .dcard");
+      const el = e.target.closest(".excerpt, pre, .md-body, .msg, .err-card, .dcard,"
+                                + " .crumb-bar, .srow, .about-row");
       if(!el) return;
       const r = document.createRange(); r.selectNodeContents(el);
       const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
@@ -1669,12 +1723,30 @@ function llmToolAction(btn, kind, raw, host){
     if(buf){ if(!textNode) textNode = pre.appendChild(document.createTextNode("")); textNode.appendData(buf); buf = ""; }
   }
   function pushDelta(d){ buf += d; if(!rafQueued){ rafQueued = true; requestAnimationFrame(flush); } }
+
+  /* 截断提示（260801 用户反馈 #2）：三种成因要分得开——
+     原文被我们砍短（调大 max_tokens 救不回来）／上游到 max_tokens（上游模型自己也有上限）／
+     内容审查。提示挂在结果块顶部，finalize/showError 重建 innerHTML 后要再挂一次。 */
+  const notices = [];
+  function renderNotices(){
+    if(!notices.length) return;
+    let n = div.querySelector(".llm-notice");
+    if(!n){
+      n = document.createElement("div"); n.className = "llm-notice";
+      const tag = div.querySelector(".llm-result-tag");
+      if(tag && tag.nextSibling) div.insertBefore(n, tag.nextSibling); else div.insertBefore(n, div.firstChild);
+    }
+    n.textContent = notices.join("\n");
+  }
+  function addNotice(txt){ notices.push(txt); renderNotices(); }
+
   function showError(code, msg){
     flush();
     div.className = A.cls + " llm-result llm-error";
     const c = code ? '<code>' + esc(code) + '</code> · ' : '';
     div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
       '<div class="llm-err-body">' + c + esc(msg || "") + '</div>';
+    renderNotices();   /* innerHTML 重建把提示冲掉了，再挂一次——出错时更需要知道原文被砍过 */
     toast(t18(A.fail) + "：" + (msg || code), true);
     setBtnLabel(btn, orig); btn.disabled = false;
   }
@@ -1686,6 +1758,7 @@ function llmToolAction(btn, kind, raw, host){
     if(!clean){ showError("empty_response", "上游返回空内容，请重试或缩短文本"); return; }
     div.className = A.cls + " llm-result md-body";
     div.innerHTML = '<div class="llm-result-tag">' + t18(A.tag) + '</div>' + mdRender(clean);
+    renderNotices();   /* 同上：mdRender 重建了整块，提示要再挂回去 */
     setBtnLabel(btn, t18(A.redo)); btn.disabled = false;
   }
 
@@ -1705,6 +1778,11 @@ function llmToolAction(btn, kind, raw, host){
             if(evt.delta) pushDelta(evt.delta);
             else if(evt.done) done = true;
             else if(evt.error_code) errObj = evt;
+            else if(evt.input_truncated) addNotice(t18("llm.cutInput",
+              {n: fmtTok(evt.input_truncated), orig: fmtTok(evt.orig || 0)}));
+            else if(evt.truncated) addNotice(evt.truncated === "content_filter"
+              ? t18("llm.cutFilter")
+              : t18("llm.cutOutput", {n: evt.max_tokens || "—"}));
           }
           if(errObj){ showError(errObj.error_code, errObj.error); return; }
           pump();
@@ -2970,7 +3048,8 @@ async function loadConfig(){
     $("cfgSettingsPath").textContent = about.settings_path || "—";
     $("cfgBaseUrl").textContent = st.original_base_url || st.upstream || "—";
     $("cfgBackupDir").textContent = (about.data_dir || "~/.cc-wire-analyzer") + "/backups";
-    $("cfgBackupCount").textContent = t18("set.backupCount", {n: st.backups_count ?? 0});
+    S.backupsCount = st.backups_count ?? 0;   /* 存原料：切语言时 renderSettingsI18n 要重算这句 */
+    $("cfgBackupCount").textContent = t18("set.backupCount", {n: S.backupsCount});
     $("cfgAutoStart").classList.toggle("on", !!cfg.auto_start_proxy);
     $("cfgRetention").value = cfg.retention_days ?? 30;
     const tr = cfg.translate || {};
@@ -2989,8 +3068,8 @@ async function loadConfig(){
        写死 5051 是这个项目反复踩过的坑，UI 里也不许再写死一次） */
     const guideUrl = location.origin + (about.ai_guide || "/api/ai-guide");
     $("aiGuideUrl").textContent = guideUrl;
-    S.aiPrompt = t18("set.ai.promptText", {url: guideUrl});
-    $("aiPromptText").textContent = S.aiPrompt;
+    S.aiGuideUrl = guideUrl;      /* 存原料：切语言时重算那句话要用（renderSettingsI18n）*/
+    renderSettingsI18n();
   }catch(e){
     toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
   }
