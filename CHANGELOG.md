@@ -35,7 +35,30 @@
 
 ## Unreleased
 
+### Changed
+- **`grep` searched 14% of a request and could not say so.** `--in all` covered three places —
+  the `system` field, `role=user` text, and the response's text blocks — while the rest of the
+  request body went unsearched: tool definitions (44% of the body, re-sent in full every
+  request), tool results (25%), tool-call arguments (8%), and `role=system`
+  mid-conversation messages (6.5%), which is where Claude Code puts the skill list and its
+  injected reminders. A search for a skill name returned `hits: 0` — indistinguishable from
+  "searched everywhere and it isn't there". For a tool an agent drives, that is the dangerous
+  shape of wrong: a confident negative it will reason from. `--in` now also accepts `sysmsg`,
+  `tool_result`, `tool_use`, and `tools`; `all` means everything except `tools` (a static schema
+  repeated on every request would drown every hit). And every result carries a `coverage` block
+  naming what was searched, what was skipped, and the skipped share of the body — measured
+  during the scan, not hardcoded — with an explicit note on zero hits. The share is reported
+  only when the scan ran to completion; if matches hit `--limit` first, it is `null` rather than
+  a number computed from a partial pass.
+
 ### Fixed
+- **`stats` left `cache_creation` out of its token totals** — 4% of the tokens, but around 38%
+  of the cost, because writing to the cache is priced 12.5–20× a read (depending on TTL).
+  The normalizer had all four fields; the consumer took three. Anyone reading `stats` to
+  understand spend was under-counting by a third, and under-counting precisely the part that
+  says "the context is being rebuilt" — the most actionable signal there. Token totals now
+  carry all four, plus a `cache_hit_ratio`. No dollar conversion is built in: rates vary by
+  model, route, and TTL, so a hardcoded one would rot.
 - **`get <id>` without `--date` could silently return a stripped-down record.** The date scan
   behind the CLI (`list_capture_dates`) globbed `*.jsonl`, which also matches the write-time
   index files named `<date>.idx.jsonl` — so `f.stem` yielded pseudo-dates like `2026-08-01.idx`.
