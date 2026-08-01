@@ -39,7 +39,29 @@
 
 ## Unreleased
 
+### Changed
+- **Hiding a timeline lane now cascades through everything it spawned.** Hiding 主线 N also hides
+  the subagent lanes it spawned — including nested chains where a subagent spawned another
+  subagent — and the auxiliary calls attached to it; those rows in the lane dropdown are marked
+  "hidden with 主线 N". To look at one subagent on its own, re-check it: it comes back alone
+  while the parent stays hidden. Re-showing the parent restores every descendant you did not hide
+  individually. (Previously only the auxiliary calls followed their main lane; subagent lanes
+  stayed and kept occupying columns.) Toggling is single-click in both directions — no
+  "click twice to really reopen" intermediate state.
+- **Subagent lanes are tinted with a washed-out version of their spawner's color** instead of all
+  sharing one flat blue. Nested spawns wash out one step further, so a whole spawn family reads as
+  one color family at a glance (lane head dot, node left border, sequence edges, trigger edges all
+  follow). Subagents whose spawner was never captured — Workflow spawns carry no trigger edge —
+  keep the plain blue, and blue now has a meaning: "the spawner is not on this chart". The legend
+  says so.
+
 ### Fixed
+- **`serve` exited instantly on a machine that has no `settings.json` yet.** Fresh machines (CC
+  never ran, or the file was deleted) hit `backup_file()`'s `read_bytes()` on a nonexistent file,
+  the exception path in `_serve` called `sys.exit(1)`, and the log showed a clean startup line
+  followed by an immediate atexit with no error. `_read_settings` now treats a missing file as
+  `{}` (patching then creates a minimal file) and `backup_file` skips a file that does not exist —
+  restore of "the key was never there" is a no-op anyway.
 - **The one line you hand to your AI stayed Chinese no matter the interface language.** The
   translations had been there all along; the rendering was the problem. That sentence embeds this
   machine's guide URL (the port is picked dynamically), so it cannot live in a static `data-i18n`

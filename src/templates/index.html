@@ -949,17 +949,18 @@ zh: {
   "dag.meta": "{n} 请求 · {m} 泳道", "dag.live": " · LIVE 自动重绘",
   "dag.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话，交互时序会实时出现在这里。",
   "dag.emptyDate": "该日期没有捕获记录。", "dag.loadFailed": "时序图加载失败：{msg}",
-  "dag.legSub": "子代理（旁点色 = 派生主线）", "dag.legAux": "辅助（节点色点 = 关联主线）",
+  "dag.legSub": "子代理（色 = 派生方淡化；蓝 = 派生方未录到）", "dag.legAux": "辅助（节点色点 = 关联主线）",
   "dag.legSeq": "会话顺序", "dag.legTrigger": "派生触发", "dag.legNear": "时序邻近",
   "dag.legTurn": "卡片 = 用户消息轮", "dag.legMid": "细条 = 工具循环步", "dag.legChat": "💬虚线 = 纯对话轮（没动手）",
-  "dag.spawnedBy": "由主线 {n} 派生", "dag.assoc": "关联主线 {n}",
+  "dag.spawnedBy": "由主线 {n} 派生", "dag.spawnedBySub": "由子代理 {id} 派生", "dag.assoc": "关联主线 {n}",
+  "dag.laneCascaded": "随 {lane} 隐藏",
   "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
   "dag.hideMid": "隐藏工具循环步", "dag.showMid": "显示工具循环步",
   "dag.hideMidTitle": "隐藏工具循环中间步，只看用户消息轮——大流量天图立刻可读",
   "dag.hideAux": "隐藏辅助调用", "dag.showAux": "显示辅助调用",
   "dag.hideAuxTitle": "隐藏标题/安全/计数等辅助调用（实测可占节点数 1/4），只看主线与子代理",
   "dag.lanes": "泳道", "dag.lanesTitle": "选择要显示的泳道——藏掉不看的主线，剩下的自然变大",
-  "dag.laneHint": "关闭一条主线会同时隐藏挂在它上面的辅助调用（标题/安全/计数/压缩）",
+  "dag.laneHint": "关闭一条主线会连同它派生的子代理（含嵌套）与辅助调用一起隐藏；子代理可单独勾回",
   "dag.errRun": "连续错误", "dag.errRunTitle": "{n} 条连续错误，点击展开逐条查看",
   "dag.collapseRun": "折叠",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
@@ -1112,17 +1113,18 @@ en: {
   "dag.meta": "{n} requests · {m} lanes", "dag.live": " · LIVE redraw",
   "dag.emptyToday": "No captures today — start the proxy and open a new CC session; the timeline appears here live.",
   "dag.emptyDate": "No captures on this date.", "dag.loadFailed": "Failed to load timeline: {msg}",
-  "dag.legSub": "subagent (side dot = spawning session)", "dag.legAux": "auxiliary (dot = related session)",
+  "dag.legSub": "subagent (tint of the spawner's color; blue = spawner not captured)", "dag.legAux": "auxiliary (dot = related session)",
   "dag.legSeq": "sequence", "dag.legTrigger": "spawn", "dag.legNear": "proximity",
   "dag.legTurn": "card = user turn", "dag.legMid": "slim = tool-loop step", "dag.legChat": "💬 dashed = chat-only turn (no tools)",
-  "dag.spawnedBy": "spawned by session {n}", "dag.assoc": "related to session {n}",
+  "dag.spawnedBy": "spawned by session {n}", "dag.spawnedBySub": "spawned by agent {id}", "dag.assoc": "related to session {n}",
+  "dag.laneCascaded": "hidden with {lane}",
   "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
   "dag.hideMid": "Hide tool-loop steps", "dag.showMid": "Show tool-loop steps",
   "dag.hideMidTitle": "Hide tool-loop middle steps, keep user turns only — makes busy days readable",
   "dag.hideAux": "Hide auxiliary calls", "dag.showAux": "Show auxiliary calls",
   "dag.hideAuxTitle": "Hide title/security/count auxiliary calls (can be 1/4 of all nodes), keep main & subagent lanes",
   "dag.lanes": "Lanes", "dag.lanesTitle": "Choose visible lanes — hide mains you don't watch and the rest gets bigger",
-  "dag.laneHint": "Hiding a main lane also hides the auxiliary calls (title/security/count/compact) attached to it",
+  "dag.laneHint": "Hiding a main lane also hides the subagents it spawned (including nested) and its auxiliary calls; a subagent can be re-enabled on its own",
   "dag.errRun": "consecutive errors", "dag.errRunTitle": "{n} consecutive errors, click to expand",
   "dag.collapseRun": "Collapse",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
@@ -1275,17 +1277,18 @@ ja: {
   "dag.meta": "{n} リクエスト · {m} レーン", "dag.live": " · LIVE 再描画",
   "dag.emptyToday": "本日のキャプチャはまだありません——プロキシを開始して新しい CC セッションを開くと、タイムラインがここに表示されます。",
   "dag.emptyDate": "この日付のキャプチャはありません。", "dag.loadFailed": "タイムラインの読み込みに失敗：{msg}",
-  "dag.legSub": "サブエージェント（横の点＝派生元メイン）", "dag.legAux": "補助（点＝関連メイン）",
+  "dag.legSub": "サブエージェント（色＝派生元の薄い色；青＝派生元未記録）", "dag.legAux": "補助（点＝関連メイン）",
   "dag.legSeq": "会話順", "dag.legTrigger": "派生", "dag.legNear": "時間近接",
   "dag.legTurn": "カード = ユーザーターン", "dag.legMid": "細行 = ツールループ", "dag.legChat": "💬破線 = 会話のみ（ツール未使用）",
-  "dag.spawnedBy": "メイン {n} から派生", "dag.assoc": "メイン {n} に関連",
+  "dag.spawnedBy": "メイン {n} から派生", "dag.spawnedBySub": "サブエージェント {id} から派生", "dag.assoc": "メイン {n} に関連",
+  "dag.laneCascaded": "{lane} と一緒に非表示",
   "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
   "dag.hideMid": "ツールループを隠す", "dag.showMid": "ツールループを表示",
   "dag.hideMidTitle": "ツールループの中間ステップを隠してユーザーターンだけ表示——大量の日でも読みやすく",
   "dag.hideAux": "補助呼び出しを隠す", "dag.showAux": "補助呼び出しを表示",
   "dag.hideAuxTitle": "タイトル/安全/カウントなどの補助呼び出しを隠す（ノードの1/4を占めることも）——メインとサブエージェントだけ表示",
   "dag.lanes": "レーン", "dag.lanesTitle": "表示するレーンを選択——見ないメインを隠すと残りが大きく表示されます",
-  "dag.laneHint": "メインレーンを隠すと、そのメインに属する補助呼び出し（タイトル／セキュリティ／カウント／圧縮）も一緒に隠れます",
+  "dag.laneHint": "メインレーンを隠すと、そこから派生したサブエージェント（入れ子を含む）と補助呼び出しも一緒に隠れます。サブエージェントは個別に再有効化できます",
   "dag.errRun": "連続エラー", "dag.errRunTitle": "{n} 件の連続エラー、クリックで展開",
   "dag.collapseRun": "折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
@@ -2652,6 +2655,7 @@ const DG = {
   laneX: {}, laneLast: {}, laneKind: {}, laneColor: {}, laneNum: {},
   parentLane: {}, auxAssoc: {}, laneCount: 0, yCur: DGX.Y0, lanes: [],
   hiddenLanes: new Set(),     /* 泳道选择：用户显式藏掉的 lane（不占列，260719） */
+  shownLanes: new Set(),      /* 用户显式勾回的 lane：父被（级联）关闭也照显（260801 级联关闭） */
   runs: {}, openRun: {}, runOf: {},   /* 连续错误折叠：key=lane:firstId；openRun=各 lane 未闭合的 run */
   expandedRuns: new Set(), suppressRun: {},
 };
@@ -2665,6 +2669,50 @@ function dagTierOf(n){
 }
 function dagLaneStroke(id){
   return DG.laneColor[id] || LANE_COLOR[DG.laneKind[id]] || LANE_COLOR.aux;
+}
+/* 派生可见性（260801 级联关闭）：显式开 > 显式关 > 沿 parentLane 派生链向上，任一祖先
+   隐藏则隐藏。关主线连带其派生的子代理（含 A→B 嵌套）与辅助节点一起消失；用户在下拉
+   单独勾回的子代理进 shownLanes，父级关了也照显。seen 防 trigger 边数据异常成环。 */
+function laneHidden(id, seen){
+  if(DG.shownLanes.has(id)) return false;
+  if(DG.hiddenLanes.has(id)) return true;
+  const p = DG.parentLane[id];
+  if(!p) return false;
+  seen = seen || new Set();
+  if(seen.has(id)) return false;
+  seen.add(id);
+  return laneHidden(p, seen);
+}
+/* 级联隐藏时「随谁隐藏」：派生链上最近的生效隐藏祖先（泳道下拉提示用） */
+function laneHiddenVia(id){
+  let p = DG.parentLane[id];
+  const seen = new Set([id]);
+  while(p && !seen.has(p)){
+    if(laneHidden(p)) return p;
+    seen.add(p); p = DG.parentLane[p];
+  }
+  return "";
+}
+/* 父链上是否有生效隐藏的祖先：决定 shownLanes 覆盖是否还有存在必要（没有就该清掉，
+   否则残留覆盖会让下一次关父级时这条泳道意外豁免级联——关主线就必须连子代理一起关） */
+function laneHasHiddenAncestor(id){
+  let p = DG.parentLane[id];
+  const seen = new Set([id]);
+  while(p && !seen.has(p)){
+    if(laneHidden(p)) return true;
+    seen.add(p); p = DG.parentLane[p];
+  }
+  return false;
+}
+/* 泳道短名：主线给「主线 N」，子代理给实例键（agent-xxxxxxxx，与泳道头副标签一致） */
+function laneShortName(id){
+  return DG.laneKind[id] === "main" ? laneLabel("main") + " " + (DG.laneNum[id] || "?") : id;
+}
+/* 子代理泳道色 = 派生方同色混白淡化（260801）：嵌套逐级再淡化，视觉成族。 */
+function hexMix(a, b, t){
+  const pa = [1, 3, 5].map(i => parseInt(a.substr(i, 2), 16));
+  const pb = [1, 3, 5].map(i => parseInt(b.substr(i, 2), 16));
+  return "#" + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
 function dagMetaSet(d){
   $("dagMeta").textContent = t18("dag.meta", {n: (d.nodes || []).length, m: (d.lanes || []).length}) +
@@ -2755,12 +2803,12 @@ function dagToggleRun(key){
 function dagPlace(n){
   const tier = DG.tier[n.id];
   if(DG.hideMid && tier === "mid") return null;
-  if(DG.hiddenLanes.has(n.lane)) return null;
+  if(laneHidden(n.lane)) return null;
   if(DG.hideAux && DG.laneKind[n.lane] === "aux") return null;
   /* 260729：辅助调用跟随其关联主线一起隐藏——关掉一条主线，挂在它上面的 title/security/
      count_tokens/compact 等 aux 节点（auxAssoc 记的 near 关联）一并隐去，避免"主线没了、
      辅助还在显示却不知属于谁"的困惑。auxAssoc 在 renderDagFull 由 near 边建立。 */
-  if(DG.laneKind[n.lane] === "aux" && DG.auxAssoc[n.id] && DG.hiddenLanes.has(DG.auxAssoc[n.id])) return null;
+  if(DG.laneKind[n.lane] === "aux" && DG.auxAssoc[n.id] && laneHidden(DG.auxAssoc[n.id])) return null;
   const x = DG.laneX[n.lane];
   if(x == null) return "UNKNOWN_LANE";   /* lane 不存在（增量路径防御：lane 换血 → 全量重渲） */
   const isErr = !!n.has_error && (n.kind === "main" || n.kind === "subagent");
@@ -2835,7 +2883,7 @@ function renderDagFull(d){
   const wrap = $("dagWrap");
   const nodes = d.nodes || [], lanes = d.lanes || [], edges = d.edges || [];
   if(DG.date !== S.date){   /* 切日期：泳道选择与展开状态不跨天（lane id 每天不同） */
-    DG.hiddenLanes = new Set(); DG.expandedRuns = new Set();
+    DG.hiddenLanes = new Set(); DG.shownLanes = new Set(); DG.expandedRuns = new Set();
   }
   DG.lanes = lanes;
   /* 主线配色与关联解析（260712 item5） */
@@ -2852,17 +2900,38 @@ function renderDagFull(d){
   for(const e of edges){
     const a = DG.nodeById[e.from], b = DG.nodeById[e.to];
     if(!a || !b) continue;
-    if(e.type === "trigger" && DG.laneColor[a.lane]) DG.parentLane[b.lane] = a.lane;
-    if(e.type === "near" && DG.laneColor[a.lane]) DG.auxAssoc[b.id] = a.lane;
+    /* 260801：trigger 父子不再限「父是主线」——子代理也能派生子代理（classifier.py 612 行
+       已确认 subagent 带 Agent 工具），嵌套派生链是级联关闭与逐级淡化的依据。 */
+    if(e.type === "trigger") DG.parentLane[b.lane] = a.lane;
+    /* near 边起点后端只取 main 节点（classifier.py:703），这里无需再判 kind */
+    if(e.type === "near") DG.auxAssoc[b.id] = a.lane;
+  }
+  /* 清理失效 shownLanes 覆盖：只在「父链仍有人被关」时覆盖才有意义 */
+  for(const id of [...DG.shownLanes]){
+    if(!laneHasHiddenAncestor(id)) DG.shownLanes.delete(id);
+  }
+  /* 子代理色沿派生链淡化（260801）：父是主线取色板色混白 45%，父是子代理在其淡化色上
+     再混白——派生越深越浅，同族一眼可辨。无派生边（Workflow 无 trigger 边是 A6 设计
+     限制、派生方未录到）保持 var(--info) 蓝：蓝从此有明确含义=「派生方不在图上」。 */
+  const subColorOf = (id, seen) => {
+    if(seen.has(id)) return LANE_COLOR.subagent;
+    seen.add(id);
+    const p = DG.parentLane[id];
+    if(!p) return LANE_COLOR.subagent;
+    const pc = DG.laneColor[p] || subColorOf(p, seen);
+    return (pc && pc[0] === "#") ? hexMix(pc, "#FFFFFF", 0.45) : LANE_COLOR.subagent;
+  };
+  for(const l of lanes){
+    if(l.kind === "subagent") DG.laneColor[l.lane_id] = subColorOf(l.lane_id, new Set());
   }
   renderDagLegend(lanes, DG.laneColor, DG.laneNum);
   renderLaneBadge();
   /* 布局（行高非均匀：中间步压扁；过滤与隐藏泳道不占位、不占 lane 列；连续错误折叠只占一格） */
   const visLanes = lanes.filter(l => {
-    if(DG.hiddenLanes.has(l.lane_id)) return false;
+    if(laneHidden(l.lane_id)) return false;
     if(DG.hideAux && l.kind === "aux") return false;
-    /* 260729：aux lane 若所有节点都随其关联主线被隐藏了，整列也不再占位 */
-    if(l.kind === "aux") return nodes.some(n => n.lane === l.lane_id && !(DG.auxAssoc[n.id] && DG.hiddenLanes.has(DG.auxAssoc[n.id])));
+    /* 260729：aux lane 若所有节点都随其关联主线被（级联）隐藏了，整列也不再占位 */
+    if(l.kind === "aux") return nodes.some(n => n.lane === l.lane_id && !(DG.auxAssoc[n.id] && laneHidden(DG.auxAssoc[n.id])));
     return true;
   });
   DG.laneX = {}; visLanes.forEach((l, i) => DG.laneX[l.lane_id] = DGX.X0 + i * (DGX.LW + DGX.LG));
@@ -2899,9 +2968,13 @@ function renderDagFull(d){
   for(const l of visLanes){
     const x = DG.laneX[l.lane_id];
     const label = laneLabel(l.kind) + (l.kind === "main" ? " " + DG.laneNum[l.lane_id] : "");
-    const pDot = (l.kind === "subagent" && DG.parentLane[l.lane_id])
-      ? '<span class="assoc-dot" style="background:' + DG.laneColor[DG.parentLane[l.lane_id]] +
-        '" title="' + t18("dag.spawnedBy", {n: DG.laneNum[DG.parentLane[l.lane_id]]}) + '"></span>' : "";
+    const pl = DG.parentLane[l.lane_id];
+    /* 父是子代理（嵌套派生）没有主线序号，标题用实例键，否则会显示「由主线 undefined 派生」 */
+    const pDot = (l.kind === "subagent" && pl)
+      ? '<span class="assoc-dot" style="background:' + dagLaneStroke(pl) +
+        '" title="' + esc(DG.laneKind[pl] === "main"
+          ? t18("dag.spawnedBy", {n: DG.laneNum[pl]})
+          : t18("dag.spawnedBySub", {id: pl})) + '"></span>' : "";
     /* 主线副标签显示真实 CC 会话 id 短码：lane_id 是它的 md5，对人毫无意义，而 session_id
        能直接对上 ~/.claude/projects/ 下的 jsonl 会话文件名（260725 lane 键换成 session_id 后）。
        **只有主线这么显示**——子代理复用父会话 id，若也显示 session 就会和父主线的标签一模一样，
@@ -3001,23 +3074,39 @@ function laneBtnClick(ev){
 }
 function renderLaneBadge(){
   const b = $("laneBtn");
-  if(b) b.textContent = t18("dag.lanes") + (DG.hiddenLanes.size ? "（" + DG.hiddenLanes.size + "）" : "");
+  /* 徽标数 = 生效隐藏数（级联隐藏也算），不然关一条主线徽标只 +1，与实际消失的列数对不上 */
+  const n = (DG.lanes || []).filter(l => laneHidden(l.lane_id)).length;
+  if(b) b.textContent = t18("dag.lanes") + (n ? "（" + n + "）" : "");
 }
 function renderLaneMenu(){
   const m = $("laneMenu");
   m.innerHTML = '<div style="font-size:11px;color:var(--text-faint);padding:6px 10px 5px;line-height:1.5;border-bottom:1px solid var(--border-soft);margin-bottom:4px">' + t18("dag.laneHint") + '</div>' + (DG.lanes || []).map(l => {
-    const hidden = DG.hiddenLanes.has(l.lane_id);
-    const color = DG.laneColor[l.lane_id] || LANE_COLOR[l.kind] || LANE_COLOR.aux;
+    const hidden = laneHidden(l.lane_id);
+    const color = dagLaneStroke(l.lane_id);
     const label = laneLabel(l.kind) + (l.kind === "main" ? " " + DG.laneNum[l.lane_id] : "");
+    /* 子代理行前缀父级色点表明归属；级联隐藏（非显式关）给「随 XX 隐藏」的说法 */
+    const pl = DG.parentLane[l.lane_id];
+    const pDot = pl ? '<span class="assoc-dot" style="background:' + dagLaneStroke(pl) + '"></span>' : "";
+    const via = (hidden && !DG.hiddenLanes.has(l.lane_id)) ? laneHiddenVia(l.lane_id) : "";
+    const viaHtml = via ? ' <span class="dm-sub" style="display:inline;margin:0">' +
+      esc(t18("dag.laneCascaded", {lane: laneShortName(via)})) + '</span>' : "";
     return '<button onclick="dagToggleLane(\'' + l.lane_id + '\')">' +
-      '<span class="lh-dot" style="background:' + color + '"></span>' +
+      '<span class="lh-dot" style="background:' + color + '"></span>' + pDot +
       '<span style="flex:1;text-align:left' + (hidden ? ";opacity:.45;text-decoration:line-through" : "") + '">' +
-      label + ' <span class="dm-sub" style="display:inline;margin:0">' + l.count + '</span></span>' +
+      label + ' <span class="dm-sub" style="display:inline;margin:0">' + l.count + '</span>' + viaHtml + '</span>' +
       '<span>' + (hidden ? "☐" : "☑") + '</span></button>';
   }).join("");
 }
 function dagToggleLane(laneId){
-  if(DG.hiddenLanes.has(laneId)) DG.hiddenLanes.delete(laneId); else DG.hiddenLanes.add(laneId);
+  /* 单击语义（260801）：有效隐藏 → 一下必开——显式关的撤关；撤完父链仍有人关才记
+     shownLanes 覆盖（父链通畅时不留残留覆盖，否则下次关父级它意外豁免级联）。
+     有效可见 → 一下必关（撤掉可能存在的覆盖再进显式关）。 */
+  if(laneHidden(laneId)){
+    DG.hiddenLanes.delete(laneId);
+    if(laneHasHiddenAncestor(laneId)) DG.shownLanes.add(laneId); else DG.shownLanes.delete(laneId);
+  }else{
+    DG.shownLanes.delete(laneId); DG.hiddenLanes.add(laneId);
+  }
   renderLaneMenu(); renderLaneBadge();
   DG.rendered = false;   /* lane 列数变了：全量重排 */
   loadDag();

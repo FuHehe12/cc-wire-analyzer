@@ -59,7 +59,12 @@ class SettingsGuardError(Exception):
 # ===== 内部工具 =====
 
 def _read_settings(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    """文件不存在按 {} 处理（260801）：全新机器可能没有 settings.json，patch 时应创建
+    最小文件而不是崩；remove/读键路径拿到 {} 天然 no-op，语义不变。"""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
 
 
 def _atomic_write(path: Path, data: dict) -> None:
@@ -201,9 +206,13 @@ def snapshot_original(path: Path | None = None) -> str:
     return _original_base_url
 
 
-def backup_file(path: Path | None = None) -> Path:
-    """整文件拷到 backups/settings.json.<ts>。留最近 MAX_BACKUPS 份。"""
+def backup_file(path: Path | None = None) -> Path | None:
+    """整文件拷到 backups/settings.json.<ts>。留最近 MAX_BACKUPS 份。
+    文件不存在则无可备份、返回 None（260801：全新机器可能没有 settings.json，
+    不能在这里崩掉整个 serve 启动——restore 对 had_key=False 本来就是删键/no-op）。"""
     p = path or CFG.CLAUDE_SETTINGS
+    if not p.exists():
+        return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     now = time.time()
     ts = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))

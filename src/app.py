@@ -191,7 +191,7 @@ def proxy_start():
         "running": True,
         "listen": local_listen,
         "upstream": upstream,
-        "backup_created": str(bkp),
+        "backup_created": str(bkp) if bkp else "",   # settings.json 不存在时无可备份（260801）
     })
 
 
