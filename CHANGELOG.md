@@ -4,7 +4,7 @@
 
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
-- **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection.
+- **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed to use it from an agent.
 - **Current status**: **v0.4.2 released** (2026-07-30). A layout and polish release: the two columns
   of the detail view line up again (a bare chip row facing a card had them 27 px out of step from
   the second block down), the capture list is a real fixed-column grid (flex had the summary column
@@ -15,7 +15,10 @@
   **Heads-up for macOS upgraders**: the bundle was renamed `CCWireAnalyzer.app` →
   `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
-  1. **A UI entry for failure grouping** — the single largest gap. The backend compresses thousands of failures into a handful of groups in under 0.1 s; the human-facing UI still has no way in. Everything else on this list is smaller. (Its input is now trustworthy: in-stream errors used to be recorded as successes and never reached the statistics at all — fixed in the unreleased v0.4.3.)
+  1. **Failure grouping now has a UI entry (done, unreleased v0.4.3)** — what had been this
+  project's self-declared largest gap for six weeks. Its input is trustworthy too: in-stream errors
+  used to be recorded as successes and never reached the statistics at all, also fixed in v0.4.3.
+  What is left on this line is the *cross-day* view: trends and recurrence, not a single day.
   2. **Recording-blind-spot audit: closed (both halves).** The 260731 *protocol-side* audit
   (against what CC declares: headers, body fields, SSE branches) found nine gaps, all addressed.
   The *capability-side* half — running each CC ability through the proxy and checking the recording
@@ -28,6 +31,48 @@
 ## v0.4.3 - unreleased
 
 ### Added
+- **Failure grouping finally has a way in from the UI — the gap this project had been calling its
+  largest for six weeks.** The backend has compressed a bad day's failures into a handful of groups
+  since 2026-07-25 (measured: 2,719 failures → 7 groups in 0.09 s), and until now the only ways to
+  see that were the HTTP API and a source-only CLI subcommand. Anyone using the app as an app saw a
+  wall of red rows and no explanation. The capture view now carries a fold under the status card —
+  *"N failures today → M groups"*, not rendered at all when the day has none — and each group is one
+  card: the count, the error kind and status, which request kinds were hit (`title×19` breaks
+  session naming and nothing else), **the upstream's own error sentence**, the request-side fields,
+  and sample ids that jump straight to the record. The request-side fields keep the distinction that
+  *is* the diagnosis: a **bold** field was identical across the whole group (a candidate cause),
+  a bracketed list spans several values (that field is ruled out). The frontend only renders — the
+  grouping rules stay solely in `diagnose.py`, because a second implementation is a second thing to
+  drift. Live updates re-fetch only when the incoming batch actually contains a failure, so a day of
+  successful traffic doesn't turn a summary panel into an 800 ms full scan.
+- **The binary now carries its own manual, so an agent on someone else's machine can learn to drive
+  it.** `docs/AI_USAGE.md` is thorough, and it lived only in this repository — while what people
+  download from Releases is a single executable. An AI on that machine had all three routes closed:
+  `--help` printed nothing (and, worse, **opened the GUI**), the binary shipped no documentation,
+  and the running service had twenty `/api/*` endpoints but not one that answered "what are you and
+  how do I use you". Three small changes close it: the guide is packed into the build (`datas`),
+  `GET /api/ai-guide` returns it as Markdown **prefixed with this machine's runtime facts** (real
+  listening port, absolute data paths, whether it is currently recording — the document says
+  `~/.cc-wire-analyzer/` and "the port starts at 5051 and moves up", which is not what a caller can
+  act on), and `cc-wire-analyzer --help` prints the same text and exits without a window. Settings
+  gains a **For AI agents** card with one copyable sentence — "this machine is running CC Wire
+  Analyzer, read `http://127.0.0.1:<port>/api/ai-guide` and drive it from there" — which is the one
+  hop that was missing between *the user has the app* and *their AI knows how to use it*. If the
+  document is missing from both the bundle and the repo, the endpoint falls back to a built-in
+  cheat sheet rather than erroring: output to an agent may be short, but it may not be an error page.
+- **A documented platform limit turned out to be wrong, and it had cost three weeks of
+  discoverability.** `desktop.py`, `docs/AI_USAGE.md`, `docs/开发指南.md`, `docs/架构总览.md` and
+  `docs/问题域手册.md` all stated that a noconsole binary "has no stdout, so CLI subcommands can't
+  print anything" — the stated reason for having no `--help` at all. Measured: noconsole means no
+  *console is allocated*, so a double-clicked process indeed has nothing to write to; but when a
+  shell starts it **through a pipe or a redirect** — which is exactly how every agent harness runs a
+  command — fd 1 is a valid handle and `os.write(1, …)` works. Verified across bash pipe, PowerShell
+  pipe, `cmd /c … > file` (all print), `$out = & exe --help` (empty — PowerShell not waiting on a
+  GUI-subsystem process, unrelated to stdout) and double-click (nothing, which is why the guide is
+  also written to `<data dir>/ai-guide.md`). The conclusion that HTTP is the right channel for
+  agents still stands and the full CLI stays unpackaged; what changed is that the *reason* is no
+  longer a false claim that quietly blocked the most natural entry point. The five documents now
+  carry the measurement matrix instead of the assertion.
 - **The detail view now shows the two usage fields CC reports that we were dropping.** Every
   response from a third-party gateway carries `server_tool_use` (with `web_search_requests`) and
   `service_tier` inside `usage`; we recorded them verbatim, but `usage_norm` and the detail panel
@@ -40,6 +85,31 @@
 - **Response headers are collapsed by default again.** v0.4.0 had opened them so the wire-only fields (ratelimit / request-id) weren't hidden; with the protocol-extensions panel now surfacing the capability radar on its own, the response headers demote back to collapsed (wire fields still bolded when expanded).
 
 ### Fixed
+- **A failed request could still show a green dot in the capture list.** The row's status dot only
+  went red when there was an error *and* the status was absent or ≥ 500 — which was true until this
+  release added `stream_error`, an in-stream failure that keeps HTTP 200. Such a row landed in the
+  2xx branch and got a **green** dot, in the same release whose own note says consumers must judge
+  failure by `error`/`has_error` and never by status alone. Any `has_error` row now takes the error
+  colour; 4xx keeps its own shade, since "the upstream refused" and "the request blew up" are worth
+  reading apart.
+- **The detail view called every non-streaming response an SSE stream.** The header chose between
+  "SSE · N chunks" and "non-streaming" on `resp.chunks_count != null`, while `_finalize` writes
+  `chunks_count` for *every* response (it is the body's chunk count, 1–4 on a plain reply). The
+  condition was therefore always true and the "non-streaming" label had never once rendered on real
+  traffic — every security-classifier and count_tokens response, all non-streaming, was mislabelled.
+  Not cosmetic: "the security classifier is non-streaming" is the premise behind several pieces of
+  this project's logic (the non-streaming parse path is where the 260713 usage loss and the 260731
+  brotli blind spot both came from), and the UI was stating the opposite. It now reads the request
+  body's `stream` field — truthily, because real non-streaming requests **omit** the key rather than
+  sending `false`.
+- **Switching language left the config-check and failure-group items in the old language.**
+  `setLang` re-rendered the status card, the date row and the capture list, but those two panels are
+  built in JS and only their static labels carry `data-i18n` — so the drawer contents stayed put
+  while the rest of the interface changed.
+- **The macOS build spec had drifted from the Windows one and would have shipped a bug that was
+  already fixed.** `build.spec` lists `brotli` / `zstandard` in `hiddenimports` (added this release,
+  after a missing brotli caused every security-classifier response to record empty); `build-mac.spec`
+  never got them. Both specs now carry the same list — and the same `docs/AI_USAGE.md` data entry.
 - **Capability-side recording audit: run, and one documentation posture fixed.** The 260731 audit
   was *protocol-side* (what CC declares). This runs the other half — *capability-side*: spawn a
   real `claude -p` for each CC ability (tool calls, parallel tools, thinking, subagents, vision)

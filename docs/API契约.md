@@ -310,12 +310,31 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
   "data_dir": "~/.cc-wire-analyzer",
   "captures_dir": "~/.cc-wire-analyzer/captures",
   "log_path": "~/.cc-wire-analyzer/run.log",
-  "retention_removed": ["2026-06-01"]
+  "retention_removed": ["2026-06-01"],
+  "ai_guide": "/api/ai-guide"
 }
 ```
 
 - `version`：从打包元数据读（不发版每次手改）。
 - `retention_removed`：本次启动按保留天数清掉的日期（供设置页反馈"清理确实在工作"，260713 接线）。
+- `ai_guide`：自描述入口的路径（260801）。恒为 `"/api/ai-guide"`——它存在的意义是让只调过
+  `about` 的 agent 不必先知道端点清单就能找到说明书。
+
+### `GET /api/ai-guide` — 自描述说明书（260801）
+
+**不返回 JSON**：`Content-Type: text/markdown; charset=utf-8`，body 是 Markdown 原文。
+
+结构固定为两段：
+
+1. **本机运行期事实**（服务端现场生成）：`version` / 本实例实际监听地址 / 代理是否处于录制态 /
+   数据目录 / 录制目录 / 被接管的 settings.json / 日志路径，全部是**绝对路径**。
+   动机：文档正文写的是 `~/.cc-wire-analyzer/` 与"端口从 5051 起挑"，而调用方需要的是这台机器上
+   的确切值。
+2. **完整用法说明正文**：`docs/AI_USAGE.md`，随产物打包（`build.spec` / `build-mac.spec` 的
+   `datas`），冻结态从 `_MEIPASS/docs/` 读、源码模式从仓库 `docs/` 读。
+
+**永不 500、永不空**：两条路径都取不到文件时回落到内置的最小速查（端点表 + 三条铁律），并在
+`run.log` 记一条 warning。同一份正文也由 `cc-wire-analyzer --help` 打印。
 
 ### `POST /api/open-folder`
 
@@ -387,7 +406,7 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 
 ---
 
-## 3.7 失败聚合（260725 落地，**UI 未接**）
+## 3.7 失败聚合（260725 落地，260801 接入 UI）
 
 把当天失败按上游错误消息指纹归并（抹掉 request-id / uuid / 数字），每组摆请求侧字段。**只整理
 数据不调 LLM**，分析交给外面 CC/agent（"人看 GUI、AI 走 CLI/API"的分工）。
@@ -447,9 +466,11 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 **归并键** = `(err_kind, status, _fingerprint(err_msg))`，指纹归一规则：`req_[A-Za-z0-9]{6,}` →
 `<request-id>`、UUID → `<uuid>`、4 位以上数字 → `<n>`、截 200 字。
 
-**UI 未接入**：当前只有 API + CLI（`uv run python src/cli.py errors`）给
-agent。人看的界面里还没有"今天失败都是些什么"的入口——补 UI 入口是当前的最高优先项，
-见 [CHANGELOG.md](../CHANGELOG.md) 顶部速览的「下一步」。
+**三个消费者**：API（agent）、CLI `errors`（`uv run python src/cli.py errors`，开发用）、
+以及 260801 起的 **UI 折叠区**——捕获页状态卡下方一条"本日失败 N 条 → 归并为 M 组"的横幅，
+展开后每组一张卡（`err_kind` / `status` / `count` / `kinds` / 消息 / `req_fields` / 样本 id 可点开详情）。
+前端**只渲染不重算**：归并规则的单一真源在 `diagnose.py`，前端再实现一遍就是第二份会分叉的实现。
+`req_fields` 的单值加粗、列表常规——这个视觉区分承载的正是诊断语义，改样式时别把它抹平。
 
 > **自检**：改归并逻辑必须同步改 `diagnose.aggregate` + 此契约 + CLI `errors` 子命令。
 > 加新 req_field 必须同步加到 `diagnose._req_fields` + `classifier.index_record` + 此契约

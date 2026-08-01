@@ -153,10 +153,19 @@ While the proxy runs, **don't switch endpoints with cc-switch** — it rewrites 
 
 ## For AI agents: drive it over HTTP
 
-This tool is not only for humans to look at — **an agent can drive it too**. One binary, two modes:
+This tool is not only for humans to look at — **an agent can drive it too**. One binary, three calls:
 
 - `cc-wire-analyzer.exe` (double-click) → opens the GUI
 - `cc-wire-analyzer.exe serve` → starts a **background HTTP service + the proxy**, no window, for an agent
+- `cc-wire-analyzer.exe --help` → prints the full usage guide and exits (no window)
+
+**The manual ships inside the binary.** You do not need this repository to use the tool from an
+agent: `--help` prints the guide, and once the service is up, `GET /api/ai-guide` returns the same
+text plus this machine's runtime facts (actual port, absolute data paths, whether it is recording).
+So the whole handoff to your own agent is one sentence:
+
+> This machine is running CC Wire Analyzer. Read `http://127.0.0.1:<port>/api/ai-guide` and drive it
+> from there. (The port is in `~/.cc-wire-analyzer/port.txt`.)
 
 Talk to it over HTTP on `127.0.0.1` — the same endpoints the GUI uses:
 

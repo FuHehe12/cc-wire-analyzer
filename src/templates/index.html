@@ -172,6 +172,33 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .dd-fix{margin-top:3px;}
 .dd-code{color:var(--apple-tertiary);font-size:10px;}
 
+/* 失败聚合（260801）：后端把一天几千条失败压成几组人话，此前只有 API/CLI 有入口，
+   人看的界面里没有——项目自承的最大缺口。折叠区默认收起，失败数为 0 时整块不渲染。
+   刻意用中性的横幅色（不是 fail-bar 的错误红）：失败已经在列表里以红卡示人了，
+   这里是**归纳**不是**告警**，再红一次会让真正的告警（落盘失败/体检 error）贬值。 */
+.diag-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
+  background:var(--bg-card);border:1px solid var(--border);font-size:11.5px;
+  color:var(--apple-text-secondary);margin-bottom:14px;cursor:pointer;}
+.diag-bar:hover{border-color:var(--border-warm);}
+.diag-bar b{color:var(--err);font-weight:700;}
+.diag-bar .diag-spacer{flex:1;}
+.dg-item{padding:10px 0;border-top:1px solid var(--border-soft);font-size:11.5px;line-height:1.55;}
+.dg-item:first-child{border-top:none;}
+.dg-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px;}
+.dg-count{font-weight:700;color:var(--err);font-family:var(--font-mono);}
+/* 上游原文是这块面板里最该读进去的内容，用正文色而不是品牌金（金色对长英文串可读性差） */
+.dg-msg{color:var(--apple-text);word-break:break-word;margin-bottom:4px;}
+/* 单值 = 全组一致（可能病因），列表 = 跨值（排除该字段当因）。这个区分就是诊断本身，
+   视觉上必须一眼分得开，所以单值加粗 + 主色，列表保持次要色。 */
+.dg-fields{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:4px;}
+.dg-f{font-family:var(--font-mono);font-size:10.5px;padding:1px 7px;border-radius:999px;
+  border:1px solid var(--border-soft);color:var(--apple-secondary);}
+.dg-f.single{color:var(--apple-primary);font-weight:600;border-color:var(--border);}
+.dg-foot{display:flex;gap:10px;flex-wrap:wrap;align-items:center;color:var(--text-tertiary);font-size:10.5px;}
+.dg-sample{font-family:var(--font-mono);font-size:10.5px;padding:1px 7px;border-radius:var(--radius-sm);
+  border:1px solid var(--border-soft);color:var(--apple-text-secondary);cursor:pointer;background:none;}
+.dg-sample:hover{border-color:var(--accent);color:var(--apple-primary);}
+
 /* ===== View A 日期与列表 ===== */
 .date-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
 .date-chips{display:flex;gap:6px;flex-wrap:wrap;}
@@ -412,6 +439,9 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .srow .sub{font-size:10.5px;color:var(--apple-secondary);margin-top:1px;}
 .srow .val{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);background:var(--bg-soft);
   padding:6px 10px;border-radius:6px;word-break:break-all;text-align:right;}
+/* 整段要读的句子（给 AI 的那句话）：右对齐是给短路径/短值设计的，一段多行文字右对齐
+   会排成锯齿状，读起来费劲。这一块左对齐 + 按词换行。 */
+.srow .val.prose{text-align:left;word-break:normal;overflow-wrap:anywhere;line-height:1.6;max-width:560px;}
 .srow input[type=text],.srow input[type=password],.srow input[type=number],.srow select,.srow textarea{
   font-family:var(--font-mono);font-size:11px;color:var(--apple-text);background:var(--bg-softer);
   border:1px solid var(--border);border-radius:6px;padding:6px 10px;min-width:260px;outline:none;
@@ -509,6 +539,23 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
         <button class="btn tool" onclick="toggleDoctorDrawer()" data-i18n="doctor.close">收起</button>
       </div>
       <div id="doctorList"></div>
+    </div>
+    <!-- 失败聚合（260801）：后端把当天所有失败按上游错误消息归并（实测 2719 条 → 7 组 / 0.09s），
+         此前只有 /api/diagnose/errors 与 CLI 有入口，人看的界面没有。默认收起，失败为 0 时整块不渲染。 -->
+    <div class="diag-bar" id="diagBar" hidden onclick="toggleDiagDrawer()">
+      <span>📉</span>
+      <span id="diagBarText"></span>
+      <span class="diag-spacer"></span>
+      <button class="btn tool" id="diagToggleBtn" onclick="event.stopPropagation();toggleDiagDrawer()"
+              data-i18n="diag.expand">展开</button>
+    </div>
+    <div class="doctor-drawer" id="diagDrawer" hidden>
+      <div class="dd-head">
+        <b data-i18n="diag.title">失败聚合</b>
+        <span class="dd-note" data-i18n="diag.note">按上游错误消息归并（id/数字已归一）· 加粗字段 = 全组一致，可能是病因；列表 = 跨多个值，可排除</span>
+        <button class="btn tool" onclick="toggleDiagDrawer()" data-i18n="doctor.close">收起</button>
+      </div>
+      <div id="diagList"></div>
     </div>
     <div class="date-row">
       <div class="date-chips" id="dateChips"></div>
@@ -674,6 +721,29 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
         </div>
       </div>
 
+      <!-- 给 AI 用（260801）：产物是单个 exe，用户手上没有仓库文档，AI 也就无从知道有哪些
+           端点。这张卡把「用户手上有什么」到「AI 知道怎么驱动它」之间缺的那一跳补上：
+           一句可复制的话，粘给任意 agent 即可。 -->
+      <div class="scard">
+        <h3 data-i18n="set.ai.title">给 AI 用</h3>
+        <div class="card-sub" data-i18n="set.ai.sub">本工具是双模式的：人看这个界面，AI 走 HTTP API。把下面这句话复制给你的 AI（Claude Code / Codex / opencode …），它就能自己读懂用法并驱动本工具。</div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.ai.prompt">复制给 AI 的一句话</div><div class="sub" data-i18n="set.ai.promptSub">说明书随产物打包，离线可读，不联网</div></div>
+          <div class="in-group">
+            <div class="val prose" id="aiPromptText">—</div>
+            <button class="btn" onclick="copyAiPrompt(this)" data-i18n="set.ai.copy">复制</button>
+          </div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.ai.guide">说明书端点</div><div class="sub" data-i18n="set.ai.guideSub">Markdown 原文 + 本机运行期事实（端口、数据目录绝对路径）</div></div>
+          <div class="val mono" id="aiGuideUrl">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.ai.headless">无界面模式</div><div class="sub" data-i18n="set.ai.headlessSub">不开窗只起服务与代理，供 AI 全程自驱</div></div>
+          <div class="val mono">cc-wire-analyzer serve</div>
+        </div>
+      </div>
+
       <div class="scard">
         <h3 data-i18n="set.about.title">关于</h3>
         <div class="about-row">
@@ -713,6 +783,9 @@ const S = {
   msgShowAll: false,
   detailSeq: 0,           // openDetail 请求序号（重入守卫，丢弃过期 fetch 响应）
   toggling: false,        // toggleProxy 进行中（防 5s 定时器击穿按钮 disabled）
+  diag: null,             // /api/diagnose/errors 结果（失败聚合折叠区）
+  diagDate: null,         // 上面那份结果属于哪个日期（切日期后旧结论不许留在屏上）
+  diagTimer: null,        // LIVE 重载防抖
 };
 /* 成本估算已移除：原 PRICING 是按官方刊例折算的金额估算，对走第三方网关的用户并不准；
    usage 区只显示原始 token 数，不再折算 ¥（如需成本，按你实际单价自己算）。 */
@@ -766,6 +839,22 @@ zh: {
   "doctor.confirmForce": "体检认为当前配置有问题。仍要启动代理吗？（规则也可能误判）",
   "doctor.field": "字段", "doctor.fix": "建议",
   "doctor.blocked": "代理未启动：配置体检发现 {n} 个问题",
+  /* 失败聚合折叠区（260801） */
+  "diag.title": "失败聚合",
+  "diag.note": "按上游错误消息归并（请求 id 与数字已归一）· 加粗字段 = 全组一致，可能是病因；方括号列表 = 跨多个值，可排除该字段",
+  "diag.bar": "本日失败 {n} 条 → 归并为 {m} 组",
+  "diag.expand": "展开", "diag.collapse": "收起",
+  "diag.truncated": "只显示前 {n} 组",
+  "diag.samples": "样本", "diag.sessions": "{n} 个会话",
+  "diag.empty": "本日没有失败请求", "diag.noMsg": "（上游未给出错误消息）",
+  /* 给 AI 用（260801） */
+  "set.ai.title": "给 AI 用",
+  "set.ai.sub": "本工具是双模式的：人看这个界面，AI 走 HTTP API。把下面这句话复制给你的 AI（Claude Code / Codex / opencode …），它就能自己读懂用法并驱动本工具。",
+  "set.ai.prompt": "复制给 AI 的一句话", "set.ai.promptSub": "说明书随产物打包，离线可读，不联网",
+  "set.ai.promptText": "这台机器上开着 CC Wire Analyzer（录制 Claude Code 与上游之间全部 HTTP 流量的本机代理）。先读 {url} —— 那是它的完整用法说明（含本机端口与数据目录绝对路径），然后按说明驱动它。",
+  "set.ai.copy": "复制",
+  "set.ai.guide": "说明书端点", "set.ai.guideSub": "Markdown 原文 + 本机运行期事实（端口、数据目录绝对路径）",
+  "set.ai.headless": "无界面模式", "set.ai.headlessSub": "不开窗只起服务与代理，供 AI 全程自驱",
   /* 每条规则一句人话 + 一句怎么改。后端只给 code/字段/当前值，文案单一真源在这里 */
   "dc.half_switch_to_subscription": "切了一半：BASE_URL 指向第三方端点，却没有配 token。CC 会把订阅的 OAuth 凭据发给第三方端点，必然被拒。",
   "dcfix.half_switch_to_subscription": "要走订阅就删掉 BASE_URL；要走第三方就补上 ANTHROPIC_AUTH_TOKEN。",
@@ -913,6 +1002,20 @@ en: {
   "doctor.confirmForce": "The config check found problems. Start the proxy anyway? (the rules can be wrong too)",
   "doctor.field": "Field", "doctor.fix": "Suggested",
   "doctor.blocked": "Proxy not started: the config check found {n} problem(s)",
+  "diag.title": "Failure groups",
+  "diag.note": "Grouped by the upstream error message (request ids and numbers normalized) · a bold field is identical across the whole group and may be the cause; a bracketed list spans several values, which rules that field out",
+  "diag.bar": "{n} failure(s) today → {m} group(s)",
+  "diag.expand": "Expand", "diag.collapse": "Collapse",
+  "diag.truncated": "showing the first {n} groups",
+  "diag.samples": "samples", "diag.sessions": "{n} session(s)",
+  "diag.empty": "No failed requests today", "diag.noMsg": "(the upstream gave no error message)",
+  "set.ai.title": "For AI agents",
+  "set.ai.sub": "This tool is dual-mode: humans use this window, agents use the HTTP API. Copy the line below to your AI (Claude Code / Codex / opencode …) and it can read the manual and drive the tool itself.",
+  "set.ai.prompt": "One line to hand your AI", "set.ai.promptSub": "The manual ships inside the binary — readable offline, no network",
+  "set.ai.promptText": "This machine is running CC Wire Analyzer (a local proxy that records all HTTP traffic between Claude Code and its upstream). Start by reading {url} — that is its full usage guide, including this machine's port and absolute data paths — then drive it from there.",
+  "set.ai.copy": "Copy",
+  "set.ai.guide": "Guide endpoint", "set.ai.guideSub": "Raw Markdown plus this machine's runtime facts (port, absolute data paths)",
+  "set.ai.headless": "Headless mode", "set.ai.headlessSub": "Starts the service and proxy without a window, so an agent can drive everything",
   "dc.half_switch_to_subscription": "Half-switched: BASE_URL points at a third-party endpoint but no token is set. CC will send its subscription OAuth bearer there and be rejected.",
   "dcfix.half_switch_to_subscription": "Remove BASE_URL to use the subscription, or add ANTHROPIC_AUTH_TOKEN to use the third party.",
   "dc.dead_port_leftover": "Dead port: BASE_URL points at a local port with nothing listening — CC cannot connect at all.",
@@ -1059,6 +1162,20 @@ ja: {
   "doctor.confirmForce": "設定チェックで問題が見つかりました。それでもプロキシを起動しますか？（ルール側の誤検知もあり得ます）",
   "doctor.field": "項目", "doctor.fix": "推奨",
   "doctor.blocked": "プロキシ未起動：設定チェックで {n} 件の問題",
+  "diag.title": "失敗の集約",
+  "diag.note": "上流のエラーメッセージ単位で集約（リクエスト id と数値は正規化済み）· 太字の項目はグループ全体で同一＝原因の候補、角括弧のリストは複数値にまたがるため原因から除外できます",
+  "diag.bar": "本日の失敗 {n} 件 → {m} グループ",
+  "diag.expand": "展開", "diag.collapse": "閉じる",
+  "diag.truncated": "先頭 {n} グループのみ表示",
+  "diag.samples": "サンプル", "diag.sessions": "{n} セッション",
+  "diag.empty": "本日の失敗はありません", "diag.noMsg": "（上流からエラーメッセージなし）",
+  "set.ai.title": "AI エージェント向け",
+  "set.ai.sub": "本ツールは二つのモードを持ちます：人はこの画面、AI は HTTP API。下の一文をあなたの AI（Claude Code / Codex / opencode …）に渡せば、使い方を自分で読み取って本ツールを操作できます。",
+  "set.ai.prompt": "AI に渡す一文", "set.ai.promptSub": "説明書は製品に同梱、オフラインで読めます",
+  "set.ai.promptText": "このマシンで CC Wire Analyzer（Claude Code と上流の間の全 HTTP 通信を記録するローカルプロキシ）が動いています。まず {url} を読んでください——本機のポートとデータディレクトリの絶対パスを含む完全な使用ガイドです——その上で操作してください。",
+  "set.ai.copy": "コピー",
+  "set.ai.guide": "説明書エンドポイント", "set.ai.guideSub": "Markdown 原文＋本機の実行時情報（ポート、データ保存先の絶対パス）",
+  "set.ai.headless": "ヘッドレスモード", "set.ai.headlessSub": "ウィンドウを開かずサービスとプロキシのみ起動、AI が全工程を駆動",
   "dc.half_switch_to_subscription": "切り替え途中：BASE_URL がサードパーティを指しているのに token が未設定です。CC はサブスクの OAuth 資格情報をそこへ送り、必ず拒否されます。",
   "dcfix.half_switch_to_subscription": "サブスクを使うなら BASE_URL を削除、サードパーティを使うなら ANTHROPIC_AUTH_TOKEN を設定してください。",
   "dc.dead_port_leftover": "デッドポート：BASE_URL がローカルポートを指していますが、そのポートで待ち受けているプロセスがなく、CC は接続できません。",
@@ -1263,8 +1380,10 @@ function applyI18n(){
 async function setLang(lang){
   LANG = lang;
   applyI18n();
-  /* 静态文案已换，动态渲染的视图全部重渲（切换立即生效，无需重启） */
-  renderStatus(); renderDates(); renderList();
+  /* 静态文案已换，动态渲染的视图全部重渲（切换立即生效，无需重启）。
+     体检与失败聚合的条目也是 JS 拼的，applyI18n 只管 data-i18n 的静态节点——
+     漏掉它们就会出现「界面已切英文、抽屉里还是中文」（260801 补） */
+  renderStatus(); renderDates(); renderList(); renderDoctor(); renderDiag();
   if(S.view === "dag") loadDag();
   if(S.view === "detail" && S.captureId) openDetail(S.captureId);
   try{
@@ -1750,6 +1869,71 @@ function renderDoctor(openDrawer){
   if(openDrawer) drawer.hidden = false;
 }
 
+/* ================= 失败聚合（260801）=================
+   与体检互补：体检看配置**应该**是什么样，这里看实际**发生了**什么失败。
+   本模块只展示 /api/diagnose/errors 已整理好的数据，前端不做任何归并/判断——
+   归并规则的单一真源在 diagnose.py，前端再算一遍就是第二份会分叉的实现。 */
+async function refreshDiag(){
+  try{
+    const d = S.date || todayStr();
+    const r = await fetch("/api/diagnose/errors?date=" + encodeURIComponent(d) + "&limit=50");
+    if(!r.ok) return;                /* 失败聚合自己挂了不许影响主界面（同体检） */
+    const j = await r.json();
+    if(j.error) return;
+    S.diag = j; S.diagDate = d;
+    renderDiag();
+  }catch(e){ /* 静默：这是归纳信息，不是主功能 */ }
+}
+
+function toggleDiagDrawer(){
+  const d = $("diagDrawer");
+  d.hidden = !d.hidden;
+  setBtnLabel($("diagToggleBtn"), t18(d.hidden ? "diag.expand" : "diag.collapse"));
+}
+
+function renderDiag(){
+  const g = S.diag;
+  const bar = $("diagBar"), drawer = $("diagDrawer");
+  /* 日期切换后旧数据不许留在屏幕上冒充新日期的结论 */
+  if(!g || !g.failures || S.diagDate !== S.date){
+    bar.hidden = drawer.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  /* 展开/收起按钮带 data-i18n，applyI18n 会把它无条件刷成"展开"——抽屉开着时得纠正回来 */
+  setBtnLabel($("diagToggleBtn"), t18(drawer.hidden ? "diag.expand" : "diag.collapse"));
+  $("diagBarText").innerHTML = t18("diag.bar", {n: "<b>" + g.failures + "</b>", m: g.groups}) +
+    (g.truncated ? " · " + esc(t18("diag.truncated", {n: (g.items || []).length})) : "");
+  $("diagList").innerHTML = (g.items || []).map(it => {
+    /* 单值 = 全组一致（可能病因），数组 = 跨值（排除该字段当因）——这个区分就是诊断本身 */
+    const fields = Object.entries(it.req_fields || {})
+      .filter(([, v]) => v != null)
+      .map(([k, v]) => '<span class="dg-f' + (Array.isArray(v) ? "" : " single") + '">' +
+        esc(k) + "=" + esc(Array.isArray(v) ? "[" + v.join(", ") + "]" : String(v)) + '</span>')
+      .join("");
+    /* kinds 的 key 是英文 kind 枚举，走既有的 kindLabel 查表翻译（P4：与术语翻译表共用） */
+    const kinds = Object.entries(it.kinds || {})
+      .map(([k, n]) => esc(kindLabel(k)) + "×" + n).join(" · ");
+    const samples = (it.samples || []).map(id =>
+      '<button class="dg-sample" onclick="openDetail(\'' + esc(id) + '\',\'list\')">' + esc(id) + '</button>'
+    ).join(" ");
+    return '<div class="dg-item">' +
+      '<div class="dg-head">' +
+        '<span class="dg-count">×' + it.count + '</span>' +
+        '<span class="chip probe">' + esc(errKindLabel(it.err_kind)) + '</span>' +
+        (it.status != null ? '<span class="chip outline mono">' + esc(String(it.status)) + '</span>' : "") +
+        (kinds ? '<span class="dg-foot">' + kinds + '</span>' : "") +
+      '</div>' +
+      '<div class="dg-msg">' + esc(it.message || t18("diag.noMsg")) + '</div>' +
+      (fields ? '<div class="dg-fields">' + fields + '</div>' : "") +
+      '<div class="dg-foot">' +
+        '<span>' + esc(timePart(it.first_ts)) + " → " + esc(timePart(it.last_ts)) + '</span>' +
+        (it.sessions ? '<span>' + esc(t18("diag.sessions", {n: it.sessions})) + '</span>' : "") +
+        (samples ? '<span>' + esc(t18("diag.samples")) + " " + samples + '</span>' : "") +
+      '</div></div>';
+  }).join("") || ('<div class="dd-item">' + esc(t18("diag.empty")) + '</div>');
+}
+
 /* ================= 捕获列表 ================= */
 async function fetchCaptures(date){
   try{
@@ -1760,6 +1944,8 @@ async function fetchCaptures(date){
     S.date = d.date; S.items = d.items || []; S.total = d.total || 0;
     S.dates = d.dates_available || [];
     renderDates(); renderList(); renderStatus();
+    renderDiag();      /* 先按新日期把旧结论撤下（S.diagDate 不匹配 → 隐藏），再异步取新的 */
+    refreshDiag();
   }catch(e){
     $("captureList").innerHTML = '<div class="list-empty">' + esc(t18("list.loadFailed", {msg: e.message})) + '</div>';
   }
@@ -1776,7 +1962,11 @@ function renderDates(){
 function rowHtml(it, isNew){
   const status = it.status;
   let dotCls = "pending", dur = "…";
-  if(it.has_error && (status == null || status >= 500)) dotCls = "serr";
+  /* 状态点绝不能只看 status（260801）：上游可以在 SSE 流内报错，此时 HTTP 状态仍是 200
+     （v0.4.3 新增的 err_kind=stream_error），原判据把它归到 2xx 分支 → 一条失败请求
+     顶着**绿点**进列表。has_error 为真时一律走错误色，只有 4xx 保留自己的橙色
+     （"上游明确拒绝"与"请求炸了"是两种不同的读法，值得分开）。 */
+  if(it.has_error && !(status != null && status >= 300 && status < 500)) dotCls = "serr";
   else if(status != null){
     dotCls = status < 300 ? "s2xx" : (status < 500 ? "s4xx" : "s5xx");
   }
@@ -1937,6 +2127,12 @@ function flushSSE(){
     }
   }
   renderDates(); renderStatus();
+  /* 失败聚合随 LIVE 更新，与 DAG 同一档防抖（800ms）：只在这批里真有失败时才重算，
+     否则一天几千条成功流量会把一个纯归纳面板变成 800ms 一次的全量扫描 */
+  if(buf.some(it => it.has_error || (it.status != null && (it.status < 200 || it.status >= 300)))){
+    clearTimeout(S.diagTimer);
+    S.diagTimer = setTimeout(refreshDiag, 800);
+  }
   if(S.view === "dag"){
     clearTimeout(S.dagTimer);
     S.dagTimer = setTimeout(loadDag, 800);   /* LIVE 重绘防抖 */
@@ -2089,7 +2285,12 @@ function renderDetail(d){
   /* ---- 右栏 响应 ---- */
   let R = "";
   R += '<div class="col-head"><h3>' + t18("detail.response") + '</h3><span class="meta">' +
-    (resp.chunks_count != null ? t18("detail.sse", {n: resp.chunks_count}) : t18("detail.nonStream")) + '</span></div>';
+    /* 判据是**请求侧**的 stream 字段，不是 resp.chunks_count——后者 _finalize 对所有响应
+       无条件写（非流式也写 body 分块数），于是 `chunks_count != null` 恒真，非流式响应
+       （安全分类器、count_tokens）一直被标成「SSE 流式」，而 detail.nonStream 这条文案
+       在真流量里一次都没渲染过。注意真流量里非流式是**没有 stream 键**，不是 stream:false，
+       所以用真值判断（与请求侧 chip 的写法一致）。260801 修。 */
+    (body.stream ? t18("detail.sse", {n: resp.chunks_count ?? 0}) : t18("detail.nonStream")) + '</span></div>';
 
   /* 元信息 */
   R += '<div class="dcard meta-row">' +
@@ -2690,6 +2891,9 @@ function dagZoomBy(delta){
 }
 function dagZoomFit(){ S.dagZoom = null; DG.rendered = false; loadDag(); }
 
+/* 把「怎么驱动这个工具」一句话复制走，粘给任意 agent（260801） */
+function copyAiPrompt(btn){ return copyAndReport(S.aiPrompt || "", btn); }
+
 /* ================= View C 设置 ================= */
 async function loadConfig(){
   try{
@@ -2716,6 +2920,12 @@ async function loadConfig(){
     S.curVersion = about.version || "";
     $("aboutDataDir").textContent = about.data_dir || "—";
     $("aboutLogPath").textContent = about.log_path || "—";
+    /* 给 AI 用：端口取自当前页面地址（find_free_port 从 5051 起挑，被占就顺延——
+       写死 5051 是这个项目反复踩过的坑，UI 里也不许再写死一次） */
+    const guideUrl = location.origin + (about.ai_guide || "/api/ai-guide");
+    $("aiGuideUrl").textContent = guideUrl;
+    S.aiPrompt = t18("set.ai.promptText", {url: guideUrl});
+    $("aiPromptText").textContent = S.aiPrompt;
   }catch(e){
     toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
   }

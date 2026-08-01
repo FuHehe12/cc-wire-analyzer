@@ -2,18 +2,29 @@
 
 这个工具不只是给人看的。**agent 也能驱动它**——启动代理、找录制、分析自己的 harness 到底在 wire 层发了什么。
 
-只有一个二进制，两种模式：
+只有一个二进制，三种调用：
 
 | 调用方式 | 做什么 |
 |---|---|
 | `cc-wire-analyzer.exe`（双击，无参数）| 打开 GUI 窗口，给人用 |
 | `cc-wire-analyzer.exe serve` | 启动**后台 HTTP 服务 + 代理**，不开窗，给 agent 用 |
+| `cc-wire-analyzer.exe --help` | 打印这份说明（不开窗、立即退出），第一次遇到这个二进制时从这里开始 |
 
-作为 agent，你用第二种。通过 HTTP 在 `127.0.0.1` 上和它说话。
+作为 agent，你用第二种。通过 HTTP 在 `127.0.0.1` 上和它说话。服务起来后，
+**`GET /api/ai-guide` 会把这份说明连同本机的端口与绝对路径一起吐给你**——文档随产物打包，
+离线可读，不用去找仓库。
 
-> **为什么是单二进制而不是 CLI？** Windows 下 noconsole 二进制（双击不弹黑窗那种）没有
-> stdout——CLI 子命令什么都打印不出来。但 app 本来就为自己的 GUI 暴露了完整的 HTTP API，
-> 那本来就是更好的通道：结构化 JSON、不用 shell 转义、可脚本化。所以：`serve` 起服务，你调 API。
+> **为什么主通道是 HTTP 而不是一整套 CLI 子命令？** 因为 HTTP 更适合：结构化 JSON、不用 shell
+> 转义、可脚本化、GUI 和 agent 共用同一份实现。
+>
+> ⚠️ 这里曾有一句**不准确的理由**（260801 实测纠正）：原文写的是「noconsole 二进制没有 stdout，
+> CLI 子命令什么都打印不出来」。准确的说法是：noconsole 进程**不分配控制台**，所以**双击运行时**
+> 没有可写的 stdout；但由 shell 以**管道或重定向**启动时（`cmd /c exe > f`、bash 的 `exe | head`、
+> PowerShell 的 `exe | …`，也就是 agent 调命令的标准姿势）fd 1 是有效句柄，照样能写。
+> 这句不准确的理由让 `--help` 这条最自然的入口白白空了三周——换一台机器的 AI 试 `--help`
+> 只会**弹出一个 GUI 窗口**，什么都学不到。现在 `--help` 直接打印本文。
+> （PowerShell 里 `$out = & exe --help` 仍可能拿到空——那是 PowerShell 不等 GUI 子系统进程，
+> 不是 stdout 的问题；改用管道或 `cmd /c` 即可。）
 
 ---
 
@@ -109,6 +120,7 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 
 | Method | Path | 给你什么 |
 |---|---|---|
+| GET | `/api/ai-guide` | **本文的完整正文**（Markdown）+ 本机运行期事实（端口、数据目录绝对路径、代理是否在录）。不认识这个工具时从这里开始 |
 | GET | `/api/about` | 版本、路径（captures 目录、日志、settings.json）、保留清理信息 |
 | GET | `/api/proxy/status` | 代理在 patch settings.json 吗？当前 BASE_URL？写错计数？ |
 | POST | `/api/proxy/start` | patch settings.json + 开始转发（若未在跑）|

@@ -1,14 +1,18 @@
-"""pywebview 桌面入口。两种模式（单 exe，260713 合并）：
+"""pywebview 桌面入口。三种调用（单 exe，260713 合并 GUI/serve，260801 加 help）：
 
 - 无参 / 双击 → GUI 模式：后台启 Flask + 前台开原生窗口，给人用。
 - `serve` 子命令 → headless 模式：起 Flask + 自动启动代理，**不开窗**，给 AI agent 用。
   AI 通过 HTTP API（/api/proxy/*、/api/captures、/api/dag…）控制与查询，数据也可直接读 jsonl。
+- `--help` / `--ai-guide` → 打印用法说明后退出，**不开窗**（见 _emit_help）。
 
-为什么单 exe 能兼顾（Windows PE 子系统是硬约束）：
-  noconsole（console=False）进程永不分配控制台 → 双击不弹黑窗、sys.stdout 是 None。
-  所以"AI 要 stdout"和"双击不弹窗"在单个 exe 里互斥。但 AI 其实不需要 stdout——
-  app.py 早有一整套 HTTP API，AI 调它们拿结构化 JSON 即可；启停代理（唯一有副作用的动作）
-  也走 HTTP。于是 serve 模式只起服务不开窗，绕过 PE 限制，单 exe 覆盖人 + AI 两个场景。
+为什么主通道是 HTTP：app.py 早有一整套 HTTP API，结构化 JSON、不用 shell 转义、
+GUI 与 AI 共用同一份实现；启停代理（唯一有副作用的动作）也走 HTTP。
+
+⚠️ noconsole 的准确含义（260801 实测纠正，本文件此前写错过）：
+  console=False 的进程**永不分配控制台**，所以**双击运行**时没有可写的 stdout。
+  但这不等于"打不出任何东西"——被 shell 以**管道或重定向**启动时（agent 调命令的标准姿势）
+  fd 1 是有效句柄，os.write(1, …) 照样能写。原来那句"CLI 子命令什么都打印不出来"是错的，
+  它让 --help 这条最自然的入口空了三周（别人机器上的 AI 试 --help 只会看到弹出一个窗口）。
 
 加固：
 - 端口动态分配（5051-5100）
@@ -107,10 +111,60 @@ def _serve() -> None:
                       use_reloader=False, threaded=True)
 
 
+# AI 打开一个陌生二进制的第一反应就是 `--help`。此前这些参数会被当成"不是 serve"→ **弹出 GUI 窗口**，
+# 对一个正在跑命令的 agent 来说是最糟的结果（窗口冒出来、命令不返回、什么都没学到）。
+_HELP_ARGS = {"-h", "--help", "help", "/?", "-?", "--ai-guide", "guide", "--version", "-v"}
+
+
+def _emit_help() -> None:
+    """打印用法并退出，绝不开窗、绝不弹模态框（模态框会把 agent 的命令挂住）。
+
+    noconsole 进程的 `sys.stdout` 通常是 None，但**标准句柄被重定向时**（agent 的 shell 用管道
+    收集输出、或用户 `> out.txt`）fd 1 依然有效——所以先试 os.write(1)，能打就打。
+    无论能不能打，都把完整说明落到数据目录的 ai-guide.md：那是一条即使 stdout 不可用也能
+    被读到的路径（前提是知道它在哪，所以这条路径本身要出现在能打出来的那份文本里）。
+    """
+    import app as flask_app  # 说明书正文与 /api/ai-guide 同一份，别再抄第二份
+    guide = flask_app._ai_guide_body()
+    text = (
+        "CC Wire Analyzer " + flask_app.VERSION + "\n"
+        "本机 MITM 代理，透明录制 Claude Code ↔ 上游的全部 HTTP 流量。\n\n"
+        "用法：\n"
+        "  cc-wire-analyzer            打开图形界面（双击同此），给人用\n"
+        "  cc-wire-analyzer serve      只起 HTTP 服务 + 代理、不开窗，给 AI agent 用\n"
+        "  cc-wire-analyzer --help     打印本说明\n\n"
+        "给 AI agent：起 serve 之后，**完整用法说明在 http://127.0.0.1:<port>/api/ai-guide**\n"
+        "（端口写在 " + str(CFG.CONFIG_DIR / "port.txt") + "，从 5051 起挑空闲口，别照抄 5051）。\n"
+        "同一份说明也落在 " + str(CFG.CONFIG_DIR / "ai-guide.md") + "。\n\n"
+        "--- 完整说明 ---\n\n" + guide
+    )
+    try:
+        CFG.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        (CFG.CONFIG_DIR / "ai-guide.md").write_text(text, encoding="utf-8")
+    except OSError:
+        pass          # 落盘失败不能连"打印"这件事都一起失败
+    data = text.encode("utf-8", "replace")
+    if sys.stdout is not None:
+        try:
+            sys.stdout.buffer.write(data)
+            sys.stdout.flush()
+            return
+        except Exception:
+            pass
+    try:
+        os.write(1, data)      # stdout 被重定向/管道接走时，fd 1 有效而 sys.stdout 可能是 None
+    except OSError:
+        pass                   # 真的无处可打（双击运行）——文件已经落好了，静默退出
+
+
 def main() -> None:
     # serve 子命令：headless 服务模式（给 AI），见 _serve()。其余（无参/双击）走 GUI。
-    if len(sys.argv) > 1 and sys.argv[1] == "serve":
+    arg1 = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg1 == "serve":
         _serve()
+        return
+    if arg1.lower() in _HELP_ARGS:
+        _emit_help()
         return
     port = CFG.find_free_port()
     if not port:

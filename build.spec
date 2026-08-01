@@ -8,6 +8,9 @@ from PyInstaller.utils.hooks import collect_submodules
 datas = [
     ('src/templates', 'templates'),   # Flask 模板，app.py 用 sys._MEIPASS/templates 找
     ('src/static', 'static'),         # vendored 前端库（marked/DOMPurify），离线 exe 必须（审计 260712 #3）
+    # 给 AI 的用法说明必须随产物走：用户下载到的是单个 exe，仓库 docs/ 一份都不跟着来，
+    # 而 serve 模式的消费者正是 AI。/api/ai-guide 从这里读（issue 260801）。
+    ('docs/AI_USAGE.md', 'docs'),
 ]
 
 # pywebview 在 Windows 用 EdgeChromium（WebView2）后端

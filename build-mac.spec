@@ -17,10 +17,15 @@ from PyInstaller.utils.hooks import collect_submodules
 datas = [
     ('src/templates', 'templates'),   # Flask 模板
     ('src/static', 'static'),         # vendored marked/DOMPurify + 打包字体（Inter/JetBrains Mono/Noto Sans SC）
+    ('docs/AI_USAGE.md', 'docs'),     # /api/ai-guide 的正文，必须随产物走（issue 260801）
 ]
 
-# pywebview 在 macOS 用 WebKit（pyobjc）后端
-hiddenimports = collect_submodules('webview.platforms.cocoa')
+# pywebview 在 macOS 用 WebKit（pyobjc）后端。
+# brotli / zstandard 与 build.spec 对齐（260801 发现两个 spec 分叉）：CC 声明
+# `Accept-Encoding: gzip, deflate, br, zstd`，缺 brotli 时非流式响应（安全分类器正是非流式）
+# 的 body/usage/content_blocks 会整段丢失——v0.4.3 修的正是这个盲区，而 mac spec 没跟上，
+# 等于 macOS 产物仍带着已修掉的 bug。两个 spec 的 hiddenimports 必须同步改。
+hiddenimports = collect_submodules('webview.platforms.cocoa') + ['brotli', 'zstandard']
 
 
 a = Analysis(

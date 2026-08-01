@@ -114,10 +114,18 @@ uv run python src/desktop.py
 
 ## 给 AI agent：用 HTTP 驱动它
 
-这软件不只是给人看的 —— **AI 也能自己开、自己查**。一个 exe，两种模式：
+这软件不只是给人看的 —— **AI 也能自己开、自己查**。一个 exe，三种调用：
 
 - `cc-wire-analyzer.exe`（双击）→ 开 GUI
 - `cc-wire-analyzer.exe serve` → 起**后台 HTTP 服务 + 代理**，不开窗，给 AI 用
+- `cc-wire-analyzer.exe --help` → 打印完整用法说明后退出（不开窗）
+
+**说明书打在二进制里。** 让 AI 用这个工具不需要这个仓库：`--help` 直接打印说明；服务起来后
+`GET /api/ai-guide` 返回同一份正文，外加这台机器的运行期事实（实际端口、数据目录绝对路径、
+是否正在录制）。所以把它交给你自己的 AI 只要一句话：
+
+> 这台机器上开着 CC Wire Analyzer。读 `http://127.0.0.1:<端口>/api/ai-guide`，然后按说明驱动它。
+> （端口写在 `~/.cc-wire-analyzer/port.txt`。）
 
 通过 `127.0.0.1` 上的 HTTP 跟它对话（和 GUI 用的是同一套端点）：
 
