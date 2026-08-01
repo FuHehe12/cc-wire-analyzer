@@ -35,3 +35,4 @@ port.txt
 # CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
 CLAUDE.md
 issues/
+promo/
