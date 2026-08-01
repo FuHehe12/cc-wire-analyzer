@@ -394,6 +394,13 @@ def _grep_fields(rec: dict, body: dict, areas: tuple) -> dict:
     # role=system 的 mid-conversation 消息（skill 清单、注入的提醒都在这儿）、
     # 工具返回、工具调用参数。
     sysmsg, tres, tuse = [], [], []
+    # tool_use 区域含**工具名**，且同时覆盖请求侧历史与响应侧当轮——两个都是 260801 踩出来的：
+    # 只收 input 时搜工具名恒 0 命中；只收 messages 里的历史时，当轮那次调用（还只存在于
+    # response.content_blocks）搜不到，而"这次调了什么工具"恰恰是最常问的。
+    for blk in ((rec.get("response") or {}).get("content_blocks") or []):
+        if isinstance(blk, dict) and blk.get("type") == "tool_use":
+            tuse.append((blk.get("name") or "") + " " +
+                        json.dumps(blk.get("input") or {}, ensure_ascii=False))
     for m in body.get("messages") or []:
         role, content = m.get("role"), m.get("content")
         if role == "system":
@@ -408,7 +415,8 @@ def _grep_fields(rec: dict, body: dict, areas: tuple) -> dict:
                 c = blk.get("content")
                 tres.append(c if isinstance(c, str) else json.dumps(c, ensure_ascii=False))
             elif t == "tool_use":
-                tuse.append(json.dumps(blk.get("input") or {}, ensure_ascii=False))
+                tuse.append((blk.get("name") or "") + " " +
+                            json.dumps(blk.get("input") or {}, ensure_ascii=False))
     if "sysmsg" in areas:
         out["sysmsg"] = "\n".join(sysmsg)
     if "tool_result" in areas:
