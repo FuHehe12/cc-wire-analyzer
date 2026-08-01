@@ -1,6 +1,6 @@
 # CC Wire Analyzer
 
-本地 MITM 代理桌面应用，透明转发并**完整录制** Claude Code ↔ 上游端点的全部 HTTP 流量——填补 `~/.claude/projects/*.jsonl`（CC 的已加工视图）和 OTLP 遥测都看不到的链路级维度。
+录制并查看 **Claude Code** 发出的每一个 HTTP 请求。本地 MITM 代理透明转发并**完整录制** CC ↔ 上游端点的请求与响应——填补 `~/.claude/projects/*.jsonl`（CC 的已加工视图）和 OTLP 遥测都看不到的链路级维度。
 
 [English](README.md) · [日本語](README.ja.md)
 

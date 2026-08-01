@@ -1,7 +1,7 @@
 [project]
 name = "cc-wire-analyzer"
 version = "0.4.1"
-description = "Local MITM proxy desktop app that transparently records and analyzes all HTTP traffic between Claude Code and its upstream endpoint."
+description = "Record and inspect every HTTP request Claude Code makes — a local MITM proxy with a desktop GUI and an agent-drivable HTTP API. Setup is one settings field."
 readme = "README.md"
 requires-python = ">=3.10"
 # 代码 MIT；文档 CC BY 4.0（见 LICENSE）。包元数据按代码协议 MIT。

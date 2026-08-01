@@ -1,6 +1,6 @@
 # CC Wire Analyzer
 
-A local MITM proxy desktop app that transparently records and analyzes all HTTP traffic between **Claude Code** and its upstream endpoint — filling the wire-level gap that `~/.claude/projects/*.jsonl` (CC's post-processed view) and OTLP telemetry can't show.
+Record and inspect every HTTP request **Claude Code** makes. A local MITM proxy that captures the full request and response between CC and its upstream endpoint — filling the wire-level gap that `~/.claude/projects/*.jsonl` (CC's post-processed view) and OTLP telemetry can't show.
 
 [中文](README.zh.md) · [日本語](README.ja.md)
 
