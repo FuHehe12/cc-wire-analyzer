@@ -15,9 +15,18 @@
   --apple-primary:#C2882B;
   --apple-bg:#DED8CC;
   --apple-surface:#FFFFFF;
+  /* 小字颜色阶梯（260801 按 WCAG 相对亮度实测重定）：原来的 --apple-secondary(#9C9489,
+     白底 3.00:1) 与 --text-faint(#B0A892, 2.37:1) 都远低于小字 AA 的 4.5:1，而它们正用在
+     .cap-time(11px) / .cap-ttft(10.5px) / .thinking-text(11.5px 斜体) 这些满屏都是的地方
+     —— 用户报的「字虚」不是错觉，是对比度不够，字号越小、屏越密越明显。
+     压深时保持暖灰色相不变，并保住四档的深浅次序（否则层次塌成一片）。
+     落地后实测（白卡 / 软底 #F4F2EF 双背景都要过线）：
+       --apple-text-secondary 7.27/6.50 > --text-tertiary 6.32/5.66
+       > --apple-secondary 5.65/5.05 > --text-faint 5.17/4.63。
+     改这四个值前先跑一遍对比度计算——软底那一列比白卡低约 0.5，只按白卡调会漏。 */
   --apple-text:#1A1A1A;
   --apple-text-secondary:#5C564C;
-  --apple-secondary:#9C9489;
+  --apple-secondary:#6E665C;
   --apple-border:#E7E2D8;
   --apple-shadow:0 2px 8px rgba(0,0,0,0.05);
   --apple-shadow-sm:0 1px 4px rgba(0,0,0,0.04);
@@ -39,7 +48,7 @@
   --bg-ask:#EEF4FB; --bg-permission:#FFF7E6; --bg-error-soft:#FDF1EC;
   --border:#E7E2D8; --border-soft:#EDE7DC; --border-warm:#C8B496; --border-ask:#C9D8EA;
   --ok:#4F7A3A; --err:#B4452F; --warn:#B08A3E; --info:#3D6FB4;
-  --text-tertiary:#7C7468; --text-faint:#B0A892;
+  --text-tertiary:#655F55; --text-faint:#756C5D;   /* 见上方阶梯说明，勿改回浅色 */
   --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -172,16 +181,10 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .dd-fix{margin-top:3px;}
 .dd-code{color:var(--apple-tertiary);font-size:10px;}
 
-/* 失败聚合（260801）：后端把一天几千条失败压成几组人话，此前只有 API/CLI 有入口，
-   人看的界面里没有——项目自承的最大缺口。折叠区默认收起，失败数为 0 时整块不渲染。
-   刻意用中性的横幅色（不是 fail-bar 的错误红）：失败已经在列表里以红卡示人了，
-   这里是**归纳**不是**告警**，再红一次会让真正的告警（落盘失败/体检 error）贬值。 */
-.diag-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);
-  background:var(--bg-card);border:1px solid var(--border);font-size:11.5px;
-  color:var(--apple-text-secondary);margin-bottom:14px;cursor:pointer;}
-.diag-bar:hover{border-color:var(--border-warm);}
-.diag-bar b{color:var(--err);font-weight:700;}
-.diag-bar .diag-spacer{flex:1;}
+/* 失败聚合（260801）：后端把一天几千条失败压成几组人话。入口是日期行里的一个小按钮
+   （不是横幅——它是查问题才要的**归纳**，不是**告警**；摆成告警会占掉主内容的首屏高度，
+   还会稀释真告警的分量），失败数为 0 时按钮不渲染，面板点开才在日期行下方就地展开。 */
+.diag-dot{width:6px;height:6px;border-radius:50%;background:var(--err);flex-shrink:0;}
 .dg-item{padding:10px 0;border-top:1px solid var(--border-soft);font-size:11.5px;line-height:1.55;}
 .dg-item:first-child{border-top:none;}
 .dg-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px;}
@@ -540,27 +543,18 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
       </div>
       <div id="doctorList"></div>
     </div>
-    <!-- 失败聚合（260801）：后端把当天所有失败按上游错误消息归并（实测 2719 条 → 7 组 / 0.09s），
-         此前只有 /api/diagnose/errors 与 CLI 有入口，人看的界面没有。默认收起，失败为 0 时整块不渲染。 -->
-    <div class="diag-bar" id="diagBar" hidden onclick="toggleDiagDrawer()">
-      <span>📉</span>
-      <span id="diagBarText"></span>
-      <span class="diag-spacer"></span>
-      <button class="btn tool" id="diagToggleBtn" onclick="event.stopPropagation();toggleDiagDrawer()"
-              data-i18n="diag.expand">展开</button>
-    </div>
-    <div class="doctor-drawer" id="diagDrawer" hidden>
-      <div class="dd-head">
-        <b data-i18n="diag.title">失败聚合</b>
-        <span class="dd-note" data-i18n="diag.note">按上游错误消息归并（id/数字已归一）· 加粗字段 = 全组一致，可能是病因；列表 = 跨多个值，可排除</span>
-        <button class="btn tool" onclick="toggleDiagDrawer()" data-i18n="doctor.close">收起</button>
-      </div>
-      <div id="diagList"></div>
-    </div>
     <div class="date-row">
       <div class="date-chips" id="dateChips"></div>
       <div class="date-row-right">
         <div class="date-meta" id="dateMeta"></div>
+        <!-- 失败聚合入口（260801 加，同日降级）：它是**查问题时**才要的归纳视角，不是告警——
+             失败本身在列表里已经以红点红字示人。原先做成状态卡下的整宽横幅，既占掉主内容
+             （捕获列表）的首屏高度，又和落盘失败/体检 error 这些真告警抢同一层级，天天都在的
+             横幅会把真告警一起拖进「看不见」。改成工具区的小按钮，失败为 0 时不渲染。 -->
+        <button class="btn tool" id="diagBtn" hidden onclick="toggleDiagDrawer()"
+                data-i18n-title="diag.title">
+          <span class="diag-dot"></span><span class="lbl" id="diagBtnText"></span>
+        </button>
         <div class="dropdown" id="clearDropdown">
           <button class="btn tool dropdown-trigger" id="clearBtn" onclick="clearBtnClick(event)">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span class="lbl" data-i18n="clear.title">清理</span>
@@ -577,6 +571,15 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           </div>
         </div>
       </div>
+    </div>
+    <!-- 失败聚合面板：只在用户点上面那个按钮时就地展开，默认收起 -->
+    <div class="doctor-drawer" id="diagDrawer" hidden>
+      <div class="dd-head">
+        <b data-i18n="diag.title">失败聚合</b>
+        <span class="dd-note" data-i18n="diag.note">按上游错误消息归并（id/数字已归一）· 加粗字段 = 全组一致，可能是病因；列表 = 跨多个值，可排除</span>
+        <button class="btn tool" onclick="toggleDiagDrawer()" data-i18n="doctor.close">收起</button>
+      </div>
+      <div id="diagList"></div>
     </div>
     <div class="capture-list" id="captureList">
       <div class="list-empty" data-i18n="list.loading">加载中…</div>
@@ -642,6 +645,18 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
             <option value="zh">中文</option>
             <option value="en">English</option>
             <option value="ja">日本語</option>
+          </select>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.ui.scale">界面缩放</div><div class="sub" data-i18n="set.ui.scaleSub">高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存</div></div>
+          <select id="cfgUiScale" onchange="setUiScale(this.value)">
+            <option value="90">90%</option>
+            <option value="100">100%</option>
+            <option value="110">110%</option>
+            <option value="125">125%</option>
+            <option value="150">150%</option>
+            <option value="175">175%</option>
+            <option value="200">200%</option>
           </select>
         </div>
       </div>
@@ -786,6 +801,11 @@ const S = {
   diag: null,             // /api/diagnose/errors 结果（失败聚合折叠区）
   diagDate: null,         // 上面那份结果属于哪个日期（切日期后旧结论不许留在屏上）
   diagTimer: null,        // LIVE 重载防抖
+  /* 跨天（260801）：软件开着过午夜时，S.date 会永远停在昨天，而 flushSSE 的守卫会把
+     新一天的每一条录制静默丢掉。followToday 区分「用户就在今天」与「用户主动选了历史日期」——
+     只有前者才允许自动切到新的一天，后者是用户的选择，不能抢。 */
+  followToday: true,
+  uiScale: 100,           // 界面缩放百分比（config.ui_scale）
 };
 /* 成本估算已移除：原 PRICING 是按官方刊例折算的金额估算，对走第三方网关的用户并不准；
    usage 区只显示原始 token 数，不再折算 ¥（如需成本，按你实际单价自己算）。 */
@@ -842,9 +862,8 @@ zh: {
   /* 失败聚合折叠区（260801） */
   "diag.title": "失败聚合",
   "diag.note": "按上游错误消息归并（请求 id 与数字已归一）· 加粗字段 = 全组一致，可能是病因；方括号列表 = 跨多个值，可排除该字段",
-  "diag.bar": "本日失败 {n} 条 → 归并为 {m} 组",
-  "diag.expand": "展开", "diag.collapse": "收起",
-  "diag.truncated": "只显示前 {n} 组",
+  "diag.btn": "失败 {n} · {m} 组",
+  "diag.truncated": "组数过多，只列出前 {n} 组（共 {total} 组）",
   "diag.samples": "样本", "diag.sessions": "{n} 个会话",
   "diag.empty": "本日没有失败请求", "diag.noMsg": "（上游未给出错误消息）",
   /* 给 AI 用（260801） */
@@ -950,6 +969,7 @@ zh: {
   "detail.betaNew": "有 {n} 个没见过的扩展（橙色）——CC 启用了新能力，可能带来我们还不认识的字段或响应块",
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
+  "set.ui.scale": "界面缩放", "set.ui.scaleSub": "高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存",
   "set.proxy.title": "代理与数据",
   "set.proxy.sub": "代理只改 settings.json 的 env.ANTHROPIC_BASE_URL 一个字段，其余不碰",
   "set.path": "settings.json 路径", "set.pathSub": "CC 配置文件位置（只读）",
@@ -1004,9 +1024,8 @@ en: {
   "doctor.blocked": "Proxy not started: the config check found {n} problem(s)",
   "diag.title": "Failure groups",
   "diag.note": "Grouped by the upstream error message (request ids and numbers normalized) · a bold field is identical across the whole group and may be the cause; a bracketed list spans several values, which rules that field out",
-  "diag.bar": "{n} failure(s) today → {m} group(s)",
-  "diag.expand": "Expand", "diag.collapse": "Collapse",
-  "diag.truncated": "showing the first {n} groups",
+  "diag.btn": "{n} failed · {m} groups",
+  "diag.truncated": "too many groups — showing the first {n} of {total}",
   "diag.samples": "samples", "diag.sessions": "{n} session(s)",
   "diag.empty": "No failed requests today", "diag.noMsg": "(the upstream gave no error message)",
   "set.ai.title": "For AI agents",
@@ -1110,6 +1129,7 @@ en: {
   "detail.betaNew": "{n} extension(s) we haven't seen before (orange) — CC enabled a new capability, which may bring fields or response blocks we don't yet recognise",
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
+  "set.ui.scale": "Interface scale", "set.ui.scaleSub": "Turn it up if text looks small on a 2K/4K display — applied and saved immediately",
   "set.proxy.title": "Proxy & data",
   "set.proxy.sub": "The proxy only edits env.ANTHROPIC_BASE_URL in settings.json; nothing else is touched",
   "set.path": "settings.json path", "set.pathSub": "CC config file location (read-only)",
@@ -1164,9 +1184,8 @@ ja: {
   "doctor.blocked": "プロキシ未起動：設定チェックで {n} 件の問題",
   "diag.title": "失敗の集約",
   "diag.note": "上流のエラーメッセージ単位で集約（リクエスト id と数値は正規化済み）· 太字の項目はグループ全体で同一＝原因の候補、角括弧のリストは複数値にまたがるため原因から除外できます",
-  "diag.bar": "本日の失敗 {n} 件 → {m} グループ",
-  "diag.expand": "展開", "diag.collapse": "閉じる",
-  "diag.truncated": "先頭 {n} グループのみ表示",
+  "diag.btn": "失敗 {n}・{m} グループ",
+  "diag.truncated": "グループが多すぎます — 全 {total} 件のうち先頭 {n} 件を表示",
   "diag.samples": "サンプル", "diag.sessions": "{n} セッション",
   "diag.empty": "本日の失敗はありません", "diag.noMsg": "（上流からエラーメッセージなし）",
   "set.ai.title": "AI エージェント向け",
@@ -1270,6 +1289,7 @@ ja: {
   "detail.betaNew": "未知の拡張が {n} 件（オレンジ）——CC が新機能を有効化しており、未対応のフィールドやレスポンスブロックが含まれる可能性があります",
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
+  "set.ui.scale": "表示倍率", "set.ui.scaleSub": "2K/4K ディスプレイで文字が小さいと感じたら上げてください。即時反映・保存されます",
   "set.proxy.title": "プロキシとデータ",
   "set.proxy.sub": "プロキシは settings.json の env.ANTHROPIC_BASE_URL のみを書き換えます",
   "set.path": "settings.json パス", "set.pathSub": "CC 設定ファイルの場所（読み取り専用）",
@@ -1377,6 +1397,26 @@ function applyI18n(){
   document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t18(el.dataset.i18nPh); });
   document.querySelectorAll("[data-i18n-title]").forEach(el => { el.title = t18(el.dataset.i18nTitle); });
 }
+/* 界面缩放（260801）：2K/4K 屏上 11px 的绝对字号物理尺寸太小，此前软件里无从调节。
+   用 CSS `zoom` 而**不是** `transform: scale()`——后者是位图缩放，会真的把字变虚，
+   与要解决的问题背道而驰；zoom 参与布局，字形按新字号重新光栅化，是清晰的。
+   DAG 内层另有自己的 zoom，两者相乘，而 DAG 的 fit 计算读的是 CSS px，不受外层影响。 */
+function applyUiScale(scale){
+  const s = Math.max(80, Math.min(200, parseInt(scale, 10) || 100));
+  S.uiScale = s;
+  document.documentElement.style.zoom = (s === 100 ? "" : (s / 100));
+  const sel = $("cfgUiScale"); if(sel) sel.value = String(s);
+  return s;
+}
+async function setUiScale(scale){
+  const s = applyUiScale(scale);
+  try{
+    await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ui_scale: s})});
+    toast(t18("toast.cfgSaved"));
+  }catch(e){ toast(t18("toast.cfgSaveFailed", {msg: e.message}), true); }
+}
+
 async function setLang(lang){
   LANG = lang;
   applyI18n();
@@ -1698,6 +1738,7 @@ function showView(v){
 
 /* ================= 代理状态 ================= */
 async function refreshStatus(){
+  checkDayRollover();   /* 复用这个 5 秒轮询做跨天检查，不另起 timer（260801） */
   let prevExt = S.status && S.status.external_change ? JSON.stringify(S.status.external_change) : "";
   try{
     const r = await fetch("/api/proxy/status");
@@ -1888,22 +1929,18 @@ async function refreshDiag(){
 function toggleDiagDrawer(){
   const d = $("diagDrawer");
   d.hidden = !d.hidden;
-  setBtnLabel($("diagToggleBtn"), t18(d.hidden ? "diag.expand" : "diag.collapse"));
 }
 
 function renderDiag(){
   const g = S.diag;
-  const bar = $("diagBar"), drawer = $("diagDrawer");
+  const btn = $("diagBtn"), drawer = $("diagDrawer");
   /* 日期切换后旧数据不许留在屏幕上冒充新日期的结论 */
   if(!g || !g.failures || S.diagDate !== S.date){
-    bar.hidden = drawer.hidden = true;
+    btn.hidden = drawer.hidden = true;
     return;
   }
-  bar.hidden = false;
-  /* 展开/收起按钮带 data-i18n，applyI18n 会把它无条件刷成"展开"——抽屉开着时得纠正回来 */
-  setBtnLabel($("diagToggleBtn"), t18(drawer.hidden ? "diag.expand" : "diag.collapse"));
-  $("diagBarText").innerHTML = t18("diag.bar", {n: "<b>" + g.failures + "</b>", m: g.groups}) +
-    (g.truncated ? " · " + esc(t18("diag.truncated", {n: (g.items || []).length})) : "");
+  btn.hidden = false;
+  setBtnLabel(btn, t18("diag.btn", {n: g.failures, m: g.groups}));
   $("diagList").innerHTML = (g.items || []).map(it => {
     /* 单值 = 全组一致（可能病因），数组 = 跨值（排除该字段当因）——这个区分就是诊断本身 */
     const fields = Object.entries(it.req_fields || {})
@@ -1931,7 +1968,14 @@ function renderDiag(){
         (it.sessions ? '<span>' + esc(t18("diag.sessions", {n: it.sessions})) + '</span>' : "") +
         (samples ? '<span>' + esc(t18("diag.samples")) + " " + samples + '</span>' : "") +
       '</div></div>';
-  }).join("") || ('<div class="dd-item">' + esc(t18("diag.empty")) + '</div>');
+  }).join("") ||
+    ('<div class="dd-item">' + esc(t18("diag.empty")) + '</div>');
+  /* 有界输出的诚实标注：组数超过 limit 时必须说出来（原先挂在横幅上，横幅撤了要接住） */
+  if(g.truncated){
+    $("diagList").insertAdjacentHTML("beforeend",
+      '<div class="dg-foot" style="padding-top:8px">' +
+      esc(t18("diag.truncated", {n: (g.items || []).length, total: g.groups})) + '</div>');
+  }
 }
 
 /* ================= 捕获列表 ================= */
@@ -1943,6 +1987,8 @@ async function fetchCaptures(date){
     if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
     S.date = d.date; S.items = d.items || []; S.total = d.total || 0;
     S.dates = d.dates_available || [];
+    /* 跟随今天 = 当前看的就是今天。用户点历史 chip 后置 false，跨天不再把他抢走 */
+    S.followToday = (S.date === todayStr());
     renderDates(); renderList(); renderStatus();
     renderDiag();      /* 先按新日期把旧结论撤下（S.diagDate 不匹配 → 隐藏），再异步取新的 */
     refreshDiag();
@@ -1950,14 +1996,30 @@ async function fetchCaptures(date){
     $("captureList").innerHTML = '<div class="list-empty">' + esc(t18("list.loadFailed", {msg: e.message})) + '</div>';
   }
 }
+/* 当前查看的日期**一定**要有 chip：新一天的 jsonl 还没写出来时 dates_available 里没有今天，
+   原来的 `S.dates.length ? S.dates : [S.date]` 会让选中态落在一个不存在的格子上（260801）。 */
+function dateChipList(){
+  return [...new Set([...(S.dates || []), S.date].filter(Boolean))].sort().reverse();
+}
 function renderDates(){
   const wrap = $("dateChips");
-  const dates = S.dates.length ? S.dates : [S.date || todayStr()];
-  wrap.innerHTML = dates.map(d =>
+  wrap.innerHTML = dateChipList().map(d =>
     '<button class="date-chip' + (d === S.date ? " active" : "") + '" onclick="fetchCaptures(\'' + d + '\')">' + d + '</button>'
   ).join("");
   $("dateMeta").textContent = t18("dates.meta", {shown: S.items.length, total: S.total}) +
     (S.status && S.status.running ? t18("dates.live") : "");
+}
+
+/* 跨天自愈（260801）：软件开着过午夜时，S.date 停在昨天 → flushSSE 的守卫把新一天的每条
+   录制静默丢掉，而全项目没有任何定时器会重新 fetchCaptures，界面就此冻在昨天。
+   这里只在「用户本来就在看今天」时才切走，绝不打断主动选了历史日期的人。 */
+function checkDayRollover(){
+  if(!S.followToday) return false;
+  const today = todayStr();
+  if(!S.date || S.date === today) return false;
+  fetchCaptures();                     /* 不带 date → 后端给今天 */
+  if(S.view === "dag") loadDag();
+  return true;
 }
 function rowHtml(it, isNew){
   const status = it.status;
@@ -2107,8 +2169,10 @@ function flushSSE(){
   const buf = S.sseBuf; S.sseBuf = [];
   if(!buf.length) return;
   /* 只在查看今天列表时插入；查看历史日期时今日新到的 capture 与该日期无关，直接丢弃
-     （260712：原 S.total += buf.length 会把今日增量累加到历史日期 total，冒出幽灵"加载更多"） */
-  if(S.date && S.date !== todayStr()){ return; }
+     （260712：原 S.total += buf.length 会把今日增量累加到历史日期 total，冒出幽灵"加载更多"）。
+     260801：先试跨天自愈——跨过午夜后 S.date 停在昨天，这条守卫会把新一天的流量全丢光。
+     有流量就立刻切，不用等 5 秒轮询；这批交给切换后的 fetchCaptures 一并取回。 */
+  if(S.date && S.date !== todayStr()){ checkDayRollover(); return; }
   const wrap = $("captureList");
   const empty = wrap.querySelector(".list-empty");
   if(empty) wrap.innerHTML = "";
@@ -2902,6 +2966,7 @@ async function loadConfig(){
     ]);
     const cfg = await cfgR.json(), about = await aboutR.json(), st = await stR.json();
     $("cfgUiLang").value = cfg.ui_lang || "zh";
+    applyUiScale(cfg.ui_scale);   /* 顺带把下拉的选中项对上（多窗口/手改 config 时会不一致）*/
     $("cfgSettingsPath").textContent = about.settings_path || "—";
     $("cfgBaseUrl").textContent = st.original_base_url || st.upstream || "—";
     $("cfgBackupDir").textContent = (about.data_dir || "~/.cc-wire-analyzer") + "/backups";
@@ -3033,7 +3098,8 @@ function openBackupDir(){
   try{
     cfg = await (await fetch("/api/config")).json();
     LANG = cfg.ui_lang || "zh";
-  }catch(e){ /* 配置不可达时按默认 zh */ }
+    applyUiScale(cfg.ui_scale);   /* 首屏渲染前就设好，否则会看到一次跳变 */
+  }catch(e){ /* 配置不可达时按默认 zh + 100% */ }
   applyI18n();
   ctxInit();                  /* 自绘右键菜单 + Cmd/Ctrl+C 兜底（WebView2/WebKit 都不给原生的）*/
   await fetchCaptures();      /* 默认今天，含 dates_available */

@@ -231,6 +231,7 @@ data: {...}
 ```json
 {
   "ui_lang": "zh",
+  "ui_scale": 100,
   "auto_start_proxy": false,
   "retention_days": 30,
   "translate": { "api_key": "", "base_url": "", "model": "", "temperature": 0.3, "max_tokens": 8192, "target_lang": "zh" },
@@ -239,6 +240,10 @@ data: {...}
 ```
 
 - `ui_lang`：界面语言 `zh|en|ja`（260712 开源准备 item2），前端启动先读它再渲染。
+- `ui_scale`（260801 加）：界面缩放百分比，**读写两侧都夹在 80~200**（`config._clamp_scale`）。
+  前端把它直接写进 `document.documentElement.style.zoom`——0 / 负数 / 天文数字会让界面缩没或
+  撑爆，而这是个**改坏了就没法再打开设置页改回来**的字段，所以 `get_config` 与 `set_config`
+  各夹一次，手改坏的 config.json 也救得回来。
 - `auto_start_proxy`（260713 接线）：启动软件时是否自动启动代理。
 - `retention_days`（260713 接线）：捕获录制保留天数，启动期 `enforce_retention` 据此清理。
 - `translate`：**通用 LLM 配置**（名称历史遗留，设置页显示「LLM 模型」），翻译与 AI 解读共用；

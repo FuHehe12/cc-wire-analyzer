@@ -5,8 +5,14 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed to use it from an agent.
-- **Current status**: **v0.4.3 released** (2026-08-01). The release that closed the recording
-  blind-spot audit and stopped under-reporting failures. Three things matter most: an upstream
+- **Current status**: **v0.4.4 released** (2026-08-01). A usability release on top of v0.4.3, all
+  three items from real use: leaving the app running past midnight used to freeze the interface on
+  yesterday (new captures were silently discarded, not merely slow); small text sat below WCAG AA
+  and read as blurry on a 2K display, now re-cut plus a 90–200% interface scale in Settings; and the
+  failure-grouping panel was demoted from a first-screen banner to a button in the date row, because
+  it is a summary you reach for when investigating, not an alert.
+  The preceding **v0.4.3** is the substantive one — it closed the recording
+  blind-spot audit and stopped under-reporting failures. Three things mattered most: an upstream
   error *inside* an SSE stream (HTTP 200) used to be recorded as a **success**, so in-stream
   failures had never entered the failure statistics — **this tool had been under-reporting the
   upstream failure rate**; failure grouping finally has a way in from the UI, after six weeks of
@@ -30,6 +36,58 @@
   documentation posture fixed (see v0.4.3). Method in `docs/开发指南.md` §2.5; portable version in
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
+
+## v0.4.4 - 2026-08-01
+
+### Fixed
+- **Leave the app running past midnight and it stopped showing anything.** Reported as "the new
+  day's captures are slow to appear"; measured, it is worse than slow — they never appear.
+  `S.date` is only ever assigned by `fetchCaptures`, which runs on startup, on a date-chip click,
+  and after a purge; **no timer re-fetches it** (the 5-second interval only refreshes the status
+  card). So once the clock rolls over, `S.date` is stuck on yesterday, and the guard at the top of
+  the live-update handler — correct in itself, it stops today's traffic being added to a historical
+  day's totals — **silently discards every capture of the new day**. The date chips come from the
+  same response, so today never even gets a chip to click. Reproduced in a browser: with `S.date`
+  set to yesterday, a pushed capture leaves the list at 18 rows and never reaches the DOM. There is
+  now a `followToday` flag (set from whether the fetched date *is* today) and a rollover check on
+  the existing 5-second poll, plus one on the live path so a busy day switches immediately instead
+  of waiting for the next tick. Picking a historical date deliberately sets `followToday` false —
+  the rollover must never yank someone off a day they chose. Separately, the currently viewed date
+  is now always present in the chip row: on a fresh day the jsonl does not exist yet, so
+  `dates_available` omits today and the selected state pointed at a chip that wasn't there.
+- **Small text was below WCAG AA, which is what "the font looks blurry" actually was.** Reported on
+  a 2K display at 100% scaling. Measured against the relative-luminance formula (AA wants 4.5:1 for
+  small text): `--apple-secondary` `#9C9489` was **3.00:1** on a white card and is used 29 times —
+  including `.cap-time`, the 11 px timestamp column of every list row — and `--text-faint`
+  `#B0A892` was **2.37:1**, used 16 times including `.cap-ttft` (10.5 px) and `.thinking-text`
+  (11.5 px italic). A 2.37:1 ten-and-a-half-pixel italic does not read as "low contrast" to anyone;
+  it reads as blurry, and more so the denser the display. The warm-grey ladder is re-cut to pass on
+  **both** the white card and the `#F4F2EF` soft background while keeping its four tiers distinct
+  (7.27 / 6.32 / 5.65 / 5.17 on white) and the same hue. Only the four variable definitions changed
+  — the 45 usages were untouched, which is the whole point of having had them as variables.
+
+### Added
+- **Interface scale (90%–200%) in Settings → Interface**, applied and saved immediately, like the
+  language switch. Every dimension in the stylesheet is an absolute px, so on a 2K/4K panel at 100%
+  system scaling the text is genuinely small and until now the only remedy was changing the *system*
+  scale, which affects every application. Implemented with CSS `zoom`, deliberately **not**
+  `transform: scale()` — the latter is a bitmap scale and would make the text blurry, which is half
+  of what this setting exists to fix. The value is clamped to 80–200 on both read and write:
+  the frontend writes it straight into `zoom`, so a 0 or a stray large number would leave a window
+  you cannot open the settings page in to undo it.
+
+### Changed
+- **The failure-grouping panel is no longer a banner on the first screen.** Added one release ago
+  directly under the status card, it sat at the visual weight of an *alert*, alongside "recording
+  failed to reach disk" and the config-check errors. It is not an alert — it is a summary you reach
+  for **when investigating**; the failures themselves are already visible as red rows in the list.
+  Putting a summary where an alert goes costs twice: it takes first-screen height away from the
+  actual content, and a banner that is present every day drags the real alerts down with it into
+  being ignored — the same mechanism the config check's own rules warn about ("after the second
+  false alarm nobody reads the banner again"). It is now a small button in the date row's tool area
+  next to *Clear* — `● 2 failed · 2 groups`, not rendered at all when the day has none — and the
+  panel opens in place below it. The first screen goes back to: status card → real alerts, if any →
+  date row → **the capture list**.
 
 ## v0.4.3 - 2026-08-01
 

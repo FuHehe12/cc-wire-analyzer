@@ -32,6 +32,9 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 _DEFAULTS = {
     "ui_lang": "zh",
+    # 界面缩放百分比（80~200，默认 100）。260801 用户反馈：2K 分辨率 + 系统缩放 100% 下
+    # 字号偏小——全部 CSS 是绝对 px，此前软件里没有任何调节手段，只能去改系统缩放（会波及所有软件）。
+    "ui_scale": 100,
     "auto_start_proxy": False,
     "retention_days": 30,
     "translate": {
@@ -69,7 +72,17 @@ def get_config() -> dict:
                     merged[k].update(v)
                 else:
                     merged[k] = v
+    merged["ui_scale"] = _clamp_scale(merged.get("ui_scale"))   # 手改坏的 config.json 也不许把界面缩没
     return merged
+
+
+def _clamp_scale(v) -> int:
+    """界面缩放百分比夹到 80~200。前端把它直接写进 CSS zoom——0/负数/天文数字会让界面
+    缩没或撑爆，而这是个**改坏了就没法再打开设置页改回来**的字段，所以读写两侧都夹。"""
+    try:
+        return max(80, min(200, int(v)))
+    except (TypeError, ValueError):
+        return 100
 
 
 def set_config(updates: dict) -> dict:
@@ -82,6 +95,7 @@ def set_config(updates: dict) -> dict:
                 current[k].update(v)
             else:
                 current[k] = v
+    current["ui_scale"] = _clamp_scale(current.get("ui_scale"))
     CONFIG_FILE.write_text(
         json.dumps(current, ensure_ascii=False, indent=2),
         encoding="utf-8",
