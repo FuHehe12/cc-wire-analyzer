@@ -40,6 +40,16 @@
 ## Unreleased
 
 ### Changed
+- **Auxiliary calls now attach to their owning session lane exactly, not to whichever main lane
+  was latest in time.** Aux requests carry `X-Claude-Code-Session-Id` too — 1 163 records across
+  10 days, 100 % have it, 99.7 % map to a main lane captured the same day — so the `near` edge now
+  resolves through the session id and only falls back to time proximity when the owning session
+  was never recorded (3 records in the whole set). On the busiest multi-session day the old
+  heuristic had mis-attached 9 of 745 aux calls, and every mis-attachment also mis-colored the
+  node and hid it with the wrong lane on cascade. Legend updated in all three languages
+  ("aux owner"). Same audit rule as the agent-id change below: where a heuristic guess and an
+  official field coexist, the official field wins. (Methodology written into `docs/开发指南.md`
+  and `docs/问题域手册.md` for reuse on other harnesses.)
 - **Subagent lanes are now keyed by CC's own agent id** (`X-Claude-Code-Agent-Id` header) whenever
   it is present, instead of the `md5(spawner|prompt)` key derived from prompt alignment. Evidence
   over 10 days of real captures (225 subagent requests): the header appears on every subagent

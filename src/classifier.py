@@ -665,6 +665,7 @@ def build_dag(records: list[dict]) -> dict:
     #   未命中时由上面的 agent_fp 回落循环补上）
     lane_of: dict[str, dict] = {}
     nodes = []
+    aux_sid: dict[str, str] = {}   # aux node id → session_id（near 边精确挂接用，260801）
     for r, kind, lk in infos:
         if kind == "main":
             lane_id = "s-" + lk
@@ -684,7 +685,10 @@ def build_dag(records: list[dict]) -> dict:
                                 "session_id": "" if lane_kind == "aux" else (r.get("session_id") or ""),
                                 "entrypoint": r.get("entrypoint") or ""}
         lane_of[lane_id]["count"] += 1
-        nodes.append(_node_summary(r, kind, lane_id))
+        n = _node_summary(r, kind, lane_id)
+        if lane_kind == "aux" and r.get("session_id"):
+            aux_sid[n["id"]] = r["session_id"]
+        nodes.append(n)
 
     # seq 边：同 lane 相邻
     edges = list(trigger_edges)
@@ -715,17 +719,37 @@ def build_dag(records: list[dict]) -> dict:
                 turn.append(n)
         _flush_turn(turn)
 
-    # near 边：aux 节点 → 时序上最近的前一条 main 节点（弱示意，仅时序邻近非因果）
+    # near 边：aux 节点 → 关联主线节点。**260801 起优先精确挂 session**——aux 请求同样带
+    # X-Claude-Code-Session-Id（实测 10 天 1163 条 100% 带、1160 条精确对上当天主线），
+    # 时序邻近只是挂不上时（会话主线没被录到/跨天，3/1163）的兜底。此前只靠时序邻近，
+    # 多会话并发日（07-18 十三会话 746 条 aux）会把辅助挂到别家主线上，
+    # 级联隐藏与 assoc-dot 着色跟着错。
+    main_by_lane: dict[str, list[dict]] = {
+        lid: [n for n in ns if n["kind"] == "main"] for lid, ns in by_lane.items()}
     main_nodes = [n for n in nodes if n["kind"] == "main"]
+
+    def _latest_before(pool: list[dict], ts: str):
+        prev = None
+        for m in pool:
+            if (m["ts_start"] or "") <= ts:
+                prev = m
+            else:
+                break
+        return prev
+
     for n in nodes:
         if n["lane"] != "aux":
             continue
         prev = None
-        for m in main_nodes:
-            if (m["ts_start"] or "") <= (n["ts_start"] or ""):
-                prev = m
-            else:
-                break
+        sid = aux_sid.get(n["id"])
+        if sid:   # 精确：与主线泳道键同一算法（"s-" + md5(session_id)，见 _lane_key）
+            pool = main_by_lane.get(
+                "s-" + hashlib.md5(sid.encode("utf-8", "replace")).hexdigest()[:8])
+            if pool:   # 泳道在就只在泳道内找：先取时序前驱，没有（aux 早于本会话首条
+                prev = _latest_before(pool, n["ts_start"] or "") or pool[0]
+                # 主线，如安全审查抢跑）就挂首条——宁可方向反也不挂到别家会话
+        if prev is None:   # 兜底：全局时序邻近（弱示意，仅时序邻近非因果）
+            prev = _latest_before(main_nodes, n["ts_start"] or "")
         if prev:
             edges.append({"from": prev["id"], "to": n["id"], "type": "near"})
 
