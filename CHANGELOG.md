@@ -5,23 +5,19 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed to use it from an agent.
-- **Current status**: **v0.4.4 released** (2026-08-01). A usability release on top of v0.4.3, all
-  three items from real use: leaving the app running past midnight used to freeze the interface on
-  yesterday (new captures were silently discarded, not merely slow); small text sat below WCAG AA
-  and read as blurry on a 2K display, now re-cut plus a 90–200% interface scale in Settings; and the
-  failure-grouping panel was demoted from a first-screen banner to a button in the date row, because
-  it is a summary you reach for when investigating, not an alert.
-  The preceding **v0.4.3** is the substantive one — it closed the recording
-  blind-spot audit and stopped under-reporting failures. Three things mattered most: an upstream
-  error *inside* an SSE stream (HTTP 200) used to be recorded as a **success**, so in-stream
-  failures had never entered the failure statistics — **this tool had been under-reporting the
-  upstream failure rate**; failure grouping finally has a way in from the UI, after six weeks of
-  being the project's self-declared largest gap; and the agent-facing manual now ships inside the
-  binary (`--help`, and `GET /api/ai-guide` once running), so an AI on a machine that only has the
-  executable can learn to drive it. Also: recording now covers every compression format CC
-  advertises (a missing brotli had been dropping every security-classifier body), what CC declares
-  about itself (`anthropic-beta`) is recorded and surfaced as a blind-spot radar, and the version
-  the app reports finally always matches the release tag.
+- **Current status**: **v0.4.5 released** (2026-08-01). A correctness and readability
+  pass for the timeline when a capture holds more than one session and spawned subagents — the
+  chart now matches what actually happened. Auxiliary calls (title / security / count_tokens)
+  attach to their owning session lane by session id, not to whichever main lane was latest in
+  time; subagent lanes are keyed by CC's own `X-Claude-Code-Agent-Id` header, so a lane joins
+  straight to the subagent's own jsonl transcript; hiding a main lane cascades through the spawn
+  chains and aux calls it owns; and subagent lanes are tinted with a washed version of their
+  spawner's color, so a spawn family reads as one color family. Plus fixes from real use: a
+  `loadDag` race could leave the timeline on the wrong day after fast date switches; "I raised
+  max_tokens, why is it still cut off" now has an answer (three causes, named); copy and selection
+  work across the packaged app; and `serve` no longer exits on a machine that has no settings.json yet.
+  The preceding **v0.4.4** was a usability release — surviving midnight, readable small text, and
+  a 90–200% interface-scale setting.
   **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
@@ -37,7 +33,7 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
-## Unreleased
+## v0.4.5 - 2026-08-01
 
 ### Changed
 - **Auxiliary calls now attach to their owning session lane exactly, not to whichever main lane
@@ -116,6 +112,19 @@
   buttons, tabs, date chips, toggles and DAG nodes/lane heads — and the right-click "copy block"
   selector covers the crumb bar, settings rows, the About row and DAG nodes. Button labels
   ("← Back", "Open", "Check for updates") are stripped from a copied block.
+- **Switching dates fast could leave the timeline on the wrong day's data.** `loadDag()`
+  had no request guard, so two overlapping loads — one fired by entering the DAG view
+  (`S.date` = today) and one fired a moment later by clicking a date chip (`S.date` = a
+  historical day) — raced: whichever response landed second won, regardless of which date
+  it was for. The observed symptom was a historical chip highlighted while the content area
+  read "no captures for this date" (today's empty response had arrived last). The API data
+  was never wrong; this was a pure frontend timing bug. `loadDag` now records the date and
+  a monotonically increasing sequence number before the fetch, and discards a response whose
+  date or sequence no longer matches. One subtlety the fix respects: the guard is taken
+  **after** the first-load `fetchCaptures`, not at the entry — `fetchCaptures` itself sets
+  `S.date` (null → today on a first visit), so a guard taken too early would discard the
+  legitimate first load every time. Low impact in practice (you had to click fast, on two
+  dates, with one of them empty); recorded when found, fixed before this release.
 
 ## v0.4.4 - 2026-08-01
 
