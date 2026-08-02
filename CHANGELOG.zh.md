@@ -78,6 +78,16 @@
   （不拒绝：也可能是合法本地网关如 `:8080` 的 vLLM），`/api/proxy/status` 暴露 `base_url_warning`
   字段，前端复用 external-bar 样式醒目提示「检查 BASE_URL」（三语）。warning 跨整个录制持续，
   下次启动 `snapshot_original` 重算时清。
+- **盲区雷达审查：扩充已知集合 + web_search 链渲染。** 首跑发现的 6 类盲区经深入分析实为两类
+  协议演进（非 bug）：**web_search 联网特性族**（`tool_choice(web_search)` → `server_tool_use` →
+  `web_search_tool_result` → `text.citations` 带引用回答）与 **advanced-tool-use / 新模型 thinking**
+ （`tool_use.caller:{type:"direct"}`、opus-5/k3 的 `thinking.type=adaptive`）。已知 Anthropic 标准
+  字段并入 `KNOWN_*`，让雷达只报真未知：`KNOWN_BLOCK_TYPES` += web_search_tool_result + redacted_thinking；
+  `KNOWN_BLOCK_KEYS` 加 caller / citations / 新块字段；`KNOWN_BODY_FIELDS` += tool_choice；
+  `KNOWN_THINKING_TYPES` += adaptive。`index_record` 索引 `tool_choice`（哪些请求被强制工具）。
+  web_search 链现可读——`web_search_tool_result` 显示结果摘要 + 数量（原 JSON dump）、`text.citations`
+  显示引用来源（原隐藏）。审查后测试日 with_unknowns **259→1**（余 `_input_raw` 真降级字段）。
+  bump `IDX_SCHEMA` 10→11。
 
 ### 文档
 - AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch

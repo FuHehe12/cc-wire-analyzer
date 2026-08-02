@@ -67,20 +67,25 @@ PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首�
 # /api/unknowns 一键查（issues/open/260802_未知盲区检测与一键查询.md）。
 # **硬编码 + 版本号，不动态算频次**——"已知"必须确定可审计，不能漂移；
 # 稳定的未知定期并入这里（像 quota_probe/hook_eval 固化成 kind 那样）。
-KNOWN_BLOCK_TYPES = {"text", "tool_use", "thinking", "server_tool_use"}
-# 每种已知块的标准字段（全景快照）。caller / citations / _input_raw 等不在内 → 触发未知。
+KNOWN_BLOCK_TYPES = {"text", "tool_use", "thinking", "redacted_thinking",
+                     "server_tool_use", "web_search_tool_result"}
+# 每种已知块的标准字段。260802 审查后并入 advanced-tool-use（caller）/ web_search
+# （citations、web_search_tool_result）/ redacted_thinking —— 它们是 Anthropic 标准字段、CC
+# 启用相应 beta 后出现，不再当未知。剩下的（_input_raw 等降级字段）才触发未知。
 KNOWN_BLOCK_KEYS = {
-    "text":            {"type", "text"},
-    "tool_use":        {"type", "id", "name", "input"},
-    "thinking":        {"type", "thinking", "signature"},
-    "server_tool_use": {"type", "id", "name", "input"},
+    "text":                   {"type", "text", "citations"},
+    "tool_use":               {"type", "id", "name", "input", "caller"},
+    "thinking":               {"type", "thinking", "signature"},
+    "redacted_thinking":      {"type", "data"},
+    "server_tool_use":        {"type", "id", "name", "input", "caller"},
+    "web_search_tool_result": {"type", "tool_use_id", "caller", "content"},
 }
 KNOWN_BODY_FIELDS = {
-    "model", "messages", "system", "tools", "metadata", "max_tokens", "thinking",
-    "context_management", "output_config", "stream", "diagnostics", "stop_sequences",
+    "model", "messages", "system", "tools", "tool_choice", "metadata", "max_tokens",
+    "thinking", "context_management", "output_config", "stream", "diagnostics", "stop_sequences",
 }
 KNOWN_STOP_REASONS = {"tool_use", "end_turn", "stop_sequence", "max_tokens"}
-KNOWN_THINKING_TYPES = {"enabled", "disabled"}   # adaptive 非标准 → 触发未知
+KNOWN_THINKING_TYPES = {"enabled", "disabled", "adaptive"}   # adaptive: opus-5/k3 自适应 thinking
 
 KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens",
               "quota_probe", "hook_eval", "other")
@@ -112,7 +117,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v9 → v10（260802）：新增 unknowns（盲区雷达）。同时 classify_idx 固化 quota_probe
 #                     + hook_eval 两个原 other 子类（字段集没变，但旧索引要重建才能让
 #                     历史 10 条从 other 改判 + 拿到 unknowns）。
-IDX_SCHEMA = 10
+#   v10 → v11（260802）：KNOWN_* 扩充（并入 advanced-tool-use 的 caller / web_search 链的
+#                     citations + web_search_tool_result / redacted_thinking / tool_choice /
+#                     adaptive thinking），旧索引的 unknowns 按旧 KNOWN 算、会把这些当未知，
+#                     需重建。同时 index_record 加 tool_choice 字段。
+IDX_SCHEMA = 11
 
 
 # ===== 请求体取文本 =====
@@ -448,6 +457,17 @@ def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
     return out
 
 
+def _tool_choice_flat(body: dict) -> str | None:
+    """tool_choice 归一：{type:"tool", name:X} → X；{type:"auto"/"any"} → type；无 → None。
+    让 AI 查「哪些请求被强制工具」（如 CC 强制 web_search 联网）。"""
+    tc = body.get("tool_choice")
+    if not isinstance(tc, dict):
+        return None
+    if tc.get("type") == "tool" and tc.get("name"):
+        return str(tc["name"])
+    return tc.get("type") or None
+
+
 def index_record(rec: dict) -> dict:
     """完整 record → 轻量索引记录（capture_store 写时/回填时调用）。
 
@@ -533,6 +553,8 @@ def index_record(rec: dict) -> dict:
         # （如标题请求只要 {title}）。只存 format.type 小标量，schema 内容详情页 body 可见。
         "format": (((body.get("output_config") or {}).get("format") or {}).get("type")
                    if isinstance((body.get("output_config") or {}).get("format"), dict) else None),
+        # tool_choice：CC 强制指定工具（如 web_search）。归一成 name 或 type。
+        "tool_choice": _tool_choice_flat(body),
         "thinking": ((body.get("thinking") or {}).get("type")
                      if isinstance(body.get("thinking"), dict) else None),
         "stream": bool(body.get("stream")),

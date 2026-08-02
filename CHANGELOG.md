@@ -108,6 +108,19 @@
   `base_url_warning`; the UI reuses the external-bar style for a prominent "check BASE_URL" prompt
   (tri-lingual). The warning persists across the whole recording and clears on the next
   `snapshot_original` recompute.
+- **Blind-spot radar review: known sets expanded + the web_search chain rendered.** Deep analysis
+  of the first sweep's six categories showed they are two clusters of protocol evolution, not bugs:
+  the **web_search** family (`tool_choice(web_search)` → `server_tool_use` →
+  `web_search_tool_result` → `text.citations`) and **advanced-tool-use / new-model thinking**
+  (`tool_use.caller:{type:"direct"}`, `thinking.type=adaptive` on opus-5/k3). The known
+  Anthropic-standard fields are folded into `KNOWN_*` so the radar reports only true unknowns:
+  `KNOWN_BLOCK_TYPES` += web_search_tool_result + redacted_thinking; `KNOWN_BLOCK_KEYS` adds
+  caller / citations / the new blocks' fields; `KNOWN_BODY_FIELDS` += tool_choice;
+  `KNOWN_THINKING_TYPES` += adaptive. `index_record` now indexes `tool_choice` (which requests
+  force a tool, e.g. web_search). The web_search chain is now readable — `web_search_tool_result`
+  shows a result summary + count (was a raw JSON dump), and `text.citations` shows cited_text + url
+  (was hidden). After the sweep, with_unknowns on a test day dropped 259→1 (the remainder is
+  `_input_raw`, a genuine fallback field). Bumps `IDX_SCHEMA` 10→11.
 
 ### Docs
 - AI_USAGE.md gains "coexisting with cc-switch and other config tools" + "when the proxy needs a

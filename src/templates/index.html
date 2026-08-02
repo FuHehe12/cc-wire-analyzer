@@ -2581,6 +2581,12 @@ function renderMsg(m){
   for(const b of content){
     if(b.type === "text"){
       inner += bigText(b.text || "", 4000);
+      if(Array.isArray(b.citations) && b.citations.length){
+        const cl = b.citations.slice(0, 8).map((c, i) =>
+          "[" + (i + 1) + "] " + esc((c.cited_text || "").replace(/\n/g, " ").slice(0, 120)) +
+          (c.url ? ' <span class="blk-meta">' + esc(c.url) + '</span>' : ""));
+        inner += '<div class="tooluse-box"><span class="blk-meta">citations:</span>\n' + bigText(cl.join("\n"), 1500) + '</div>';
+      }
     }else if(b.type === "thinking"){
       inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--text-faint)">thinking</span></div>' +
         bigText(b.thinking || b.text || "", 3000) + '</div>';
@@ -2591,6 +2597,12 @@ function renderMsg(m){
       inner += '<div class="tooluse-box">⟐ <span class="chip" style="background:var(--node-system)">server</span> ' +
         esc(b.name || "tool") + " " +
         esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
+    }else if(b.type === "web_search_tool_result"){
+      const items = Array.isArray(b.content) ? b.content : (b.content ? [b.content] : []);
+      const lines = items.slice(0, 6).map(c => typeof c === "string" ? "• " + c
+        : "• " + esc(String(c.title || c.text || c.snippet || "").slice(0, 160)) + (c.url ? "  " + esc(String(c.url).slice(0, 90)) : ""));
+      inner += '<div class="tooluse-box">⟐ <span class="chip" style="background:var(--node-system)">web_search</span> ' +
+        bigText(lines.length ? lines.join("\n") : JSON.stringify(b.content ?? {}).slice(0, 1200), 2000) + '</div>';
     }else if(b.type === "tool_result"){
       const txt = typeof b.content === "string" ? b.content
         : (Array.isArray(b.content) ? b.content.map(c => c.text || "").join("\n") : JSON.stringify(b.content));
@@ -2607,11 +2619,22 @@ function renderRespBlock(b){
       bigText(b.text || b.thinking || "", 3000) + '</div>';
   }
   if(b.type === "text"){
+    /* web_search 的回答带 citations（引用来源）——260802 前完全不显示。现折叠展示
+       cited_text 片段 + url，让带搜索的回答可追溯。 */
+    let cit = "";
+    if(Array.isArray(b.citations) && b.citations.length){
+      const cl = b.citations.slice(0, 10).map((c, i) => {
+        const u = c.url || "", t = (c.cited_text || "").replace(/\n/g, " ");
+        return "[" + (i + 1) + "] " + esc(t.slice(0, 140)) + (u ? ' <span class="blk-meta">' + esc(u) + '</span>' : "");
+      });
+      cit = '<div class="tooluse-box"><span class="blk-meta">citations (' + b.citations.length + "):</span>\n" +
+        bigText(cl.join("\n"), 1800) + '</div>';
+    }
     return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--accent)">text</span>' +
       '<span class="blk-actions">' +
       toolBtn("translate", t18("bt.translate"), "translateBlock(this)") +
       toolBtn("explain", t18("bt.explain"), "explainBlock(this)") + '</span></div>' +
-      '<div class="blk-text">' + mdRender(b.text || "") + '</div></div>';
+      '<div class="blk-text">' + mdRender(b.text || "") + '</div>' + cit + '</div>';
   }
   if(b.type === "tool_use"){
     return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--info)">tool_use</span>' +
@@ -2627,6 +2650,23 @@ function renderRespBlock(b){
       (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
       '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
       esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';
+  }
+  /* web_search_tool_result：服务端 web_search 返回的搜索结果（content = 结果列表）。
+     260802 前走 default JSON dump；现提取每条 title/url 摘要，标结果数。 */
+  if(b.type === "web_search_tool_result"){
+    const items = Array.isArray(b.content) ? b.content : (b.content ? [b.content] : []);
+    const lines = items.slice(0, 8).map(c => {
+      if(typeof c === "string") return "• " + c;
+      const t = c.title || c.text || c.snippet || "";
+      const u = c.url || "";
+      return "• " + esc(String(t).slice(0, 180)) + (u ? "  " + esc(String(u).slice(0, 100)) : "");
+    });
+    const body = lines.length ? lines.join("\n") : esc(JSON.stringify(b.content ?? {}, null, 1).slice(0, 1500));
+    const more = items.length > 8 ? "\n… (+" + (items.length - 8) + " more)" : "";
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--node-system)">web_search_tool_result</span>' +
+      (b.tool_use_id ? '<span class="blk-meta">' + esc(b.tool_use_id) + '</span>' : "") +
+      ' <span class="blk-meta">' + items.length + " result" + (items.length === 1 ? "" : "s") + '</span></div>' +
+      '<div class="tooluse-box">' + bigText(body + more, 2500) + '</div></div>';
   }
   return '<div class="blk"><div class="blk-head"><span class="chip outline">' + esc(b.type || "?") + '</span></div>' +
     bigText(JSON.stringify(b, null, 1), 1500) + '</div>';
