@@ -5,7 +5,22 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Detailed change history in the sections below. Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand that exposes a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed to use it from an agent.
-- **Current status**: **v0.4.6 released** (2026-08-01). A correctness pass driven by using the
+- **Current status**: **v0.4.7 released** (2026-08-02). The release that made the two surfaces
+  say what they mean. On the human side the timeline stopped being a list of requests and became
+  a list of *turns*: one card per thing you said, carrying the subagents it spawned and the
+  auxiliary calls it triggered, with everything else folded underneath (measured: 19 lanes / 192
+  nodes down to 18 lanes / 68 cards on a real day). The interface also got three themes and now
+  opens dark by default — a traffic analyser is read next to DevTools and a terminal, and the
+  previous single warm-grey palette was the odd one out. On the agent side, the blind-spot radar
+  and cross-day trends were re-checked against 12 days of real captures and several of their
+  labels turned out to be wrong: a 2650-failure single-day incident was tagged *sporadic*, a group
+  that stopped two weeks ago still read as *recurring*, every vendor's opaque `Error` merged into
+  one junk-drawer group, and the radar's beta provenance was reporting the day's baseline flags
+  rather than anything actually suspicious. Both are now CLI subcommands too, because auditing is
+  supposed to be read-only and `serve` patches your real settings.json. Plus `tools/doc_audit.py`,
+  which reconciles six mechanically decidable facts between the code and what the docs claim —
+  its first run found four.
+  The preceding **v0.4.6** was a correctness pass driven by using the
   tool the way an agent does: `grep` searched only 14% of a request and could not say so (it now
   covers every region, and every result declares its coverage); `stats` left `cache_creation`
   out of its totals (~38% of the cost); `get` without `--date` could silently return a
@@ -32,16 +47,11 @@
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
 - **Next steps**:
-  1. **Failure grouping across days — landed in Unreleased, then corrected.** `/api/diagnose/trends`
-  answers "new or recurring?" with per-day curves, trend tags, staleness and
-  host/model/cc_version slices (HTTP + CLI, no GUI). A re-check against 12 days of real captures
-  fixed what the labels were actually saying: a single-day 2650-failure incident used to be tagged
-  *sporadic*, a group that stopped two weeks ago still read as *recurring*, and every vendor's
-  opaque `Error` merged into one junk-drawer group. Same pass corrected the blind-spot radar
-  (host attribution, lift-based beta provenance, our own degradation markers split out). Still
-  open: hardening recurring patterns into doctor rules automatically — `effort_max_rejected_upstream`
-  came from a manually-spotted recurring failure, and closing that loop end-to-end is the remaining
-  half.
+  1. **Close the self-improvement loop: recurring failures should become doctor rules.**
+  `/api/diagnose/trends` now answers "new or recurring?" reliably (v0.4.7 corrected what its labels
+  were actually saying), but turning a recurring pattern into a check is still manual —
+  `effort_max_rejected_upstream` exists because a human noticed a recurring failure and wrote a rule
+  for it. Automating that half is what makes the radar and the trends more than a reading exercise.
   2. **Recording-blind-spot audit: closed (both halves).** The 260731 *protocol-side* audit
   (against what CC declares: headers, body fields, SSE branches) found nine gaps, all addressed.
   The *capability-side* half — running each CC ability through the proxy and checking the recording
@@ -50,7 +60,7 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
-## Unreleased
+## v0.4.7 - 2026-08-02
 
 ### Added
 - **Three interface themes, and the default is now dark.** The interface had been one warm-grey
