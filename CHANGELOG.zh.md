@@ -118,6 +118,9 @@
 - README「什么时候你会需要它」+ 真实案例，三语重写。原定位是第三方网关排障，现改为理解 CC↔模型
   的真实交互——CC 发了什么、各环节（主线/标题/安全/压缩）的提示词、把录制交给 agent 分析。删掉
   「这可能不适合你」段。案例从「人偶然发现」改为「agent 走端点、把上游诊断递给你」。
+- README 新增「Claude Code 报 API 错误怎么办」节（三语）：录制后 CC 报 API 错误基本是
+  `ANTHROPIC_BASE_URL` 残留/不对——第三方用户改回网关地址，官方订阅用户删掉该字段并重启 CC
+  （`BASE_URL` 只在启动时读）。
 - AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
   保存 profile 会把本机代理地址存进去（工具侧防不住——settings 没被改、只是被读走，settings_guard
   检测不到；切换上游那条路径则已由 `check_external_change` 检测+降旗覆盖）；opus 订阅/key 变动后

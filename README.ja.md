@@ -104,6 +104,13 @@ uv run python src/desktop.py
 
 プロキシ実行中は **cc-switch でエンドポイントを切り替えないで**——`BASE_URL` を書き換えるため CC がプロキシをバイパスします。
 
+## Claude Code が API エラーを出すとき
+
+録画は `ANTHROPIC_BASE_URL` を一時的にローカルプロキシに向けることで機能し、アプリ終了時に復元します（多重の安全網 + 孤立マーカーによる自己修復）。録画後に CC が API エラーを出す——接続拒否、401、タイムアウト——場合は、`~/.claude/settings.json` の `BASE_URL` が古いか間違っているのがほぼ原因です。エンドポイント種別に応じて対処してください：
+
+- **サードパーティ API / ゲートウェイ**：`~/.claude/settings.json` を開き、`ANTHROPIC_BASE_URL` をゲートウェイのアドレスに戻します（または cc-switch で切り替え）。
+- **公式 Anthropic サブスクリプション**：`ANTHROPIC_BASE_URL` フィールドを**完全に削除**します——公式エンドポイントに base URL は不要です——そして **Claude Code を完全に終了して再起動**してください。CC は起動時にしか `BASE_URL` を読み込まないため、実行中にファイルを編集しても反映されません。
+
 ## データ位置
 
 | パス | 内容 |

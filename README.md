@@ -148,6 +148,19 @@ Then click **Start proxy** in the app, open a new Claude Code session, use it no
 
 While the proxy runs, **don't switch endpoints with cc-switch** — it rewrites `BASE_URL` and CC would bypass the proxy.
 
+## If Claude Code shows API errors
+
+Recording works by temporarily pointing `ANTHROPIC_BASE_URL` at the local proxy, and the app
+restores it on exit (multiple safety nets + an orphan-marker self-heal). If CC still reports
+API errors after a recording — connection refused, 401, timeouts — it's almost always a stale
+or wrong `BASE_URL` left in `~/.claude/settings.json`. Fix it by endpoint type:
+
+- **Third-party API / gateway**: open `~/.claude/settings.json` and set `ANTHROPIC_BASE_URL`
+  back to your gateway's address (or switch it back with cc-switch).
+- **Official Anthropic subscription**: **delete** the `ANTHROPIC_BASE_URL` field entirely —
+  the official endpoint needs no base URL — then **fully quit and restart Claude Code**. CC
+  reads `BASE_URL` only at startup, so editing the file while it runs won't take effect.
+
 ## Data location
 
 | Path | Content |

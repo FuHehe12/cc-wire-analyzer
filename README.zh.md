@@ -103,6 +103,13 @@ uv run python src/desktop.py
 
 代理运行期间，**不要用 cc-switch 切换端点** —— 它会重写 `BASE_URL`，CC 就绕过代理了。
 
+## Claude Code 报 API 错误怎么办
+
+录制靠临时把 `ANTHROPIC_BASE_URL` 指向本地代理，软件退出时会自动恢复（多重兜底 + 孤儿标记自愈）。如果录制后 CC 仍报 API 错误——连不上、401、超时——基本是 `~/.claude/settings.json` 里的 `BASE_URL` 残留或不对。按端点类型处理：
+
+- **第三方 API / 网关**：打开 `~/.claude/settings.json`，把 `ANTHROPIC_BASE_URL` 改回你网关的地址（或用 cc-switch 切回）。
+- **官方 Anthropic 订阅**：**删掉** `ANTHROPIC_BASE_URL` 这个字段——官方端点不需要 base URL——然后**完全退出 Claude Code 再重启**。CC 只在启动时读 `BASE_URL`，运行时改文件不生效。
+
 ## 数据位置
 
 | 路径 | 内容 |

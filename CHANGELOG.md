@@ -164,6 +164,10 @@
   security / compaction), and handing the recording to an agent to analyze. Dropped the
   "probably not for you" paragraph. The example shifts from "found by accident by a human" to
   "an agent walks the endpoints and hands you the upstream's diagnosis."
+- README gains an "If Claude Code shows API errors" section (tri-lingual): a stale/wrong
+  `ANTHROPIC_BASE_URL` after recording is the near-always cause of CC API errors — third-party
+  users set it back to their gateway, official-subscription users delete the field and restart
+  CC (`BASE_URL` is read only at startup).
 - AI_USAGE.md gains "coexisting with cc-switch and other config tools" + "when the proxy needs a
   restart": saving a profile via cc-switch during recording stores the local-proxy address into
   that profile (undefendable on the tool side — settings isn't modified, only read out, so
