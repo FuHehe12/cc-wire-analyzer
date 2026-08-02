@@ -13,6 +13,12 @@
   2. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures supply statistical evidence (225 requests, all carrying the flag, no counterexample), but that is not the same as a session captured and checked against ground truth.
   3. The recording-blind-spot audit (protocol side and capability side) closed across v0.4.3–v0.4.6; method in `docs/开发指南.md` §2.5 and unit 0 of `docs/问题域手册.md`.
 
+## Unreleased
+
+### Fixed
+
+- **The aux lane is back in the folded timeline — one aggregate card per session.** v0.4.7's turn fold hid every attributed auxiliary call into turn-card badges; on a day where all aux had an owning turn (124/124 on 08-02), the aux lane vanished outright, and every near edge degenerated into a self-loop hidden behind its turn card — "which session did this security audit belong to" ceased to be visible unless you already knew which turn to expand. Now each main lane's auxiliaries fold into a single aggregate card in the aux lane: lane-coloured border and count chip, per-kind badges, placed at its first member's time slot, with near edges converging from the turn cards onto it. Clicking expands that session's auxiliaries in place; expanding a turn pulls that turn's own auxiliaries out as individual cards and the aggregate's count shrinks accordingly. Unattributed auxiliaries still show individually — folding those away would be silent data loss. Measured on 08-02: 192 nodes → 71 cards (68 turn cards + 3 aggregate cards), versus 68 with the lane gone.
+
 ## v0.4.7 - 2026-08-02
 
 ### Added

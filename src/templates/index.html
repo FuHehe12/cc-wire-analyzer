@@ -562,6 +562,11 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 /* 连续错误折叠卡（260719）：刺眼（红底）但只占一格——错误洪峰天（实测 2029 连错）不把图撑爆 */
 .dag-node.err-run{background:var(--bg-error-soft);border-left-color:var(--err);box-shadow:var(--apple-shadow-sm),inset 0 0 0 1px rgba(248,113,113,0.25);}
 .dag-node.err-run:hover{background:var(--danger-node-hover);transform:translateY(-1px);box-shadow:var(--apple-shadow),inset 0 0 0 1px rgba(248,113,113,0.4);}
+/* 辅助聚合卡：轮卡同族卡片态，虚线内框暗示「收起的一摞」；边线/计数章用主线色（260802） */
+.dag-node.aux-agg{background:var(--bg-card);border-left-width:4px;cursor:pointer;overflow:hidden;
+  outline:1px dashed var(--border);outline-offset:-4px;}
+.dag-node.aux-agg:hover{background:var(--bg-warm-3);transform:translateY(-1px);
+  box-shadow:var(--apple-shadow),0 0 0 1px var(--node-hover-ring);}
 .dag-node .dn-r1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
 .dag-node .dn-time{font-family:var(--font-mono);font-size:10.5px;color:var(--apple-secondary);
   font-variant-numeric:tabular-nums;}
@@ -1202,6 +1207,7 @@ zh: {
   "dag.laneHint": "关闭一条主线会连同它派生的子代理（含嵌套）与辅助调用一起隐藏；子代理可单独勾回",
   "dag.errRun": "连续错误", "dag.errRunTitle": "{n} 条连续错误，点击展开逐条查看",
   "dag.collapseRun": "折叠",
+  "dag.auxAgg": "辅助调用", "dag.auxAggTitle": "{lane}的 {n} 条辅助调用（标题/安全/计数等），点击展开逐条查看",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
   "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.title": "标题指令",
@@ -1384,6 +1390,7 @@ en: {
   "dag.laneHint": "Hiding a main lane also hides the subagents it spawned (including nested) and its auxiliary calls; a subagent can be re-enabled on its own",
   "dag.errRun": "consecutive errors", "dag.errRunTitle": "{n} consecutive errors, click to expand",
   "dag.collapseRun": "Collapse",
+  "dag.auxAgg": "auxiliary calls", "dag.auxAggTitle": "{n} auxiliary calls of {lane} (title/security/count etc.), click to expand",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
   "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.title": "Title",
@@ -1566,6 +1573,7 @@ ja: {
   "dag.laneHint": "メインレーンを隠すと、そこから派生したサブエージェント（入れ子を含む）と補助呼び出しも一緒に隠れます。サブエージェントは個別に再有効化できます",
   "dag.errRun": "連続エラー", "dag.errRunTitle": "{n} 件の連続エラー、クリックで展開",
   "dag.collapseRun": "折りたたむ",
+  "dag.auxAgg": "補助呼出", "dag.auxAggTitle": "{lane} の補助呼出 {n} 件（タイトル/安全/カウント等）、クリックで展開",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
   "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.title": "タイトル指示",
@@ -3006,6 +3014,9 @@ const KIND_FG = {
 };
 /* kind/lane 显示名走 i18n：kindLabel() / laneLabel()（I18N 的 kind.* / lane.* 键） */
 const LANE_COLOR = { main: "var(--accent)", subagent: "var(--info)", aux: "var(--apple-secondary)" };
+/* 辅助 kind 的展示顺序与图标：轮卡徽章与辅助聚合卡共用（260802 聚合卡落地时提升为模块级）。 */
+const AUX_ORDER = ["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
+const AUX_ICON = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", other: "•" };
 /* 主线泳道分类色板按主题校准：dark 提亮第 6 色，light/classic 用深色线条落在浅卡上。
    按 lane 首见顺序取色，LIVE 新增 lane 只追加、已有色不变。 */
 const LANE_PALETTES = {
@@ -3090,12 +3101,21 @@ const DG = {
   date: null, rendered: false, hideMid: false, hideAux: false,
   /* 按轮折叠（260802，默认开）：一轮一张卡，卡上是「你那轮说了什么」+ 派生的子代理 + 辅助计数。
      hideMid 解决的是"太多"，这个解决的是"看不出对话流程"——两者并存，展开某轮后 hideMid 仍生效。
-     aux 泳道不参与折叠（用户选定保留 aux 列，点得进去才查得下去）。 */
+     aux 泳道在折叠态**不消失**：各主线的辅助聚成「一条主线一张聚合卡」（260802 二次迭代——
+     全藏让 aux 列整列蒸发、归属线全成自环，用户报 bug；全常驻图又高 25%）。
+     孤儿辅助（near 边没挂上的）不进卡，照常单条。 */
   foldTurns: true, expandedTurns: new Set(),
   turnById: {}, turnOfNode: {}, turnPos: {},
   ids: new Set(), tier: {}, pos: {}, nodeById: {},
   laneX: {}, laneLast: {}, laneKind: {}, laneColor: {}, laneNum: {},
   parentLane: {}, auxAssoc: {}, laneCount: 0, yCur: DGX.Y0, lanes: [],
+  /* 辅助聚合卡：key = 关联主线 lane id；auxAggOf = 成员节点 → 卡（dagPosOf 解析 near 边用）；
+     auxAggFirst/auxAggMembers/auxAggIn = renderDagFull 预分的组（auxAggIn 只记「在组里的」
+     成员——轮被展开/卡被点开的成员不在组，dagPlace 靠它区分谁归组谁单条）；
+     auxFirstOfLane = 各主线首个 aux（聚合卡展开后首条的「收回」徽章靠它定位）。
+     expandedAuxAgg = 被点开的聚合卡。 */
+  auxAgg: {}, auxAggOf: {}, auxAggFirst: {}, auxAggMembers: {}, auxFirstOfLane: {},
+  auxAggIn: {}, expandedAuxAgg: new Set(),
   hiddenLanes: new Set(),     /* 泳道选择：用户显式藏掉的 lane（不占列，260719） */
   shownLanes: new Set(),      /* 用户显式勾回的 lane：父被（级联）关闭也照显（260801 级联关闭） */
   runs: {}, openRun: {}, runOf: {},   /* 连续错误折叠：key=lane:firstId；openRun=各 lane 未闭合的 run */
@@ -3177,12 +3197,15 @@ function dagSeqSvg(a, b, lane){
     cx + ' ' + (a.y + a.h) + ' L' + cx + ' ' + b.y + '"/>';
 }
 function dagPosOf(id){
-  /* 节点可见位置：普通节点取自身 pos；被折叠进 run / turn 的成员解析到那张卡的位置。
-     边（trigger/near）因此在折叠态下自动改连到轮卡上——否则主线节点一藏，
-     「哪一轮派生了这个子代理」「这次安全审查属于谁」的连线就断了。 */
+  /* 节点可见位置：普通节点取自身 pos；被折叠进 run / 辅助聚合卡 / turn 的成员解析到那张卡的位置。
+     边（trigger/near）因此在折叠态下自动改连到轮卡/聚合卡上——否则主线节点一藏，
+     「哪一轮派生了这个子代理」「这次安全审查属于谁」的连线就断了。
+     auxAgg 先于 turnPos：折叠态下 aux 成员归聚合卡（轮卡只替 main/subagent 站位）。 */
   if(DG.pos[id]) return DG.pos[id];
   const rk = DG.runOf[id];
   if(rk) return DG.runs[rk].pos;
+  const ak = DG.auxAggOf[id];
+  if(ak && DG.auxAgg[ak]) return DG.auxAgg[ak].pos;
   const tk = DG.turnOfNode[id];
   return (tk && DG.turnPos[tk]) ? DG.turnPos[tk] : null;
 }
@@ -3216,6 +3239,13 @@ function dagNodeHtml(n){
     ? '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
       'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleRun(\'' +
       expKey + '\')">▴ ' + t18("dag.collapseRun") + '</span>' : "";
+  /* 展开的辅助聚合卡的首条成员：同样带「折叠」徽章可收回（key = 关联主线 lane id） */
+  const aal = DG.auxAssoc[n.id];
+  if(aal && !collapse && DG.expandedAuxAgg.has(aal) && DG.auxFirstOfLane[aal] === n.id){
+    collapse = '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
+      'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleAuxAgg(\'' +
+      aal + '\')">▴ ' + t18("dag.collapseRun") + '</span>';
+  }
   /* 展开的轮的首条请求：带「折叠本轮」可收回（否则展开后只能靠全局按钮收，找不回来） */
   if(DG.foldTurns && n.turn && DG.expandedTurns.has(n.turn) &&
      (DG.turnById[n.turn] || {}).head === n.id){
@@ -3265,11 +3295,9 @@ function dagTurnCardHtml(t, pos, laneColor){
     ' onclick="event.stopPropagation();dagFocusLane(\'' + esc(s.lane_id) + '\')">🤖 ' +
     esc((s.label || s.lane_id).slice(0, 14)) + '</span>';
   }).join("");
-  const auxOrder =["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
-  const auxIcon = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", other: "•" };
-  const aux = auxOrder.filter(k => (t.aux || {})[k]).map(k =>
+  const aux = AUX_ORDER.filter(k => (t.aux || {})[k]).map(k =>
     '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + ' ×' + t.aux[k] + '">' +
-    auxIcon[k] + (t.aux[k]) + '</span>').join("");
+    AUX_ICON[k] + (t.aux[k]) + '</span>').join("");
   const badges = (subs || aux) ? '<div class="dn-badges">' + subs + aux + '</div>' : "";
   /* 整卡染红只留给「整轮全挂」；轮里有几次失败（重试/瞬时 429）给 ⚠N 徽章。
      实测一天 68 轮有 29 轮含至少一次失败——一律染红等于把红色用废。 */
@@ -3325,13 +3353,39 @@ function dagToggleRun(key){
   DG.rendered = false;   /* 折叠态变了：全量重排 */
   loadDag();
 }
+/* 辅助聚合卡（260802）：折叠态下一条主线的全部辅助收成一张，立在 aux 列组首的时间槽；
+   边线/计数章用主线色——多会话并发时各主线一张卡，不会在 aux 列里互相穿插。
+   点击展开该主线全部辅助（展开后首条带「▴ 折叠」徽章可收回）。 */
+function dagAuxAggHtml(agg){
+  const counts = {};
+  agg.ids.forEach(id => { const m = DG.nodeById[id] || {}; counts[m.kind] = (counts[m.kind] || 0) + 1; });
+  const badges = AUX_ORDER.filter(k => counts[k]).map(k =>
+    '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + ' ×' + counts[k] + '">' +
+    AUX_ICON[k] + counts[k] + '</span>').join("");
+  const color = dagLaneStroke(agg.lane);
+  const first = DG.nodeById[agg.ids[0]] || {};
+  const p = agg.pos;
+  return '<div class="dag-node aux-agg" role="button" tabindex="0" onkeydown="activateClick(event)" data-auxagg="' +
+    esc(agg.key) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;height:' + p.h +
+    'px;border-left-color:' + color + '" title="' + esc(t18("dag.auxAggTitle", {n: agg.ids.length, lane: laneShortName(agg.lane)})) +
+    '" onclick="dagToggleAuxAgg(\'' + esc(agg.key) + '\')">' +
+    '<div class="dn-r1"><span class="dn-time">' + timePart(first.ts_start) + '</span>' +
+    '<span class="chip" style="background:' + color + ';color:' + fgOnHex(color) + '">×' + agg.ids.length + '</span></div>' +
+    '<div class="dn-meta">' + esc(laneShortName(agg.lane)) + ' · ' + t18("dag.auxAgg") + '</div>' +
+    '<div class="dn-badges">' + badges + '</div></div>';
+}
+function dagToggleAuxAgg(key){
+  if(DG.expandedAuxAgg.has(key)) DG.expandedAuxAgg.delete(key); else DG.expandedAuxAgg.add(key);
+  DG.rendered = false;   /* 折叠态变了：全量重排 */
+  loadDag();
+}
 /* 放一个节点：hideMid/hideAux/隐藏泳道过滤不占位；同 lane 连续错误（≥2）折叠成 ×N 卡只占一格；
    否则算位置、推进 y、补同 lane seq 边（连上一个**可见**节点）。
    全量与增量共用，保证两条路径布局完全一致。返回 "UNKNOWN_LANE" = lane 集合变了，调用方回退全量。 */
 function dagPlace(n){
   const tier = DG.tier[n.id];
   /* 按轮折叠：main/subagent 泳道里，未展开的轮只画轮首那张轮卡，其余成员不占位。
-     aux 泳道不折叠——用户选定保留 aux 列，它靠全局时序自然落在所属轮的卡片下方。
+     aux 泳道保留（聚合见下方）——用户选定：辅助维度折叠态也要看得见、点得进去。
      顺序上必须在 hideMid 之前判：折叠态下中间步本就不画，hideMid 只在展开某轮后才有意义。 */
   const tid = n.turn;
   if(DG.foldTurns && tid && DG.laneKind[n.lane] !== "aux" && !DG.expandedTurns.has(tid)){
@@ -3355,11 +3409,32 @@ function dagPlace(n){
   if(DG.hideMid && tier === "mid") return null;
   if(laneHidden(n.lane)) return null;
   if(DG.hideAux && DG.laneKind[n.lane] === "aux") return null;
-  /* 辅助也跟着轮折叠（260802）：轮卡上的 🏷N 🛡N 已经把「这轮触发了几次辅助」说清楚，
-     那些行不必再占位——一天里辅助占节点数近四分之一，留着它们折叠态的图仍然是散的。
-     **没有归属轮的辅助照常显示**：那是 near 边没挂上的（本会话主线没被录到/跨天截断），
-     藏了就是静默丢数据。展开那一轮，它的辅助随之回到 aux 列。 */
-  if(DG.foldTurns && DG.laneKind[n.lane] === "aux" && n.turn && !DG.expandedTurns.has(n.turn)) return null;
+  /* 辅助聚合（260802 二次迭代）：折叠态下，有归属主线（near 边）的辅助并进「一条主线一张」
+     的聚合卡——全藏让 aux 列整列蒸发（当天 124/124 全有归属，用户报 bug），全常驻图高 +25%。
+     分组在 renderDagFull 预排（auxAggFirst/auxAggMembers）：轮被展开 / 聚合卡被点开 /
+     主线被级联隐藏的辅助不进组，落到下方单条显示。
+     **没有归属主线的辅助不进组、照常单条**：那是 near 边没挂上的（主线没录到/跨天截断），
+     藏了就是静默丢数据（与惯犯 ③ 同一条纪律）。 */
+  if(DG.foldTurns && DG.laneKind[n.lane] === "aux"){
+    const al = DG.auxAggIn[n.id];   /* 只查「在组里」——轮被展开/卡被点开的成员不在组，落单条 */
+    if(al){
+      if(DG.auxAggFirst[al] !== n.id) return null;   /* 非组首：并进聚合卡，不占位 */
+      const x = DG.laneX[n.lane];
+      if(x == null) return "UNKNOWN_LANE";
+      const pos = { x, y: DG.yCur, h: DGX.NH };
+      DG.auxAgg[al] = { key: al, lane: al, ids: DG.auxAggMembers[al], pos, chunkIdx: null };
+      DG.auxAggMembers[al].forEach(id => { DG.auxAggOf[id] = al; });
+      DG.yCur += pos.h + DGX.VG;
+      let svgA = "";
+      const prevA = DG.laneLast[n.lane];
+      if(prevA){
+        const paA = dagPosOf(prevA);   /* prev 可能也是聚合卡组首 → seq 从聚合卡出发 */
+        if(paA) svgA += dagSeqSvg(paA, pos, n.lane);
+      }
+      DG.laneLast[n.lane] = n.id;
+      return { type: "node", svg: svgA, html: dagAuxAggHtml(DG.auxAgg[al]) };
+    }
+  }
   /* 260729：辅助调用跟随其关联主线一起隐藏——关掉一条主线，挂在它上面的 title/security/
      count_tokens/compact 等 aux 节点（auxAssoc 记的 near 关联）一并隐去，避免"主线没了、
      辅助还在显示却不知属于谁"的困惑。auxAssoc 在 renderDagFull 由 near 边建立。 */
@@ -3445,7 +3520,7 @@ function renderDagFull(d){
   const nodes = d.nodes || [], lanes = d.lanes || [], edges = d.edges || [];
   if(DG.date !== S.date){   /* 切日期：泳道选择与展开状态不跨天（lane id / turn id 每天不同） */
     DG.hiddenLanes = new Set(); DG.shownLanes = new Set(); DG.expandedRuns = new Set();
-    DG.expandedTurns = new Set();
+    DG.expandedTurns = new Set(); DG.expandedAuxAgg = new Set();
   }
   DG.lanes = lanes;
   /* 轮索引（260802）：turn_id → 轮元数据 / 节点 → 所属轮。后端 build_dag 已按 turn_start 分轮，
@@ -3499,16 +3574,32 @@ function renderDagFull(d){
     if(laneHidden(l.lane_id)) return false;
     if(DG.hideAux && l.kind === "aux") return false;
     /* 260729：aux lane 若所有节点都随其关联主线被（级联）隐藏了，整列也不再占位。
-       260802 追加：折叠态下并进轮卡的那些也不算——全折叠且辅助全部有归属时，aux 列自然消失。 */
+       260802 二次迭代：并进聚合卡**不算隐藏**——聚合卡本身在列里占位，aux 列折叠态不再消失。 */
     if(l.kind === "aux") return nodes.some(n => n.lane === l.lane_id
-      && !(DG.auxAssoc[n.id] && laneHidden(DG.auxAssoc[n.id]))
-      && !(DG.foldTurns && n.turn && !DG.expandedTurns.has(n.turn)));
+      && !(DG.auxAssoc[n.id] && laneHidden(DG.auxAssoc[n.id])));
     return true;
   });
   DG.laneX = {}; visLanes.forEach((l, i) => DG.laneX[l.lane_id] = DGX.X0 + i * (DGX.LW + DGX.LG));
   DG.pos = {}; DG.ids = new Set(); DG.tier = {}; DG.laneLast = {}; DG.yCur = DGX.Y0;
   DG.runs = {}; DG.openRun = {}; DG.runOf = {}; DG.suppressRun = {};
+  DG.auxAgg = {}; DG.auxAggOf = {};
   const sorted = nodes.slice().sort((a, b) => (a.ts_start || "").localeCompare(b.ts_start || ""));
+  /* 辅助聚合预分组（260802）：折叠态下，有归属主线、未被级联隐藏、轮未展开、聚合卡未点开的
+     aux → 按关联主线分组，组首占位画聚合卡（部分成员被单独展开时，卡上计数自然减少）。
+     各主线首个 aux（不论进不进组）记 auxFirstOfLane：聚合卡展开后首条的「折叠」徽章靠它定位。 */
+  DG.auxAggFirst = {}; DG.auxAggMembers = {}; DG.auxFirstOfLane = {}; DG.auxAggIn = {};
+  for(const n of sorted){
+    if(DG.laneKind[n.lane] !== "aux") continue;
+    const al = DG.auxAssoc[n.id];
+    if(!al) continue;
+    if(!DG.auxFirstOfLane[al]) DG.auxFirstOfLane[al] = n.id;
+    if(!DG.foldTurns || DG.hideAux || laneHidden(al)) continue;
+    if(n.turn && DG.expandedTurns.has(n.turn)) continue;
+    if(DG.expandedAuxAgg.has(al)) continue;
+    (DG.auxAggMembers[al] = DG.auxAggMembers[al] || []).push(n.id);
+    DG.auxAggIn[n.id] = al;
+  }
+  for(const al in DG.auxAggMembers) DG.auxAggFirst[al] = DG.auxAggMembers[al][0];
   const chunks = [];          /* 节点 HTML 按块收集：run 开始时回头把「单张错误卡」替换成 ×N 卡 */
   const chunkIdxOf = {};
   let svg = "";
