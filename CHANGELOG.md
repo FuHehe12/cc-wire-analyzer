@@ -45,7 +45,7 @@
 
 ## 未发布
 
-### Added
+### 新增
 - **`/api/grep` + `/api/stats` 两个 HTTP 端点。** 此前 grep/stats 只在 CLI，HTTP 没有——AI 搜内容 /
   算 token 被迫直读 jsonl，违反 ai-guide 铁律①「别整文件读录制」。核心逻辑从 cli 抽到
   `capture_store.grep/stats`（单一真源，CLI 与 HTTP 共用），`/api/grep`（带 coverage：搜了哪些区域、
@@ -66,7 +66,7 @@
   （system 含 "stop-condition hook"，1 条）。`classify_idx` 在 other fallback 前固化二者，历史 10 条
   other 全改判，**other 归零**。
 
-### Changed
+### 变更
 - **`/api/captures` 列表摘要现在带 `session_id`。** 此前 `_IDX_PRIVATE` 把 `session_id`
   当「DAG 分类原料」剥掉，列表/SSE 摘要里看不到会话归属，而 DAG lane 却暴露它——两处不一致。
   v0.4.6 的 session filter 场景（两个 CC 并排、一个审计另一个）下，审计方 `exclude_session`
@@ -93,7 +93,7 @@
   字段，前端复用 external-bar 样式醒目提示「检查 BASE_URL」（三语）。warning 跨整个录制持续，
   下次启动 `snapshot_original` 重算时清。
 
-### Docs
+### 文档
 - AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
   保存 profile 会把本机代理地址存进去（工具侧防不住——settings 没被改、只是被读走，settings_guard
   检测不到；切换上游这条路径则已由 `check_external_change` 检测+降旗覆盖）；opus 订阅/key 变动后
