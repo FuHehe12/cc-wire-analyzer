@@ -146,6 +146,16 @@
   tracking the `advanced-tool-use-*` beta tells you which capability introduced it). Underneath,
   `classifier._unknowns` was rewritten from a set of bare values to a value→snippet dict so the
   content is captured at index time. Bumps `IDX_SCHEMA` 11→12.
+- **`/api/dag` results are now cached by date + capture-file size.** `build_dag` recomputes
+  lanes/nodes/edges from scratch every call — seconds for a big day, and switching back to a day
+  you just left shouldn't pay that twice. The route caches the dag keyed by `(date, jsonl size)`
+  (same invalidation trick as the index cache); a new recording changes the size and invalidates
+  it. Session / exclude_session filters bypass the cache (their result varies). Also fixes a
+  frontend race: `loadDag`'s guard dropped its `myDate !== S.date` clause — `dagPickDate` fires
+  `fetchCaptures` and `loadDag` concurrently, `fetchCaptures` legitimately updates `S.date`, so
+  the date clause could drop a valid dag response; the sequence-number guard alone already
+  prevents the stale-response-overwrite it was added for (260801). Fixes "the captures list had
+  content but the timeline stayed empty until I clicked other days a few times".
 
 ### Docs
 - AI_USAGE.md gains "coexisting with cc-switch and other config tools" + "when the proxy needs a

@@ -2710,7 +2710,10 @@ async function loadDag(){
     const r = await fetch("/api/dag" + q);
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
-    if(myDate !== S.date || seq !== DG.loadSeq) return;           /* 期间改了日期/重发了请求，这份过期 */
+    if(seq !== DG.loadSeq) return;           /* 序号守卫足够防旧响应盖新视图（260801 加守卫本意）。
+                                                 不再比 myDate !== S.date：dagPickDate 同时刷
+                                                 fetchCaptures + loadDag，fetchCaptures 会改 S.date，
+                                                 那是预期行为，不该因此丢 dag 响应（260802）。 */
     renderDag(d);
   }catch(e){
     $("dagWrap").innerHTML = '<div class="list-empty">' + esc(t18("dag.loadFailed", {msg: e.message})) + '</div>';

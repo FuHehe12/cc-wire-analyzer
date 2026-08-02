@@ -319,15 +319,33 @@ def capture_detail(rid):
     return jsonify(rec)
 
 
+# dag 结果缓存（260802）：build_dag 每次全量重算 lane/edge，大流量天秒级；切回同一天不该重算。
+# 按 date + jsonl 文件 size 缓存（size 变 = 有新录制 → 失效），仿 capture_store._IDX_CACHE。
+# session / exclude_session 过滤时不缓存（结果随过滤变）。
+_DAG_CACHE: dict = {}
+
+
 @app.route("/api/dag")
 def dag_view():
     """View D 时序 DAG：当日全量捕获 → 分类 + 会话线 + 边推断。
     260719 改走写时索引（list_index）：此前 list_full 全量 parse 主文件且写死 1000 条上限，
-    大流量天（826MB/2993 条实测）单次 ~9s 且泳道直接丢后 2/3。"""
+    大流量天（826MB/2993 条实测）单次 ~9s 且泳道直接丢后 2/3。
+    260802 加结果缓存：build_dag 全量重算 lane/edge，切回同一天命中缓存秒回，不再重算。"""
     import classifier
-    date = request.args.get("date")
-    return jsonify(classifier.build_dag(capture_store.list_index(
-        date, request.args.get("exclude_session", ""), request.args.get("session", ""))))
+    date = request.args.get("date") or time.strftime("%Y-%m-%d", time.localtime())
+    excl = request.args.get("exclude_session", "")
+    sess = request.args.get("session", "")
+    cacheable = not (excl or sess)
+    if cacheable:
+        f = capture_store.CAPTURES_DIR / f"{date}.jsonl"
+        size = f.stat().st_size if f.exists() else 0
+        cached = _DAG_CACHE.get(date)
+        if cached and cached[0] == size:
+            return jsonify(cached[1])
+    result = classifier.build_dag(capture_store.list_index(date, excl, sess))
+    if cacheable:
+        _DAG_CACHE[date] = (size, result)
+    return jsonify(result)
 
 
 @app.route("/api/captures/clear", methods=["POST"])

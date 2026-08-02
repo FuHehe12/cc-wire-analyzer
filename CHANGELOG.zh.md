@@ -106,6 +106,13 @@
   请求里 = **字段来源**——某值随 `advanced-tool-use-*` beta 出现就说明是那个能力引入的）。底层
   `classifier._unknowns` 从裸值 set 重写为 value→snippet 字典，内容在写时索引。bump `IDX_SCHEMA`
   11→12。
+- **`/api/dag` 结果按日期 + 录制文件 size 缓存。** `build_dag` 每次从头重算 lane/node/edge——大流量天
+  要几秒，切回刚看过的日期不该重付一遍。路由现按 `(date, jsonl size)` 缓存（与索引缓存同款失效
+  手法）；新录制写入改变 size 即失效。session/exclude_session 过滤绕过缓存（结果随过滤变）。另修
+  前端一处竞态：`loadDag` 守卫去掉 `myDate !== S.date` 条件——`dagPickDate` 并发触发
+  `fetchCaptures` + `loadDag`，`fetchCaptures` 会合理更新 `S.date`，日期条件可能误杀有效的 dag
+  响应；单序号守卫已足以防它当初为之加的「旧响应盖新视图」（260801）。修的是「捕获列表已有内容、
+  时序图却空白，要点几次其他日期才刷出来」。
 
 ### 文档
 - AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
