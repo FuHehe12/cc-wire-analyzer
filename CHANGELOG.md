@@ -53,6 +53,25 @@
 ## Unreleased
 
 ### Added
+- **Three interface themes, and the default is now dark.** The interface had been one warm-grey
+  palette since v0.1.0 — pleasant, but a traffic analyser is read the way DevTools, a terminal or an
+  editor is read, and none of those are beige. Settings now offers **Dark Professional** (default:
+  `#131318` charcoal with camel-gold accents, layered shadows and inner highlights, a glass header,
+  and a recessed terminal surface for request/response bodies), **Classic Warm** (exactly the
+  v0.4.6 interface, for anyone who wants it unchanged) and **Lab Daylight** (a cool mineral paper
+  with teal accents and a 24px measure grid). Switching is instant; the choice is written to a
+  cookie plus localStorage and read back before first paint, so there is no light/dark flash — and
+  it never touches the backend `config.json`, because that file is the source of truth for proxy
+  behaviour and appearance has no business in it. The same pass fixed accessibility that predates
+  the themes: toast and status-chip contrast, keyboard activation for capture rows and timeline
+  nodes, `label`/`switch`/live-region/tab semantics, `prefers-reduced-motion`, and narrow-window and
+  high-zoom layouts. Lane palettes are now per-theme — one set of six colours cannot sit on charcoal
+  and on paper and pass AA on both.
+  - Porting it exposed a contrast bug in the turn cards shipped earlier in this cycle: a subagent
+    badge's text was hard-coded `#fff` on a background computed as "the spawner's colour mixed 45%
+    with white" — measured 1.6:1, effectively invisible. The foreground is now chosen from the
+    background's luminance (7.5–11.5:1 across the three themes). A hard-coded foreground on a
+    computed background is a bug waiting for its palette.
 - **The timeline now folds by conversation turn instead of hiding tool calls.** The existing
   "hide tool-loop steps" toggle made big days shorter but not more legible: what survived the filter
   were still *requests*, and each card's body was the first 60 characters of the model's reply —

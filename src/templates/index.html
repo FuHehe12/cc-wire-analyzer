@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CC Wire Analyzer</title>
+<script>
+/* 外观必须在 CSS/首屏绘制前确定，避免深浅主题闪切。cookie 跨 localhost 动态端口，
+   localStorage 作为同端口快速回退；两者都只属于 UI，不写后端 config.json。 */
+(function(){
+  const allowed = new Set(["classic", "dark", "light"]);
+  let theme = "";
+  try{
+    const m = document.cookie.match(/(?:^|;\s*)ccwa_ui_theme=([^;]+)/);
+    theme = m ? decodeURIComponent(m[1]) : localStorage.getItem("ccwa_ui_theme") || "";
+  }catch(e){}
+  if(!allowed.has(theme)) theme = "dark";
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light";
+})();
+</script>
 <style>
 /* ===== 打包字体（@font-face，跨平台视觉一致；均 SIL OFL，见根 LICENSE）===== */
 @font-face{font-family:'Inter';src:url('/static/fonts/Inter.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap;}
@@ -11,50 +26,144 @@
 @font-face{font-family:'Noto Sans SC';src:url('/static/fonts/NotoSansSC.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap;}
 
 :root{
-  /* ===== beacon 暖米金设计系统 ===== */
-  --apple-primary:#C2882B;
-  --apple-bg:#DED8CC;
-  --apple-surface:#FFFFFF;
-  /* 小字颜色阶梯（260801 按 WCAG 相对亮度实测重定）：原来的 --apple-secondary(#9C9489,
-     白底 3.00:1) 与 --text-faint(#B0A892, 2.37:1) 都远低于小字 AA 的 4.5:1，而它们正用在
-     .cap-time(11px) / .cap-ttft(10.5px) / .thinking-text(11.5px 斜体) 这些满屏都是的地方
-     —— 用户报的「字虚」不是错觉，是对比度不够，字号越小、屏越密越明显。
-     压深时保持暖灰色相不变，并保住四档的深浅次序（否则层次塌成一片）。
-     落地后实测（白卡 / 软底 #F4F2EF 双背景都要过线）：
-       --apple-text-secondary 7.27/6.50 > --text-tertiary 6.32/5.66
-       > --apple-secondary 5.65/5.05 > --text-faint 5.17/4.63。
-     改这四个值前先跑一遍对比度计算——软底那一列比白卡低约 0.5，只按白卡调会漏。 */
-  --apple-text:#1A1A1A;
-  --apple-text-secondary:#5C564C;
-  --apple-secondary:#6E665C;
-  --apple-border:#E7E2D8;
-  --apple-shadow:0 2px 8px rgba(0,0,0,0.05);
-  --apple-shadow-sm:0 1px 4px rgba(0,0,0,0.04);
+  /* ===== 深色专业模式（260802 unUI 全量改版：暖米金 → 深炭+驼金发光）=====
+     设计判断：深色衬浮起卡片+内高光+饱和状态色，质感跨度最大；贴合流量分析工具的
+     "开发者/数据聚焦"属性（深色是 DevTools/终端/VSCode 的母语）+ 用户光影厚度偏好。
+     驼金 accent 在深底发光，保留品牌金脉络。文字浅阶在 #13131E/#1E1E26 上 WCAG 均 >4.5:1。 */
+  --apple-primary:#E8B855;
+  --apple-bg:#131318;
+  --apple-surface:#1E1E26;
+  --apple-text:#F5F5F7;
+  --apple-text-secondary:#C8C8D0;
+  --apple-secondary:#9898A2;
+  --apple-border:#2E2E38;
+  --apple-tertiary:#74747F;
+  /* 阴影系统（深色下黑阴影 alpha 加重，浮起感更强；近+远双层保留）*/
+  --apple-shadow-sm:0 1px 2px rgba(0,0,0,0.40),0 2px 6px rgba(0,0,0,0.30);
+  --apple-shadow:0 8px 24px rgba(0,0,0,0.45),0 2px 8px rgba(0,0,0,0.30);
+  --apple-shadow-md:0 14px 32px rgba(0,0,0,0.50),0 4px 10px rgba(0,0,0,0.35);
+  --apple-shadow-lg:0 16px 44px rgba(0,0,0,0.55),0 6px 16px rgba(0,0,0,0.40);
+  /* 内高光（深色上白高光减弱到 0.08，顶部亮边不刺眼）*/
+  --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.08);
+  --apple-text-strong:#FFFFFF;  /* 关键文字纯白，深底最强重音 */
   --apple-transition:all .16s ease;
   --font-display:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
   --font-body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
   --font-mono:"JetBrains Mono","SF Mono","Menlo","Courier New",monospace;
-  --node-user:#D69A36;
-  --node-assistant:#7C7468;
-  --node-system:#B0A892;
-  --node-tool:#9C9489;
-  --node-file:#9C9489;
-  --node-agent:#D69A36;
-  --accent:#D69A36; --accent-deep:#C2882B;
-  --gold-text:#6B4A12; --gold-text-2:#9A7B43;
+  --node-user:#E8B855;
+  --node-assistant:#9A93A8;
+  --node-system:#6A6478;
+  --node-tool:#7A7488;
+  --node-file:#7A7488;
+  --node-agent:#E8B855;
+  --accent:#E8B855; --accent-deep:#C2882B; --brand:var(--accent);
+  --gold-text:#E8B855; --gold-text-2:#D69A36;
+  --bg-canvas:#131318; --bg-card:#1E1E26;
+  --bg-soft:#25252F; --bg-softer:#2A2A35;
+  --bg-warm:#2D2516; --bg-warm-2:#332A1A; --bg-warm-3:#3A2F1E;
+  --bg-ask:#1A2536; --bg-permission:#3A2F1E; --bg-error-soft:#3A1E1E;
+  --border:#2E2E38; --border-soft:#262630; --border-warm:#C2882B; --border-ask:#3D6FB4;
+  --ok:#4ADE80; --err:#F87171; --warn:#FBBF24; --info:#60A5FA;
+  --text-tertiary:#A8A8B2; --text-faint:#888892;
+  /* 组件语义 token：三主题只换变量，不让深浅判断散落在选择器里。 */
+  --card-border:rgba(255,255,255,0.12);
+  --row-border:rgba(255,255,255,0.06);
+  --header-bg:rgba(19,19,24,0.72);
+  --header-border:rgba(255,255,255,0.08);
+  --header-shadow:0 2px 12px rgba(0,0,0,0.10);
+  --selection-bg:rgba(232,184,85,0.34); --selection-fg:#FFF7E0;
+  --scroll-thumb:#494955;
+  --focus-ring:rgba(232,184,85,0.58);
+  --toast-bg:#F5F5F7; --toast-fg:#17171C;
+  --accent-contrast:#211706;
+  --chip-default-fg:#FFFFFF; --chip-user-fg:#211706; --chip-assistant-fg:#FFFFFF; --chip-tool-fg:#10251A;
+  --chip-probe-fg:#17171C; --ok-soft-fg:#7BE1A2; --ok-soft-bg:rgba(74,222,128,0.14);
+  --terminal-bg:rgba(0,0,0,0.28); --terminal-code-bg:rgba(0,0,0,0.35);
+  --terminal-text:#D6D6DE; --input-focus-bg:#2F2F3C;
+  --danger-node-hover:#3A2020; --node-hover-ring:rgba(232,184,85,0.35);
+  --theme-selected-ring:rgba(232,184,85,0.24);
+  --canvas-pattern:none; --canvas-pattern-size:auto;
+  --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+}
+/* 经典暖灰：origin 的功能型视觉基线。保留较平的白卡和暖金，用来和两套改版公平对照。 */
+html[data-theme="classic"]{
+  --apple-primary:#C2882B;
+  --apple-bg:#DED8CC; --apple-surface:#FFFFFF;
+  --apple-text:#1A1A1A; --apple-text-secondary:#5C564C;
+  --apple-secondary:#6E665C; --apple-tertiary:#756C5D; --apple-border:#E7E2D8;
+  --apple-shadow-sm:0 1px 3px rgba(45,35,20,0.07);
+  --apple-shadow:0 3px 12px rgba(45,35,20,0.08);
+  --apple-shadow-md:0 8px 24px rgba(45,35,20,0.11);
+  --apple-shadow-lg:0 14px 36px rgba(45,35,20,0.14);
+  --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.78);
+  --apple-text-strong:#1A1A1A;
+  --node-user:#C98A25; --node-assistant:#675F55; --node-system:#81796D;
+  --node-tool:#756D62; --node-file:#756D62; --node-agent:#C98A25;
+  --accent:#C98A25; --accent-deep:#A66B13;
+  --gold-text:#6B4A12; --gold-text-2:#806025;
   --bg-canvas:#DED8CC; --bg-card:#FFFFFF;
   --bg-soft:#F4F2EF; --bg-softer:#FBFAF8;
   --bg-warm:#EFE6D6; --bg-warm-2:#F3ECDD; --bg-warm-3:#FBF7EF;
   --bg-ask:#EEF4FB; --bg-permission:#FFF7E6; --bg-error-soft:#FDF1EC;
-  --border:#E7E2D8; --border-soft:#EDE7DC; --border-warm:#C8B496; --border-ask:#C9D8EA;
-  --ok:#4F7A3A; --err:#B4452F; --warn:#B08A3E; --info:#3D6FB4;
-  --text-tertiary:#655F55; --text-faint:#756C5D;   /* 见上方阶梯说明，勿改回浅色 */
-  --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+  --border:#E1DBD0; --border-soft:#EDE7DC; --border-warm:#BFA77F; --border-ask:#B9CEE4;
+  --ok:#356A2B; --err:#A83C2A; --warn:#7B5B1D; --info:#315F9D;
+  --text-tertiary:#655F55; --text-faint:#756C5D;
+  --card-border:rgba(91,72,45,0.15); --row-border:#EDE7DC;
+  --header-bg:rgba(255,255,255,0.88); --header-border:rgba(91,72,45,0.12);
+  --header-shadow:0 3px 14px rgba(63,49,30,0.08);
+  --selection-bg:rgba(201,138,37,0.30); --selection-fg:#2A1B05;
+  --scroll-thumb:#B5AC9E; --focus-ring:rgba(166,107,19,0.45);
+  --toast-bg:#27231E; --toast-fg:#FFFFFF; --accent-contrast:#FFFFFF;
+  --chip-default-fg:#FFFFFF; --chip-user-fg:#2A1B05; --chip-assistant-fg:#FFFFFF; --chip-tool-fg:#FFFFFF;
+  --chip-probe-fg:#FFFFFF; --ok-soft-fg:#2D6127; --ok-soft-bg:rgba(53,106,43,0.12);
+  --terminal-bg:#F5F2EC; --terminal-code-bg:#EEE9E0; --terminal-text:#39342E;
+  --input-focus-bg:#FFFDF9; --danger-node-hover:#F8E3DC; --node-hover-ring:rgba(201,138,37,0.32);
+  --theme-selected-ring:rgba(201,138,37,0.22);
+}
+/* 实验室日光：冷矿物纸面 + 精密青蓝。轻微 24px 网格只留在画布，呼应流量测量和 DAG 坐标。 */
+html[data-theme="light"]{
+  --apple-primary:#1E6972;
+  --apple-bg:#E8EEF0; --apple-surface:#FFFFFF;
+  --apple-text:#17212B; --apple-text-secondary:#3D4C57;
+  --apple-secondary:#52636E; --apple-tertiary:#667780; --apple-border:#CBD6DB;
+  --apple-shadow-sm:0 1px 3px rgba(31,57,66,0.10),0 1px 2px rgba(31,57,66,0.06);
+  --apple-shadow:0 8px 22px rgba(31,57,66,0.11),0 2px 6px rgba(31,57,66,0.07);
+  --apple-shadow-md:0 12px 30px rgba(31,57,66,0.14),0 3px 8px rgba(31,57,66,0.08);
+  --apple-shadow-lg:0 18px 42px rgba(31,57,66,0.17),0 6px 14px rgba(31,57,66,0.09);
+  --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.88);
+  --apple-text-strong:#101820;
+  --node-user:#247B84; --node-assistant:#586B7A; --node-system:#657985;
+  --node-tool:#486C78; --node-file:#486C78; --node-agent:#247B84;
+  --accent:#1E6972; --accent-deep:#15545B;
+  --gold-text:#185A62; --gold-text-2:#276B73;
+  --bg-canvas:#E8EEF0; --bg-card:#FFFFFF;
+  --bg-soft:#EDF3F5; --bg-softer:#F7FAFB;
+  --bg-warm:#E2F0F1; --bg-warm-2:#D8EAEC; --bg-warm-3:#EEF7F8;
+  --bg-ask:#E8F1FB; --bg-permission:#EDF7F3; --bg-error-soft:#FCEDEC;
+  --border:#C7D4D9; --border-soft:#DEE7EA; --border-warm:#78AEB3; --border-ask:#A8C5E2;
+  --ok:#237A53; --err:#A93635; --warn:#7A5B13; --info:#2A64A1;
+  --text-tertiary:#485964; --text-faint:#5B6B75;
+  --card-border:rgba(55,85,96,0.17); --row-border:#E0E8EB;
+  --header-bg:rgba(247,250,251,0.86); --header-border:rgba(55,85,96,0.14);
+  --header-shadow:0 4px 18px rgba(31,57,66,0.08);
+  --selection-bg:rgba(30,105,114,0.24); --selection-fg:#102D31;
+  --scroll-thumb:#9BAEB5; --focus-ring:rgba(30,105,114,0.46);
+  --toast-bg:#17212B; --toast-fg:#FFFFFF; --accent-contrast:#FFFFFF;
+  --chip-default-fg:#FFFFFF; --chip-user-fg:#FFFFFF; --chip-assistant-fg:#FFFFFF; --chip-tool-fg:#FFFFFF;
+  --chip-probe-fg:#FFFFFF; --ok-soft-fg:#17613F; --ok-soft-bg:rgba(35,122,83,0.12);
+  --terminal-bg:#F1F6F7; --terminal-code-bg:#E5EFF1; --terminal-text:#263640;
+  --input-focus-bg:#FFFFFF; --danger-node-hover:#F8DEDC; --node-hover-ring:rgba(30,105,114,0.32);
+  --theme-selected-ring:rgba(30,105,114,0.22);
+  --canvas-pattern:
+    linear-gradient(rgba(30,105,114,0.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,105,114,0.045) 1px,transparent 1px);
+  --canvas-pattern-size:24px 24px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font-body);background:var(--bg-canvas);color:var(--apple-text);
+  background-image:var(--canvas-pattern);background-size:var(--canvas-pattern-size);
   line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;}
-::selection{background:rgba(214,154,54,0.28);color:#1A1A1A;}
+::selection{background:var(--selection-bg);color:var(--selection-fg);}
 /* 正文默认可选，交互控件显式不可选（260801 把白名单反转成黑名单）。
    -webkit- 前缀是给 macOS WebKit 后端的。见 ctxInit() 注释：两个后端都不给原生复制，
    所以「能选中」是复制链路的第一环，不能靠默认值碰运气。
@@ -70,39 +179,41 @@ button,.btn,.tab-btn,.date-chip,.toggle,.ctx-item,select,
 pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.mono{cursor:auto;}
 /* 自绘右键菜单（原生的被 WebView2 禁掉了）*/
 .ctx-menu{position:fixed;z-index:9999;min-width:150px;padding:4px;border:1px solid var(--border);
-  border-radius:var(--radius-sm);background:var(--bg-card);box-shadow:0 6px 24px rgba(0,0,0,0.14);
+  border-radius:var(--radius-sm);background:var(--bg-card);box-shadow:var(--apple-shadow-lg);
   display:flex;flex-direction:column;gap:1px;}
 .ctx-item{all:unset;padding:7px 12px;font-size:12px;font-family:var(--font-body);color:var(--apple-text);
   border-radius:5px;cursor:pointer;white-space:nowrap;user-select:none;}
 .ctx-item:hover{background:var(--bg-warm);color:var(--gold-text);}
 ::-webkit-scrollbar{width:8px;height:8px;}
-::-webkit-scrollbar-thumb{background:#C9C2B4;border-radius:4px;}
+::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
 
 /* ===== Header ===== */
 .app-header{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  padding:14px 32px;position:sticky;top:0;z-index:100;background:var(--bg-card);}
+  padding:14px 32px;position:sticky;top:0;z-index:100;
+  background:var(--header-bg);backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);
+  border-bottom:1px solid var(--header-border);box-shadow:var(--header-shadow),var(--apple-highlight);}
 .brand{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .brand-title{font-size:20px;font-weight:700;letter-spacing:-0.01em;color:var(--apple-text);line-height:1.2;}
 .brand-sub{font-size:11px;color:var(--apple-secondary);font-family:var(--font-mono);line-height:1.4;}
 .header-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;}
 .tab-btn{background:transparent;border:1px solid transparent;padding:8px 14px;border-radius:var(--radius-sm);
-  font-size:12.5px;font-weight:600;color:var(--apple-secondary);cursor:pointer;font-family:var(--font-body);
+  font-size:12.5px;font-weight:600;color:var(--apple-text-secondary);cursor:pointer;font-family:var(--font-body);
   transition:var(--apple-transition);}
 .tab-btn:hover{background:var(--bg-softer);color:var(--apple-text-secondary);}
 .tab-btn.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);}
 
 /* ===== 通用 ===== */
 .main-content{padding:18px 32px 48px;max-width:1376px;margin:0 auto;min-width:0;}
-.card{background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow);padding:16px 22px;}
+.card{background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow),var(--apple-highlight);padding:16px 22px;}
 /* white-space:nowrap（260730）：设置页「打开」按钮被相邻的长路径挤成两行（实测 w=40 h=48，
    显示成「打／开」）。按钮文字任何情况下都不该折行。 */
 .btn{background:var(--bg-soft);border:1px solid var(--border);padding:7px 13px;border-radius:var(--radius-sm);
   font-size:11.5px;font-weight:600;color:var(--apple-text-secondary);cursor:pointer;
   transition:var(--apple-transition);font-family:var(--font-body);white-space:nowrap;}
 .btn:hover{background:var(--bg-warm-2);border-color:var(--border-warm);color:var(--gold-text);}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;padding:9px 18px;font-size:12.5px;}
-.btn.primary:hover{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff;}
+.btn.primary{background:transparent;border:1px solid var(--accent);color:var(--accent);padding:9px 18px;font-size:12.5px;}
+.btn.primary:hover{background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);box-shadow:var(--apple-shadow-md);}
 .btn.danger-soft:hover{background:var(--bg-error-soft);border-color:var(--err);color:var(--err);}
 .btn:disabled{opacity:.55;cursor:wait;}
 /* 工具按钮：轻量透明底 + 单色线性图标（跟随文字色），低调精致，融入卡片（260712）*/
@@ -118,7 +229,7 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .dropdown{position:relative;display:inline-block;}
 .btn.tool.dropdown-trigger::after{content:"▾";margin-left:3px;font-size:9px;opacity:.6;}
 .dropdown-menu{position:absolute;right:0;top:calc(100% + 5px);background:var(--bg-card);
-  border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 6px 20px rgba(0,0,0,.1);
+  border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--apple-shadow-lg);
   z-index:50;min-width:200px;padding:5px;animation:fadeIn .15s ease;}
 .dropdown-menu button{display:flex;align-items:center;gap:7px;width:100%;text-align:left;
   background:transparent;border:none;padding:8px 10px;border-radius:var(--radius-sm);
@@ -134,27 +245,34 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 /* border 恒占位（透明，260730）：带边框的 outline/sec-* chip 比纯色 chip 高 1px，同一位置换一种
    chip 就让整栏差 1px（实测异常请求详情：左栏首卡 46px / 右栏 45px）。透明边框把高度钉成一致。 */
 .chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;
-  color:#fff;letter-spacing:0.02em;font-family:var(--font-mono);white-space:nowrap;
+  color:var(--chip-default-fg);letter-spacing:0.02em;font-family:var(--font-mono);white-space:nowrap;
   border:1px solid transparent;}
 .chip.outline{background:transparent;color:var(--apple-text-secondary);border:1px solid var(--border);font-weight:600;}
 /* 没见过的 anthropic-beta 特性：CC 启用了新能力，可能带来还不认识的字段/响应块（260731） */
 .chip.beta-new{color:var(--warn,#b26a00);border-color:var(--warn,#b26a00);}
-.chip.ok-soft{background:rgba(79,122,58,.12);color:var(--ok);}
+.chip.ok-soft{background:var(--ok-soft-bg);color:var(--ok-soft-fg);}
 .chip.err-soft{background:rgba(180,69,47,.12);color:var(--err);}
-.chip.probe{background:var(--text-tertiary);}
+.chip.probe{background:var(--text-tertiary);color:var(--chip-probe-fg);}
 .mono{font-family:var(--font-mono);}
 [hidden]{display:none !important;}
+/* 全局焦点环（260802 unUI 改版：键盘可访问 + 精致质感，证据 focus-visible ring+shadow）。
+   双环：内 2px 卡片色（与背景留隙）+ 外 brand 金半透明。仅 :focus-visible 触发——键盘导航
+   才显示，不污染鼠标点击的视觉（浏览器智能区分鼠标点击 vs 键盘 focus）。 */
+button:focus-visible,.btn:focus-visible,.tab-btn:focus-visible,.date-chip:focus-visible,
+select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visible,.dag-toolbar .btn:focus-visible,
+.cap-row:focus-visible,.dag-node:focus-visible,.theme-option:focus-visible,.chip[role="button"]:focus-visible{
+  outline:none;box-shadow:0 0 0 2px var(--bg-card),0 0 0 4px var(--focus-ring);}
 
 /* ===== View A 状态卡 ===== */
 .status-card{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px;}
 .status-left{display:flex;flex-direction:column;gap:6px;min-width:0;}
 .status-row1{display:flex;align-items:center;gap:10px;}
-.status-title{font-size:14.5px;font-weight:700;}
+.status-title{font-size:14.5px;font-weight:700;color:var(--apple-text-strong);}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--apple-secondary);flex-shrink:0;}
 .dot.on{background:var(--ok);animation:pulse 1.8s ease-in-out infinite;}
 .dot.err{background:var(--err);}   /* 外部接管：代理被绕过，监控断档 */
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(79,122,58,.35);}50%{box-shadow:0 0 0 5px rgba(79,122,58,0);}}
-.live-chip{background:var(--ok);color:#fff;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;
+.live-chip{background:#3D8B2E;color:#fff;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;
   font-family:var(--font-mono);letter-spacing:.05em;}
 .status-route{font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -219,7 +337,8 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .date-chip:hover{border-color:var(--border-warm);}
 .date-chip.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);font-weight:600;}
 .date-meta{font-size:11px;color:var(--apple-secondary);}
-.capture-list{background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow);overflow:hidden;}
+.capture-list{background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);
+  box-shadow:var(--apple-shadow),var(--apple-highlight);overflow-x:auto;overflow-y:hidden;}
 /* 行版式改 CSS grid 固定列（260730）：原为 flex，kind chip 有无（48px）与模型名长短
    （glm-5.2 / glm-5v-turbo，32px）逐行推动后面所有列 —— 实测 13 行里摘要列起点在 452~753px
    之间漂 300px，整列表看着毛糙。固定列宽后每列逐行严格对齐。
@@ -231,14 +350,14 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
    压到状态点上）。宽了留白，窄了裁字——留白是可接受的。 */
 .cap-row{display:grid;
   grid-template-columns:82px 8px 172px 88px 100px 44px 168px 92px minmax(0,1fr) auto;
-  align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border-soft);
+  align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--row-border);
   cursor:pointer;transition:background .12s ease;}
 .cap-row>*{min-width:0;}                      /* 内容超宽时截断，不许顶破轨道 */
 /* 窗口最窄 1080（desktop.py min_size）走这档，摘要仍有 ~208px；再窄只出现在浏览器调试场景 */
 @media (max-width:1100px){
   .cap-row{grid-template-columns:82px 8px 146px 84px 96px 40px 162px 88px minmax(0,1fr) auto;gap:8px;}
 }
-.cap-row:hover{background:var(--bg-warm-3);}
+.cap-row:hover{background:rgba(232,184,85,0.10);}
 .cap-row:last-of-type{border-bottom:none;}
 .cap-row.new{animation:fadeIn .45s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
@@ -262,7 +381,7 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .cap-dot.s5xx,.cap-dot.serr{background:var(--err);}
 .cap-dot.pending{background:var(--info);animation:pulse 1.4s ease-in-out infinite;}
 .cap-path{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--apple-text);}
-.cap-dur{font-size:11px;font-weight:600;color:var(--apple-text-secondary);text-align:right;}
+.cap-dur{font-size:11px;font-weight:600;color:var(--apple-text-strong);text-align:right;}
 .cap-tokens{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);}
 .cap-tokens .cache{color:var(--text-faint);}
 .cap-ttft{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint);}
@@ -308,14 +427,14 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .col-head .meta{font-size:11px;color:var(--apple-secondary);}
 .detail-col>details,.detail-col>.dcard{margin-bottom:10px;}
 details.fold{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card);overflow:hidden;}
-details.fold>summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:11.5px;font-weight:600;
+details.fold>summary{cursor:pointer;list-style:none;padding:13px 14px;font-size:11.5px;font-weight:600;
   color:var(--apple-text-secondary);user-select:none;background:var(--bg-softer);display:flex;gap:6px;align-items:center;}
 details.fold>summary::-webkit-details-marker{display:none;}
-details.fold>summary::before{content:"▸";color:var(--accent);font-weight:700;}
+details.fold>summary::before{content:"▸";color:var(--accent);font-weight:700;margin-right:6px;}
 details.fold[open]>summary::before{content:"▾";}
 details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .fold-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
-.dcard{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card);padding:12px 14px;}
+.dcard{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-card);padding:12px 14px;box-shadow:var(--apple-highlight);}
 .dcard.meta-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
 .chip-row{display:flex;gap:6px;flex-wrap:wrap;}
 .tool-item>summary{cursor:pointer;font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--apple-text);}
@@ -327,34 +446,34 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .blk{display:flex;flex-direction:column;gap:5px;}
 .blk-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .blk-meta{font-family:var(--font-mono);font-size:10px;color:var(--apple-secondary);}
-.excerpt{border-radius:var(--radius-sm);background:var(--bg-softer);padding:10px 12px;}
+.excerpt{border-radius:var(--radius-sm);background:var(--terminal-bg);border:1px solid var(--border-soft);overflow:hidden;}
 .excerpt pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:var(--font-mono);
-  font-size:11px;line-height:1.6;color:var(--apple-text-secondary);max-height:420px;overflow:auto;}
-.msg{border-left:3px solid var(--node-assistant);border-radius:6px;background:var(--bg-softer);
-  padding:8px 12px;display:flex;flex-direction:column;gap:5px;}
+  font-size:11px;line-height:1.65;color:var(--terminal-text);padding:12px 14px;max-height:420px;overflow:auto;}
+.msg{border-left:3px solid var(--node-assistant);border-radius:8px;background:var(--bg-soft);
+  padding:10px 14px;display:flex;flex-direction:column;gap:5px;box-shadow:var(--apple-shadow-sm),var(--apple-highlight);}
 .msg.user{border-left-color:var(--node-user);}
 .msg.toolres{border-left-color:var(--ok);}
-.msg .chip.user{background:var(--node-user);}
-.msg .chip.assistant{background:var(--node-assistant);}
-.msg .chip.toolres{background:var(--ok);}
+.msg .chip.user{background:var(--node-user);color:var(--chip-user-fg);}
+.msg .chip.assistant{background:var(--node-assistant);color:var(--chip-assistant-fg);}
+.msg .chip.toolres{background:var(--ok);color:var(--chip-tool-fg);}
 .msg-text{font-size:12px;line-height:1.65;color:var(--apple-text);}
 .thinking-text{font-size:11.5px;font-style:italic;color:var(--text-faint);line-height:1.6;}
-.tooluse-box{border-radius:6px;background:var(--bg-soft);padding:6px 10px;font-family:var(--font-mono);
-  font-size:11px;color:var(--apple-text-secondary);white-space:pre-wrap;word-break:break-word;}
+.tooluse-box{border-radius:6px;background:var(--terminal-bg);border:1px solid var(--border-soft);padding:7px 11px;font-family:var(--font-mono);
+  font-size:11px;color:var(--terminal-text);white-space:pre-wrap;word-break:break-word;}
 .md-body{font-size:12.5px;line-height:1.7;color:var(--apple-text);}
 .md-body p{margin-bottom:.7em;}
 .md-body p:last-child{margin-bottom:0;}
 .md-body h1,.md-body h2,.md-body h3{font-weight:700;margin:.9em 0 .45em;letter-spacing:-0.01em;}
 .md-body h1{font-size:16px;}.md-body h2{font-size:14px;}.md-body h3{font-size:13px;}
-.md-body code{font-family:var(--font-mono);font-size:11px;background:var(--bg-soft);padding:1px 5px;border-radius:4px;}
+.md-body code{font-family:var(--font-mono);font-size:11px;background:var(--terminal-code-bg);padding:1px 5px;border-radius:4px;color:var(--gold-text);}
 .md-body pre{background:var(--bg-softer);border-radius:var(--radius-sm);padding:10px 12px;overflow:auto;margin:.6em 0;}
 .md-body pre code{background:transparent;padding:0;white-space:pre-wrap;word-break:break-word;}
 .md-body ul,.md-body ol{padding-left:1.4em;margin-bottom:.7em;}
 .md-body blockquote{border-left:3px solid var(--border-warm);padding-left:10px;color:var(--apple-text-secondary);margin:.6em 0;}
 .stat-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.stat{background:var(--bg-softer);border-radius:var(--radius-md);padding:12px 16px;}
-.stat .v{font-size:20px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;}
-.stat .l{font-size:10.5px;color:var(--apple-secondary);margin-top:2px;}
+.stat{background:var(--bg-soft);border:1px solid var(--border-soft);border-radius:var(--radius-md);padding:12px 16px;box-shadow:var(--apple-highlight);}
+.stat .v{font-size:22px;font-weight:700;letter-spacing:-0.015em;font-variant-numeric:tabular-nums;color:var(--apple-text-strong);}
+.stat .l{font-size:10px;color:var(--text-faint);margin-top:3px;letter-spacing:.02em;}
 .usage-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
 .usage-head b{font-size:11.5px;}
 .usage-cost{font-size:11px;color:var(--gold-text-2);}
@@ -366,6 +485,9 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .btn.mini{font-size:11px;padding:2px 8px;}
 .blk-actions{margin-left:auto;display:inline-flex;gap:6px;}
 .excerpt-tools{margin:6px 0;display:flex;gap:6px;flex-wrap:wrap;}
+/* 深色下 excerpt 工具按钮 hover 加亮（haiku 微调）：excerpt 底是 rgba(0,0,0,0.28)，
+   全局 .btn.tool:hover 的 bg-warm-2 在它上面偏暗对比弱；scoped 给更亮的金底 + accent 描边。 */
+.excerpt-tools .btn.tool:hover{background:var(--bg-warm-3);border-color:var(--accent);color:var(--gold-text);}
 /* 翻译 / AI 解读结果块：与原文分层的视觉容器 */
 .llm-result{margin-top:8px;border-left:3px solid var(--info);background:var(--bg-ask);
   border-radius:6px;padding:8px 12px;}
@@ -408,17 +530,18 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-zoom-val{font-family:var(--font-mono);font-size:11px;min-width:42px;text-align:center;
   color:var(--apple-secondary);font-variant-numeric:tabular-nums;}
 .lh-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.dag-wrap{position:relative;background:var(--bg-card);border-radius:var(--radius-lg);
-  box-shadow:var(--apple-shadow);overflow:auto;min-height:520px;max-height:calc(100vh - 250px);}
+.dag-wrap{position:relative;background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);
+  box-shadow:var(--apple-shadow),var(--apple-highlight);overflow:auto;min-height:520px;max-height:calc(100vh - 250px);}
 .dag-inner{position:relative;}
 .dag-svg{position:absolute;left:0;top:0;pointer-events:none;}
 /* e-seq/e-trigger/e-near 的 stroke 与 arrow 的 fill 由 lane 色内联下发（260712 item5） */
-.dag-svg .e-seq{fill:none;stroke-width:2;opacity:.55;}
+.dag-svg .e-seq{fill:none;stroke-width:2;opacity:.6;}
 .dag-svg .e-trigger{fill:none;stroke-width:2.6;stroke-dasharray:7 4;opacity:1;}
-.dag-svg .e-near{fill:none;stroke-width:1.2;stroke-dasharray:2 5;opacity:.55;}
+.dag-svg .e-near{fill:none;stroke-width:1.2;stroke-dasharray:2 5;opacity:.6;}
 .dag-svg .arrow{opacity:.85;}
 .lane-head{position:absolute;top:14px;display:flex;align-items:center;gap:6px;font-size:11.5px;
-  color:var(--apple-text);white-space:nowrap;}
+  color:var(--apple-text);white-space:nowrap;background:var(--bg-soft);padding:4px 10px;border-radius:var(--radius-sm);
+  box-shadow:var(--apple-shadow-sm),var(--apple-highlight);}
 .lane-head b{font-weight:600;}
 .lane-head .lh-count{font-family:var(--font-mono);font-size:9.5px;font-weight:600;color:var(--apple-text-secondary);
   background:var(--bg-soft);border-radius:5px;padding:1px 7px;}
@@ -430,8 +553,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-node{position:absolute;width:260px;border-left:3px solid var(--accent);border-radius:8px;
   background:var(--bg-softer);padding:8px 10px;cursor:pointer;
   transition:background .12s ease,transform .12s ease,opacity .12s ease;   /* 收窄自 transition:all——3000 个 transition-all 节点显著加重样式/布局成本（260719） */
-  display:flex;flex-direction:column;gap:3px;box-shadow:var(--apple-shadow-sm);}
-.dag-node:hover{background:var(--bg-warm-3);transform:translateY(-1px);}
+  display:flex;flex-direction:column;gap:3px;box-shadow:var(--apple-shadow-sm),var(--apple-highlight);}
+.dag-node:hover{background:var(--bg-warm-3);transform:translateY(-1px);box-shadow:var(--apple-shadow),0 0 0 1px var(--node-hover-ring);}
 .dag-node.new{animation:fadeIn .45s ease;}
 /* 视觉分层（260717）：中间步=工具循环回传（紧凑条，降透明度收视觉权重，骨架凸显）；
    纯对话轮=整轮没动手（回顾/追问/澄清），虚线左边+💬。错误节点永不降档。 */
@@ -439,8 +562,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-node.mid:hover{opacity:1;}
 .dag-node.chat{border-left-style:dashed;opacity:.88;}
 /* 连续错误折叠卡（260719）：刺眼（红底）但只占一格——错误洪峰天（实测 2029 连错）不把图撑爆 */
-.dag-node.err-run{background:var(--bg-error-soft);border-left-color:var(--err);}
-.dag-node.err-run:hover{background:#F8E2D9;transform:translateY(-1px);}
+.dag-node.err-run{background:var(--bg-error-soft);border-left-color:var(--err);box-shadow:var(--apple-shadow-sm),inset 0 0 0 1px rgba(248,113,113,0.25);}
+.dag-node.err-run:hover{background:var(--danger-node-hover);transform:translateY(-1px);box-shadow:var(--apple-shadow),inset 0 0 0 1px rgba(248,113,113,0.4);}
 .dag-node .dn-r1{display:flex;justify-content:space-between;align-items:center;gap:8px;}
 .dag-node .dn-time{font-family:var(--font-mono);font-size:10.5px;color:var(--apple-secondary);
   font-variant-numeric:tabular-nums;}
@@ -450,7 +573,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   white-space:nowrap;}
 .dag-node .dn-sum.err{color:var(--err);}
 /* 轮卡（260802）：折叠态下一轮一张。比普通卡厚（放得下用户原话 + 徽章行），
-   用户的话是主体所以字号最大、颜色最深——它是回溯时的检索键。 */
+   用户的话是主体所以字号最大、颜色最深——它是回溯时的检索键。
+   背景走 --bg-card（三主题都定义了的卡面色），比普通节点的 --bg-softer 更"实"一层。 */
 .dag-node.turn{background:var(--bg-card);border-left-width:4px;gap:4px;overflow:hidden;}
 .dag-node.turn:hover{background:var(--bg-warm-3);}
 .dag-node.turn.err{background:var(--bg-error-soft);}
@@ -461,14 +585,14 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-node .dn-badges{display:flex;flex-wrap:wrap;gap:4px;align-items:center;overflow:hidden;max-height:18px;}
 .turn-badge{font-size:9.5px;padding:1px 5px;border-radius:9px;line-height:1.5;white-space:nowrap;
   max-width:110px;overflow:hidden;text-overflow:ellipsis;}
-.turn-badge.sub{color:#fff;cursor:pointer;}
+.turn-badge.sub{cursor:pointer;}   /* 前景色按泳道色算（fgOnHex），不在这里写死 */
 .turn-badge.sub:hover{filter:brightness(1.08);}
 .turn-badge.aux{background:var(--bg-softer);color:var(--apple-text-secondary);
   border:1px solid var(--border);font-family:var(--font-mono);}
 
 /* ===== View C 设置 ===== */
 .settings-col{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
-.scard{background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow);padding:14px 22px;}
+.scard{background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow),var(--apple-highlight);padding:14px 22px;}
 .scard h3{font-size:13px;font-weight:700;margin-bottom:2px;}
 .scard .card-sub{font-size:10.5px;color:var(--apple-secondary);margin-bottom:10px;}
 .srow{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:9px 0;
@@ -481,6 +605,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .srow .val,.srow .in-group{min-width:0;}
 .srow .in-group>.btn{flex-shrink:0;}
 .srow .lbl{font-size:12px;font-weight:600;}
+.srow label.lbl{display:block;color:var(--apple-text);}
 .srow .sub{font-size:10.5px;color:var(--apple-secondary);margin-top:1px;}
 .srow .val{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);background:var(--bg-soft);
   padding:6px 10px;border-radius:6px;word-break:break-all;text-align:right;}
@@ -491,7 +616,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   font-family:var(--font-mono);font-size:11px;color:var(--apple-text);background:var(--bg-softer);
   border:1px solid var(--border);border-radius:6px;padding:6px 10px;min-width:260px;outline:none;
   transition:var(--apple-transition);}
-.srow input:focus,.srow select:focus,.srow textarea:focus{border-color:var(--border-warm);background:#fff;}
+.srow input:focus,.srow select:focus,.srow textarea:focus{border-color:var(--accent);background:var(--input-focus-bg);}
 .srow input[type=number]{min-width:90px;text-align:right;}
 .srow select{min-width:140px;font-family:var(--font-body);cursor:pointer;}
 .srow textarea{font-family:var(--font-body);line-height:1.6;resize:vertical;min-height:72px;width:340px;}
@@ -502,6 +627,25 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   background:#fff;transition:var(--apple-transition);box-shadow:0 1px 3px rgba(0,0,0,.18);}
 .toggle.on{background:var(--accent);}
 .toggle.on::after{left:18px;}
+.theme-row{display:block;}
+.theme-row>.theme-label{min-width:0;margin-bottom:9px;}
+.theme-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;width:100%;}
+.theme-option{display:flex;align-items:center;gap:9px;text-align:left;padding:9px 10px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--bg-softer);color:var(--apple-text-secondary);
+  font-family:var(--font-body);cursor:pointer;transition:background .14s ease,border-color .14s ease,box-shadow .14s ease;}
+.theme-option:hover{background:var(--bg-warm-3);border-color:var(--border-warm);}
+.theme-option[aria-checked="true"]{background:var(--bg-warm);border-color:var(--accent);
+  color:var(--apple-text);box-shadow:0 0 0 1px var(--theme-selected-ring);}
+.theme-swatch{width:34px;height:25px;border-radius:6px;border:1px solid rgba(30,30,30,.14);
+  position:relative;overflow:hidden;flex:0 0 auto;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);}
+.theme-swatch::before{content:"";position:absolute;left:5px;right:5px;top:5px;height:5px;border-radius:3px;background:var(--swatch-card);}
+.theme-swatch::after{content:"";position:absolute;left:5px;bottom:5px;width:13px;height:5px;border-radius:3px;background:var(--swatch-accent);}
+.theme-option[data-theme-option="classic"] .theme-swatch{background:#DED8CC;--swatch-card:#FFFFFF;--swatch-accent:#C98A25;}
+.theme-option[data-theme-option="dark"] .theme-swatch{background:#131318;--swatch-card:#2A2A35;--swatch-accent:#E8B855;}
+.theme-option[data-theme-option="light"] .theme-swatch{background:#E8EEF0;--swatch-card:#FFFFFF;--swatch-accent:#1E6972;}
+.theme-copy{display:flex;flex-direction:column;min-width:0;}
+.theme-copy b{font-size:11.5px;line-height:1.25;}
+.theme-copy small{font-size:9.5px;color:var(--apple-secondary);line-height:1.35;margin-top:2px;}
 .srow.test-row{justify-content:flex-start;align-items:center;gap:10px;}
 .test-result.busy{color:var(--info);}
 .test-result.ok{color:var(--ok);}
@@ -513,10 +657,37 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 
 /* ===== Toast ===== */
 #toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(8px);z-index:999;
-  background:var(--apple-text);color:#fff;font-size:12px;padding:9px 18px;border-radius:10px;
+  background:var(--toast-bg);color:var(--toast-fg);font-size:12px;padding:9px 18px;border-radius:10px;
   opacity:0;pointer-events:none;transition:all .25s ease;max-width:80vw;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 #toast.err{background:var(--err);}
+html[data-theme="classic"] .btn.primary,html[data-theme="light"] .btn.primary{
+  background:var(--accent);border-color:var(--accent);color:var(--accent-contrast);}
+html[data-theme="classic"] .btn.primary:hover,html[data-theme="light"] .btn.primary:hover{
+  background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);}
+html[data-ui-scale="large"] .main-content{padding-left:18px;padding-right:18px;}
+html[data-ui-scale="large"] .cap-row{min-width:1040px;}
+html[data-ui-scale="large"] .srow{align-items:flex-start;flex-direction:column;gap:7px;}
+html[data-ui-scale="large"] .srow>div:first-child{min-width:0;width:100%;}
+html[data-ui-scale="large"] .srow input[type=text],
+html[data-ui-scale="large"] .srow input[type=password],
+html[data-ui-scale="large"] .srow textarea{width:100%;min-width:0;}
+html[data-ui-scale="large"] .in-group{width:100%;flex-wrap:wrap;}
+html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{flex-wrap:wrap;}
+@media (max-width:900px){
+  .app-header{padding-left:18px;padding-right:18px;}
+  .main-content{padding-left:14px;padding-right:14px;}
+  .theme-picker{grid-template-columns:1fr;}
+  .srow{align-items:flex-start;flex-direction:column;gap:7px;}
+  .srow>div:first-child{min-width:0;width:100%;}
+  .srow input[type=text],.srow input[type=password],.srow textarea{width:100%;min-width:0;}
+  .in-group{width:100%;flex-wrap:wrap;}
+  .dag-bar,.dag-toolbar{flex-wrap:wrap;}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto !important;animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;transition-duration:.001ms !important;}
+}
 </style>
 </head>
 <body>
@@ -526,17 +697,20 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
     <div class="brand-title">CC Wire Analyzer</div>
     <div class="brand-sub" data-i18n="brand.sub">wire-level capture · CC ↔ 上游链路流量录制</div>
   </div>
-  <div class="header-actions">
-    <button class="tab-btn active" id="tabCaptures" onclick="showView('list')" data-i18n="tab.captures">捕获</button>
-    <button class="tab-btn" id="tabDag" onclick="showView('dag')" data-i18n="tab.dag">时序</button>
-    <button class="tab-btn" id="tabSettings" onclick="showView('settings')" data-i18n="tab.settings">设置</button>
+  <div class="header-actions" role="tablist" aria-label="Main views" data-i18n-aria="aria.mainViews">
+    <button class="tab-btn active" id="tabCaptures" role="tab" aria-selected="true" aria-controls="view-list"
+      onclick="showView('list')" data-i18n="tab.captures">捕获</button>
+    <button class="tab-btn" id="tabDag" role="tab" aria-selected="false" aria-controls="view-dag"
+      onclick="showView('dag')" data-i18n="tab.dag">时序</button>
+    <button class="tab-btn" id="tabSettings" role="tab" aria-selected="false" aria-controls="view-settings"
+      onclick="showView('settings')" data-i18n="tab.settings">设置</button>
   </div>
 </header>
 
 <main class="main-content">
 
   <!-- ============ View A 捕获列表 ============ -->
-  <section id="view-list">
+  <section id="view-list" role="tabpanel" aria-labelledby="tabCaptures">
     <div class="status-card card">
       <div class="status-left">
         <div class="status-row1">
@@ -646,7 +820,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   </section>
 
   <!-- ============ View D 时序 DAG ============ -->
-  <section id="view-dag" hidden>
+  <section id="view-dag" role="tabpanel" aria-labelledby="tabDag" hidden>
     <div class="date-row">
       <div class="date-chips" id="dagDateChips"></div>
       <div class="date-meta" id="dagMeta"></div>
@@ -678,13 +852,13 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   </section>
 
   <!-- ============ View C 设置 ============ -->
-  <section id="view-settings" hidden>
+  <section id="view-settings" role="tabpanel" aria-labelledby="tabSettings" hidden>
     <div class="settings-col">
       <div class="scard">
         <h3 data-i18n="set.ui.title">界面</h3>
         <div class="card-sub" data-i18n="set.ui.sub">界面语言切换立即生效并保存</div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.ui.lang">界面语言</div><div class="sub" data-i18n="set.ui.langSub">Language / 言語</div></div>
+          <div><label class="lbl" for="cfgUiLang" data-i18n="set.ui.lang">界面语言</label><div class="sub" data-i18n="set.ui.langSub">Language / 言語</div></div>
           <select id="cfgUiLang" onchange="setLang(this.value)">
             <option value="zh">中文</option>
             <option value="en">English</option>
@@ -692,7 +866,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           </select>
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.ui.scale">界面缩放</div><div class="sub" data-i18n="set.ui.scaleSub">高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存</div></div>
+          <div><label class="lbl" for="cfgUiScale" data-i18n="set.ui.scale">界面缩放</label><div class="sub" data-i18n="set.ui.scaleSub">高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存</div></div>
           <select id="cfgUiScale" onchange="setUiScale(this.value)">
             <option value="90">90%</option>
             <option value="100">100%</option>
@@ -702,6 +876,27 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
             <option value="175">175%</option>
             <option value="200">200%</option>
           </select>
+        </div>
+        <div class="srow theme-row">
+          <div class="theme-label"><div class="lbl" id="themePickerLabel" data-i18n="set.ui.theme">界面外观</div>
+            <div class="sub" data-i18n="set.ui.themeSub">三套 UI 即时切换，不修改后端配置</div></div>
+          <div class="theme-picker" role="radiogroup" aria-labelledby="themePickerLabel">
+            <button class="theme-option" type="button" role="radio" aria-checked="false"
+              data-theme-option="classic" onclick="setTheme('classic')">
+              <span class="theme-swatch" aria-hidden="true"></span>
+              <span class="theme-copy"><b data-i18n="theme.classic">经典暖灰</b><small data-i18n="theme.classicSub">origin 对照基线</small></span>
+            </button>
+            <button class="theme-option" type="button" role="radio" aria-checked="true"
+              data-theme-option="dark" onclick="setTheme('dark')">
+              <span class="theme-swatch" aria-hidden="true"></span>
+              <span class="theme-copy"><b data-i18n="theme.dark">深色专业</b><small data-i18n="theme.darkSub">终端式高对比</small></span>
+            </button>
+            <button class="theme-option" type="button" role="radio" aria-checked="false"
+              data-theme-option="light" onclick="setTheme('light')">
+              <span class="theme-swatch" aria-hidden="true"></span>
+              <span class="theme-copy"><b data-i18n="theme.light">实验室日光</b><small data-i18n="theme.lightSub">冷纸面与测量网格</small></span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -724,11 +919,12 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           </div>
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.autostart">自动启动代理</div><div class="sub" data-i18n="set.autostartSub">打开软件时自动开始捕获</div></div>
-          <button class="toggle" id="cfgAutoStart" onclick="this.classList.toggle('on')"></button>
+          <div><div class="lbl" id="lblAutoStart" data-i18n="set.autostart">自动启动代理</div><div class="sub" data-i18n="set.autostartSub">打开软件时自动开始捕获</div></div>
+          <button class="toggle" id="cfgAutoStart" type="button" role="switch" aria-checked="false"
+            aria-labelledby="lblAutoStart" onclick="toggleSwitch(this)"></button>
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.retention">保留天数</div><div class="sub" data-i18n="set.retentionSub">超过天数的 captures 自动清理</div></div>
+          <div><label class="lbl" for="cfgRetention" data-i18n="set.retention">保留天数</label><div class="sub" data-i18n="set.retentionSub">超过天数的 captures 自动清理</div></div>
           <input type="number" id="cfgRetention" min="1" max="365" value="30">
         </div>
         <!-- 曾有个「Headers 脱敏」开关：它是假的（proxy._redact() 一直无条件调用，从不看配置）。
@@ -740,30 +936,31 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
         <h3 data-i18n="set.llm.title">LLM 模型</h3>
         <div class="card-sub" data-i18n="set.llm.sub">供详情页 翻译与 AI 解读共用 · OpenAI 兼容 /chat/completions · 配好后点「测试连通」验证</div>
         <div class="srow">
-          <div class="lbl">API Key</div>
+          <label class="lbl" for="cfgTransKey">API Key</label>
           <div class="in-group">
             <input type="password" id="cfgTransKey" placeholder="留空则不启用" data-i18n-ph="set.llm.keyPh" autocomplete="off">
-            <button class="btn tool" onclick="toggleKeyVisible()" aria-label="显示/隐藏" style="padding:5px 7px"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            <button class="btn tool" onclick="toggleKeyVisible()" aria-label="显示/隐藏"
+              data-i18n-aria="aria.toggleSecret" style="padding:5px 7px"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
         </div>
         <div class="srow">
-          <div class="lbl">Base URL</div>
+          <label class="lbl" for="cfgTransBase">Base URL</label>
           <input type="text" id="cfgTransBase" placeholder="https://api.example.com/v1">
         </div>
         <div class="srow">
-          <div class="lbl">Model</div>
+          <label class="lbl" for="cfgTransModel">Model</label>
           <input type="text" id="cfgTransModel" placeholder="glm-4.7">
         </div>
         <div class="srow">
-          <div class="lbl">Temperature</div>
+          <label class="lbl" for="cfgTransTemp">Temperature</label>
           <input type="number" id="cfgTransTemp" min="0" max="2" step="0.1" value="0.3">
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.maxTokens">最大输出 tokens</div><div class="sub" data-i18n="set.maxTokensSub">长文本翻译/解读需要足够大，否则输出被截断；上游模型自身也有上限</div></div>
+          <div><label class="lbl" for="cfgTransMaxTokens" data-i18n="set.maxTokens">最大输出 tokens</label><div class="sub" data-i18n="set.maxTokensSub">长文本翻译/解读需要足够大，否则输出被截断；上游模型自身也有上限</div></div>
           <input type="number" id="cfgTransMaxTokens" min="256" max="65536" step="256" value="8192">
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.translang">翻译目标语言</div><div class="sub" data-i18n="set.translangSub">点 翻译后译成的语言</div></div>
+          <div><label class="lbl" for="cfgTransLang" data-i18n="set.translang">翻译目标语言</label><div class="sub" data-i18n="set.translangSub">点 翻译后译成的语言</div></div>
           <select id="cfgTransLang">
             <option value="zh">中文</option>
             <option value="en">English</option>
@@ -771,7 +968,7 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
           </select>
         </div>
         <div class="srow">
-          <div><div class="lbl" data-i18n="set.explain">AI 解读提示词</div><div class="sub" data-i18n="set.explainSub">AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响</div></div>
+          <div><label class="lbl" for="cfgExplainPrompt" data-i18n="set.explain">AI 解读提示词</label><div class="sub" data-i18n="set.explainSub">AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响</div></div>
           <textarea id="cfgExplainPrompt" rows="4" data-i18n-ph="set.explainPh"></textarea>
         </div>
         <div class="srow test-row">
@@ -820,9 +1017,9 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 
 </main>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-<div id="loadBadge"><span class="ring"></span><span id="loadBadgeText"></span></div>
+<div id="loadBadge" role="status" aria-live="polite"><span class="ring"></span><span id="loadBadgeText"></span></div>
 
 <script src="/static/marked.min.js"></script><!-- vendored：离线 exe 可用（审计 260712 #3） -->
 <script src="/static/purify.min.js"></script><!-- DOMPurify：md 渲染消毒防 XSS（审计 260712 #5） -->
@@ -852,6 +1049,7 @@ const S = {
      只有前者才允许自动切到新的一天，后者是用户的选择，不能抢。 */
   followToday: true,
   uiScale: 100,           // 界面缩放百分比（config.ui_scale）
+  theme: document.documentElement.dataset.theme || "dark", // 纯前端三主题，不进入后端配置
 };
 /* 成本估算已移除：原 PRICING 是按官方刊例折算的金额估算，对走第三方网关的用户并不准；
    usage 区只显示原始 token 数，不再折算 ¥（如需成本，按你实际单价自己算）。 */
@@ -884,6 +1082,7 @@ function toolBtn(ico, label, onclick){
 const I18N = {
 zh: {
   "brand.sub": "wire-level capture · CC ↔ 上游链路流量录制",
+  "aria.mainViews": "主视图", "aria.toggleSecret": "显示或隐藏密钥",
   "tab.captures": "捕获", "tab.dag": "时序", "tab.settings": "设置",
   "status.loading": "正在获取状态…", "status.unreachable": "后端不可达",
   "status.running": "代理运行中", "status.stopped": "代理已停止",
@@ -944,6 +1143,7 @@ zh: {
   "toast.opFailed": "操作失败：{msg}", "toast.loadFailed": "加载失败：{msg}",
   "toast.tooShort": "内容太短",
   "toast.cfgSaved": "配置已保存", "toast.cfgSaveFailed": "保存失败：{msg}",
+  "toast.themeChanged": "已切换为「{name}」",
   "toast.cfgLoadFailed": "配置加载失败：{msg}", "toast.backupDir": "备份目录：{dir}",
   "dates.meta": "显示 {shown} / {total} 条", "dates.live": " · 新请求实时插入顶部",
   "clear.title": "清理", "clear.purge": "清除录制", "clear.purgeSub": "删除当日报文，不可恢复",
@@ -976,7 +1176,7 @@ zh: {
   "llm.translating": "翻译中…", "llm.retranslate": "重译", "llm.translateFail": "翻译失败",
   "llm.translated": "↓ 翻译",
   "llm.explaining": "解读中…", "llm.reexplain": "再问一次", "llm.explainFail": "解读失败",
-  "llm.explained": "AI 解读",
+  "llm.explained": "AI 解读", "llm.chars": "{n} 字符",
   "llm.cutInput": "原文过长，只发送了前 {n} 字符（原文共 {orig}）——这一刀是本工具砍的，调大「最大输出 tokens」救不回来。",
   "llm.cutOutput": "输出到达上限被截断（当前设置 {n}）。上游模型自身也有输出上限，调大本机设置未必能突破。",
   "llm.cutFilter": "上游内容审查中断了输出，结果不完整。",
@@ -996,8 +1196,10 @@ zh: {
   "dag.turnCollapse": "折叠本轮", "dag.legTurnCard": "轮卡 = 一次用户消息及其引发的全部请求",
   "dag.hideMid": "隐藏工具循环步", "dag.showMid": "显示工具循环步",
   "dag.hideMidTitle": "隐藏工具循环中间步，只看用户消息轮——大流量天图立刻可读",
+  "dag.showMidTitle": "显示工具循环中间步，恢复完整调用链",
   "dag.hideAux": "隐藏辅助调用", "dag.showAux": "显示辅助调用",
   "dag.hideAuxTitle": "隐藏标题/安全/计数等辅助调用（实测可占节点数 1/4），只看主线与子代理",
+  "dag.showAuxTitle": "显示标题/安全/计数等辅助调用",
   "dag.lanes": "泳道", "dag.lanesTitle": "选择要显示的泳道——藏掉不看的主线，剩下的自然变大",
   "dag.laneHint": "关闭一条主线会连同它派生的子代理（含嵌套）与辅助调用一起隐藏；子代理可单独勾回",
   "dag.errRun": "连续错误", "dag.errRunTitle": "{n} 条连续错误，点击展开逐条查看",
@@ -1029,6 +1231,10 @@ zh: {
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
   "set.ui.scale": "界面缩放", "set.ui.scaleSub": "高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存",
+  "set.ui.theme": "界面外观", "set.ui.themeSub": "三套 UI 即时切换，不修改后端配置",
+  "theme.classic": "经典暖灰", "theme.classicSub": "origin 对照基线",
+  "theme.dark": "深色专业", "theme.darkSub": "终端式高对比",
+  "theme.light": "实验室日光", "theme.lightSub": "冷纸面与测量网格",
   "set.proxy.title": "代理与数据",
   "set.proxy.sub": "代理只改 settings.json 的 env.ANTHROPIC_BASE_URL 一个字段，其余不碰",
   "set.path": "settings.json 路径", "set.pathSub": "CC 配置文件位置（只读）",
@@ -1054,12 +1260,14 @@ zh: {
   "set.save": "保存配置",
   "err.no_api_key": "未配置 LLM API Key（设置页「LLM 模型」）",
   "err.no_base_url": "未配置 LLM Base URL（设置页「LLM 模型」）",
-  "err.empty_response": "上游返回空内容，请重试",
+  "err.empty_response": "上游返回空内容，请重试或缩短文本",
+  "err.stream_closed": "连接提前关闭",
   "err.bad_response": "上游响应结构异常，请重试",
   "err.empty_text": "空文本", "fail": "失败",
 },
 en: {
   "brand.sub": "wire-level capture · records CC ↔ upstream traffic",
+  "aria.mainViews": "Main views", "aria.toggleSecret": "Show or hide API key",
   "tab.captures": "Captures", "tab.dag": "Timeline", "tab.settings": "Settings",
   "status.loading": "Fetching status…", "status.unreachable": "Backend unreachable",
   "status.running": "Proxy running", "status.stopped": "Proxy stopped",
@@ -1117,6 +1325,7 @@ en: {
   "toast.opFailed": "Operation failed: {msg}", "toast.loadFailed": "Load failed: {msg}",
   "toast.tooShort": "Content too short",
   "toast.cfgSaved": "Settings saved", "toast.cfgSaveFailed": "Save failed: {msg}",
+  "toast.themeChanged": "Switched to “{name}”",
   "toast.cfgLoadFailed": "Failed to load settings: {msg}", "toast.backupDir": "Backup dir: {dir}",
   "dates.meta": "{shown} / {total} shown", "dates.live": " · new requests appear on top",
   "clear.title": "Clear", "clear.purge": "Clear captures", "clear.purgeSub": "Delete today's records, unrecoverable",
@@ -1149,7 +1358,7 @@ en: {
   "llm.translating": "Translating…", "llm.retranslate": "Retranslate", "llm.translateFail": "Translation failed",
   "llm.translated": "↓ Translation",
   "llm.explaining": "Asking…", "llm.reexplain": "Ask again", "llm.explainFail": "Ask AI failed",
-  "llm.explained": "AI explanation",
+  "llm.explained": "AI explanation", "llm.chars": "{n} chars",
   "llm.cutInput": "Source too long — only the first {n} characters were sent (of {orig}). This tool made that cut; raising “Max output tokens” will not undo it.",
   "llm.cutOutput": "Output hit the limit and was truncated (current setting {n}). The upstream model has its own output ceiling, so raising this setting may not lift it.",
   "llm.cutFilter": "Upstream content filtering cut the output short — the result is incomplete.",
@@ -1169,8 +1378,10 @@ en: {
   "dag.turnCollapse": "fold this turn", "dag.legTurnCard": "turn card = one user message and everything it triggered",
   "dag.hideMid": "Hide tool-loop steps", "dag.showMid": "Show tool-loop steps",
   "dag.hideMidTitle": "Hide tool-loop middle steps, keep user turns only — makes busy days readable",
+  "dag.showMidTitle": "Show tool-loop middle steps and restore the complete call chain",
   "dag.hideAux": "Hide auxiliary calls", "dag.showAux": "Show auxiliary calls",
   "dag.hideAuxTitle": "Hide title/security/count auxiliary calls (can be 1/4 of all nodes), keep main & subagent lanes",
+  "dag.showAuxTitle": "Show title, security, count and other auxiliary calls",
   "dag.lanes": "Lanes", "dag.lanesTitle": "Choose visible lanes — hide mains you don't watch and the rest gets bigger",
   "dag.laneHint": "Hiding a main lane also hides the subagents it spawned (including nested) and its auxiliary calls; a subagent can be re-enabled on its own",
   "dag.errRun": "consecutive errors", "dag.errRunTitle": "{n} consecutive errors, click to expand",
@@ -1202,6 +1413,10 @@ en: {
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
   "set.ui.scale": "Interface scale", "set.ui.scaleSub": "Turn it up if text looks small on a 2K/4K display — applied and saved immediately",
+  "set.ui.theme": "Appearance", "set.ui.themeSub": "Switch among three UIs instantly without changing backend settings",
+  "theme.classic": "Classic Warm", "theme.classicSub": "origin comparison baseline",
+  "theme.dark": "Dark Professional", "theme.darkSub": "terminal-grade contrast",
+  "theme.light": "Lab Daylight", "theme.lightSub": "mineral paper and measure grid",
   "set.proxy.title": "Proxy & data",
   "set.proxy.sub": "The proxy only edits env.ANTHROPIC_BASE_URL in settings.json; nothing else is touched",
   "set.path": "settings.json path", "set.pathSub": "CC config file location (read-only)",
@@ -1227,12 +1442,14 @@ en: {
   "set.save": "Save settings",
   "err.no_api_key": "LLM API Key not configured (Settings → LLM model)",
   "err.no_base_url": "LLM Base URL not configured (Settings → LLM model)",
-  "err.empty_response": "Upstream returned empty content, please retry",
+  "err.empty_response": "Upstream returned empty content; retry or shorten the text",
+  "err.stream_closed": "Connection closed before completion",
   "err.bad_response": "Malformed upstream response, please retry",
   "err.empty_text": "Empty text", "fail": "failed",
 },
 ja: {
   "brand.sub": "wire-level capture · CC ↔ 上流トラフィック記録",
+  "aria.mainViews": "メインビュー", "aria.toggleSecret": "API キーの表示・非表示",
   "tab.captures": "キャプチャ", "tab.dag": "タイムライン", "tab.settings": "設定",
   "status.loading": "状態を取得中…", "status.unreachable": "バックエンドに接続できません",
   "status.running": "プロキシ稼働中", "status.stopped": "プロキシ停止中",
@@ -1290,6 +1507,7 @@ ja: {
   "toast.opFailed": "操作に失敗：{msg}", "toast.loadFailed": "読み込みに失敗：{msg}",
   "toast.tooShort": "内容が短すぎます",
   "toast.cfgSaved": "設定を保存しました", "toast.cfgSaveFailed": "保存に失敗：{msg}",
+  "toast.themeChanged": "「{name}」に切り替えました",
   "toast.cfgLoadFailed": "設定の読み込みに失敗：{msg}", "toast.backupDir": "バックアップ先：{dir}",
   "dates.meta": "{shown} / {total} 件表示", "dates.live": " · 新リクエストは先頭に追加",
   "clear.title": "クリア", "clear.purge": "録画を削除", "clear.purgeSub": "当日の録画を削除、元に戻せません",
@@ -1322,7 +1540,7 @@ ja: {
   "llm.translating": "翻訳中…", "llm.retranslate": "再翻訳", "llm.translateFail": "翻訳に失敗",
   "llm.translated": "↓ 翻訳",
   "llm.explaining": "解析中…", "llm.reexplain": "もう一度", "llm.explainFail": "AI 解説に失敗",
-  "llm.explained": "AI 解説",
+  "llm.explained": "AI 解説", "llm.chars": "{n} 文字",
   "llm.cutInput": "原文が長すぎるため、先頭 {n} 文字のみ送信しました（原文は全 {orig}）。これは本ツール側の切り詰めで、「最大出力トークン」を上げても戻りません。",
   "llm.cutOutput": "出力が上限に達して切り詰められました（現在の設定 {n}）。上流モデル自体にも出力上限があり、本機の設定を上げても超えられない場合があります。",
   "llm.cutFilter": "上流のコンテンツ審査により出力が途中で打ち切られました。結果は不完全です。",
@@ -1342,8 +1560,10 @@ ja: {
   "dag.turnCollapse": "このターンを折りたたむ", "dag.legTurnCard": "ターンカード = 1 回のユーザー発言とそれが引き起こした全リクエスト",
   "dag.hideMid": "ツールループを隠す", "dag.showMid": "ツールループを表示",
   "dag.hideMidTitle": "ツールループの中間ステップを隠してユーザーターンだけ表示——大量の日でも読みやすく",
+  "dag.showMidTitle": "ツールループの中間ステップを表示し、完全な呼び出しチェーンに戻します",
   "dag.hideAux": "補助呼び出しを隠す", "dag.showAux": "補助呼び出しを表示",
   "dag.hideAuxTitle": "タイトル/安全/カウントなどの補助呼び出しを隠す（ノードの1/4を占めることも）——メインとサブエージェントだけ表示",
+  "dag.showAuxTitle": "タイトル/安全/カウントなどの補助呼び出しを表示します",
   "dag.lanes": "レーン", "dag.lanesTitle": "表示するレーンを選択——見ないメインを隠すと残りが大きく表示されます",
   "dag.laneHint": "メインレーンを隠すと、そこから派生したサブエージェント（入れ子を含む）と補助呼び出しも一緒に隠れます。サブエージェントは個別に再有効化できます",
   "dag.errRun": "連続エラー", "dag.errRunTitle": "{n} 件の連続エラー、クリックで展開",
@@ -1375,6 +1595,10 @@ ja: {
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
   "set.ui.scale": "表示倍率", "set.ui.scaleSub": "2K/4K ディスプレイで文字が小さいと感じたら上げてください。即時反映・保存されます",
+  "set.ui.theme": "外観", "set.ui.themeSub": "バックエンド設定を変えずに 3 種類の UI を即時切替",
+  "theme.classic": "クラシック暖色", "theme.classicSub": "origin 比較用ベースライン",
+  "theme.dark": "ダーク・プロ", "theme.darkSub": "ターミナル級の高コントラスト",
+  "theme.light": "ラボ・デイライト", "theme.lightSub": "鉱物紙と計測グリッド",
   "set.proxy.title": "プロキシとデータ",
   "set.proxy.sub": "プロキシは settings.json の env.ANTHROPIC_BASE_URL のみを書き換えます",
   "set.path": "settings.json パス", "set.pathSub": "CC 設定ファイルの場所（読み取り専用）",
@@ -1400,7 +1624,8 @@ ja: {
   "set.save": "設定を保存",
   "err.no_api_key": "LLM API Key が未設定です（設定 → LLM モデル）",
   "err.no_base_url": "LLM Base URL が未設定です（設定 → LLM モデル）",
-  "err.empty_response": "上流が空の内容を返しました。再試行してください",
+  "err.empty_response": "上流が空の内容を返しました。再試行するかテキストを短くしてください",
+  "err.stream_closed": "完了前に接続が閉じられました",
   "err.bad_response": "上流レスポンスの構造異常、再試行してください",
   "err.empty_text": "テキストが空です", "fail": "失敗",
 },
@@ -1411,6 +1636,42 @@ function t18(key, params){
   let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.zh[key] ?? key;
   if(params) for(const k in params) s = s.replaceAll("{" + k + "}", String(params[k]));
   return s;
+}
+const THEME_IDS = new Set(["classic", "dark", "light"]);
+function currentTheme(){
+  const v = document.documentElement.dataset.theme;
+  return THEME_IDS.has(v) ? v : "dark";
+}
+function syncThemePicker(){
+  const active = currentTheme();
+  document.querySelectorAll("[data-theme-option]").forEach(btn => {
+    btn.setAttribute("aria-checked", btn.dataset.themeOption === active ? "true" : "false");
+  });
+}
+function setTheme(theme, announce=true){
+  if(!THEME_IDS.has(theme)) return;
+  S.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light";
+  try{
+    localStorage.setItem("ccwa_ui_theme", theme);
+    document.cookie = "ccwa_ui_theme=" + encodeURIComponent(theme) +
+      "; Path=/; Max-Age=31536000; SameSite=Strict";
+  }catch(e){}
+  syncThemePicker();
+  if(S.view === "dag") loadDag();  /* 泳道色板随主题变化，重新取现有数据并重绘。 */
+  if(announce) toast(t18("toast.themeChanged", {name:t18("theme." + theme)}));
+}
+function toggleSwitch(btn){
+  const on = !btn.classList.contains("on");
+  btn.classList.toggle("on", on);
+  btn.setAttribute("aria-checked", on ? "true" : "false");
+}
+function activateClick(e){
+  if(e.key === "Enter" || e.key === " "){
+    e.preventDefault();
+    e.currentTarget.click();
+  }
 }
 function kindLabel(k){ return (I18N.zh["kind." + k] != null) ? t18("kind." + k) : k; }
 /* 260729：system block 内容角色推断——让 security 的 sys[1]（108K 规则库）等被标成
@@ -1477,6 +1738,7 @@ function applyI18n(){
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t18(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t18(el.dataset.i18nPh); });
   document.querySelectorAll("[data-i18n-title]").forEach(el => { el.title = t18(el.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el => { el.setAttribute("aria-label", t18(el.dataset.i18nAria)); });
 }
 /* 界面缩放（260801）：2K/4K 屏上 11px 的绝对字号物理尺寸太小，此前软件里无从调节。
    用 CSS `zoom` 而**不是** `transform: scale()`——后者是位图缩放，会真的把字变虚，
@@ -1486,6 +1748,7 @@ function applyUiScale(scale){
   const s = Math.max(80, Math.min(200, parseInt(scale, 10) || 100));
   S.uiScale = s;
   document.documentElement.style.zoom = (s === 100 ? "" : (s / 100));
+  document.documentElement.dataset.uiScale = s >= 150 ? "large" : "normal";
   const sel = $("cfgUiScale"); if(sel) sel.value = String(s);
   return s;
 }
@@ -1558,6 +1821,8 @@ function toast(msg, isErr){
   const t = $("toast");
   t.textContent = msg;
   t.className = isErr ? "show err" : "show";
+  t.setAttribute("role", isErr ? "alert" : "status");
+  t.setAttribute("aria-live", isErr ? "assertive" : "polite");
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.className = "", 3200);
 }
@@ -1802,7 +2067,8 @@ function llmToolAction(btn, kind, raw, host){
     flush();
     div.className = A.cls + " llm-result llm-error";
     const c = code ? '<code>' + esc(code) + '</code> · ' : '';
-    div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' + fmtTok(raw.length) + ' 字符</div>' +
+    div.innerHTML = '<div class="llm-result-tag err">' + t18(A.fail) + ' · ' +
+      t18("llm.chars", {n:fmtTok(raw.length)}) + '</div>' +
       '<div class="llm-err-body">' + c + esc(msg || "") + '</div>';
     renderNotices();   /* innerHTML 重建把提示冲掉了，再挂一次——出错时更需要知道原文被砍过 */
     toast(t18(A.fail) + "：" + (msg || code), true);
@@ -1813,7 +2079,7 @@ function llmToolAction(btn, kind, raw, host){
     const full = pre.textContent;
     const tag = kind === "translate" ? "text" : "content";
     const clean = _stripDelim(full, tag);
-    if(!clean){ showError("empty_response", "上游返回空内容，请重试或缩短文本"); return; }
+    if(!clean){ showError("empty_response", t18("err.empty_response")); return; }
     div.className = A.cls + " llm-result md-body";
     div.innerHTML = '<div class="llm-result-tag">' + t18(A.tag) + '</div>' + mdRender(clean);
     renderNotices();   /* 同上：mdRender 重建了整块，提示要再挂回去 */
@@ -1827,7 +2093,7 @@ function llmToolAction(btn, kind, raw, host){
       function pump(){
         reader.read().then(({done:closed, value}) => {
           if(closed){ if(errObj) showError(errObj.error_code, errObj.error); else if(done) finalize();
-            else showError("empty_response", "连接提前关闭"); return; }
+            else showError("stream_closed", t18("err.stream_closed")); return; }
           sseBuf += dec.decode(value, {stream:true});
           const lines = sseBuf.split("\n"); sseBuf = lines.pop();   /* 不完整行留缓冲 */
           for(const line of lines){
@@ -1865,9 +2131,15 @@ function showView(v){
   $("view-detail").hidden = v !== "detail";
   $("view-dag").hidden = v !== "dag";
   $("view-settings").hidden = v !== "settings";
-  $("tabCaptures").classList.toggle("active", v === "list" || (v === "detail" && S.detailFrom === "list"));
-  $("tabDag").classList.toggle("active", v === "dag" || (v === "detail" && S.detailFrom === "dag"));
-  $("tabSettings").classList.toggle("active", v === "settings");
+  const listOn = v === "list" || (v === "detail" && S.detailFrom === "list");
+  const dagOn = v === "dag" || (v === "detail" && S.detailFrom === "dag");
+  const settingsOn = v === "settings";
+  $("tabCaptures").classList.toggle("active", listOn);
+  $("tabDag").classList.toggle("active", dagOn);
+  $("tabSettings").classList.toggle("active", settingsOn);
+  $("tabCaptures").setAttribute("aria-selected", listOn ? "true" : "false");
+  $("tabDag").setAttribute("aria-selected", dagOn ? "true" : "false");
+  $("tabSettings").setAttribute("aria-selected", settingsOn ? "true" : "false");
   if(v === "settings"){ loadConfig(); refreshHealth(); }   /* 打开设置页顺手体检一次 */
   if(v === "dag") loadDag();
 }
@@ -2211,7 +2483,9 @@ function rowHtml(it, isNew){
   const path = (it.method || "POST") + " " + (it.path || "");
   /* 单元格顺序即 grid 列顺序，**每行都要发满 10 个**（main 行的 kind、非安全行的判定发空格子）：
      grid 靠自动流排列，少一个格子后面全部左移一列（260730） */
-  return '<div class="cap-row' + (isNew ? " new" : "") + (isAux ? " probe" : "") + '" data-rid="' + esc(it.id) + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
+  return '<div class="cap-row' + (isNew ? " new" : "") + (isAux ? " probe" : "") +
+    '" role="button" tabindex="0" onkeydown="activateClick(event)" data-rid="' + esc(it.id) +
+    '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
     '<span class="cap-time">' + timePart(it.ts_start) +
       (S.multiSession && it.session_id ? '<span class="cap-sid">' + esc(it.session_id.slice(0,8)) + '</span>' : '') +
     '</span>' +
@@ -2617,7 +2891,7 @@ function renderMsg(m){
         inner += '<div class="tooluse-box"><span class="blk-meta">citations:</span>\n' + bigText(cl.join("\n"), 1500) + '</div>';
       }
     }else if(b.type === "thinking"){
-      inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--text-faint)">thinking</span></div>' +
+      inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:#4A5568">thinking</span></div>' +
         bigText(b.thinking || b.text || "", 3000) + '</div>';
     }else if(b.type === "tool_use"){
       inner += '<div class="tooluse-box">→ ' + esc(b.name || "tool") + " " +
@@ -2644,7 +2918,7 @@ function renderMsg(m){
 }
 function renderRespBlock(b){
   if(b.type === "thinking"){
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--text-faint)">thinking</span></div>' +
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:#4A5568">thinking</span></div>' +
       bigText(b.text || b.thinking || "", 3000) + '</div>';
   }
   if(b.type === "text"){
@@ -2659,14 +2933,14 @@ function renderRespBlock(b){
       cit = '<div class="tooluse-box"><span class="blk-meta">citations (' + b.citations.length + "):</span>\n" +
         bigText(cl.join("\n"), 1800) + '</div>';
     }
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--accent)">text</span>' +
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--accent);color:var(--accent-contrast)">text</span>' +
       '<span class="blk-actions">' +
       toolBtn("translate", t18("bt.translate"), "translateBlock(this)") +
       toolBtn("explain", t18("bt.explain"), "explainBlock(this)") + '</span></div>' +
       '<div class="blk-text">' + mdRender(b.text || "") + '</div>' + cit + '</div>';
   }
   if(b.type === "tool_use"){
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--info)">tool_use</span>' +
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--info);color:var(--accent-contrast)">tool_use</span>' +
       (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
       '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
       esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';
@@ -2726,11 +3000,22 @@ const KIND_COLOR = {
   security: "var(--gold-text-2)", count_tokens: "var(--text-tertiary)",
   other: "var(--apple-secondary)",
 };
+const KIND_FG = {
+  main:"var(--accent-contrast)", subagent:"var(--accent-contrast)",
+  title:"var(--chip-default-fg)", compact:"var(--chip-default-fg)",
+  security:"var(--accent-contrast)", count_tokens:"var(--accent-contrast)",
+  other:"var(--chip-default-fg)",
+};
 /* kind/lane 显示名走 i18n：kindLabel() / laneLabel()（I18N 的 kind.* / lane.* 键） */
 const LANE_COLOR = { main: "var(--accent)", subagent: "var(--info)", aux: "var(--apple-secondary)" };
-/* 主线泳道分类色板（260712 item5）：dataviz 六检全过（白面 all-pairs CVD ΔE≥13、对比≥3:1、
-   色度≥0.1），槽 1=品牌深金。按 lane 首见顺序取色，LIVE 新增 lane 只追加、已有色不变。 */
-const LANE_PALETTE = ["#C2882B", "#24A0B2", "#8F63B0", "#B25578", "#48923F", "#96540E"];
+/* 主线泳道分类色板按主题校准：dark 提亮第 6 色，light/classic 用深色线条落在浅卡上。
+   按 lane 首见顺序取色，LIVE 新增 lane 只追加、已有色不变。 */
+const LANE_PALETTES = {
+  dark:["#D69A36","#35B7C4","#AD7DD3","#D56D98","#68B95D","#D47A2F"],
+  classic:["#A66B13","#168596","#6F4C94","#934563","#3D7435","#95521A"],
+  light:["#1E6972","#315F9D","#6A4B93","#914A68","#3B7434","#9A5B1E"],
+};
+function lanePalette(){ return LANE_PALETTES[currentTheme()] || LANE_PALETTES.dark; }
 
 async function loadDag(){
   loadBegin(S.date);
@@ -2874,6 +3159,16 @@ function hexMix(a, b, t){
   const pb = [1, 3, 5].map(i => parseInt(b.substr(i, 2), 16));
   return "#" + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
+/* 落在任意泳道色上的可读前景色（260802 移植三主题时发现）：子代理泳道色是派生方色
+   兑 45% 白（hexMix ↑），三套主题下都是浅色——轮卡徽章原来写死 color:#fff，
+   实测 #E8C790 上白字只有 1.6:1，等于看不见。按 sRGB 相对亮度选黑/白，
+   拿不到 #rrggbb（值是 CSS 变量时）就退回主题自己的对比色。 */
+function fgOnHex(hex){
+  if(typeof hex !== "string" || hex[0] !== "#" || hex.length < 7) return "var(--accent-contrast)";
+  const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(hex.substr(i, 2), 16)));
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.36 ? "#11131A" : "#FFFFFF";
+}
 function dagMetaSet(d){
   $("dagMeta").textContent = t18("dag.meta", {n: (d.nodes || []).length, m: (d.lanes || []).length}) +
     (S.status && S.status.running ? t18("dag.live") : "");
@@ -2912,6 +3207,7 @@ function dagEdgeSvg(e){   /* trigger / near（seq 走 dagPlace 的前端可见�
 function dagNodeHtml(n){
   const p = DG.pos[n.id], tier = DG.tier[n.id];
   const color = KIND_COLOR[n.kind] || KIND_COLOR.other;
+  const chipFg = KIND_FG[n.kind] || KIND_FG.other;
   const border = n.has_error ? "var(--err)" : (DG.laneColor[n.lane] || color);
   const assoc = DG.auxAssoc[n.id]
     ? '<span class="assoc-dot" style="background:' + DG.laneColor[DG.auxAssoc[n.id]] +
@@ -2919,19 +3215,22 @@ function dagNodeHtml(n){
   /* 展开的连续错误 run 的首卡：带「折叠」徽章可收回（run key = lane:firstId） */
   const expKey = n.lane + ":" + n.id;
   let collapse = DG.expandedRuns.has(expKey)
-    ? '<span class="chip outline" style="cursor:pointer" onclick="event.stopPropagation();dagToggleRun(\'' +
+    ? '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
+      'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleRun(\'' +
       expKey + '\')">▴ ' + t18("dag.collapseRun") + '</span>' : "";
   /* 展开的轮的首条请求：带「折叠本轮」可收回（否则展开后只能靠全局按钮收，找不回来） */
   if(DG.foldTurns && n.turn && DG.expandedTurns.has(n.turn) &&
      (DG.turnById[n.turn] || {}).head === n.id){
-    collapse += '<span class="chip outline" style="cursor:pointer" onclick="event.stopPropagation();dagToggleTurn(\'' +
+    collapse += '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
+      'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleTurn(\'' +
       esc(n.turn) + '\')">▴ ' + t18("dag.turnCollapse") + '</span>';
   }
   const ur = n.usage || {};
   const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
   if(tier === "mid"){
     /* 工具循环中间步：单行紧凑条（时间+耗时+token），无 chip 无 summary，点击照常进详情 */
-    return '<div class="dag-node mid" data-nid="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
+    return '<div class="dag-node mid" role="button" tabindex="0" onkeydown="activateClick(event)" data-nid="' +
+      esc(n.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
       border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
       '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
       '<span class="dn-meta">' + fmtMs(n.total_ms) +
@@ -2940,11 +3239,12 @@ function dagNodeHtml(n){
   const chat = tier === "chat" ? '💬 ' : "";
   /* 安全节点摘要与列表行一致（260730）：后端 _node_summary 给 security 节点带了 sec_action */
   const sum = (n.kind === "security" ? secReviewText(n, 46) : "") || n.summary || "";
-  return '<div class="dag-node' + (tier === "chat" ? " chat" : "") + '" data-nid="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' +
+  return '<div class="dag-node' + (tier === "chat" ? " chat" : "") +
+    '" role="button" tabindex="0" onkeydown="activateClick(event)" data-nid="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' +
     p.y + 'px;border-left-color:' + border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
     '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
     '<span class="dn-tags">' + collapse + assoc +
-    '<span class="chip" style="background:' + color + '">' + esc(kindLabel(n.kind)) + '</span></span></div>' +
+    '<span class="chip" style="background:' + color + ';color:' + chipFg + '">' + esc(kindLabel(n.kind)) + '</span></span></div>' +
     '<div class="dn-meta">' + esc(n.model || "?") + ' · ' + fmtMs(n.total_ms) +
     (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") +
     (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +
@@ -2959,11 +3259,15 @@ function dagTurnCardHtml(t, pos, laneColor){
   const you = t.user_text
     ? '<span class="dn-you-k">' + t18(speaker) + '</span>' + esc(t.user_text)
     : '<span class="dn-turn-dim">' + t18(t.partial ? "dag.turnPartial" : "dag.turnEmptyUser") + '</span>';
-  const subs = (t.subagents || []).map(s =>
-    '<span class="turn-badge sub" style="background:' + (DG.laneColor[s.lane_id] || LANE_COLOR.subagent) +
-    '" title="' + esc(s.label) + '" onclick="event.stopPropagation();dagFocusLane(\'' + esc(s.lane_id) + '\')">🤖 ' +
-    esc((s.label || s.lane_id).slice(0, 14)) + '</span>').join("");
-  const auxOrder = ["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
+  const subs = (t.subagents || []).map(s => {
+    const bg = DG.laneColor[s.lane_id] || LANE_COLOR.subagent;
+    return '<span class="turn-badge sub" role="button" tabindex="0" style="background:' + bg +
+    ';color:' + fgOnHex(bg) + '" title="' + esc(s.label) +
+    '" onkeydown="event.stopPropagation();activateClick(event)"' +
+    ' onclick="event.stopPropagation();dagFocusLane(\'' + esc(s.lane_id) + '\')">🤖 ' +
+    esc((s.label || s.lane_id).slice(0, 14)) + '</span>';
+  }).join("");
+  const auxOrder =["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
   const auxIcon = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", other: "•" };
   const aux = auxOrder.filter(k => (t.aux || {})[k]).map(k =>
     '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + ' ×' + t.aux[k] + '">' +
@@ -2974,7 +3278,8 @@ function dagTurnCardHtml(t, pos, laneColor){
   const allFailed = t.errors > 0 && t.errors === t.steps;
   const errTag = t.errors ? ' · <b style="color:var(--err)">⚠' + t.errors + '</b>' : "";
   return '<div class="dag-node turn' + (allFailed ? " err" : "") + (t.pure_chat ? " chat" : "") +
-    '" data-turn="' + esc(t.turn_id) + '" style="left:' + pos.x + 'px;top:' + pos.y + 'px;height:' +
+    '" role="button" tabindex="0" onkeydown="activateClick(event)" data-turn="' + esc(t.turn_id) +
+    '" style="left:' + pos.x + 'px;top:' + pos.y + 'px;height:' +
     pos.h + 'px;border-left-color:' + laneColor + '" onclick="dagToggleTurn(\'' + esc(t.turn_id) + '\')">' +
     '<div class="dn-r1"><span class="dn-time">' + timePart(t.first_ts) + '</span>' +
     '<span class="dn-meta">' + t18("dag.turnNo", {n: t.index}) + ' · ⟳' + t18("dag.turnSteps", {n: t.steps}) +
@@ -3009,11 +3314,12 @@ function dagRunCardHtml(run){
   const first = DG.nodeById[run.ids[0]] || {};
   const last = DG.nodeById[run.ids[run.ids.length - 1]] || {};
   const p = run.pos;
-  return '<div class="dag-node err-run" data-run="' + esc(run.key) + '" style="left:' + p.x + 'px;top:' + p.y +
+  return '<div class="dag-node err-run" role="button" tabindex="0" onkeydown="activateClick(event)" data-run="' +
+    esc(run.key) + '" style="left:' + p.x + 'px;top:' + p.y +
     'px;border-left-color:var(--err)" title="' + esc(t18("dag.errRunTitle", {n: run.ids.length})) +
     '" onclick="dagToggleRun(\'' + run.key + '\')">' +
     '<div class="dn-r1"><span class="dn-time">' + timePart(first.ts_start) + ' → ' + timePart(last.ts_start) + '</span>' +
-    '<span class="chip" style="background:var(--err)">×' + run.ids.length + '</span></div>' +
+    '<span class="chip" style="background:var(--err);color:var(--accent-contrast)">×' + run.ids.length + '</span></div>' +
     '<div class="dn-sum err">' + esc((first.summary || t18("dag.errRun")).slice(0, 60)) + '</div></div>';
 }
 function dagToggleRun(key){
@@ -3156,7 +3462,8 @@ function renderDagFull(d){
   let mi = 0;
   for(const l of lanes){
     if(l.kind !== "main") continue;
-    DG.laneColor[l.lane_id] = LANE_PALETTE[mi % LANE_PALETTE.length];
+    const palette = lanePalette();
+    DG.laneColor[l.lane_id] = palette[mi % palette.length];
     DG.laneNum[l.lane_id] = ++mi;
   }
   DG.parentLane = {}; DG.auxAssoc = {};
@@ -3318,7 +3625,9 @@ function dagToggleMid(){
   const b = $("dagMidBtn");
   b.classList.toggle("on", DG.hideMid);
   b.dataset.i18n = DG.hideMid ? "dag.showMid" : "dag.hideMid";
+  b.dataset.i18nTitle = DG.hideMid ? "dag.showMidTitle" : "dag.hideMidTitle";
   b.textContent = t18(b.dataset.i18n);
+  b.title = t18(b.dataset.i18nTitle);
   DG.rendered = false;   /* 可见性变了：强制全量重排（mid 占位规则不同） */
   loadDag();
 }
@@ -3327,7 +3636,9 @@ function dagToggleAux(){
   const b = $("dagAuxBtn");
   b.classList.toggle("on", DG.hideAux);
   b.dataset.i18n = DG.hideAux ? "dag.showAux" : "dag.hideAux";
+  b.dataset.i18nTitle = DG.hideAux ? "dag.showAuxTitle" : "dag.hideAuxTitle";
   b.textContent = t18(b.dataset.i18n);
+  b.title = t18(b.dataset.i18nTitle);
   DG.rendered = false;   /* 可见性变了：强制全量重排（aux lane 整列去留影响布局） */
   loadDag();
 }
@@ -3406,6 +3717,7 @@ async function loadConfig(){
     S.backupsCount = st.backups_count ?? 0;   /* 存原料：切语言时 renderSettingsI18n 要重算这句 */
     $("cfgBackupCount").textContent = t18("set.backupCount", {n: S.backupsCount});
     $("cfgAutoStart").classList.toggle("on", !!cfg.auto_start_proxy);
+    $("cfgAutoStart").setAttribute("aria-checked", cfg.auto_start_proxy ? "true" : "false");
     $("cfgRetention").value = cfg.retention_days ?? 30;
     const tr = cfg.translate || {};
     $("cfgTransKey").value = tr.api_key || "";
@@ -3535,6 +3847,7 @@ function openBackupDir(){
     applyUiScale(cfg.ui_scale);   /* 首屏渲染前就设好，否则会看到一次跳变 */
   }catch(e){ /* 配置不可达时按默认 zh + 100% */ }
   applyI18n();
+  syncThemePicker();
   ctxInit();                  /* 自绘右键菜单 + Cmd/Ctrl+C 兜底（WebView2/WebKit 都不给原生的）*/
   await fetchCaptures();      /* 默认今天，含 dates_available */
   await refreshStatus();
