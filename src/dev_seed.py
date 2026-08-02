@@ -106,7 +106,7 @@ def base(ts: str, model: str = "glm-5.2", session_id: str = SID_A,
                          "accept-encoding": "gzip, deflate, br, zstd",
                          "authorization": "<redacted>",
                          "x-claude-code-session-id": session_id,
-                         "user-agent": f"claude-cli/2.1 (external, {entrypoint})"},
+                         "user-agent": f"claude-cli/2.1.220 (external, {entrypoint})"},
         "body": {"model": model, "max_tokens": 32000, "stream": True,
                  "metadata": {"user_id": uid(session_id)}},
     }
@@ -454,13 +454,79 @@ def c1():
     return r
 
 
+def seed_trends():
+    """往最近 3 天的 captures 写失败样例，覆盖四种 trend，供 /api/diagnose/trends 端到端自测。
+
+    四种趋势（每组固定消息模板 + 变 req id，_fingerprint 归一后同指纹 → 跨天合并）：
+      recurring : 429 rate-limit，day0/1/2 各 1 次（等量 → recurring）
+      declining : 504 timeout，day0=5 / day1=2 / day2=1（衰减 → declining）
+      rising    : 400 invalid，day0=1 / day1=3（上升 → rising）
+      sporadic  : 500 server，仅 day0 1 次（单天 → sporadic）
+
+    **直接写 captures/<date>.jsonl**（capture_store.append 按 now 写今天，写不了过去几天）；
+    索引不写，首次 GET /api/diagnose/trends 触发 list_index 增量回填。测完手删这 3 天文件。
+    """
+    import datetime
+    today = datetime.date.today()
+
+    def day(off):
+        return (today - datetime.timedelta(days=off)).isoformat()
+
+    def write(r, date):
+        f = cs.CAPTURES_DIR / f"{date}.jsonl"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with f.open("ab") as fh:
+            fh.write((json.dumps(r, ensure_ascii=False) + "\n").encode("utf-8"))
+
+    def fail(date, hhmmss, *, status, kind, msg, model="glm-5.2", host="open.bigmodel.cn"):
+        r = base(hhmmss, model=model)
+        r["ts_start"] = f"{date}T{hhmmss}"
+        r["ts_end"] = r["ts_start"]
+        r["upstream"] = f"https://{host}/v1/messages"
+        b = r["request"]["body"]
+        b["system"] = main_sys()
+        b["messages"] = [{"role": "user", "content": "trends seed"}]
+        r["response"].update(status=status, ttft_ms=None, total_ms=30000,
+                             stop_reason=None, usage={}, chunks_count=0, content_blocks=[])
+        r["error"] = {"kind": kind, "status": status,
+                      "body_snippet": json.dumps({"type": "error",
+                                                  "error": {"type": "x", "message": msg}})}
+        return r
+
+    # 消息模板：req id ≥6 字符 + 数字 ≥4 位，_fingerprint 归一后同组同指纹（见 diagnose_selftest [7] 注释）
+    RL = "rate limited, retry after 1234 ms (req_rl{:04d})"
+    TO = "read timeout after 5678 ms (req_to{:04d})"
+    IV = "invalid_request error 1234 (req_iv{:04d})"
+
+    for off in [0, 1, 2]:                           # recurring：3 天各 1（等量）
+        write(fail(day(off), "10:00:00.000", status=429, kind="upstream_4xx",
+                   msg=RL.format(off)), day(off))
+    for off, n in [(2, 5), (1, 2), (0, 1)]:         # declining：最早多→最近少（升序 5/2/1）
+        for k in range(n):
+            write(fail(day(off), f"11:{k:02d}:00.000", status=504, kind="upstream_5xx",
+                       msg=TO.format(off * 10 + k), model="claude-opus-5",
+                       host="api.anthropic.com"), day(off))
+    for off, n in [(1, 1), (0, 3)]:                 # rising：最早少→最近多（升序 1/3）
+        for k in range(n):
+            write(fail(day(off), f"12:{k:02d}:00.000", status=400, kind="upstream_4xx",
+                       msg=IV.format(off * 10 + k)), day(off))
+    write(fail(day(0), "13:00:00.000", status=500, kind="upstream_5xx",  # sporadic：仅 day0
+               msg="server error 5000 (req_se0001)"), day(0))
+    print(f"seeded trends → day0..2 at {cs.CAPTURES_DIR}")
+    print("  recurring(429×3天各1) declining(504 5/2/1) rising(400 1/3) sporadic(500×1)")
+    print("  测完手删这 3 天的 .jsonl + .idx 文件")
+
+
 if __name__ == "__main__":
     import sys
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    for rec, tag in ((a1(), "A1 main"), (t1(), "T1 title"), (a2(), "A2 main+Task"),
+    if len(sys.argv) > 1 and sys.argv[1] == "trends":
+        seed_trends()
+    else:
+        for rec, tag in ((a1(), "A1 main"), (t1(), "T1 title"), (a2(), "A2 main+Task"),
                      (s1(), "S1 subagent"), (s2(), "S2 subagent（同实例第 2 条）"),
                      (b1(), "B1 main 502"), (o1(), "O1 security 打分式"),
                      (o2(), "O2 security 拦截"), (o3(), "O3 security 无判定"),
@@ -471,6 +537,6 @@ if __name__ == "__main__":
                      (e4(), "E4 未知beta特性"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
-        cs.append(rec)
-        print("seeded", rec["id"], "→", tag)
-    print("done →", cs.CAPTURES_DIR)
+            cs.append(rec)
+            print("seeded", rec["id"], "→", tag)
+        print("done →", cs.CAPTURES_DIR)

@@ -143,6 +143,7 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/dag?date=YYYY-MM-DD` | 会话时序的 lanes / nodes / edges |
 | GET | `/api/health/config` | **配置体检**（只读）：CC 的配置自相矛盾吗？ |
 | GET | `/api/diagnose/errors?date=…&limit=N` | **失败聚合**：到底哪里出了问题，按上游错误消息分组 |
+| GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + recurring/rising/declining/sporadic + host/model/cc_version 切片。看失败是新发还是老毛病复发、集中哪个供应商/CC 版本 |
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少）。比直读 jsonl 安全 |
 | GET | `/api/stats?date=…` | **统计**：kind/model/status 分布、token 四项（含 cache_creation）、cache 命中率、耗时 p50/p95 |
 | GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、beta 长尾特性。每项带 samples id。调它发现 CC 协议演进与录制盲区，取样本看详情，提改进（新增解析/渲染/分类规则，稳定的并入 KNOWN_*）|
@@ -222,6 +223,43 @@ truth 实测，2026-07）：
 实测一个糟糕的日子：2719 个失败在 0.09s 内压成 7 组。输出有界（`limit`，默认 20），`truncated`
 说你看到的是否是全部；`groups` 永远报真实的组数。用 `samples` 里的 id 配 `/api/captures/<id>`
 取完整 record 深入。
+
+---
+
+### 跨天趋势（`/api/diagnose/trends`）
+
+**单天 errors 看今天出了什么；这里看是不是老毛病复发、以及集中打在哪个供应商 / CC 版本上。**
+跨天维度爆炸（CC 版本 × 供应商 × 时间 × 错误），人看是灾难——所以这个端点**只给 AI，不进 GUI**。
+
+最近 N 天（`span`，默认 7）的失败用和单天**同一个键**（`err_kind` + `status` + 指纹）跨天合并，
+每组告诉你：是新发还是复发（`trend`）、哪天到哪天（`first_seen`/`last_seen`）、每天多少次
+（`per_day`）、打在哪些供应商 / 模型 / CC 版本上（`by_host`/`by_model`/`by_cc_version`）。
+
+```json
+{"span": 7, "dates": ["2026-07-27", …, "2026-08-02"],
+ "totals": {"records": 12345, "failures": 2805, "cross_day_groups": 2, "all_groups": 79},
+ "per_day": [{"date": "2026-08-01", "records": 528, "failures": 12, "groups": 7}, …],
+ "items": [
+   {"err_kind": "upstream_4xx", "status": 429, "count": 5, "days_span": 5,
+    "first_seen": "2026-07-18T…", "last_seen": "2026-08-02T…",
+    "per_day": {"2026-07-18": 1, "2026-07-26": 1, "2026-08-02": 1},
+    "trend": "recurring",
+    "by_host": {"api.anthropic.com": 5}, "by_model": {"claude-sonnet-5": 5},
+    "by_cc_version": {"2.1.220": 5}, "samples": ["req_…"]}
+ ],
+ "by_host": [{"value": "api.anthropic.com", "count": 1820}, …]}
+```
+
+`trend` 四种：**`sporadic`** 只在一天出现（偶发）；**`recurring`** 跨多天且量稳定；**`rising`** 后半段
+明显增多（在恶化 / 铺开中）；**`declining`** 后半段明显减少（在自愈 / 已停）。判据是活跃天的前半段
+vs 后半段总量比（≥1.5 rising、≤0.5 declining、否则 recurring）——规则也写进了响应 `note`。
+
+`by_host` 是**路由供应商**（请求打向的 host，wire 层直接事实），不是 model→vendor 推断——同一个
+`claude-opus-5` 可能走官方、走智谱、走别的中转，model 名定不了供应商，host 才是。中转背后真正的
+算力供应商 wire 层看不到；但 `by_host × by_model` 交叉已足够判断「这次失败经谁」。
+
+`items` 按 `days_span desc → count desc` 排（跨天复发优先于单天高频）。输出有界（`limit`，默认 20，
+最大 50），`truncated` 标注。深挖某一天用 `/api/diagnose/errors?date=…`，取样本用 `/api/captures/<id>`。
 
 ---
 

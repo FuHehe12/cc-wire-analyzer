@@ -26,7 +26,7 @@
   **macOS 升级用户注意**（自 v0.4.2 起未变）：应用包由 `CCWireAnalyzer.app` 改名
   `cc-wire-analyzer.app`，`/Applications` 里旧的那份不会被替换，需自行删除。
 - **下一步**：
-  1. **失败聚合的跨天视角。** 单日视图已在 v0.4.3 落地；它回答不了的是「今天这些失败是新的还是老毛病」——趋势、复发，以及把反复出现的模式固化成体检规则（`effort_max_rejected_upstream` 正是这么来的）。
+  1. **失败聚合的跨天视角——已在未发布段落落地。** `/api/diagnose/trends` 现在能回答「新发还是老毛病」：每日曲线、recurring/rising/declining/sporadic 趋势标记、host/model/cc_version 切片（只走 HTTP，不进 GUI）。仍未做：把反复出现的失败模式自动固化成体检规则——`effort_max_rejected_upstream` 当初是人工盯出来的复发，把这条闭环走通是剩下的另一半。
   2. **录制盲区审计：已收口（协议面 + 能力面两半都完成）。** 260731 的协议面对账（对账 CC 声明的请求头、请求体字段、SSE 分支）查出九个缺口、现已全部有交代；能力面这半——把 CC 每个能力实际跑一遍录制、检查解析——也已完成：7 个维度 14 条录制，核心解析零硬 bug，并修掉一处文档姿势失效（见 v0.4.3）。方法见 `docs/开发指南.md` 第二·五节；泛化版是 `docs/问题域手册.md` 单元 0。最后一条（对可疑记录保留原始字节）作为设计定案随存储治理留到 0.5.x。
   3. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理仍缺一次人工核对过的采集。历史录制已能提供统计旁证——225 条子代理请求全部是 `cc_entrypoint=cli`、判别位全部在、零反例——但这与「采一次会话并逐条对照 ground truth」不是一回事，后者才是关闭这条所需要的。
 
@@ -52,6 +52,18 @@
   CC 配额嗅探（`user="quota"` + maxtok=1，9 条全 429/401/timeout）与 StopConditions hook 评估
   （system 含 "stop-condition hook"，1 条）。`classify_idx` 在 other fallback 前固化二者，历史 10 条
   other 全改判，**other 归零**。
+- **跨天失败趋势 `/api/diagnose/trends`。** 单天 `/api/diagnose/errors` 答不了「今天的失败是新发
+  还是复发、集中哪个供应商/CC 版本」。`GET /api/diagnose/trends?span=N&model=&kind=` 把最近 N 天
+  失败用与单天同一归并键跨天合并，三层：每日曲线、每组带 recurring/rising/declining/sporadic 趋势
+  标记（活跃天前半 vs 后半总量比）、全局 by_host/by_model/by_cc_version 切片。**只走 HTTP，不进
+  GUI**——跨天维度爆炸（CC 版本×供应商×时间×错误）是 AI 审计甜区、人看的灾难。新增
+  `diagnose.trends`/`_trend`，复用单天指纹/归并。
+- **`index_record` 索引 `host` + `cc_version`（IDX_SCHEMA 12→13）。** `host` 是 upstream netloc
+  （**路由供应商**——wire 层直接事实，非 model→vendor 推断：同一个 `claude-opus-5` 可能走官方、
+  智谱、或聚合中转，model 名定不了供应商，host 才行）。`cc_version` 取自 `user-agent`
+  （`claude-cli/<ver>`，不脱敏）。两者历史录制可回填（rec.upstream / headers_safe.user-agent 一直
+  存在），旧索引重建即生效。两者 PUBLIC（列表/SSE 摘要可见——审计小标量，classify_idx 不读；
+  与 260802 `session_id` 移出 `_IDX_PRIVATE` 同决策）。
 
 ### 变更
 - **`/api/captures` 列表摘要现在带 `session_id`。** 此前 `_IDX_PRIVATE` 把 `session_id`

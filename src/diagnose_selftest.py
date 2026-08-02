@@ -38,8 +38,10 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 def rec(rid: str, ts: str, *, status=200, err=None, dec=None, model="claude-opus-5",
         effort=None, thinking=None, stream=True, max_tokens=64000, tools=0,
-        session="s-1", sys_text="You are an interactive agent that helps users"):
-    """造一条**真形状**的完整 record，再走 index_record（与生产同一条路径）。"""
+        session="s-1", sys_text="You are an interactive agent that helps users",
+        host="api.anthropic.com", cc_version="2.1.220"):
+    """造一条**真形状**的完整 record，再走 index_record（与生产同一条路径）。
+    host/cc_version 写进 upstream + user-agent，让 _host_of/_cc_version 真跑（260802）。"""
     body = {
         "model": model, "max_tokens": max_tokens, "stream": stream,
         "messages": [{"role": "user", "content": "hi"}],
@@ -58,7 +60,11 @@ def rec(rid: str, ts: str, *, status=200, err=None, dec=None, model="claude-opus
         resp["decode_error"] = dec          # 真形状：解码失败写在 response 上（260801）
     r = {
         "id": rid, "ts_start": ts, "method": "POST", "path": "/v1/messages",
-        "request": {"headers_safe": {"x-claude-code-session-id": session}, "body": body},
+        "upstream": f"https://{host}/v1/messages",
+        "request": {"headers_safe": {
+            "x-claude-code-session-id": session,
+            "user-agent": (f"claude-cli/{cc_version}" if cc_version else "claude-cli/"),
+        }, "body": body},
         "response": resp,
         "error": err,
     }
@@ -200,6 +206,149 @@ truncated_json = rec("req_tr", "2026-07-25T16:01:00.000", status=400,
                           "body_snippet": '{"type":"error","error":{"type":"invalid_req'})
 a = diagnose.aggregate([truncated_json])
 check("被截断的 JSON 片段不崩（退回原文）", a["failures"] == 1 and bool(a["items"][0]["message"]))
+
+# ---- 7. 跨天归并 ----
+print("\n[7] 跨天归并")
+recs_3day = {
+    "2026-07-25": [rec("req_d1a", "2026-07-25T10:00:00.000", status=429,
+                       err=upstream_err(429, "rate_limit_error", "rate limited, retry after 1234 ms (req_aaa111)"))],
+    "2026-07-26": [rec("req_d1b", "2026-07-26T11:00:00.000", status=429,
+                       err=upstream_err(429, "rate_limit_error", "rate limited, retry after 5678 ms (req_bbb222)"))],
+    "2026-07-27": [rec("req_d1c", "2026-07-27T12:00:00.000", status=429,
+                       err=upstream_err(429, "rate_limit_error", "rate limited, retry after 9012 ms (req_ccc333)"))],
+}
+# 注意：消息里的数字必须 ≥4 位、id ≥6 位才会被 _fingerprint 归一抹掉（_NORM 用 \b\d{4,}\b
+# 与 req_[A-Za-z0-9]{6,}，故意不抹 3 位数字以免误伤状态码/版本号）——否则同因失败会被
+# 算成不同指纹、跨天合并失败。这也是「测试数据要符合归一规则」的一例（教训 ④ 同源）。
+t = diagnose.trends(recs_3day)
+check("同键跨3天 → 1 组", t["totals"]["all_groups"] == 1, str(t["totals"]["all_groups"]))
+g = t["items"][0]
+check("count=跨天总和(3)", g["count"] == 3, str(g["count"]))
+check("days_span=3", g["days_span"] == 3, str(g["days_span"]))
+check("per_day 仅活跃天 + 数值正确",
+      g["per_day"] == {"2026-07-25": 1, "2026-07-26": 1, "2026-07-27": 1}, str(g["per_day"]))
+check("first_seen/last_seen 跨天首末",
+      g["first_seen"].startswith("2026-07-25") and g["last_seen"].startswith("2026-07-27"),
+      f'{g["first_seen"]} → {g["last_seen"]}')
+check("cross_day_groups=1", t["totals"]["cross_day_groups"] == 1, str(t["totals"]["cross_day_groups"]))
+recs_2kind = {
+    "2026-07-25": [
+        rec("req_x1", "2026-07-25T10:00:00.000", status=429,
+            err=upstream_err(429, "rate_limit_error", "rate limited A")),
+        rec("req_x2", "2026-07-25T10:01:00.000", status=500,
+            err=upstream_err(500, "api_error", "server error B")),
+    ],
+    "2026-07-26": [rec("req_x3", "2026-07-26T10:00:00.000", status=429,
+                       err=upstream_err(429, "rate_limit_error", "rate limited A"))],
+}
+check("不同键跨天保持分组",
+      diagnose.trends(recs_2kind)["totals"]["all_groups"] == 2)
+
+# ---- 8. 趋势标记（_trend）----
+print("\n[8] 趋势标记（_trend）")
+check("单天 → sporadic", diagnose._trend({"2026-07-25": 5}) == "sporadic")
+check("单天多次仍 sporadic", diagnose._trend({"2026-07-25": 100}) == "sporadic")
+check("5天各1 → recurring",
+      diagnose._trend({f"2026-07-{20+i}": 1 for i in range(5)}) == "recurring")
+check("3天 19/5/2 → declining",
+      diagnose._trend({"2026-07-25": 19, "2026-07-26": 5, "2026-07-27": 2}) == "declining")
+check("2天 1/3 → rising", diagnose._trend({"2026-07-25": 1, "2026-07-26": 3}) == "rising")
+check("2天 3/1 → declining", diagnose._trend({"2026-07-25": 3, "2026-07-26": 1}) == "declining")
+check("2天 1/1 → recurring", diagnose._trend({"2026-07-25": 1, "2026-07-26": 1}) == "recurring")
+check("3天 10/1/10 中间弃 → recurring",
+      diagnose._trend({"2026-07-25": 10, "2026-07-26": 1, "2026-07-27": 10}) == "recurring")
+
+# ---- 9. 跨天有界 ----
+print("\n[9] 跨天有界")
+big = {}
+for i in range(30):
+    d = f"2026-07-{(i % 3) + 25:02d}"   # 跨 07-25/26/27 三天
+    big.setdefault(d, []).append(rec(f"req_b{i}", f"{d}T10:{i:02d}:00.000", status=400,
+        err=upstream_err(400, "invalid_request_error", f"distinct kind {chr(65 + i)}")))
+t = diagnose.trends(big, limit=5)
+check("limit 生效", len(t["items"]) == 5, str(len(t["items"])))
+check("truncated 如实标注", t["truncated"] is True)
+check("all_groups 报真实组数（不被 limit 掩盖）",
+      t["totals"]["all_groups"] == 30, str(t["totals"]["all_groups"]))
+check("未截断 truncated=False", diagnose.trends(big, limit=100)["truncated"] is False)
+
+# ---- 10. by_host / by_model / by_cc_version 维度 ----
+print("\n[10] by_host / by_model / by_cc_version 维度")
+multi = {
+    "2026-07-25": [
+        rec("req_h1", "2026-07-25T10:00:00.000", status=504, model="glm-5.2",
+            host="open.bigmodel.cn", cc_version="2.1.220",
+            err={"kind": "upstream_5xx", "status": 504, "body_snippet": '{"error":"timeout"}'}),
+        rec("req_h2", "2026-07-25T10:01:00.000", status=504, model="claude-opus-5",
+            host="api.anthropic.com", cc_version="2.1.219",
+            err={"kind": "upstream_5xx", "status": 504, "body_snippet": '{"error":"timeout"}'}),
+    ],
+}
+t = diagnose.trends(multi)
+check("by_host 全局切片", len(t["by_host"]) == 2 and t["by_host"][0]["count"] >= 1, str(t["by_host"]))
+check("by_model 全局切片", len(t["by_model"]) == 2, str(t["by_model"]))
+check("by_cc_version 全局切片", len(t["by_cc_version"]) == 2, str(t["by_cc_version"]))
+g = t["items"][0]
+check("组内 by_host 出现", isinstance(g["by_host"], dict) and len(g["by_host"]) >= 1, str(g["by_host"]))
+check("req_fields host 出现", g["req_fields"].get("host") is not None, str(g["req_fields"].get("host")))
+check("req_fields cc_version 出现（跨值→列表）",
+      isinstance(g["req_fields"].get("cc_version"), list), str(g["req_fields"].get("cc_version")))
+check("缺版本 → by_cc_version 空",
+      diagnose.trends({"2026-07-25": [rec("req_nv", "2026-07-25T10:00:00.000", status=500,
+                                          cc_version="", err=upstream_err(500, "api_error", "boom"))]}
+                     )["by_cc_version"] == [])
+
+# ---- 11. model / kind 过滤 ----
+print("\n[11] model / kind 过滤")
+recs_filt = {
+    "2026-07-25": [
+        rec("req_f1", "2026-07-25T10:00:00.000", status=400, model="glm-5.2",
+            err=upstream_err(400, "invalid_request_error", "err A")),
+        rec("req_f2", "2026-07-25T10:01:00.000", status=400, model="claude-opus-5",
+            err=upstream_err(400, "invalid_request_error", "err A")),
+    ],
+}
+t = diagnose.trends(recs_filt, model="glm-5.2")
+check("model 过滤：records 只数该 model", t["totals"]["records"] == 1, str(t["totals"]["records"]))
+check("model 过滤：failures 只数该 model", t["totals"]["failures"] == 1, str(t["totals"]["failures"]))
+check("model 过滤：by_model 只剩该 model",
+      len(t["by_model"]) == 1 and t["by_model"][0]["value"] == "glm-5.2", str(t["by_model"]))
+recs_title = {
+    "2026-07-25": [
+        rec("req_t1", "2026-07-25T10:00:00.000", status=400,
+            sys_text="Generate a concise, sentence-case title for this coding session",
+            err=upstream_err(400, "invalid_request_error", "title err")),
+        rec("req_t2", "2026-07-25T10:01:00.000", status=400,
+            err=upstream_err(400, "invalid_request_error", "main err")),
+    ],
+}
+check("kind 过滤 title 只剩 title 失败",
+      diagnose.trends(recs_title, kind="title")["totals"]["failures"] == 1)
+
+# ---- 12. 空天 / 缺天 ----
+print("\n[12] 空天 / 缺天")
+check("空 dict 不崩", diagnose.trends({})["totals"]["records"] == 0)
+check("全空天不崩", diagnose.trends({"2026-07-25": []})["totals"]["failures"] == 0)
+recs_empty = {"2026-07-25": [],
+              "2026-07-26": [rec("req_e1", "2026-07-26T10:00:00.000", status=500,
+                                 err=upstream_err(500, "api_error", "boom"))]}
+t = diagnose.trends(recs_empty)
+check("空天 records=0 记 0 不崩",
+      any(pd["date"] == "2026-07-25" and pd["records"] == 0 for pd in t["per_day"]), str(t["per_day"]))
+
+# ---- 13. span=1 退化对齐单天 ----
+print("\n[13] 单天退化对齐 aggregate")
+one_day = {"2026-07-25": [
+    rec("req_s1", "2026-07-25T10:00:00.000", status=400, effort="max", thinking="disabled",
+        err=upstream_err(400, "invalid_request_error", EFFORT_MSG)),
+    rec("req_s2", "2026-07-25T10:01:00.000", status=400, effort="max", thinking="disabled",
+        err=upstream_err(400, "invalid_request_error", EFFORT_MSG)),
+]}
+t = diagnose.trends(one_day)
+a = diagnose.aggregate(one_day["2026-07-25"])
+check("span=1 组数与 aggregate 一致", t["totals"]["all_groups"] == a["groups"], str(t["totals"]["all_groups"]))
+check("span=1 首组 count 与 aggregate 一致", t["items"][0]["count"] == a["items"][0]["count"])
+check("单天 trend 全 sporadic", all(it["trend"] == "sporadic" for it in t["items"]))
 
 print("\n" + "=" * 46)
 if FAILED:

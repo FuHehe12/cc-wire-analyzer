@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 
 import classifier
 
@@ -51,6 +52,8 @@ def _req_fields(idx: dict) -> dict:
         "stream": idx.get("stream"),
         "max_tokens": idx.get("max_tokens"),
         "tools_n": idx.get("tools_n"),
+        "host": idx.get("host"),
+        "cc_version": idx.get("cc_version"),
     }
 
 
@@ -138,4 +141,199 @@ def aggregate(records: list[dict], limit: int = DEFAULT_LIMIT) -> dict:
         "note": ("Failures grouped by upstream error message (ids/numbers normalized). "
                  "req_fields shows the request side of each group — a list means the group "
                  "spans several values, which usually decides whether a field is the cause."),
+    }
+
+
+# ===== 跨天趋势（/api/diagnose/trends）=====
+DEFAULT_TRENDS_LIMIT = 20      # 跨天组输出上限（route 又 clamp 到 ≤50）
+
+
+def _trend(per_day: dict) -> str:
+    """活跃天 per_day{date:count}（仅活跃天，count≥1）→ 趋势标记。
+
+    sporadic = 只在一天出现（无论几次）；其余按活跃天对称二分的首尾比：
+    mid=n//2（奇数个活跃天中间那个不算），ratio=后半/前半；≥1.5 rising、≤0.5 declining、
+    否则 recurring。活跃天 count 恒 ≥1 故前半非空、不除零。
+
+    实测验证：quota_probe 429（5天各1次）→recurring；SSL 超时（3天 19/5/2）→declining；
+    2天 [1,3]→rising、[3,1]→declining、[1,1]→recurring。"""
+    days = sorted(per_day.keys())
+    n = len(days)
+    if n <= 1:
+        return "sporadic"
+    mid = n // 2
+    first = sum(per_day[d] for d in days[:mid])
+    second = sum(per_day[d] for d in days[n - mid:])
+    ratio = second / first          # first ≥ 1（活跃天 count≥1，前半非空）
+    if ratio >= 1.5:
+        return "rising"
+    if ratio <= 0.5:
+        return "declining"
+    return "recurring"
+
+
+def _matches(idx: dict, model: str | None, kind: str | None,
+             r_kind: str | None = None) -> bool:
+    """过滤：model 精确等值（None=不过滤）；kind 精确等值。r_kind 为调用方预算好的
+    classify_idx 结果（避免 _matches 内部二次分类）。两个过滤 AND。"""
+    if model is not None and (idx.get("model") or "") != model:
+        return False
+    if kind is not None and (r_kind or "") != kind:
+        return False
+    return True
+
+
+def _norm_req_fields(vals_by_key: dict) -> dict:
+    """请求侧字段集合 → 单值/列表归一（与 aggregate 行 124-129 同款）：组内一致→单值；
+    跨值→排序列表；全 None→该键值 None。抽出来给 trends 复用。"""
+    out = {}
+    for k, vals in vals_by_key.items():
+        vs = [v for v in vals if v is not None]
+        out[k] = (vs[0] if len(vs) == 1 else (sorted(vs, key=str) if vs else None))
+    return out
+
+
+def _dims_to_list(counter: Counter) -> list:
+    """Counter → [{value, count}, ...] count 降序。维度切片的统一输出形。"""
+    return [{"value": v, "count": n} for v, n in counter.most_common()]
+
+
+def trends(records_by_date: dict, model: str | None = None,
+           kind: str | None = None, limit: int = DEFAULT_TRENDS_LIMIT) -> dict:
+    """{date: [idx records]} → 三层（每日曲线 / 跨天归并组 / 维度切片）。
+
+    单天看 aggregate()；这里回答「今天的失败是新发还是老毛病复发 / 趋势如何 / 集中哪个供应商
+    与 CC 版本」。跨天归并键复用单天 (err_kind, status, fingerprint)，不重新指纹。趋势判据
+    见 _trend()。diagnose 只读、不调 LLM；输出有界 + truncated。
+
+    route 侧负责按 span 算日期列表 + 循环 list_index，本函数只做纯归并。
+    records/failures/per_day 在给定 model/kind 过滤后统计（无过滤 = 全部）。
+    """
+    dates = sorted(records_by_date.keys())
+    per_day: list[dict] = []
+    cross: dict[tuple, dict] = {}       # (err_kind, status, fp) → 组累积
+    g_host = Counter()                   # 全局维度切片（过滤后的失败请求）
+    g_model = Counter()
+    g_ccver = Counter()
+    total_records = 0
+    total_failures = 0
+
+    for d in dates:
+        recs = records_by_date.get(d) or []
+        n_match = 0
+        n_fail = 0
+        for r in recs:
+            r_kind = classifier.classify_idx(r)
+            if not _matches(r, model, kind, r_kind):
+                continue
+            n_match += 1
+            total_records += 1
+            if not _is_failure(r):
+                continue
+            n_fail += 1
+            total_failures += 1
+            ek, msg = _kind_and_msg(r)
+            fp = _fingerprint(msg)
+            key = (ek, r.get("status"), fp)
+            if r.get("host"):
+                g_host[r["host"]] += 1
+            if r.get("model"):
+                g_model[r["model"]] += 1
+            if r.get("cc_version"):
+                g_ccver[r["cc_version"]] += 1
+            g = cross.get(key)
+            if g is None:
+                g = cross[key] = {
+                    "err_kind": ek,
+                    "status": r.get("status"),
+                    "message": msg[:300],
+                    "fingerprint": hashlib.md5(fp.encode("utf-8", "replace")).hexdigest()[:8],
+                    "count": 0,
+                    "first_ts": r.get("ts_start"),
+                    "last_ts": r.get("ts_start"),
+                    "per_day": Counter(),
+                    "days": set(),
+                    "kinds": {},
+                    "sessions": set(),
+                    "samples": [],
+                    "req_fields": {k: set() for k in _req_fields(r)},
+                    "by_host": Counter(),
+                    "by_model": Counter(),
+                    "by_cc_version": Counter(),
+                }
+            g["count"] += 1
+            g["per_day"][d] += 1
+            g["days"].add(d)
+            ts = r.get("ts_start") or ""
+            if ts and (not g["first_ts"] or ts < g["first_ts"]):
+                g["first_ts"] = ts
+            if ts and (not g["last_ts"] or ts > g["last_ts"]):
+                g["last_ts"] = ts
+            g["kinds"][r_kind] = g["kinds"].get(r_kind, 0) + 1
+            if r.get("session_id"):
+                g["sessions"].add(r["session_id"])
+            if len(g["samples"]) < SAMPLES_PER_GROUP:
+                g["samples"].append(r.get("id"))
+            for k, v in _req_fields(r).items():
+                g["req_fields"][k].add(v)
+            if r.get("host"):
+                g["by_host"][r["host"]] += 1
+            if r.get("model"):
+                g["by_model"][r["model"]] += 1
+            if r.get("cc_version"):
+                g["by_cc_version"][r["cc_version"]] += 1
+        per_day.append({"date": d, "records": n_match, "failures": n_fail, "groups": 0})
+
+    # 每日去重组数：从 cross 反查（每个组在某日活跃则该日 groups+1）
+    pd_idx = {pd["date"]: pd for pd in per_day}
+    for g in cross.values():
+        for d in g["days"]:
+            pd_idx[d]["groups"] += 1
+
+    # 跨天归并组序列化（跨天天数 desc → count desc）
+    items = []
+    for g in sorted(cross.values(), key=lambda x: (-len(x["days"]), -x["count"])):
+        items.append({
+            "err_kind": g["err_kind"],
+            "status": g["status"],
+            "message": g["message"],
+            "fingerprint": g["fingerprint"],
+            "count": g["count"],
+            "days_span": len(g["days"]),
+            "first_seen": g["first_ts"],
+            "last_seen": g["last_ts"],
+            "per_day": dict(sorted(g["per_day"].items())),
+            "trend": _trend(g["per_day"]),
+            "kinds": dict(sorted(g["kinds"].items(), key=lambda kv: -kv[1])),
+            "sessions": len(g["sessions"]),
+            "samples": g["samples"],
+            "req_fields": _norm_req_fields(g["req_fields"]),
+            "by_host": dict(g["by_host"].most_common()),
+            "by_model": dict(g["by_model"].most_common()),
+            "by_cc_version": dict(g["by_cc_version"].most_common()),
+        })
+
+    truncated = len(items) > limit
+    cross_day_groups = sum(1 for g in cross.values() if len(g["days"]) >= 2)
+    return {
+        "span": len(dates),
+        "dates": dates,
+        "filters": {"model": model, "kind": kind},
+        "totals": {
+            "records": total_records,
+            "failures": total_failures,
+            "cross_day_groups": cross_day_groups,
+            "all_groups": len(cross),
+        },
+        "per_day": per_day,
+        "truncated": truncated,            # 契约：给 AI 的输出一律标注是否被截断
+        "items": items[:limit],
+        "by_host": _dims_to_list(g_host),
+        "by_model": _dims_to_list(g_model),
+        "by_cc_version": _dims_to_list(g_ccver),
+        "note": ("Cross-day failure groups (same key as /api/diagnose/errors, merged across days). "
+                 "items sorted by days_span desc then count desc. trend: sporadic=single day; "
+                 "recurring/rising/declining compare first-half vs second-half counts of active days "
+                 "(ratio>=1.5 rising, <=0.5 declining, else recurring). per_day[date]=count only for "
+                 "active days. For one day in depth use /api/diagnose/errors?date=."),
     }

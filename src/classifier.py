@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from urllib.parse import urlparse
 
 # ===== 分类规则常量（真实流量回来后在这里迭代） =====
 # 子代理权威位：上游在 system block[0] 的计费头里自报身份，比任何 system 措辞启发式都硬。
@@ -124,7 +125,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v11 → v12（260802）：unknowns v2——_unknowns 的 blocks/block_keys/body_fields 从 set 改为
 #                     value→snippet dict（带内容片段），供 /api/unknowns 的 snippet 字段 +
 #                     beta 关联。旧索引的 unknowns 是 list 结构，需重建。
-IDX_SCHEMA = 12
+#   v12 → v13（260802）：新增 host（upstream netloc，路由供应商）+ cc_version（user-agent 解析），
+#                     供跨天失败聚合 /api/diagnose/trends 按供应商 / CC 版本切片。两者历史录制
+#                     均可回填（rec.upstream / headers_safe.user-agent 一直存在），但旧索引无
+#                     这两字段 → 必须重建让 trends 维度切片生效。
+IDX_SCHEMA = 13
 
 
 # ===== 请求体取文本 =====
@@ -332,6 +337,34 @@ def _header(record: dict, name: str) -> str:
         if k.lower() == name and isinstance(v, str):
             return v
     return ""
+
+
+# user-agent 形如 'claude-cli/2.1.220' 或 dev_seed 旧样 'claude-cli/2.1 (external, cli)'；
+# [^\s/()]+ 截到空格/斜杠/括号前，两种形态都拿到主版本号。
+_CC_VERSION_RE = re.compile(r"claude-cli/([^\s/()]+)")
+
+
+def _cc_version(record: dict) -> str | None:
+    """user-agent → CC 版本（如 '2.1.220'）。user-agent 在 headers_safe 里**不脱敏**
+    （proxy._redact 只脱 SENSITIVE_HEADERS 鉴权类）。无法解析回 None——diagnose 的
+    req_fields / Counter 都用 `if v:` 过滤 None，缺版本不会污染值列表。"""
+    m = _CC_VERSION_RE.search(_header(record, "user-agent"))
+    return m.group(1) if m else None
+
+
+def _host_of(record: dict) -> str | None:
+    """upstream URL → 路由供应商 host（netloc，wire 层直接事实）。
+
+    **不做 model→vendor 硬映射**——同一 model 可能经多供应商/中转（claude-opus-5 可走官方、
+    智谱、或别的聚合中转），model 名定不了供应商，host 才是真相。中转背后真正的算力供应商
+    wire 层看不到也不该假装能看到；但 host × model 交叉已足够 AI 判断「这次失败经谁」。
+
+    防御性剥掉 userinfo（urlparse 把 'user:pass@host' 整段塞进 netloc），以防 BASE_URL 带凭据。
+    空 netloc → None。凭据在 Authorization/x-api-key 头（已脱敏），不在 URL。"""
+    netloc = urlparse(record.get("upstream") or "").netloc
+    if not netloc:
+        return None
+    return netloc.rsplit("@", 1)[-1] or None
 
 
 def _beta_features(record: dict) -> list[str]:
@@ -597,6 +630,13 @@ def index_record(rec: dict) -> dict:
         # 命中已知集合外的值（非标块类型/字段、未解析请求字段、非标 stop_reason/thinking.type）。
         # 空 dict = 无未知。/api/unknowns 聚合它，给 AI 当「协议演进 / 录制盲区」的改进线索。
         "unknowns": _unknowns(rec, body, resp),
+        # ---- 跨天趋势维度（260802）----
+        # 跨天失败聚合要看「按供应商 / 按 CC 版本」切片。host 取自 upstream netloc（wire 层
+        # 直接事实，不做 model→vendor 硬映射——同 model 可能经多供应商/中转）；cc_version 取自
+        # user-agent（headers_safe 不脱敏）。两者历史录制均可回填（rec.upstream /
+        # headers_safe.user-agent 一直存在），旧索引重建即生效。
+        "host": _host_of(rec),
+        "cc_version": _cc_version(rec),
     }
 
 

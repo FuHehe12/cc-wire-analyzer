@@ -485,6 +485,62 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 > 加新 req_field 必须同步加到 `diagnose._req_fields` + `classifier.index_record` + 此契约
 > + `IDX_SCHEMA` bump（防旧索引静默缺字段）。
 
+### `GET /api/diagnose/trends?span=7&model=&kind=&limit=20` — 跨天失败趋势（260802）
+
+单天 errors 的跨天版：最近 N 天失败用**同一归并键**跨天合并，加每日曲线 + 趋势标记 + 供应商 /
+CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI 审计甜区）。route 做 IO（按 span 算
+日期 + 循环 `list_index`），`diagnose.trends(...)` 做纯归并。
+
+**查询参数**：`span`（默认 7，1-30，最近 N 个日历日含今天，无录制日记 0 不跳过）/ `model` / `kind`
+（精确过滤，AND）/ `limit`（默认 20，1-50）/ `exclude_session` / `session`（透传每日 `list_index`）。
+
+**响应** `200`：
+```json
+{
+  "span": 7,
+  "dates": ["2026-07-27", …, "2026-08-02"],
+  "filters": {"model": null, "kind": null},
+  "totals": {"records": 12345, "failures": 2805, "cross_day_groups": 2, "all_groups": 79},
+  "per_day": [{"date": "2026-08-01", "records": 528, "failures": 12, "groups": 7}],
+  "truncated": false,
+  "items": [{
+    "err_kind": "upstream_4xx", "status": 429, "message": "…", "fingerprint": "ab12cd34",
+    "count": 5, "days_span": 5,
+    "first_seen": "2026-07-18T…", "last_seen": "2026-08-02T…",
+    "per_day": {"2026-07-18": 1, "2026-07-26": 1, "2026-08-02": 1},
+    "trend": "recurring",
+    "kinds": {"quota_probe": 5}, "sessions": 3, "samples": ["req_…"],
+    "req_fields": {"model": "claude-sonnet-5", "host": "api.anthropic.com", "cc_version": "2.1.220"},
+    "by_host": {"api.anthropic.com": 5}, "by_model": {"claude-sonnet-5": 5}, "by_cc_version": {"2.1.220": 5}
+  }],
+  "by_host":       [{"value": "api.anthropic.com", "count": 1820}],
+  "by_model":      [{"value": "claude-opus-5",     "count": 1500}],
+  "by_cc_version": [{"value": "2.1.220",           "count": 2790}],
+  "note": "Cross-day failure groups (same key as /api/diagnose/errors, merged across days). …"
+}
+```
+
+字段说明：
+- `totals.cross_day_groups`：跨≥2 天的组数（复发信号）；`all_groups` = 全部去重组数
+- `items[].days_span`：活跃天数；`per_day` 仅含活跃天 `{date:count}`
+- `items[].trend`：`sporadic`（单天）/ `recurring`（稳态）/ `rising`（后半≥1.5×前半）/ `declining`（后半≤0.5×前半）
+- `items[].by_host/by_model/by_cc_version`：组内维度（值→count）；`by_host` 是**路由供应商**（wire 事实，
+  非 model→vendor 推断——同 model 可能经多供应商/中转，host 才定得了供应商）
+- `items[].req_fields`：含 host/cc_version（单值=组内一致，列表=跨值）
+- 顶层 `by_host/by_model/by_cc_version`：全局切片（过滤后的失败请求，count 降序）
+- `items` 排序：`days_span desc → count desc`（跨天复发优先于单天高频）
+
+**归并键**同 errors：`(err_kind, status, _fingerprint(err_msg))`，跨天用同一键合并，不重新指纹。
+
+**新增 idx 字段**（`IDX_SCHEMA` 12→13）：`host`（`urlparse(upstream).netloc`，剥 userinfo 防 BASE_URL
+带凭据）+ `cc_version`（`user-agent` 解析 `claude-cli/<ver>`，user-agent 不脱敏）。历史录制可回填
+（rec.upstream / headers_safe.user-agent 一直存在），旧索引重建即生效。两者进 PUBLIC（**不进**
+`_IDX_PRIVATE`），列表/SSE 摘要可见——审计相关小标量，`classify_idx` 不读它们（与 `session_id`
+260802 移出 `_IDX_PRIVATE` 同决策）。
+
+> **自检**：改跨天归并 / 趋势逻辑改 `diagnose.trends` / `_trend` + 此契约。host / cc_version 取法
+> 改要同步 `classifier._host_of` / `_cc_version` + `index_record` + 此契约。
+
 ---
 
 ## 3.8 盲区雷达（260802）

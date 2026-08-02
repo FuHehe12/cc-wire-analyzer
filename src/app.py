@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import sys
@@ -166,6 +167,39 @@ def diagnose_errors():
             request.args.get("session", "")), limit=limit))
     except capture_store.StoreError as e:
         return jsonify({"error": e.code, "detail": str(e)}), 400
+
+
+@app.route("/api/diagnose/trends")
+def diagnose_trends():
+    """跨天失败趋势：最近 N 天失败按上游错误跨天归并 + 每日曲线 + recurring/
+    rising/declining/sporadic 趋势 + host/model/cc_version 维度切片。
+
+    单天 `/api/diagnose/errors` 看当天；这里看「失败是新发还是老毛病复发、集中哪个供应商/
+    CC 版本」。**不进 GUI**（维度爆炸，是 AI 审计甜区）。与 errors 同源（diagnose.trends，
+    复用单天归并键跨天合并）。参数：span（默认 7，1-30）/ model / kind / limit（默认 20，
+    1-50）/ exclude_session / session。无录制日记 0 不跳过。"""
+    try:
+        span = max(1, min(30, int(request.args.get("span", 7))))
+    except (TypeError, ValueError):
+        span = 7
+    try:
+        limit = max(1, min(50, int(request.args.get("limit", diagnose.DEFAULT_TRENDS_LIMIT))))
+    except (TypeError, ValueError):
+        limit = diagnose.DEFAULT_TRENDS_LIMIT
+    model = request.args.get("model") or None
+    kind = request.args.get("kind") or None
+    excl = request.args.get("exclude_session", "")
+    sess = request.args.get("session", "")
+    today = datetime.date.today()
+    dates = [(today - datetime.timedelta(days=i)).isoformat() for i in range(span)]
+    dates.reverse()  # 升序（旧→新）
+    records_by_date = {}
+    for d in dates:
+        try:
+            records_by_date[d] = capture_store.list_index(d, excl, sess)
+        except capture_store.StoreError:
+            records_by_date[d] = []   # 无录制日 / 文件缺失 → 空，曲线记 0
+    return jsonify(diagnose.trends(records_by_date, model=model, kind=kind, limit=limit))
 
 
 @app.route("/api/proxy/start", methods=["POST"])
@@ -694,6 +728,7 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/dag?date=…` | 会话时序：lanes / nodes / edges |
 | GET | `/api/health/config` | 配置体检（只读）：CC 的配置自相矛盾吗 |
 | GET | `/api/diagnose/errors?date=…&limit=N` | 失败聚合：当天失败按上游错误消息归并 |
+| GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + recurring/rising/declining/sporadic + host/model/cc_version 切片 |
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | 在录制里搜文本（带 coverage：搜了哪些区域、跳过多少）|
 | GET | `/api/stats?date=…` | 当天统计：kind/model/status 分布、token 四项、cache 命中率、耗时 p50/p95 |
 | GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值（非标块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、beta 长尾），每项带 samples id |

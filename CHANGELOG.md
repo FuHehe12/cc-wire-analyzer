@@ -32,9 +32,11 @@
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
 - **Next steps**:
-  1. **Failure grouping across days.** The single-day view landed in v0.4.3; what it cannot answer
-  is whether today's failures are new or a pattern — trends, recurrence, and hardening recurring
-  patterns into doctor rules (`effort_max_rejected_upstream` originated exactly that way).
+  1. **Failure grouping across days — landed in Unreleased.** `/api/diagnose/trends` now answers
+  "new or recurring?" with per-day curves, recurring/rising/declining/sporadic tags, and
+  host/model/cc_version slices (HTTP-only, no GUI). Still open: hardening recurring patterns
+  into doctor rules automatically — `effort_max_rejected_upstream` came from a manually-spotted
+  recurring failure, and closing that loop end-to-end is the remaining half.
   2. **Recording-blind-spot audit: closed (both halves).** The 260731 *protocol-side* audit
   (against what CC declares: headers, body fields, SSE branches) found nine gaps, all addressed.
   The *capability-side* half — running each CC ability through the proxy and checking the recording
@@ -71,6 +73,21 @@
   StopConditions hook evaluation (system contains "stop-condition hook"; 1 record). `classify_idx`
   now fixes both before the `other` fallback; all 10 historical `other` reclassify, and
   **other drops to zero**.
+- **Cross-day failure trends `/api/diagnose/trends`.** The single-day `/api/diagnose/errors` could
+  not say whether today's failures are new or a recurring pattern — or which vendor / CC version
+  they cluster on. `GET /api/diagnose/trends?span=N&model=&kind=` merges failures across the last
+  N days (same key as errors) into three layers: a per-day curve, cross-day groups each tagged
+  `recurring`/`rising`/`declining`/`sporadic` (active-day first-half vs second-half ratio), and
+  global `by_host`/`by_model`/`by_cc_version` slices. HTTP-only — no GUI: the cross-day dimension
+  explosion (CC version × vendor × time × error) is an AI-audit sweet spot and a human-readable
+  nightmare. `diagnose.trends`/`_trend` added; reuses the single-day fingerprint/merge.
+- **`index_record` indexes `host` + `cc_version` (IDX_SCHEMA 12→13).** `host` is the upstream
+  netloc (the **routing vendor** — a wire-level fact, not a model→vendor guess: the same
+  `claude-opus-5` can go via official / Zhipu / a relay aggregator, so the model name can't pin
+  the vendor, the host can). `cc_version` is parsed from `user-agent` (`claude-cli/<ver>`; not
+  redacted). Both backfill onto historical captures (`rec.upstream` / `headers_safe.user-agent`
+  always existed) once the index rebuilds. Both are PUBLIC (visible in list/SSE summaries — audit
+  scalars, `classify_idx` doesn't read them; same call as `session_id` in 260802).
 
 ### Changed
 - **`/api/captures` list summaries now carry `session_id`.** `_IDX_PRIVATE` used to strip
