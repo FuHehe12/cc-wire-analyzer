@@ -68,10 +68,9 @@ while the environment set `CLAUDE_CODE_EFFORT_LEVEL: max` — and the environmen
 CC's own view showed this; the failing requests were only visible at the wire layer. One agent
 call, one answer — no eyeballing the timeline, no reproducing the moment.
 
-That same finding can be turned into a check (the built-in config health-check does exactly
-this), but the point here is the loop the tool is built around: **the recording is
-machine-readable, and the failures in it have already been diagnosed once by the upstream — an
-agent can read that diagnosis back out without you in the middle.**
+The same finding can be turned into a check (the built-in config health-check does this). The
+wider point: the recording is machine-readable, and the failures in it have already been
+diagnosed by the upstream — an agent can extract that diagnosis directly.
 
 ## Is it safe to point your traffic at it?
 
