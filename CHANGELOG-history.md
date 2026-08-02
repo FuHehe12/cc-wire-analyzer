@@ -1,6 +1,6 @@
 # Changelog — released versions
 
-> Full notes for every released version, v0.4.6 and earlier. The current version and the
+> Full notes for every released version, v0.4.7 and earlier. The current version and the
 > unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
 > to build a release's notes. Each version below is also published, unchanged, on its
 > [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
@@ -8,6 +8,35 @@
 > Why the split: CHANGELOG.md serves two readers at once — the overview at its top is read
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
+
+## v0.4.7 - 2026-08-02
+
+### Added
+
+- **The timeline folds by conversation turn instead of hiding tool calls.** What survived the old filter were still *requests*, while the thing you actually search by is what you said. Now it is one card per turn: your message as the body, badges for the subagents that turn spawned and counts for the auxiliary calls it triggered; click to expand the individual requests (measured: 19 lanes / 192 nodes down to 18 lanes / 68 cards on a real day). A card only goes red when *every* request in the turn failed — 29 of 68 turns on that day contain at least one failure, and tinting them all would waste the colour. Adds `turn_user` to the index (`IDX_SCHEMA` 14→15), which **must** be computed at write time: `last_user` is capped at 2000 chars while CC's injected reminders reach 9960.
+- **Three interface themes, dark by default.** Dark Professional / Classic Warm (identical to v0.4.6) / Lab Daylight, switching instantly. The choice lives in a cookie plus localStorage and **never reaches the backend `config.json`** — that file is the source of truth for proxy behaviour. The same pass fixed toast and status-chip contrast, keyboard activation, ARIA semantics, reduced motion, and narrow and high-zoom layouts. Lane palettes are per-theme: one set of six colours cannot sit on charcoal and on paper and pass AA on both.
+- **Blind-spot radar `/api/unknowns` — every value outside the known sets, in one call.** Previously "unknowns" could only be found by a human scanning jsonl. `index_record` computes an `unknowns` block per record (block types and fields, request fields, stop_reason, thinking.type), and the endpoint aggregates each dimension into `{value, count, samples, content snippet, hosts, cc_versions}`. The first run over 12 days and 5414 records surfaced six classes, including `tool_use.caller` (464 records, never parsed at all) and `thinking.type=adaptive` (3206, a non-standard enum value).
+- **Cross-day failure trends `/api/diagnose/trends`.** The single-day view cannot answer "new or recurring, and concentrated on which vendor or CC version?". Groups merge across days on the same fingerprint, giving per-day curves, a trend tag, and by_host / by_model / by_cc_version slices. **HTTP and CLI only, no GUI** — the cross-day dimension explosion is an agent's sweet spot and a human's nightmare.
+- **`/api/grep` and `/api/stats` HTTP endpoints.** Previously CLI-only, so an agent that wanted to search content had to read the jsonl directly — exactly what ai-guide rule ① forbids. The logic moved into `capture_store` as a single source shared by CLI and HTTP: `stats` losing `cache_creation` (~38% of the cost) happened because the two sides each had their own copy.
+- **`unknowns` and `trends` on the CLI; every read-only surface takes a session filter.** The self-audit workflow has to be CLI-first for a concrete reason: `serve` patches your real `settings.json` (that is how recording works) while auditing is supposed to be read-only. "What unknowns piled up this week" should not require the one action in the project that has side effects.
+- **`tools/doc_audit.py` — machine reconciliation of code facts against documentation claims.** It checks six mechanically decidable things: endpoints present in `API契约.md` (the designated source — "some doc mentions it" doesn't count), CLI subcommands documented, doc-referenced paths that exist, the `IDX_SCHEMA` value asserted in prose, the self-test list, and references to endpoints that no longer exist. Reports differences, never verdicts, always exits 0. The first run found four.
+- **Two new kinds, `quota_probe` and `hook_eval`; `other` drops to zero.** The 10 records that fell through to `other` turned out to be two stable shapes: CC's quota probe and StopConditions hook evaluation.
+- **`host` and `cc_version` in the index (`IDX_SCHEMA` 12→13).** `host` is the wire-level fact about **which vendor served the request** — the same `claude-opus-5` may go to the official endpoint, a gateway or an aggregator, and the model name cannot tell you which.
+- **Auto fit-width no longer shrinks below 50%.** On the 19-lane day it computed 21%, where no text on any card is readable — "fit width" was a promise it could not keep.
+
+### Changed
+
+- **Radar: three corrections to what it was actually pointing at** (found by re-checking 5505 real records over 12 days). (1) Each unknown now carries `hosts` / `cc_versions`: on the day re-checked, **all five unknowns came from one third-party gateway**, while the endpoint's note said "protocol evolution — fold the stable ones into `KNOWN_*`". Doing that would widen the criteria for the official link based on one gateway's shape, and the radar would go quiet the day the official endpoint really does emit a same-named different block. (2) `betas` is now scored by lift (`P(beta|records with this unknown) ÷ P(beta|all)`, kept at ≥1.5) instead of raw counts: raw counts always report whichever flags every request carries, and for an unknown seen once every beta ties, degrading `most_common` into "the first few in the header". **An empty list is now the honest answer.** (3) This tool's own degradation markers (`_input_raw` and friends) are reported as a separate `degraded` dimension rather than as protocol evolution.
+- **Trends: `burst`, staleness, and no more junk-drawer group.** A 2650-failure single-day incident used to be tagged `sporadic` (the old definition only asked whether a group appeared on one day); a group that stopped two weeks ago still read as `recurring` (shape and freshness are two things — now separated into `days_since_last` / `stale`); and every vendor's opaque `Error` or `timeout` merged into one cross-vendor junk drawer (now split by host).
+- **Radar known-set coverage**: the `compaction` block — **assembled by this tool's own SSE accumulator** — was neither in the known sets nor handled by any renderer. We did not recognise a block we build ourselves.
+- **`stats` reads the index.** It used to parse the main file line by line and call `classify(full record)` on each one, re-running the whole of `index_record` — including matching against the ~108K security ruleset — for every record.
+- **`/api/dag` results are cached by date plus recording-file size**; list rows show a session short code when a day holds more than one session (silent otherwise), and `/api/captures` summaries carry `session_id`.
+- **`server_tool_use` blocks get their own renderer** (previously a raw JSON dump that hid what was called); **`output_config.format` is indexed**; and **startup warns when `BASE_URL` is already a local address** (leftover, profile contamination or a manual edit — a non-proxy port is not refused, since it may be a legitimate local gateway).
+
+### Documentation
+
+- **A documentation pass driven by reconciliation rather than by feel**: `API契约.md` gained the grep / stats sections it never had plus a radar field table, `AI_USAGE.md` gained the full 17-row CLI table and the session filter, `开发指南.md` had its radar section rewritten and the three-theme frontend conventions added, and `问题域手册.md` gained unit 10, which writes the radar up as a portable method.
+- **All twelve README screenshots (4 views × 3 languages) were retaken**: the default look changed, and the front page should not advertise the old one. Generated from `dev_seed`'s synthetic captures — screenshots go into a public repository and must not carry real recorded traffic.
 
 ## v0.4.6 - 2026-08-01
 
