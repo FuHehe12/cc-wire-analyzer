@@ -145,6 +145,7 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/diagnose/errors?date=…&limit=N` | **失败聚合**：到底哪里出了问题，按上游错误消息分组 |
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少）。比直读 jsonl 安全 |
 | GET | `/api/stats?date=…` | **统计**：kind/model/status 分布、token 四项（含 cache_creation）、cache 命中率、耗时 p50/p95 |
+| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、beta 长尾特性。每项带 samples id。调它发现 CC 协议演进与录制盲区，取样本看详情，提改进（新增解析/渲染/分类规则，稳定的并入 KNOWN_*）|
 | GET | `/api/config` / POST `/api/config` | 读 / 改配置（ui_lang、retention_days、translate…）|
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 | GET | `/api/captures/stream` | **LIVE SSE**：录制写入时的实时增量（用于实时监控）|

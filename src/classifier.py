@@ -62,7 +62,28 @@ PROMPT_MATCH_LEN = 1000      # 派生 prompt 取样长度（lane 实例键用，
 PROMPT_MATCH_MIN = 40        # 太短的派生 prompt 不参与子串匹配（防误命中）
 PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首条 user 里搜（260726 从 120 加长——前 120 字相同的模板化并行派生会让 N 个子代理挤到同一条 lane）
 
-KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens", "other")
+# ===== 已知集合（盲区雷达的"已知"基准，260802）=====
+# 索引时拿这些集合判"未知"：出现集合外的值 = CC 协议演进的信号，进 idx 的 unknowns 字段，
+# /api/unknowns 一键查（issues/open/260802_未知盲区检测与一键查询.md）。
+# **硬编码 + 版本号，不动态算频次**——"已知"必须确定可审计，不能漂移；
+# 稳定的未知定期并入这里（像 quota_probe/hook_eval 固化成 kind 那样）。
+KNOWN_BLOCK_TYPES = {"text", "tool_use", "thinking", "server_tool_use"}
+# 每种已知块的标准字段（全景快照）。caller / citations / _input_raw 等不在内 → 触发未知。
+KNOWN_BLOCK_KEYS = {
+    "text":            {"type", "text"},
+    "tool_use":        {"type", "id", "name", "input"},
+    "thinking":        {"type", "thinking", "signature"},
+    "server_tool_use": {"type", "id", "name", "input"},
+}
+KNOWN_BODY_FIELDS = {
+    "model", "messages", "system", "tools", "metadata", "max_tokens", "thinking",
+    "context_management", "output_config", "stream", "diagnostics", "stop_sequences",
+}
+KNOWN_STOP_REASONS = {"tool_use", "end_turn", "stop_sequence", "max_tokens"}
+KNOWN_THINKING_TYPES = {"enabled", "disabled"}   # adaptive 非标准 → 触发未知
+
+KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens",
+              "quota_probe", "hook_eval", "other")
 
 # 索引记录 schema 版本。**改动 index_record 的字段集必须 bump 它**：
 # capture_store._read_idx_entries 只校验 off/len，字段集变了它照样把旧索引当有效，
@@ -87,7 +108,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     转发也无 error，于是失败聚合（只读索引）完全看不见，而那条录制的正文
 #                     其实是丢的。与 v0.4.3 修的「流内错误被录成成功致失败率低报」同型，
 #                     是它漏掉的另一半（详见 issues/open/260801_decode_error不计入失败统计.md）
-IDX_SCHEMA = 9
+#   v8 → v9（260802）：新增 format（output_config.format.type，structured-outputs）。
+#   v9 → v10（260802）：新增 unknowns（盲区雷达）。同时 classify_idx 固化 quota_probe
+#                     + hook_eval 两个原 other 子类（字段集没变，但旧索引要重建才能让
+#                     历史 10 条从 other 改判 + 拿到 unknowns）。
+IDX_SCHEMA = 10
 
 
 # ===== 请求体取文本 =====
@@ -379,6 +404,50 @@ def _error_message(record: dict) -> str:
 # build_dag / 列表摘要实际只用其中几十个字段——录制时（record 本就在内存）一次性提取
 # 成 1~2KB 的索引记录写进 {date}.idx.jsonl，之后 DAG/列表只读索引，
 # 不再每次全量 parse 主文件（实测 826MB/2993 条：全量 parse ~9s → 索引 ~50ms）。
+def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
+    """这条记录命中的未知维度（盲区雷达，260802）。
+
+    只存小标量，不存内容（控体积）。空 dict = 无未知。已知集合见顶部 KNOWN_* 常量——
+    出现集合外的值就是 CC 协议演进的信号。index_record 写时本就拿到完整 body/resp，零额外读。"""
+    out: dict = {}
+    # 响应块类型 + 块字段（caller / citations / _input_raw 等非标准字段在此暴露）
+    unk_blocks: set[str] = set()
+    unk_bkeys: set[str] = set()
+    for blk in resp.get("content_blocks") or []:
+        if not isinstance(blk, dict):
+            continue
+        t = blk.get("type")
+        if t and t not in KNOWN_BLOCK_TYPES:
+            unk_blocks.add(t)
+        known_keys = KNOWN_BLOCK_KEYS.get(t) if t else None
+        for k in blk.keys():
+            if k == "type":
+                continue
+            if known_keys and k in known_keys:
+                continue
+            unk_bkeys.add(f"{t}.{k}")
+    if unk_blocks:
+        out["blocks"] = sorted(unk_blocks)
+    if unk_bkeys:
+        out["block_keys"] = sorted(unk_bkeys)
+    # 请求体顶层字段（tool_choice 等在此暴露）
+    if isinstance(body, dict):
+        uf = sorted(k for k in body.keys() if k not in KNOWN_BODY_FIELDS)
+        if uf:
+            out["body_fields"] = uf
+    # stop_reason 非标准
+    sr = resp.get("stop_reason")
+    if sr and sr not in KNOWN_STOP_REASONS:
+        out["stop_reason"] = sr
+    # thinking.type 非标准（adaptive 等）
+    th = body.get("thinking") if isinstance(body, dict) else None
+    if isinstance(th, dict):
+        tt = th.get("type")
+        if tt and tt not in KNOWN_THINKING_TYPES:
+            out["thinking_type"] = tt
+    return out
+
+
 def index_record(rec: dict) -> dict:
     """完整 record → 轻量索引记录（capture_store 写时/回填时调用）。
 
@@ -491,6 +560,10 @@ def index_record(rec: dict) -> dict:
         "stop_seqs_n": len(body.get("stop_sequences") or []),
         "thinking_budget": ((body.get("thinking") or {}).get("budget_tokens")
                             if isinstance(body.get("thinking"), dict) else None),
+        # ---- 盲区雷达（260802）----
+        # 命中已知集合外的值（非标块类型/字段、未解析请求字段、非标 stop_reason/thinking.type）。
+        # 空 dict = 无未知。/api/unknowns 聚合它，给 AI 当「协议演进 / 录制盲区」的改进线索。
+        "unknowns": _unknowns(rec, body, resp),
     }
 
 
@@ -536,6 +609,15 @@ def classify_idx(idx: dict) -> str:
     # 真子代理另有 build_dag 的派生 prompt 对齐兜底改判。
     if tools_n > 0 and sys_text:
         return "main"
+    # 配额/鉴权探测（260802，9 条铁证一致）：user="quota" + maxtok<=1 + 无工具 + 无 system。
+    # CC 发的极小请求探上游可用性，多落 429/401/timeout——主对话看不到的隐藏行为。
+    fu = (idx.get("first_user") or "").strip().lower()
+    if (fu == "quota" and (idx.get("max_tokens") or 0) <= 1
+            and not (idx.get("tools_n") or 0) and not sys_text.strip()):
+        return "quota_probe"
+    # StopConditions hook 评估（260802）：用户配的 stop hook，让模型判停止条件是否满足。
+    if "stop-condition hook" in sys_low or "stopping condition" in sys_low:
+        return "hook_eval"
     return "other"
 
 

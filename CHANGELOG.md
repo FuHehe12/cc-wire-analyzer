@@ -52,6 +52,19 @@
   跳过多少）+ `/api/stats`（kind/model/status 分布、token 四项含 cache_creation、cache 命中率、
   耗时 p50/p95）。抽公共避免 CLI/HTTP 各抄一份的分叉（stats `cache_creation` 漏字段事故的根因）；
   ai-guide 端点表 + `docs/AI_USAGE.md` 同步补两条。
+- **盲区雷达 `/api/unknowns`：已知集合外的值一键可查。** 此前"未知"只能靠人翻 jsonl 发现——
+  非标响应块类型、未解析的请求字段、非标枚举值，默默存在却无人知晓。`index_record` 现对每条算
+  `unknowns`（命中 `KNOWN_*` 集合外的值：块类型 / 块字段 / 请求字段 / stop_reason / thinking.type），
+  `/api/unknowns?date=` 聚合返回每维度 `{value, count, samples[≤5 id]}` + beta 全量升序（长尾低频
+  特性即协议演进信号）+ `known` 基准 + note。AI 调一次拿到全部盲区 + 样本 id，据此提改进（新增
+  解析 / 渲染 / 分类规则，稳定的并入 `KNOWN_*`）。bump `IDX_SCHEMA` 9→10。扫 12 天 5414 条首跑发现：
+  `tool_use.caller`(464 条，疑似工具调用发起者标记，此前完全没解析)、`thinking.type=adaptive`
+  (3206，非标准枚举)、`web_search_tool_result` / `tool_result`(响应里异常位置) 块类型、
+  `text.citations`、`tool_choice` 请求字段。
+- **`quota_probe` + `hook_eval` 两个新 kind。** 此前落 `other` 的 10 条经分析实为两类稳定形状：
+  CC 配额嗅探（`user="quota"` + maxtok=1，9 条全 429/401/timeout）与 StopConditions hook 评估
+  （system 含 "stop-condition hook"，1 条）。`classify_idx` 在 other fallback 前固化二者，历史 10 条
+  other 全改判，**other 归零**。
 
 ### Changed
 - **`/api/captures` 列表摘要现在带 `session_id`。** 此前 `_IDX_PRIVATE` 把 `session_id`

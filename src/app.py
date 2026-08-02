@@ -259,6 +259,16 @@ def api_stats():
     return jsonify(capture_store.stats(request.args.get("date")))
 
 
+@app.route("/api/unknowns")
+def api_unknowns():
+    """盲区雷达（260802）：聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析
+    请求字段、非标 stop_reason/thinking.type、beta 长尾特性。给 AI 当协议演进 / 录制盲区的
+    改进入口。与 capture_store.unknowns 同源。参数：date（默认今天）。
+    返回每维度 [{value,count,samples[≤5 id]}] + beta 全量升序 + known 基准 + note。
+    取 samples id 调 /api/captures/{id} 看详情，据此提改进（稳定的并入 KNOWN_*）。"""
+    return jsonify(capture_store.unknowns(request.args.get("date")))
+
+
 @app.route("/api/captures/<rid>")
 def capture_detail(rid):
     date = request.args.get("date")  # 历史日期详情要带 date（审计 260712 #4）
@@ -686,6 +696,7 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/diagnose/errors?date=…&limit=N` | 失败聚合：当天失败按上游错误消息归并 |
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | 在录制里搜文本（带 coverage：搜了哪些区域、跳过多少）|
 | GET | `/api/stats?date=…` | 当天统计：kind/model/status 分布、token 四项、cache 命中率、耗时 p50/p95 |
+| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值（非标块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、beta 长尾），每项带 samples id |
 | GET | `/api/captures/stream` | LIVE SSE：录制写入的实时增量 |
 
 三条铁律：

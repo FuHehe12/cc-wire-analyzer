@@ -520,6 +520,77 @@ def stats(date: str | None = None) -> dict:
             "total_ms": {"p50": pct(0.5), "p95": pct(0.95), "max": (durs[-1] if durs else None)}}
 
 
+def unknowns(date: str | None = None) -> dict:
+    """盲区雷达（260802）：聚合当天索引里所有「已知集合外」的值，给 AI 当协议演进 / 录制
+    盲区的改进线索。读 idx（unknowns 已在写时算好，schema≥10），不读主文件——比 stats 快。
+
+    每个维度返回 [{value, count, samples[≤5 id]}]，samples 让 AI 直接调 /api/captures/{id}
+    看详情。beta 不分已知/未知，全量按频次**升序**（长尾低频特性即信号，排前面）。"""
+    from collections import Counter, defaultdict
+    date = date or time.strftime("%Y-%m-%d", time.localtime())
+    SAMPLE_MAX = 5
+    blocks, block_keys, body_fields = Counter(), Counter(), Counter()
+    stop_reasons, thinking_types, betas = Counter(), Counter(), Counter()
+    samples = defaultdict(list)
+    other_ids = []
+    records = with_unknowns = 0
+
+    def _push(key: str, rid) -> None:
+        lst = samples[key]
+        if len(lst) < SAMPLE_MAX:
+            lst.append(rid)
+
+    for r in list_index(date):
+        records += 1
+        u = r.get("unknowns") or {}
+        if u:
+            with_unknowns += 1
+        for b in u.get("blocks", []):
+            blocks[b] += 1; _push("blocks:" + b, r.get("id"))
+        for bk in u.get("block_keys", []):
+            block_keys[bk] += 1; _push("block_keys:" + bk, r.get("id"))
+        for bf in u.get("body_fields", []):
+            body_fields[bf] += 1; _push("body_fields:" + bf, r.get("id"))
+        if u.get("stop_reason"):
+            stop_reasons[u["stop_reason"]] += 1; _push("stop_reason:" + u["stop_reason"], r.get("id"))
+        if u.get("thinking_type"):
+            thinking_types[u["thinking_type"]] += 1; _push("thinking_type:" + u["thinking_type"], r.get("id"))
+        for b in (r.get("beta") or []):
+            betas[b] += 1
+        if classifier.classify_idx(r) == "other":
+            other_ids.append(r.get("id"))
+
+    def _agg(counter: Counter, dim: str) -> list:
+        return [{"value": v, "count": n, "samples": samples[dim + ":" + v][:SAMPLE_MAX]}
+                for v, n in counter.most_common()]
+
+    return {
+        "ok": True, "date": date,
+        "totals": {"records": records, "with_unknowns": with_unknowns,
+                   "other_kind": len(other_ids)},
+        "blocks": _agg(blocks, "blocks"),
+        "block_keys": _agg(block_keys, "block_keys"),
+        "body_fields": _agg(body_fields, "body_fields"),
+        "stop_reason": _agg(stop_reasons, "stop_reason"),
+        "thinking_type": _agg(thinking_types, "thinking_type"),
+        # beta 全量升序（长尾在前）；不取 samples——高频特性上千条无意义，
+        # 想查具体特性用 grep <beta-name>。
+        "betas": [{"value": v, "count": n}
+                  for v, n in sorted(betas.items(), key=lambda kv: kv[1])],
+        "other_kind_samples": other_ids[:SAMPLE_MAX],
+        "known": {
+            "block_types": sorted(classifier.KNOWN_BLOCK_TYPES),
+            "block_keys": {k: sorted(v) for k, v in classifier.KNOWN_BLOCK_KEYS.items()},
+            "body_fields": sorted(classifier.KNOWN_BODY_FIELDS),
+            "stop_reasons": sorted(classifier.KNOWN_STOP_REASONS),
+            "thinking_types": sorted(classifier.KNOWN_THINKING_TYPES),
+        },
+        "note": ("已知集合（见 known）外的值 = CC 协议演进 / 录制盲区信号。"
+                 "取 samples 里的 id 调 /api/captures/{id} 看详情，据此提改进"
+                 "（新增解析 / 渲染 / 分类规则，稳定的并入 KNOWN_*）。"),
+    }
+
+
 def get_capture(rid: str, date: str | None = None) -> dict | None:
     """按 id 取完整 record。优先走索引 off/len 直接 seek（826MB 文件也是毫秒级）；
     索引缺行时兜底子串预筛扫描（命中 `"<rid>"` 的行才 json.loads，不再逐行全量 parse）。
