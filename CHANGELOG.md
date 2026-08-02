@@ -74,6 +74,10 @@
   （`output_config.format.type`，如 `json_schema`）；bump `IDX_SCHEMA` 8→9（旧索引读时自动重建）。
 
 ### Docs
+- AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
+  保存 profile 会把本机代理地址存进去（工具侧防不住——settings 没被改、只是被读走，settings_guard
+  检测不到；切换上游这条路径则已由 `check_external_change` 检测+降旗覆盖）；opus 订阅/key 变动后
+  需 `stop` + `start` 重启代理。
 - 问题域手册单元 0 补一条结构性教训：**跨观测面对账，计量单位不可直接对齐**。用 harness
   的 jsonl 当 ground truth 验证 wire 录制时，jsonl「一个 API 响应拆多行」（thinking / text /
   每个 tool_use 各一行）会让「行数 vs 请求数」给出自信又错误的对比；对账要按逻辑响应边界，

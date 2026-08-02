@@ -64,6 +64,19 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 > `CCWA_CLAUDE_SETTINGS` 副本隔离，真配置不受影响。GUI 模式（主场景）有 `closing` 事件兜底，
 > 不受此限制。
 
+### 与 cc-switch 等配置工具共存
+
+录制期间 BASE_URL 被指向本机代理（如 `http://127.0.0.1:5051/api/anthropic`）。**不要在这期间用 cc-switch 切换或保存 profile**：
+
+- **切换上游**：cc-switch 改 settings.json 的 BASE_URL → 代理检测到（`check_external_change`）会**自动降旗断开**，录制停止（设计行为，不是 bug——代理已被绕过）。要继续录，停了再重启。
+- **保存当前为 profile**（更隐蔽）：cc-switch 把当前 settings 存进它的 profile，于是把**本机代理地址**存了进去；之后切到该 profile，BASE_URL 指向没人听的本地端口 → CC 连不上任何上游，只能手动改 cc-switch 那个 profile 回真上游。这条工具侧防不住（settings 没被改，只是被 cc-switch 读走，settings_guard 检测不到）。
+
+需要切上游时，顺序是：`POST /api/proxy/stop`（恢复原 BASE_URL）→ cc-switch 切 → 再 `start` 重启录制。
+
+### 代理需重启的情形
+
+- **opus 官方订阅 / API key 变动**后，代理可能仍持旧连接/认证 → `stop` + `start` 重启代理，或重启实例。
+
 ---
 
 ## 数据在哪
