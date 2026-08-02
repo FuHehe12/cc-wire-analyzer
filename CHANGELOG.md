@@ -53,6 +53,28 @@
 ## Unreleased
 
 ### Added
+- **The timeline now folds by conversation turn instead of hiding tool calls.** The existing
+  "hide tool-loop steps" toggle made big days shorter but not more legible: what survived the filter
+  were still *requests*, and each card's body was the first 60 characters of the model's reply —
+  so the one thing you can't see on the timeline is what you said, which is exactly what you search
+  by when looking something up. Turns are now first-class (`build_dag` returns a `turns` array; the
+  splitting rule is the existing `turn_start`), and folded main/subagent lanes draw one card per
+  turn: your message as the body, badges for the subagents that turn spawned (click one to focus its
+  lane), and counts for the auxiliary calls it triggered. Click a card to expand that turn's
+  requests. Both toggles stay — folding is aggregation, hiding is filtering, and the latter still
+  applies inside an expanded turn. Failures show as ⚠N on the card; only a turn where *every*
+  request failed goes red, because one transient 429 inside 31 steps is not a failed turn (measured:
+  29 of 68 turns on one day contain at least one failure — tinting them all would waste the colour).
+  Auxiliary calls can only be attributed to a main lane's turn, never to a subagent: across 9 days,
+  0 of 1290 auxiliary requests carry `X-Claude-Code-Agent-Id`, and `session_id` is shared with the
+  parent, so nothing on the wire says "this security review was reviewing a subagent's tool call".
+  Guessing by time proximity would contradict the project's "official identifier first" rule.
+  Adds `turn_user` to the index (`IDX_SCHEMA` 14→15) — it must be computed at write time, since
+  `last_user` is capped at 2000 chars while CC's injected reminders reach 9960.
+- **Auto fit-width no longer shrinks below 50%.** On a day with 19 lanes it computed 21%, where no
+  text on any card is readable — "fit width" was a promise it couldn't keep. Below the floor it now
+  keeps text legible and lets the view scroll horizontally; the − button still zooms out further.
+
 - **CLI gets `unknowns` and `trends`; every read-only surface takes a session filter.** The blind-spot
   radar and cross-day trends shipped HTTP-only, but the local self-audit workflow is CLI-first for a
   reason: `serve` patches your real `settings.json` (that's how recording works), while auditing is

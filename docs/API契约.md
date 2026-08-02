@@ -189,11 +189,33 @@ data: {...}
 
 ```json
 {
-  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|quota_probe|hook_eval|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false}],
+  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|quota_probe|hook_eval|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false,"turn":"s-<hash>#3","user_text":"（仅轮首）你这轮说了什么"}],
   "edges": [{"from":"req_…","to":"req_…","type":"seq|trigger|near"}],
-  "lanes": [{"lane_id":"s-…","kind":"main|subagent|aux","first_ts":"…","count":3}]
+  "lanes": [{"lane_id":"s-…","kind":"main|subagent|aux","first_ts":"…","count":3}],
+  "turns": [{"turn_id":"s-<hash>#3","lane":"s-<hash>","head":"req_…","index":4,
+             "first_ts":"…","last_ts":"…","node_ids":["req_…"],
+             "user_text":"帮我把雷达的 betas 改成提升度…","partial":false,
+             "steps":12,"tool_uses":26,"total_ms":138000,"errors":1,"has_error":true,"pure_chat":false,
+             "subagents":[{"lane_id":"agent-…","label":"你是视觉设计评审…"}],
+             "aux":{"security":3,"title":1}}]
 }
 ```
+
+**`turns`（260802）——对话的语义单位，DAG 按轮折叠的数据源。** 轮＝一次用户消息 + 它引发的
+全部工具循环步、派生的子代理、触发的辅助调用。分轮判据沿用 `turn_start`（最后一条 user 消息
+含真实 text ＝ 用户新消息触发；全是 tool_result ＝ 中间步，260717 三天真实录制验证）。
+
+| 字段 | 说明 |
+|---|---|
+| `user_text` | **这轮用户说了什么**。真源是索引的 `turn_user`（写时从完整 body 剥 `<system-reminder>` 后取 160 字）——不能读时拿 `last_user` 现剥：那字段只存前 2000 字，而 CC 注入的 reminder 可达 9960 字，剥出来常常是空的 |
+| `partial` | 轮首不是真起点（代理中途启动，只录到某轮的中间段） |
+| `index` | 泳道内第几轮（从 1 起） |
+| `errors` / `has_error` | 失败**条数**与布尔。给数量是因为「31 步里 1 次瞬时 429」和「整轮全挂」是两件事——前端据此决定标 ⚠N 还是整卡染红（一律染红会把红色用废：实测一天 68 轮有 29 轮含至少一次失败） |
+| `subagents` | 这轮派生了哪些子代理（trigger 边起点落在本轮内）。嵌套派生天然成立：子代理派生的子代理归到父子代理的那一轮。`label` 取被派生泳道首条的用户文本＝派生 prompt |
+| `aux` | 这轮触发的辅助调用计数（near 边起点落在本轮内）。⚠️ **只能归到主线的轮**：9 天 1290 条 aux 里带 `X-Claude-Code-Agent-Id` 的是 0 条，而 `session_id` 子代理与主线共用，wire 层没有任何标识能说「这次安全审查在审子代理的工具调用」。靠时序邻近猜属于启发式，与 §2.5「官方标识符优先」相悖，故不做 |
+
+节点上对应多两个字段：`turn`（所属轮 id，aux 节点也有——它归属哪一轮）、`user_text`（仅轮首）。
+
 
 **`sec_action`（可选，260730）**：仅 `kind=security` 的节点带，形状与 `/api/captures` 列表项的
 `sec_action` 一致（`{tool, arg, truncated}`）。给前端渲染「审查：<待判定动作>」用——security 的响应

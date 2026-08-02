@@ -123,6 +123,16 @@ def main() -> None:
         for rid, kind in (("req_aaa1111", "main"), ("req_bbb2222", "security"),
                           ("req_ccc3333", "main")):
             f.write(json.dumps(_fake_record(rid, kind), ensure_ascii=False) + "\n")
+        # 工具循环中间步（最后一条 user 全是 tool_result）→ turn_start=false，
+        # 应当并进前一轮而不是自成一轮（按轮折叠的前提，260802）
+        mid = _fake_record("req_ddd4444", "main")
+        mid["ts_start"] = "2026-07-12T21:59:10.000"
+        mid["request"]["body"]["messages"] = [
+            {"role": "user", "content": "帮我查一下泳道判别的问题"},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+        ]
+        f.write(json.dumps(mid, ensure_ascii=False) + "\n")
 
     env = {**os.environ, "CCWA_HOME": str(tmp), "CCWA_CLAUDE_SETTINGS": str(settings)}
 
@@ -138,11 +148,11 @@ def main() -> None:
         o = run(env, "paths")
         check("paths 走 CCWA_HOME", str(tmp) in o.get("captures_dir", ""))
         o = run(env, "stats", "--date", "2026-07-12")
-        check("stats 记录数", o.get("records") == 3, str(o.get("kinds")))
-        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 3,
-              f"input={o.get('tokens', {}).get('input')}（3 条 × 24001；SSE 给的是 input_tokens 全名）")
+        check("stats 记录数", o.get("records") == 4, str(o.get("kinds")))
+        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 4,
+              f"input={o.get('tokens', {}).get('input')}（4 条 × 24001；SSE 给的是 input_tokens 全名）")
         o = run(env, "list", "--date", "2026-07-12", "--kind", "main")
-        check("list --kind 过滤", len(o.get("items", [])) == 2)
+        check("list --kind 过滤", len(o.get("items", [])) == 3)
         o = run(env, "get", "req_aaa1111", "--date", "2026-07-12", "--part", "system", "--max-chars", "200")
         check("get --part system 截断", o.get("truncated") is True)
         check("get 输出不炸上下文", len(json.dumps(o)) < 4000, f"{len(json.dumps(o))} bytes")
@@ -152,6 +162,20 @@ def main() -> None:
         check("grep 命中", o.get("hits") == 1, f"hits={o.get('hits')}")
         o = run(env, "dag", "--date", "2026-07-12")
         check("dag 出泳道", len(o.get("lanes", [])) >= 1)
+        # 轮聚合（260802）：DAG 按轮折叠的全部依据。三条 main（其中一条是工具循环中间步）
+        # + 一条 security → 主线两轮，中间步并进前一轮，security 归到它所属的那一轮。
+        turns = o.get("turns") or []
+        check("dag 出轮", len(turns) == 2, f"turns={len(turns)}")
+        t0 = turns[0] if turns else {}
+        check("轮卡带用户那轮说的话（不是模型回答）",
+              t0.get("user_text") == "帮我查一下泳道判别的问题", repr(t0.get("user_text")))
+        check("工具循环中间步并进前一轮，不自成一轮",
+              any(t["steps"] == 2 for t in turns), str([t["steps"] for t in turns]))
+        check("辅助调用归到所属轮",
+              any((t.get("aux") or {}).get("security") for t in turns),
+              str([t.get("aux") for t in turns]))
+        check("每个主线/子代理节点都有归属轮",
+              all(n.get("turn") for n in o.get("nodes", []) if n["kind"] in ("main", "subagent")))
 
         print("\n[1.5] 盲区雷达（unknowns）")
         UBIQ = "claude-code-20250219"          # 每条都带 → 基线 100%，提升度恒 1，不该被当"来源"

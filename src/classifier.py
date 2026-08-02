@@ -61,6 +61,7 @@ SECURITY_HINTS = (
 PROMPT_MATCH_LEN = 1000      # 派生 prompt 取样长度（lane 实例键用，260726 从 200 加长以区分模板化并行派生）
 PROMPT_MATCH_MIN = 40        # 太短的派生 prompt 不参与子串匹配（防误命中）
 PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首条 user 里搜（260726 从 120 加长——前 120 字相同的模板化并行派生会让 N 个子代理挤到同一条 lane）
+TURN_USER_TEXT_LEN = 160     # 轮卡上「你这轮说了什么」留多长（按轮折叠的检索键，260802）
 
 # ===== 已知集合（盲区雷达的"已知"基准，260802）=====
 # 索引时拿这些集合判"未知"：出现集合外的值 = CC 协议演进的信号，进 idx 的 unknowns 字段，
@@ -163,7 +164,10 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     input_raw_fallback）从 block_keys 移到新的 degraded 维度，同时 KNOWN_*
 #                     并入 compaction（proxy 自己组装的块，此前会被雷达报成协议未知）。
 #                     旧索引的 unknowns 按旧规则算，degraded 恒缺失、compaction 恒误报，需重建。
-IDX_SCHEMA = 14
+#   v14 → v15（260802）：新增 turn_user（轮首用户消息，剥 reminder 后取 160 字），供 DAG 按轮
+#                     折叠的轮卡当检索键。必须写时算——last_user 只存 2000 字，而 reminder 可达
+#                     9960 字，读时现剥剥不出东西（详见该字段注释）。
+IDX_SCHEMA = 15
 
 
 # ===== 请求体取文本 =====
@@ -621,6 +625,13 @@ def index_record(rec: dict) -> dict:
         # 260726 从 600 加长到 1500：probe 加长到 300 后需要更宽匹配空间，否则长 reminder 场景
         # 剥掉后剩余不足 300 字会漏命中。
         "first_user_task": (strip_reminders(users[0])[:1500] if users else ""),
+        # 「用户这轮说了什么」（260802，DAG 按轮折叠的检索键）。**必须在这里算，不能在
+        # build_dag 里拿 last_user 现剥**：last_user 只存前 2000 字，而 CC 注入的
+        # system-reminder 可达 9960 字（general-purpose 派生），于是索引里存的那 2000 字
+        # 常常整段都是 reminder、连闭合标签都没截到——剥不掉，轮卡上就是一片
+        # `<system-reminder>…`。这里拿的是完整 body，剥干净再截。
+        "turn_user": (strip_reminders(users[-1])[:TURN_USER_TEXT_LEN]
+                      if (users and _is_turn_start(body)) else ""),
         # ---- 诊断原料（260725）----
         # 失败聚合要按「错误消息指纹」归并，并同时摆出**请求侧的相关字段**，否则 agent 拿到
         # 一句 "effort 'max' is not supported when thinking is disabled" 还得再去翻原始 record
@@ -792,6 +803,11 @@ def _node_summary(idx: dict, kind: str, lane: str) -> dict:
         "tool_uses": idx.get("tool_uses") or 0,
         "pure_chat": False,
     }
+    # 轮首节点带上「用户这轮说了什么」（260802）。**这是按轮折叠的检索键**：
+    # summary 是模型的回答，而人回溯时找的是自己说过的话。只给轮首带——一天几千个节点，
+    # 每个都背一份 160 字不划算，中间步也没有新的 user 消息可言。
+    if node["turn_start"]:
+        node["user_text"] = idx.get("turn_user") or ""
     # 安全审查节点带上待判定动作（260730）：security 的响应正文是 `<severity>8` 这种残片，
     # 拿它当摘要等于什么都没说（列表行 v0.4.1 已改，DAG 当时漏了）。只给 security 带，
     # 其余 kind 不背这个恒 null 的字段——一天几千个节点，每个都带一次不划算。
@@ -904,6 +920,7 @@ def build_dag(records: list[dict]) -> dict:
 
     # seq 边：同 lane 相邻
     edges = list(trigger_edges)
+    _node_by_id = {n["id"]: n for n in nodes}
     by_lane: dict[str, list[dict]] = {}
     for n in nodes:
         by_lane.setdefault(n["lane"], []).append(n)
@@ -911,25 +928,84 @@ def build_dag(records: list[dict]) -> dict:
         for a, b in zip(lane_nodes, lane_nodes[1:]):
             edges.append({"from": a["id"], "to": b["id"], "type": "seq"})
 
-    # 纯对话轮回填（260717）：main/subagent 泳道内按 turn_start 分轮，
-    # 整轮 tool_use 总数为 0 且轮首是真起点 → 全轮标 pure_chat（「回顾一下干了什么」
-    # 这类没动手的轮次，前端降档渲染）。lane 开头缺起点的残轮（代理中途启动，
-    # 只录到某轮的中间段）不标——它属于一个没看全的干活轮。
-    def _flush_turn(turn: list[dict]) -> None:
-        if turn and turn[0]["turn_start"] and sum(n["tool_uses"] for n in turn) == 0:
+    # 轮聚合（260717 起标 pure_chat，260802 升级成一等公民 `turns`）：main/subagent 泳道内
+    # 按 turn_start 分轮。轮是**对话的语义单位**——一次用户消息 + 它引发的所有工具循环步、
+    # 派生的子代理、触发的辅助调用。DAG 按轮折叠时每轮一张卡，卡上放的是「你这轮说了什么」，
+    # 而不是模型回答的前 60 字（后者是请求视角，不是对话视角）。
+    #
+    # 整轮 tool_use 总数为 0 且轮首是真起点 → 全轮标 pure_chat（「回顾一下干了什么」这类
+    # 没动手的轮次，前端降档渲染）。lane 开头缺起点的残轮（代理中途启动，只录到某轮的中间段）
+    # 不标——它属于一个没看全的干活轮。
+    turns: list[dict] = []
+    turn_of: dict[str, str] = {}          # node id → turn_id
+
+    def _flush_turn(lane_id: str, turn: list[dict]) -> None:
+        if not turn:
+            return
+        if turn[0]["turn_start"] and sum(n["tool_uses"] for n in turn) == 0:
             for n in turn:
                 n["pure_chat"] = True
+        tid = f"{lane_id}#{len(turns)}"
+        for n in turn:
+            n["turn"] = tid
+            turn_of[n["id"]] = tid
+        turns.append({
+            "turn_id": tid,
+            "lane": lane_id,
+            "head": turn[0]["id"],        # 轮首节点 id（折叠时轮卡画在它的位置上）
+            "index": 0,                   # 泳道内序号，下面统一编号
+            "first_ts": turn[0]["ts_start"],
+            "last_ts": turn[-1]["ts_start"],
+            "node_ids": [n["id"] for n in turn],
+            # 轮首是真起点才有用户消息；残轮（只录到中间段）留空并标 partial
+            "user_text": turn[0].get("user_text") or "",
+            "partial": not turn[0]["turn_start"],
+            "steps": len(turn),
+            "tool_uses": sum(n["tool_uses"] for n in turn),
+            "total_ms": sum(n["total_ms"] or 0 for n in turn),
+            # errors 给的是**数量**不只是布尔：一轮 31 步里有 1 次瞬时 429 重试，和整轮全挂，
+            # 是完全不同的两件事。前端据此决定"标个 ⚠N 徽章"还是"整卡染红"——
+            # 实测一天 68 轮里 29 轮含至少一次失败，若一律染红，红色就不再刺眼了。
+            "errors": sum(1 for n in turn if n["has_error"]),
+            "has_error": any(n["has_error"] for n in turn),
+            "pure_chat": bool(turn[0].get("pure_chat")),
+            "subagents": [],              # 下面按 trigger 边回填
+            "aux": {},                    # 下面按 near 边回填
+        })
+
     for lane_id, lane_nodes in by_lane.items():
         if lane_id == "aux":
             continue
         turn: list[dict] = []
         for n in lane_nodes:
             if n["turn_start"] and turn:
-                _flush_turn(turn)
+                _flush_turn(lane_id, turn)
                 turn = [n]
             else:
                 turn.append(n)
-        _flush_turn(turn)
+        _flush_turn(lane_id, turn)
+    per_lane_no: dict[str, int] = {}
+    for t in sorted(turns, key=lambda x: x["first_ts"] or ""):
+        per_lane_no[t["lane"]] = per_lane_no.get(t["lane"], 0) + 1
+        t["index"] = per_lane_no[t["lane"]]
+
+    # 子代理归轮：trigger 边的起点属于哪一轮，被派生的泳道就归哪一轮（嵌套派生天然成立——
+    # 子代理派生的子代理归到父子代理的那一轮）。标签取被派生泳道首条的用户文本＝派生 prompt。
+    turn_by_id = {t["turn_id"]: t for t in turns}
+    first_node_of_lane = {lid: ns[0] for lid, ns in by_lane.items() if ns}
+    for e in trigger_edges:
+        t = turn_by_id.get(turn_of.get(e["from"], ""))
+        head = _node_by_id.get(e["to"])
+        if not t or not head:
+            continue
+        lane = head["lane"]
+        if any(s["lane_id"] == lane for s in t["subagents"]):
+            continue
+        first = first_node_of_lane.get(lane) or head
+        t["subagents"].append({
+            "lane_id": lane,
+            "label": (first.get("user_text") or first.get("summary") or "")[:60],
+        })
 
     # near 边：aux 节点 → 关联主线节点。**260801 起优先精确挂 session**——aux 请求同样带
     # X-Claude-Code-Session-Id（实测 10 天 1163 条 100% 带、1160 条精确对上当天主线），
@@ -964,12 +1040,25 @@ def build_dag(records: list[dict]) -> dict:
             prev = _latest_before(main_nodes, n["ts_start"] or "")
         if prev:
             edges.append({"from": prev["id"], "to": n["id"], "type": "near"})
+            # 辅助归轮（260802）：near 边起点属于哪一轮，这次辅助调用就归哪一轮。
+            # ⚠️ **只能归到主线的轮，归不到子代理**：9 天 1290 条 aux 里带
+            # X-Claude-Code-Agent-Id 的是 0 条，而 session_id 子代理与主线共用（260725 定案），
+            # wire 层没有任何标识能说「这次安全审查是在审子代理的工具调用」。靠时序邻近猜
+            # 属于启发式，而 §2.5 的定案是官方标识符优先——猜错的代价（把主线的标题请求挂到
+            # 子代理头上）比"都挂主线"更糟。等 CC 哪天给了标识再收紧。
+            t = turn_by_id.get(turn_of.get(prev["id"], ""))
+            if t:
+                t["aux"][n["kind"]] = t["aux"].get(n["kind"], 0) + 1
+                turn_of[n["id"]] = t["turn_id"]
+                n["turn"] = t["turn_id"]
+                t["node_ids"].append(n["id"])
 
     # lanes 排序：main 按首见时间，subagent 次之，aux 最后
     lanes = sorted(lane_of.values(),
                    key=lambda l: ({"main": 0, "subagent": 1, "aux": 2}[l["kind"]],
                                   l["first_ts"] or ""))
-    return {"nodes": nodes, "edges": edges, "lanes": lanes}
+    return {"nodes": nodes, "edges": edges, "lanes": lanes,
+            "turns": sorted(turns, key=lambda t: t["first_ts"] or "")}
 
 
 if __name__ == "__main__":

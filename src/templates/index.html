@@ -449,6 +449,22 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-node .dn-sum{font-size:10.5px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;}
 .dag-node .dn-sum.err{color:var(--err);}
+/* 轮卡（260802）：折叠态下一轮一张。比普通卡厚（放得下用户原话 + 徽章行），
+   用户的话是主体所以字号最大、颜色最深——它是回溯时的检索键。 */
+.dag-node.turn{background:var(--bg-card);border-left-width:4px;gap:4px;overflow:hidden;}
+.dag-node.turn:hover{background:var(--bg-warm-3);}
+.dag-node.turn.err{background:var(--bg-error-soft);}
+.dag-node.turn .dn-you{font-size:11.5px;line-height:1.35;color:var(--apple-text);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.dag-node.turn .dn-you-k{color:var(--gold-text);font-weight:700;}
+.dag-node.turn .dn-turn-dim{color:var(--apple-secondary);font-style:italic;}
+.dag-node .dn-badges{display:flex;flex-wrap:wrap;gap:4px;align-items:center;overflow:hidden;max-height:18px;}
+.turn-badge{font-size:9.5px;padding:1px 5px;border-radius:9px;line-height:1.5;white-space:nowrap;
+  max-width:110px;overflow:hidden;text-overflow:ellipsis;}
+.turn-badge.sub{color:#fff;cursor:pointer;}
+.turn-badge.sub:hover{filter:brightness(1.08);}
+.turn-badge.aux{background:var(--bg-softer);color:var(--apple-text-secondary);
+  border:1px solid var(--border);font-family:var(--font-mono);}
 
 /* ===== View C 设置 ===== */
 .settings-col{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
@@ -643,6 +659,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
             data-i18n="dag.lanes" data-i18n-title="dag.lanesTitle">泳道</button>
           <div class="dropdown-menu" id="laneMenu" hidden></div>
         </div>
+        <button class="btn fit" id="dagTurnBtn" onclick="dagToggleTurns()"
+          data-i18n="dag.unfoldTurns" data-i18n-title="dag.foldTurnsTitle">展开所有轮</button>
         <button class="btn fit" id="dagMidBtn" onclick="dagToggleMid()"
           data-i18n="dag.hideMid" data-i18n-title="dag.hideMidTitle">隐藏工具循环步</button>
         <button class="btn fit" id="dagAuxBtn" onclick="dagToggleAux()"
@@ -971,6 +989,11 @@ zh: {
   "dag.spawnedBy": "由主线 {n} 派生", "dag.spawnedBySub": "由子代理 {id} 派生", "dag.assoc": "关联主线 {n}",
   "dag.laneCascaded": "随 {lane} 隐藏",
   "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
+  "dag.foldTurns": "按轮折叠", "dag.unfoldTurns": "展开所有轮",
+  "dag.foldTurnsTitle": "按对话轮折叠：一轮一张卡，卡上是你那轮说的话、派生的子代理与辅助调用；点卡片展开该轮逐条请求",
+  "dag.turnNo": "轮 {n}", "dag.turnSteps": "{n} 步", "dag.turnYou": "你：",
+  "dag.turnPartial": "（残轮：只录到中间段）", "dag.turnEmptyUser": "（这轮的用户消息未录到）",
+  "dag.turnCollapse": "折叠本轮", "dag.legTurnCard": "轮卡 = 一次用户消息及其引发的全部请求",
   "dag.hideMid": "隐藏工具循环步", "dag.showMid": "显示工具循环步",
   "dag.hideMidTitle": "隐藏工具循环中间步，只看用户消息轮——大流量天图立刻可读",
   "dag.hideAux": "隐藏辅助调用", "dag.showAux": "显示辅助调用",
@@ -1139,6 +1162,11 @@ en: {
   "dag.spawnedBy": "spawned by session {n}", "dag.spawnedBySub": "spawned by agent {id}", "dag.assoc": "related to session {n}",
   "dag.laneCascaded": "hidden with {lane}",
   "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
+  "dag.foldTurns": "Fold by turn", "dag.unfoldTurns": "Expand all turns",
+  "dag.foldTurnsTitle": "Fold by conversation turn: one card per turn showing what you said, the subagents it spawned and the auxiliary calls; click a card to expand that turn's requests",
+  "dag.turnNo": "turn {n}", "dag.turnSteps": "{n} steps", "dag.turnYou": "you: ",
+  "dag.turnPartial": "(partial turn: only the middle was captured)", "dag.turnEmptyUser": "(the user message for this turn was not captured)",
+  "dag.turnCollapse": "fold this turn", "dag.legTurnCard": "turn card = one user message and everything it triggered",
   "dag.hideMid": "Hide tool-loop steps", "dag.showMid": "Show tool-loop steps",
   "dag.hideMidTitle": "Hide tool-loop middle steps, keep user turns only — makes busy days readable",
   "dag.hideAux": "Hide auxiliary calls", "dag.showAux": "Show auxiliary calls",
@@ -1307,6 +1335,11 @@ ja: {
   "dag.spawnedBy": "メイン {n} から派生", "dag.spawnedBySub": "サブエージェント {id} から派生", "dag.assoc": "メイン {n} に関連",
   "dag.laneCascaded": "{lane} と一緒に非表示",
   "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
+  "dag.foldTurns": "ターンで折りたたむ", "dag.unfoldTurns": "全ターンを展開",
+  "dag.foldTurnsTitle": "会話ターン単位で折りたたみ：1 ターン 1 カードに、あなたの発言・派生したサブエージェント・補助呼び出しをまとめます。カードをクリックするとそのターンの各リクエストが開きます",
+  "dag.turnNo": "ターン {n}", "dag.turnSteps": "{n} ステップ", "dag.turnYou": "あなた：",
+  "dag.turnPartial": "（部分ターン：途中からの記録）", "dag.turnEmptyUser": "（このターンのユーザーメッセージは未記録）",
+  "dag.turnCollapse": "このターンを折りたたむ", "dag.legTurnCard": "ターンカード = 1 回のユーザー発言とそれが引き起こした全リクエスト",
   "dag.hideMid": "ツールループを隠す", "dag.showMid": "ツールループを表示",
   "dag.hideMidTitle": "ツールループの中間ステップを隠してユーザーターンだけ表示——大量の日でも読みやすく",
   "dag.hideAux": "補助呼び出しを隠す", "dag.showAux": "補助呼び出しを表示",
@@ -2755,11 +2788,12 @@ function renderDagLegend(lanes, laneColor, laneNum){
     '<span class="leg">' + legLine("seq") + t18("dag.legSeq") + '</span>' +
     '<span class="leg">' + legLine("trigger") + t18("dag.legTrigger") + '</span>' +
     '<span class="leg">' + legLine("near") + t18("dag.legNear") + '</span></span>';
-  /* 节点三档（260717）：卡片=用户轮起点 / 细条=工具循环步 / 💬=纯对话轮 */
-  h += '<span class="leg-lines">' +
-    '<span class="leg">' + t18("dag.legTurn") + '</span>' +
-    '<span class="leg">' + t18("dag.legMid") + '</span>' +
-    '<span class="leg">' + t18("dag.legChat") + '</span></span>';
+  /* 折叠态只有一种卡（轮卡），三档图例是展开态才成立的说明——按当前模式给对应的那份 */
+  h += '<span class="leg-lines">' + (DG.foldTurns
+    ? '<span class="leg">' + t18("dag.legTurnCard") + '</span>'
+    : '<span class="leg">' + t18("dag.legTurn") + '</span>' +
+      '<span class="leg">' + t18("dag.legMid") + '</span>' +
+      '<span class="leg">' + t18("dag.legChat") + '</span>') + '</span>';
   el.innerHTML = h;
 }
 /* ---- DAG 增量渲染（260719）----
@@ -2767,9 +2801,15 @@ function renderDagLegend(lanes, laneColor, laneNum){
    800ms 防抖形同虚设，界面接近冻结。布局按 ts 全局递增、新节点只可能追加在底部，
    所以 LIVE 稳态只 append 新节点/新边，已有 DOM 零改动；
    仅当 lane 数变化 / 已有节点 tier 改判（pure_chat 轮回填）/ 数据变少（清理）才全量重渲。 */
-const DGX = { X0: 16, LW: 260, LG: 40, Y0: 52, NH: 62, NH_MID: 26, VG: 20 };
+const DGX = { X0: 16, LW: 260, LG: 40, Y0: 52, NH: 62, NH_MID: 26, NH_TURN: 96, VG: 20,
+              ZOOM_FIT_MIN: 0.5 };
 const DG = {
   date: null, rendered: false, hideMid: false, hideAux: false,
+  /* 按轮折叠（260802，默认开）：一轮一张卡，卡上是「你那轮说了什么」+ 派生的子代理 + 辅助计数。
+     hideMid 解决的是"太多"，这个解决的是"看不出对话流程"——两者并存，展开某轮后 hideMid 仍生效。
+     aux 泳道不参与折叠（用户选定保留 aux 列，点得进去才查得下去）。 */
+  foldTurns: true, expandedTurns: new Set(),
+  turnById: {}, turnOfNode: {}, turnPos: {},
   ids: new Set(), tier: {}, pos: {}, nodeById: {},
   laneX: {}, laneLast: {}, laneKind: {}, laneColor: {}, laneNum: {},
   parentLane: {}, auxAssoc: {}, laneCount: 0, yCur: DGX.Y0, lanes: [],
@@ -2844,10 +2884,14 @@ function dagSeqSvg(a, b, lane){
     cx + ' ' + (a.y + a.h) + ' L' + cx + ' ' + b.y + '"/>';
 }
 function dagPosOf(id){
-  /* 节点可见位置：普通节点取自身 pos；被折叠进 run 的成员解析到 run 卡位置（边端点用） */
+  /* 节点可见位置：普通节点取自身 pos；被折叠进 run / turn 的成员解析到那张卡的位置。
+     边（trigger/near）因此在折叠态下自动改连到轮卡上——否则主线节点一藏，
+     「哪一轮派生了这个子代理」「这次安全审查属于谁」的连线就断了。 */
   if(DG.pos[id]) return DG.pos[id];
   const rk = DG.runOf[id];
-  return rk ? DG.runs[rk].pos : null;
+  if(rk) return DG.runs[rk].pos;
+  const tk = DG.turnOfNode[id];
+  return (tk && DG.turnPos[tk]) ? DG.turnPos[tk] : null;
 }
 function dagEdgeSvg(e){   /* trigger / near（seq 走 dagPlace 的前端可见链，hideMid 时不指向隐藏节点） */
   const a = dagPosOf(e.from), b = dagPosOf(e.to);
@@ -2874,9 +2918,15 @@ function dagNodeHtml(n){
       '" title="' + t18("dag.assoc", {n: DG.laneNum[DG.auxAssoc[n.id]]}) + '"></span>' : "";
   /* 展开的连续错误 run 的首卡：带「折叠」徽章可收回（run key = lane:firstId） */
   const expKey = n.lane + ":" + n.id;
-  const collapse = DG.expandedRuns.has(expKey)
+  let collapse = DG.expandedRuns.has(expKey)
     ? '<span class="chip outline" style="cursor:pointer" onclick="event.stopPropagation();dagToggleRun(\'' +
       expKey + '\')">▴ ' + t18("dag.collapseRun") + '</span>' : "";
+  /* 展开的轮的首条请求：带「折叠本轮」可收回（否则展开后只能靠全局按钮收，找不回来） */
+  if(DG.foldTurns && n.turn && DG.expandedTurns.has(n.turn) &&
+     (DG.turnById[n.turn] || {}).head === n.id){
+    collapse += '<span class="chip outline" style="cursor:pointer" onclick="event.stopPropagation();dagToggleTurn(\'' +
+      esc(n.turn) + '\')">▴ ' + t18("dag.turnCollapse") + '</span>';
+  }
   const ur = n.usage || {};
   const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
   if(tier === "mid"){
@@ -2900,6 +2950,57 @@ function dagNodeHtml(n){
     (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +
     '<div class="dn-sum' + (n.has_error ? " err" : "") + '">' + chat + esc(sum) + '</div></div>';
 }
+/* 轮卡（260802）：折叠态下 main/subagent 泳道每轮一张。**主体是用户那轮说的话**——
+   模型回答的摘要是请求视角，而人回溯时找的是自己说过的话。下面两行放这轮派生的子代理
+   （点徽章直接跳到那条泳道）与辅助调用计数。点卡片展开本轮逐条请求。 */
+function dagTurnCardHtml(t, pos, laneColor){
+  const you = t.user_text
+    ? '<span class="dn-you-k">' + t18("dag.turnYou") + '</span>' + esc(t.user_text)
+    : '<span class="dn-turn-dim">' + t18(t.partial ? "dag.turnPartial" : "dag.turnEmptyUser") + '</span>';
+  const subs = (t.subagents || []).map(s =>
+    '<span class="turn-badge sub" style="background:' + (DG.laneColor[s.lane_id] || LANE_COLOR.subagent) +
+    '" title="' + esc(s.label) + '" onclick="event.stopPropagation();dagFocusLane(\'' + esc(s.lane_id) + '\')">🤖 ' +
+    esc((s.label || s.lane_id).slice(0, 14)) + '</span>').join("");
+  const auxOrder = ["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
+  const auxIcon = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", other: "•" };
+  const aux = auxOrder.filter(k => (t.aux || {})[k]).map(k =>
+    '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + '">' + auxIcon[k] + (t.aux[k]) + '</span>').join("");
+  const badges = (subs || aux) ? '<div class="dn-badges">' + subs + aux + '</div>' : "";
+  /* 整卡染红只留给「整轮全挂」；轮里有几次失败（重试/瞬时 429）给 ⚠N 徽章。
+     实测一天 68 轮有 29 轮含至少一次失败——一律染红等于把红色用废。 */
+  const allFailed = t.errors > 0 && t.errors === t.steps;
+  const errTag = t.errors ? ' · <b style="color:var(--err)">⚠' + t.errors + '</b>' : "";
+  return '<div class="dag-node turn' + (allFailed ? " err" : "") + (t.pure_chat ? " chat" : "") +
+    '" data-turn="' + esc(t.turn_id) + '" style="left:' + pos.x + 'px;top:' + pos.y + 'px;height:' +
+    pos.h + 'px;border-left-color:' + laneColor + '" onclick="dagToggleTurn(\'' + esc(t.turn_id) + '\')">' +
+    '<div class="dn-r1"><span class="dn-time">' + timePart(t.first_ts) + '</span>' +
+    '<span class="dn-meta">' + t18("dag.turnNo", {n: t.index}) + ' · ⟳' + t18("dag.turnSteps", {n: t.steps}) +
+    (t.total_ms ? ' · ' + fmtMs(t.total_ms) : "") + errTag + '</span></div>' +
+    '<div class="dn-you">' + you + '</div>' + badges + '</div>';
+}
+function dagToggleTurn(tid){
+  if(DG.expandedTurns.has(tid)) DG.expandedTurns.delete(tid); else DG.expandedTurns.add(tid);
+  DG.rendered = false;   /* 折叠态变了：全量重排 */
+  loadDag();
+}
+function dagToggleTurns(){
+  DG.foldTurns = !DG.foldTurns;
+  DG.expandedTurns = new Set();
+  const b = $("dagTurnBtn");
+  b.dataset.i18n = DG.foldTurns ? "dag.unfoldTurns" : "dag.foldTurns";
+  b.textContent = t18(b.dataset.i18n);
+  DG.rendered = false;
+  loadDag();
+}
+/* 点轮卡上的子代理徽章：只留该子代理泳道 + 它的派生方，其余收起（快速定位用） */
+function dagFocusLane(laneId){
+  DG.hiddenLanes = new Set(DG.lanes.map(l => l.lane_id).filter(id => id !== laneId && id !== "aux"));
+  DG.shownLanes = new Set([laneId]);
+  let p = DG.parentLane[laneId], seen = new Set();
+  while(p && !seen.has(p)){ DG.hiddenLanes.delete(p); DG.shownLanes.add(p); seen.add(p); p = DG.parentLane[p]; }
+  DG.rendered = false;
+  loadDag();
+}
 /* 连续错误折叠卡：红底刺眼但只占一格；点击展开逐条（dagToggleRun → 全量重渲） */
 function dagRunCardHtml(run){
   const first = DG.nodeById[run.ids[0]] || {};
@@ -2922,6 +3023,28 @@ function dagToggleRun(key){
    全量与增量共用，保证两条路径布局完全一致。返回 "UNKNOWN_LANE" = lane 集合变了，调用方回退全量。 */
 function dagPlace(n){
   const tier = DG.tier[n.id];
+  /* 按轮折叠：main/subagent 泳道里，未展开的轮只画轮首那张轮卡，其余成员不占位。
+     aux 泳道不折叠——用户选定保留 aux 列，它靠全局时序自然落在所属轮的卡片下方。
+     顺序上必须在 hideMid 之前判：折叠态下中间步本就不画，hideMid 只在展开某轮后才有意义。 */
+  const tid = n.turn;
+  if(DG.foldTurns && tid && DG.laneKind[n.lane] !== "aux" && !DG.expandedTurns.has(tid)){
+    if(laneHidden(n.lane)) return null;
+    const t = DG.turnById[tid];
+    if(!t || t.head !== n.id) return null;          /* 非轮首：并进轮卡，不占位 */
+    const x = DG.laneX[n.lane];
+    if(x == null) return "UNKNOWN_LANE";
+    const pos = { x, y: DG.yCur, h: DGX.NH_TURN };
+    DG.turnPos[tid] = pos;
+    DG.yCur += pos.h + DGX.VG;
+    let svg = "";
+    const prevT = DG.laneLast[n.lane];
+    if(prevT){
+      const pa = dagPosOf(prevT);
+      if(pa) svg += dagSeqSvg(pa, pos, n.lane);
+    }
+    DG.laneLast[n.lane] = n.id;
+    return { type: "node", svg, html: dagTurnCardHtml(t, pos, dagLaneStroke(n.lane)) };
+  }
   if(DG.hideMid && tier === "mid") return null;
   if(laneHidden(n.lane)) return null;
   if(DG.hideAux && DG.laneKind[n.lane] === "aux") return null;
@@ -2979,7 +3102,10 @@ function dagApplyZoom(){
   const wrap = $("dagWrap"), inner = wrap.querySelector(".dag-inner");
   if(!inner) return;
   const W = parseFloat(inner.style.width) || 600;
-  const fit = Math.min(1, (wrap.clientWidth - 24) / W);
+  /* 自动适应宽度有下限（260802）：泳道多的天（实测 19 条）算出来是 21%，那个尺寸下
+     卡片上的字一个也读不出来——"适应宽度"就成了假承诺。低于下限改为保持可读、让横向滚动，
+     用户仍可用 − 按钮手动缩得更小。 */
+  const fit = Math.max(DGX.ZOOM_FIT_MIN, Math.min(1, (wrap.clientWidth - 24) / W));
   const z = (S.dagZoom != null) ? S.dagZoom : fit;   /* 默认适应宽度，用户 +/- 后保持自定义（260712） */
   inner.style.zoom = z;
   const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
@@ -2995,17 +3121,26 @@ function renderDag(d){
       ? t18("dag.emptyToday") : t18("dag.emptyDate")) + '</div>';
     return;
   }
+  /* 折叠态不走增量：新到的一条请求会改变它所属轮卡的步数/徽章，而增量路径只会往下追加节点，
+     改不了已经画好的那张卡（LIVE 时的表现就是"轮卡永远停在旧计数"）。全量重排代价可接受
+     （实测最大一天 2993 节点 0.1s），换来的是折叠态与实时更新不会互相说谎。 */
   const canInc = DG.rendered && DG.date === S.date && nodes.length >= DG.ids.size
-    && (d.lanes || []).length === DG.laneCount;
+    && (d.lanes || []).length === DG.laneCount && !DG.foldTurns;
   if(canInc) renderDagIncremental(d); else renderDagFull(d);
 }
 function renderDagFull(d){
   const wrap = $("dagWrap");
   const nodes = d.nodes || [], lanes = d.lanes || [], edges = d.edges || [];
-  if(DG.date !== S.date){   /* 切日期：泳道选择与展开状态不跨天（lane id 每天不同） */
+  if(DG.date !== S.date){   /* 切日期：泳道选择与展开状态不跨天（lane id / turn id 每天不同） */
     DG.hiddenLanes = new Set(); DG.shownLanes = new Set(); DG.expandedRuns = new Set();
+    DG.expandedTurns = new Set();
   }
   DG.lanes = lanes;
+  /* 轮索引（260802）：turn_id → 轮元数据 / 节点 → 所属轮。后端 build_dag 已按 turn_start 分轮，
+     并把子代理（trigger 边）与辅助调用（near 边）归到各自的轮，前端只消费不重算。 */
+  DG.turnById = {}; DG.turnOfNode = {}; DG.turnPos = {};
+  for(const t of (d.turns || [])) DG.turnById[t.turn_id] = t;
+  for(const n of nodes) if(n.turn) DG.turnOfNode[n.id] = n.turn;
   /* 主线配色与关联解析（260712 item5） */
   DG.nodeById = {}; nodes.forEach(n => DG.nodeById[n.id] = n);
   DG.laneKind = {}; lanes.forEach(l => DG.laneKind[l.lane_id] = l.kind);
