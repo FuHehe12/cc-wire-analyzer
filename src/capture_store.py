@@ -406,11 +406,15 @@ def _grep_fields(rec: dict, body: dict, areas: tuple) -> dict:
 
 
 def grep(date: str | None = None, pattern: str = "", in_: str = "all",
-         limit: int = 50, case: bool = False, fixed: bool = False) -> dict:
+         limit: int = 50, case: bool = False, fixed: bool = False,
+         exclude_session: str = "", session: str = "") -> dict:
     """在指定日期录制里搜文本。返回结构同 cli cmd_grep（不含 date；HTTP 路由自行包装）。
 
     命中撞 limit 提前 break 时，两个字符计数只覆盖扫过的那部分记录——此时给比例会偏，
-    不如不给。扫完全部（hits < limit，含 0 命中这个最要紧的情形）才报 skipped_ratio。"""
+    不如不给。扫完全部（hits < limit，含 0 命中这个最要紧的情形）才报 skipped_ratio。
+
+    会话过滤只能逐条现算（这里读的是主文件，不是索引），用 classifier._session_id ——
+    与索引里 session_id 的取法是同一个函数，两边不会分叉。"""
     import re
     date = date or time.strftime("%Y-%m-%d", time.localtime())
     flags = 0 if case else re.IGNORECASE
@@ -433,6 +437,12 @@ def grep(date: str | None = None, pattern: str = "", in_: str = "all",
                 body = (rec.get("request") or {}).get("body") or {}
                 if not isinstance(body, dict):
                     body = {}
+                if exclude_session or session:
+                    sid = classifier._session_id(rec, body)
+                    if exclude_session and sid.startswith(exclude_session):
+                        continue
+                    if session and not sid.startswith(session):
+                        continue
                 fields = _grep_fields(rec, body, areas)
                 searched_chars += sum(len(v or "") for v in fields.values())
                 skipped_chars += sum(len(v or "") for v in _grep_fields(rec, body, tuple(skipped)).values())
@@ -466,42 +476,41 @@ def grep(date: str | None = None, pattern: str = "", in_: str = "all",
             "note": "只回片段；要看全文用 get <id> --part system|messages"}
 
 
-def stats(date: str | None = None) -> dict:
+def stats(date: str | None = None, exclude_session: str = "",
+          session: str = "") -> dict:
     """指定日期的请求 / token / 耗时统计。返回结构同 cli cmd_stats（含 date）。
 
     cache_creation 必须累加：它按 token 数只占几个百分点，按**成本**却可能占三到四成
     （缓存写入单价是读取的 12.5~20 倍）。漏掉它，用 stats 做成本判断会系统性低估，
-    且低估的正是「上下文被反复重建」这个最该优化的信号（260801）。"""
+    且低估的正是「上下文被反复重建」这个最该优化的信号（260801）。
+
+    **走索引不走主文件**（260802）：它要的字段（model/status/usage/total_ms/has_error/kind）
+    全在索引里。原先逐行 parse 主文件、且每条调 classify(完整 record) —— 那等于把整条
+    index_record 重算一遍（含拿 ~108K 规则库去匹配安全审查形状），826MB 的天要 ~9s，
+    而索引 ~50ms（260719 索引改造的原始实测）。顺带拿到会话过滤：v0.4.6 承诺"所有检查面
+    都能按会话过滤"，stats 当时因为读主文件而落在承诺之外。"""
     from collections import Counter
     date = date or time.strftime("%Y-%m-%d", time.localtime())
     kinds, models, statuses = Counter(), Counter(), Counter()
     tin = tout = tcache = tcreate = 0
     durs = []
     errors = 0
-    n = 0
     f = CAPTURES_DIR / f"{date}.jsonl"
-    if f.exists():
-        with f.open("r", encoding="utf-8") as fh:
-            for ln in fh:
-                try:
-                    rec = json.loads(ln)
-                except json.JSONDecodeError:
-                    continue
-                n += 1
-                body = (rec.get("request") or {}).get("body") or {}
-                resp = rec.get("response") or {}
-                kinds[classifier.classify(rec)] += 1
-                models[(body if isinstance(body, dict) else {}).get("model") or "?"] += 1
-                statuses[str(resp.get("status"))] += 1
-                u = classifier.usage_norm(resp)
-                tin += (u["input"] or 0)
-                tout += (u["output"] or 0)
-                tcache += (u["cache_read"] or 0)
-                tcreate += (u["cache_creation"] or 0)
-                if resp.get("total_ms"):
-                    durs.append(resp["total_ms"])
-                if rec.get("error"):
-                    errors += 1
+    entries = list_index(date, exclude_session, session)
+    n = len(entries)
+    for e in entries:
+        kinds[classifier.classify_idx(e)] += 1
+        models[e.get("model") or "?"] += 1
+        statuses[str(e.get("status"))] += 1
+        u = e.get("usage") or {}
+        tin += (u.get("input") or 0)
+        tout += (u.get("output") or 0)
+        tcache += (u.get("cache_read") or 0)
+        tcreate += (u.get("cache_creation") or 0)
+        if e.get("total_ms"):
+            durs.append(e["total_ms"])
+        if e.get("has_error"):
+            errors += 1
     durs.sort()
 
     def pct(p):
@@ -520,84 +529,126 @@ def stats(date: str | None = None) -> dict:
             "total_ms": {"p50": pct(0.5), "p95": pct(0.95), "max": (durs[-1] if durs else None)}}
 
 
-def unknowns(date: str | None = None) -> dict:
-    """盲区雷达（260802）：聚合当天索引里所有「已知集合外」的值，给 AI 当协议演进 / 录制
-    盲区的改进线索。读 idx（unknowns 已在写时算好，schema≥12），不读主文件——比 stats 快。
+UNK_BETA_LIFT_MIN = 1.5      # beta 关联的提升度门槛（低于它就不是"来源"，是基线噪声）
 
-    每个维度返回 [{value, count, samples[≤5 id], snippet, betas}]：
-      - snippet：该未知值的内容片段（schema v12 起 _unknowns 带片段），AI 不必二次调
-        /api/captures/{id} 就能判断；
-      - betas：该值出现在哪些 beta 特性的请求里（字段来源——caller 关联 advanced-tool-use
-        即知是那个 beta 引入的）。beta 全量另按频次**升序**（长尾低频特性即信号，排前面）。"""
+
+def unknowns(date: str | None = None, exclude_session: str = "",
+             session: str = "") -> dict:
+    """盲区雷达（260802）：聚合当天索引里所有「已知集合外」的值，给 AI 当协议演进 / 录制
+    盲区的改进线索。读 idx（unknowns 已在写时算好，schema≥14），不读主文件——比 stats 快。
+
+    每个维度返回 [{value, count, samples[≤5 id], snippet, betas, hosts, cc_versions}]：
+      - snippet：该未知值的内容片段，AI 不必二次调 /api/captures/{id} 就能判断；
+      - hosts / cc_versions：该未知值出现在哪些上游 host、哪些 CC 版本上。**判读第一步**——
+        单一第三方 host 独占 = 网关的形状差异，不是 CC 协议演进（实测 08-02 全部 5 条未知
+        都来自同一个第三方网关，而端点当时只说"协议演进"，照着提示走会把网关差异并进 KNOWN_*，
+        之后官方链路真出问题时雷达就哑了）；
+      - betas：与该未知**特异相关**的 beta 特性（提升度 ≥ UNK_BETA_LIFT_MIN），空 = 没有显著
+        关联。裸计数做不到这件事：单次出现的未知值所有 beta 都并列 1，most_common 退化成
+        "取 header 里的前几个"；高频未知值则被基线 100% 的那几个 beta 支配。两种情形都指不到
+        "引入这个字段的那个能力"，所以这里算 P(beta|该未知)/P(beta|全体)。
+
+    betas 维度分 new / known 两段：new = 不在 classifier.KNOWN_BETAS 里的，才是真信号。
+    此前按频次升序、宣称"长尾即信号"，实测每天把同样几个结构性低频的已知特性顶在最前
+    （structured-outputs 只在标题请求带、token-counting 只在 count_tokens 探针带）。"""
     from collections import Counter, defaultdict
     date = date or time.strftime("%Y-%m-%d", time.localtime())
     SAMPLE_MAX = 5
-    blocks, block_keys, body_fields = Counter(), Counter(), Counter()
+    blocks, block_keys, body_fields, degraded = Counter(), Counter(), Counter(), Counter()
     stop_reasons, thinking_types, betas = Counter(), Counter(), Counter()
     samples = defaultdict(list)
     snippets = {}                       # dim:value -> 内容片段（首次见到的作样例）
     beta_assoc = defaultdict(Counter)   # dim:value -> 该值出现的请求的 beta Counter
+    host_assoc = defaultdict(Counter)   # dim:value -> 上游 host Counter
+    ccver_assoc = defaultdict(Counter)  # dim:value -> CC 版本 Counter
     other_ids = []
-    records = with_unknowns = 0
+    records = with_unknowns = degraded_records = 0
 
-    def _push(key: str, rid) -> None:
+    def _tally(dim: str, val: str, snip: str, r: dict) -> None:
+        """记一个未知值：样本 id + 首次片段 + beta/host/版本关联（计数在调用处）。"""
+        key = dim + ":" + val
         lst = samples[key]
         if len(lst) < SAMPLE_MAX:
-            lst.append(rid)
-
-    def _tally(dim: str, val: str, snip: str, rid, r_betas) -> None:
-        """记一个未知值：样本 id + 首次片段 + beta 关联（计数在调用处）。"""
-        _push(dim + ":" + val, rid)
-        snippets.setdefault(dim + ":" + val, snip)
-        bc = beta_assoc[dim + ":" + val]
-        for b in r_betas:
+            lst.append(r.get("id"))
+        snippets.setdefault(key, snip)
+        bc = beta_assoc[key]
+        for b in (r.get("beta") or []):
             bc[b] += 1
+        if r.get("host"):
+            host_assoc[key][r["host"]] += 1
+        if r.get("cc_version"):
+            ccver_assoc[key][r["cc_version"]] += 1
 
-    for r in list_index(date):
+    for r in list_index(date, exclude_session, session):
         records += 1
         u = r.get("unknowns") or {}
-        if u:
+        # degraded 是本工具自己的降级标记，不算"协议未知"——分开计数，否则
+        # with_unknowns 会被自己的噪声撑起来（实测 07-29 全天 3 条未知全是它）。
+        real_unknown = {k: v for k, v in u.items() if k != "degraded"}
+        if real_unknown:
             with_unknowns += 1
-        rid = r.get("id")
-        r_betas = r.get("beta") or []
-        # blocks / block_keys / body_fields 是 value→snippet dict（schema v12）
-        for val, snip in (u.get("blocks") or {}).items():
-            blocks[val] += 1; _tally("blocks", val, snip, rid, r_betas)
-        for val, snip in (u.get("block_keys") or {}).items():
-            block_keys[val] += 1; _tally("block_keys", val, snip, rid, r_betas)
-        for val, snip in (u.get("body_fields") or {}).items():
-            body_fields[val] += 1; _tally("body_fields", val, snip, rid, r_betas)
-        sr = u.get("stop_reason")
-        if sr:
-            stop_reasons[sr] += 1; _tally("stop_reason", sr, sr, rid, r_betas)
-        tt = u.get("thinking_type")
-        if tt:
-            thinking_types[tt] += 1; _tally("thinking_type", tt, tt, rid, r_betas)
-        for b in r_betas:
+        if u.get("degraded"):
+            degraded_records += 1
+        for dim, counter in (("blocks", blocks), ("block_keys", block_keys),
+                             ("body_fields", body_fields), ("degraded", degraded)):
+            for val, snip in (u.get(dim) or {}).items():   # value→snippet dict（schema v12+）
+                counter[val] += 1
+                _tally(dim, val, snip, r)
+        for dim, counter in (("stop_reason", stop_reasons), ("thinking_type", thinking_types)):
+            val = u.get(dim)                                # 标量单值
+            if val:
+                counter[val] += 1
+                _tally(dim, val, val, r)
+        for b in (r.get("beta") or []):
             betas[b] += 1
         if classifier.classify_idx(r) == "other":
-            other_ids.append(rid)
+            other_ids.append(r.get("id"))
+
+    def _lift_betas(key: str, group_n: int) -> list:
+        """与该未知特异相关的 beta：提升度 = 组内出现率 / 全体基线出现率。"""
+        if not records or not group_n:
+            return []
+        out = []
+        for b, n in beta_assoc[key].items():
+            base = betas.get(b, 0) / records
+            if not base:
+                continue
+            lift = (n / group_n) / base
+            if lift >= UNK_BETA_LIFT_MIN:
+                out.append({"value": b, "lift": round(lift, 1)})
+        return sorted(out, key=lambda x: -x["lift"])[:5]
 
     def _agg(counter: Counter, dim: str) -> list:
-        return [{"value": v, "count": n,
-                 "samples": samples[dim + ":" + v][:SAMPLE_MAX],
-                 "snippet": snippets.get(dim + ":" + v, ""),
-                 "betas": [b for b, _ in beta_assoc[dim + ":" + v].most_common(5)]}
-                for v, n in counter.most_common()]
+        out = []
+        for v, n in counter.most_common():
+            key = dim + ":" + v
+            out.append({"value": v, "count": n,
+                        "samples": samples[key][:SAMPLE_MAX],
+                        "snippet": snippets.get(key, ""),
+                        "betas": _lift_betas(key, n),
+                        "hosts": dict(host_assoc[key].most_common()),
+                        "cc_versions": dict(ccver_assoc[key].most_common())})
+        return out
+
+    def _beta_rows(known: bool) -> list:
+        rows = [{"value": v, "count": n} for v, n in betas.items()
+                if (v in classifier.KNOWN_BETAS) == known]
+        return sorted(rows, key=lambda x: x["count"])
 
     return {
         "ok": True, "date": date,
         "totals": {"records": records, "with_unknowns": with_unknowns,
-                   "other_kind": len(other_ids)},
+                   "degraded": degraded_records, "other_kind": len(other_ids)},
         "blocks": _agg(blocks, "blocks"),
         "block_keys": _agg(block_keys, "block_keys"),
         "body_fields": _agg(body_fields, "body_fields"),
         "stop_reason": _agg(stop_reasons, "stop_reason"),
         "thinking_type": _agg(thinking_types, "thinking_type"),
-        # beta 全量升序（长尾在前）；不取 samples——高频特性上千条无意义，
-        # 想查具体特性用 grep <beta-name>。
-        "betas": [{"value": v, "count": n}
-                  for v, n in sorted(betas.items(), key=lambda kv: kv[1])],
+        # 本工具自己的降级（SSE 截断 / 工具入参拼不出 JSON）——不是协议未知，单列。
+        "degraded": _agg(degraded, "degraded"),
+        # new = 不在基线里的 beta（真信号）；known = 已收录的（看用量分布用）。
+        # 均按频次升序；不取 samples——高频特性上千条无意义，查具体特性用 grep <beta-name>。
+        "betas": {"new": _beta_rows(False), "known": _beta_rows(True)},
         "other_kind_samples": other_ids[:SAMPLE_MAX],
         "known": {
             "block_types": sorted(classifier.KNOWN_BLOCK_TYPES),
@@ -605,10 +656,14 @@ def unknowns(date: str | None = None) -> dict:
             "body_fields": sorted(classifier.KNOWN_BODY_FIELDS),
             "stop_reasons": sorted(classifier.KNOWN_STOP_REASONS),
             "thinking_types": sorted(classifier.KNOWN_THINKING_TYPES),
+            "betas": sorted(classifier.KNOWN_BETAS),
         },
-        "note": ("已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。每项带 snippet（内容片段，"
-                 "不必二次调详情）+ betas（关联的 beta 特性 = 字段来源）。取 samples id 调 "
-                 "/api/captures/{id} 看完整上下文。稳定的未知并入 KNOWN_* + bump IDX_SCHEMA。"),
+        "note": ("已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。**判读顺序**："
+                 "① 先看 hosts——单一第三方 host 独占 = 那个网关的形状差异，不是 CC 协议演进，"
+                 "并入 KNOWN_* 会让官方链路的同名异构块从此哑掉；② betas 是提升度筛过的特异关联，"
+                 "空表示没有显著来源；③ 取 samples id 调 /api/captures/{id} 看完整上下文。"
+                 "degraded 段性质不同——那是本工具录制降级（SSE 截断 / 入参拼不出 JSON），"
+                 "要查的是代理侧不是上游。确认是标准字段的未知并入 KNOWN_* + bump IDX_SCHEMA。"),
     }
 
 

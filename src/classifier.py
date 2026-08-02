@@ -58,7 +58,6 @@ SECURITY_HINTS = (
     "security monitor",            # 260712 实测：CC autonomous 安全监控（glm-5.2, maxtok 2112）
     "you are a security",
 )
-SECURITY_MAX_TOKENS = 2112   # 安全分类器 max_tokens 指纹（实测）
 PROMPT_MATCH_LEN = 1000      # 派生 prompt 取样长度（lane 实例键用，260726 从 200 加长以区分模板化并行派生）
 PROMPT_MATCH_MIN = 40        # 太短的派生 prompt 不参与子串匹配（防误命中）
 PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首条 user 里搜（260726 从 120 加长——前 120 字相同的模板化并行派生会让 N 个子代理挤到同一条 lane）
@@ -69,10 +68,15 @@ PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首�
 # **硬编码 + 版本号，不动态算频次**——"已知"必须确定可审计，不能漂移；
 # 稳定的未知定期并入这里（像 quota_probe/hook_eval 固化成 kind 那样）。
 KNOWN_BLOCK_TYPES = {"text", "tool_use", "thinking", "redacted_thinking",
-                     "server_tool_use", "web_search_tool_result"}
+                     "server_tool_use", "web_search_tool_result",
+                     # compaction 不是"确认过的 Anthropic 标准块"，是**我们自己组装的**：
+                     # proxy 把 compaction_delta 累成这个形状（上下文自动压缩的产物）。
+                     # 别拿它当"标准字段"的先例——它在这里的理由是"雷达不该报自己的产物"。
+                     "compaction"}
 # 每种已知块的标准字段。260802 审查后并入 advanced-tool-use（caller）/ web_search
 # （citations、web_search_tool_result）/ redacted_thinking —— 它们是 Anthropic 标准字段、CC
-# 启用相应 beta 后出现，不再当未知。剩下的（_input_raw 等降级字段）才触发未知。
+# 启用相应 beta 后出现，不再当未知。剩下的才触发未知（本工具自己的降级标记除外，见
+# CAPTURE_ARTIFACT_KEYS —— 那类单列 degraded，不算协议未知）。
 KNOWN_BLOCK_KEYS = {
     "text":                   {"type", "text", "citations"},
     "tool_use":               {"type", "id", "name", "input", "caller"},
@@ -80,13 +84,39 @@ KNOWN_BLOCK_KEYS = {
     "redacted_thinking":      {"type", "data"},
     "server_tool_use":        {"type", "id", "name", "input", "caller"},
     "web_search_tool_result": {"type", "tool_use_id", "caller", "content"},
+    "compaction":             {"type", "content"},
 }
+# **本工具自己产生的降级标记**，不是上游协议的东西（proxy.py 的 SSE 累积器写的）：
+#   _input_raw          —— 流在 content_block_stop 之前断了，工具入参没拼完
+#   input_raw_fallback  —— 拼完了但不是合法 JSON
+# 它们进雷达的 degraded 维度而不是 block_keys：混在一起时双向坏事——真协议信号被自己的噪声
+# 顶掉（实测 07-29 全天 3 条未知全是它），而"这条录制的正文是残的"这个更该管的事实
+# 又被埋在"协议演进"的语境里没人当回事。要查的是代理侧，不是上游。
+CAPTURE_ARTIFACT_KEYS = {"_input_raw", "input_raw_fallback"}
 KNOWN_BODY_FIELDS = {
     "model", "messages", "system", "tools", "tool_choice", "metadata", "max_tokens",
     "thinking", "context_management", "output_config", "stream", "diagnostics", "stop_sequences",
 }
 KNOWN_STOP_REASONS = {"tool_use", "end_turn", "stop_sequence", "max_tokens"}
 KNOWN_THINKING_TYPES = {"enabled", "disabled", "adaptive"}   # adaptive: opus-5/k3 自适应 thinking
+# CC 声明过的 `anthropic-beta` 特性基线（实测全量的并集，**不是白名单**）。
+# 260802 从 index.html 上提到这里：判别「哪些 beta 是新出现的」这件事此前只有前端做得到，
+# 而唯一会去问「有没有新 beta」的消费者（AI 走 /api/unknowns）恰恰拿不到清单——于是雷达只能
+# 退而按频次升序猜"长尾即信号"，实测每天把同样 5 个已知的结构性低频特性顶在最前（
+# structured-outputs 只在标题请求带、token-counting 只在 count_tokens 探针带，低频是结构性的，
+# 不是演进信号）。清单跟着判别逻辑走，前端从模板注入消费，杜绝两处分叉。
+KNOWN_BETAS = {
+    "claude-code-20250219", "oauth-2025-04-20", "context-1m-2025-08-07",
+    "interleaved-thinking-2025-05-14", "redact-thinking-2026-02-12",
+    "thinking-token-count-2026-05-13", "context-management-2025-06-27",
+    "prompt-caching-scope-2026-01-05", "mid-conversation-system-2026-04-07",
+    "advisor-tool-2026-03-01", "advanced-tool-use-2025-11-20", "effort-2025-11-24",
+    "fallback-credit-2026-06-01", "afk-mode-2026-01-31", "extended-cache-ttl-2025-04-11",
+    "cache-diagnosis-2026-04-07", "structured-outputs-2025-12-15", "token-counting-2024-11-01",
+    # server-side-fallback 是 fallback-credit 的旧名（同日期段 2026-06-01）：旧名 07-14 最后
+    # 出现、新名 07-25 首次出现，CC 版本间改了名。留着它，浏览改名前的老录制才不会误报。
+    "server-side-fallback-2026-06-01",
+}
 
 KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens",
               "quota_probe", "hook_eval", "other")
@@ -129,7 +159,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     供跨天失败聚合 /api/diagnose/trends 按供应商 / CC 版本切片。两者历史录制
 #                     均可回填（rec.upstream / headers_safe.user-agent 一直存在），但旧索引无
 #                     这两字段 → 必须重建让 trends 维度切片生效。
-IDX_SCHEMA = 13
+#   v13 → v14（260802）：unknowns 分流——本工具自己的降级标记（_input_raw /
+#                     input_raw_fallback）从 block_keys 移到新的 degraded 维度，同时 KNOWN_*
+#                     并入 compaction（proxy 自己组装的块，此前会被雷达报成协议未知）。
+#                     旧索引的 unknowns 按旧规则算，degraded 恒缺失、compaction 恒误报，需重建。
+IDX_SCHEMA = 14
 
 
 # ===== 请求体取文本 =====
@@ -462,12 +496,16 @@ def _snippet(v) -> str:
 def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
     """这条记录命中的未知维度（盲区雷达，260802）。
 
-    blocks / block_keys / body_fields 是 **value → snippet** dict（不只值名，还带一段内容片段，
-    让 AI 不必二次调 /api/captures/{id} 就能判断）；stop_reason / thinking_type 是标量单值。
-    空 dict = 无未知。已知集合见顶部 KNOWN_*——出现集合外的值就是协议演进信号。"""
+    blocks / block_keys / body_fields / degraded 是 **value → snippet** dict（不只值名，还带一段
+    内容片段，让 AI 不必二次调 /api/captures/{id} 就能判断）；stop_reason / thinking_type 是标量。
+    空 dict = 无未知。已知集合见顶部 KNOWN_*——出现集合外的值就是协议演进信号。
+
+    **degraded 与其余维度性质不同**：那是本工具自己的降级标记（CAPTURE_ARTIFACT_KEYS），
+    说明这条录制的正文是残的，该查代理侧；其余维度才是"上游给了我们不认识的东西"。"""
     out: dict = {}
     unk_blocks: dict[str, str] = {}    # 块类型 -> 该块片段
     unk_bkeys: dict[str, str] = {}     # "type.key" -> 值片段
+    degraded: dict[str, str] = {}      # "type.key" -> 值片段（本工具的降级标记）
     for blk in resp.get("content_blocks") or []:
         if not isinstance(blk, dict):
             continue
@@ -481,11 +519,16 @@ def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
                 continue
             if known_keys and k in known_keys:
                 continue
+            if k in CAPTURE_ARTIFACT_KEYS:
+                degraded[f"{t}.{k}"] = _snippet(blk.get(k))
+                continue
             unk_bkeys[f"{t}.{k}"] = _snippet(blk.get(k))
     if unk_blocks:
         out["blocks"] = unk_blocks
     if unk_bkeys:
         out["block_keys"] = unk_bkeys
+    if degraded:
+        out["degraded"] = degraded
     if isinstance(body, dict):
         uf = {k: _snippet(body[k]) for k in body.keys() if k not in KNOWN_BODY_FIELDS}
         if uf:

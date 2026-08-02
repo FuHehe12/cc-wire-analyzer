@@ -246,8 +246,14 @@ check("不同键跨天保持分组",
 
 # ---- 8. 趋势标记（_trend）----
 print("\n[8] 趋势标记（_trend）")
-check("单天 → sporadic", diagnose._trend({"2026-07-25": 5}) == "sporadic")
-check("单天多次仍 sporadic", diagnose._trend({"2026-07-25": 100}) == "sporadic")
+check("单天少量 → sporadic", diagnose._trend({"2026-07-25": 5}) == "sporadic")
+# 260802：单天爆发与单天零星分家。此前两者都叫 sporadic，于是一天 2650 次的真事故
+# 顶着"零星"标签排在一个 5 次的组之下——对只读 trend 的 agent 是反向指示。
+check("单天爆发 → burst", diagnose._trend({"2026-07-25": 100}) == "burst")
+check("burst 阈值边界（=50 算爆发）",
+      diagnose._trend({"2026-07-25": diagnose.BURST_MIN}) == "burst")
+check("burst 阈值边界（49 仍零星）",
+      diagnose._trend({"2026-07-25": diagnose.BURST_MIN - 1}) == "sporadic")
 check("5天各1 → recurring",
       diagnose._trend({f"2026-07-{20+i}": 1 for i in range(5)}) == "recurring")
 check("3天 19/5/2 → declining",
@@ -349,6 +355,58 @@ a = diagnose.aggregate(one_day["2026-07-25"])
 check("span=1 组数与 aggregate 一致", t["totals"]["all_groups"] == a["groups"], str(t["totals"]["all_groups"]))
 check("span=1 首组 count 与 aggregate 一致", t["items"][0]["count"] == a["items"][0]["count"])
 check("单天 trend 全 sporadic", all(it["trend"] == "sporadic" for it in t["items"]))
+
+# ---- 14. 退化消息 / 新鲜度 / 回环 host（260802 复查修正）----
+print("\n[14] 退化消息 / 新鲜度 / 回环 host")
+check("'Error' 判为退化", diagnose._is_degenerate("Error"))
+check("'timeout' 判为退化", diagnose._is_degenerate("timeout"))
+check("空串判为退化", diagnose._is_degenerate(""))
+check("有信息量的消息不算退化", not diagnose._is_degenerate(EFFORT_MSG))
+# 上游只回一个 'Error' 时，不同供应商的失败此前会并成一个没有诊断价值的垃圾桶组，
+# 还因为跨天出现被排到最前。现在按 host 拆开。
+recs_degen = {
+    "2026-07-25": [rec("req_g1", "2026-07-25T10:00:00.000", status=500, host="open.bigmodel.cn",
+                       err={"kind": "upstream_5xx", "status": 500, "body_snippet": "Error"})],
+    "2026-07-26": [rec("req_g2", "2026-07-26T10:00:00.000", status=500, host="api.anthropic.com",
+                       err={"kind": "upstream_5xx", "status": 500, "body_snippet": "Error"})],
+}
+t = diagnose.trends(recs_degen)
+check("退化消息按 host 拆组", t["totals"]["all_groups"] == 2, str(t["totals"]["all_groups"]))
+check("退化组标 degenerate=True", all(it["degenerate"] for it in t["items"]))
+check("有信息量的组 degenerate=False",
+      diagnose.trends(one_day)["items"][0]["degenerate"] is False)
+# 新鲜度与趋势正交：形状平（recurring）但两周没再发生的组要能被认出来。
+recs_stale = {f"2026-07-{20 + i}": [rec(f"req_st{i}", f"2026-07-{20 + i}T10:00:00.000", status=500,
+                                        err=upstream_err(500, "api_error", "stale boom"))]
+              for i in range(5)}
+recs_stale["2026-08-02"] = []          # 窗口末日无该失败
+t = diagnose.trends(recs_stale)
+g = t["items"][0]
+check("trend 仍按形状给 recurring", g["trend"] == "recurring", g["trend"])
+check("days_since_last 以窗口末日为基准", g["days_since_last"] == 9, str(g["days_since_last"]))
+check("stale=True（已经不在发生）", g["stale"] is True)
+check("刚发生过的组 stale=False", diagnose.trends(one_day)["items"][0]["stale"] is False)
+# 本机回环不是供应商：BASE_URL 自指的失败风暴会把真实供应商分布淹没（实测占 95%）。
+recs_loop = {"2026-07-25": [
+    rec("req_lo", "2026-07-25T10:00:00.000", status=504, host="127.0.0.1:5051",
+        err=upstream_err(504, "api_error", "upstream timeout self")),
+    rec("req_up", "2026-07-25T10:01:00.000", status=504, host="api.anthropic.com",
+        err=upstream_err(504, "api_error", "upstream timeout self")),
+]}
+t = diagnose.trends(recs_loop)
+check("回环 host 不进 by_host",
+      [x["value"] for x in t["by_host"]] == ["api.anthropic.com"], str(t["by_host"]))
+check("回环 host 单列 by_local_loopback",
+      [x["value"] for x in t["by_local_loopback"]] == ["127.0.0.1:5051"],
+      str(t["by_local_loopback"]))
+check("localhost/::1 也算回环",
+      diagnose._is_loopback("localhost:8080") and diagnose._is_loopback("::1"))
+# 日期列表：route 与 CLI 共用，别两边各算一份。
+import datetime as _dt
+sd = diagnose.span_dates(3, today=_dt.date(2026, 8, 2))
+check("span_dates 升序含今天",
+      sd == ["2026-07-31", "2026-08-01", "2026-08-02"], str(sd))
+check("span_dates 至少一天", len(diagnose.span_dates(0)) == 1)
 
 print("\n" + "=" * 46)
 if FAILED:

@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 import sys
@@ -108,7 +107,12 @@ except Exception as e:
 # ===== 页面 =====
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # KNOWN_BETAS 由后端注入（260802）：判别"哪些 beta 是新出现的"此前只有前端做得到，
+    # 而唯一会问这个问题的消费者（AI 走 /api/unknowns）拿不到清单。清单跟着判别逻辑走，
+    # 前端只是消费者之一——两处各存一份必然分叉。
+    import classifier
+    return render_template("index.html",
+                           known_betas=json.dumps(sorted(classifier.KNOWN_BETAS)))
 
 
 @app.route("/favicon.ico")
@@ -190,9 +194,7 @@ def diagnose_trends():
     kind = request.args.get("kind") or None
     excl = request.args.get("exclude_session", "")
     sess = request.args.get("session", "")
-    today = datetime.date.today()
-    dates = [(today - datetime.timedelta(days=i)).isoformat() for i in range(span)]
-    dates.reverse()  # 升序（旧→新）
+    dates = diagnose.span_dates(span)      # 日期算法与 CLI 共用，别两边各算一份
     records_by_date = {}
     for d in dates:
         try:
@@ -278,7 +280,9 @@ def api_grep():
     fixed = request.args.get("fixed", "").lower() in truthy
     r = capture_store.grep(date, request.args.get("pattern", ""),
                            in_=request.args.get("in", "all"),
-                           limit=limit, case=case, fixed=fixed)
+                           limit=limit, case=case, fixed=fixed,
+                           exclude_session=request.args.get("exclude_session", ""),
+                           session=request.args.get("session", ""))
     r["date"] = date
     code = 400 if (not r.get("ok") and r.get("error") == "bad_pattern") else 200
     return jsonify(r), code
@@ -289,18 +293,24 @@ def api_stats():
     """指定日期的请求 / token / 耗时统计（与 cli stats 同源，走 capture_store.stats）。
     AI 算成本 / 缓存命中 / 失败率留在 API 层。参数：date（默认今天）。
     返回 kinds/models/statuses 分布 + tokens 四项（含 cache_creation）+ cache_hit_ratio +
-    total_ms{p50,p95,max}。不做美元换算（单价随模型/链路/TTL 变）。"""
-    return jsonify(capture_store.stats(request.args.get("date")))
+    total_ms{p50,p95,max}。不做美元换算（单价随模型/链路/TTL 变）。
+    参数另有 session / exclude_session（双 CC 审计时排除审计者自身）。"""
+    return jsonify(capture_store.stats(request.args.get("date"),
+                                       request.args.get("exclude_session", ""),
+                                       request.args.get("session", "")))
 
 
 @app.route("/api/unknowns")
 def api_unknowns():
     """盲区雷达（260802）：聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析
-    请求字段、非标 stop_reason/thinking.type、beta 长尾特性。给 AI 当协议演进 / 录制盲区的
-    改进入口。与 capture_store.unknowns 同源。参数：date（默认今天）。
-    返回每维度 [{value,count,samples[≤5 id]}] + beta 全量升序 + known 基准 + note。
-    取 samples id 调 /api/captures/{id} 看详情，据此提改进（稳定的并入 KNOWN_*）。"""
-    return jsonify(capture_store.unknowns(request.args.get("date")))
+    请求字段、非标 stop_reason/thinking.type、新出现的 beta 特性。给 AI 当协议演进 / 录制
+    盲区的改进入口。与 capture_store.unknowns 同源。参数：date / session / exclude_session。
+    返回每维度 [{value,count,samples,snippet,betas(提升度筛过),hosts,cc_versions}]
+    + betas{new,known} + degraded（本工具录制降级，性质不同）+ known 基准 + note。
+    **判读先看 hosts**：单一第三方 host 独占 = 网关差异，不是 CC 协议演进。"""
+    return jsonify(capture_store.unknowns(request.args.get("date"),
+                                          request.args.get("exclude_session", ""),
+                                          request.args.get("session", "")))
 
 
 @app.route("/api/captures/<rid>")
@@ -746,11 +756,18 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/dag?date=…` | 会话时序：lanes / nodes / edges |
 | GET | `/api/health/config` | 配置体检（只读）：CC 的配置自相矛盾吗 |
 | GET | `/api/diagnose/errors?date=…&limit=N` | 失败聚合：当天失败按上游错误消息归并 |
-| GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + recurring/rising/declining/sporadic + host/model/cc_version 切片 |
+| GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + trend（burst/sporadic/rising/declining/recurring）+ stale + host/model/cc_version 切片 |
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | 在录制里搜文本（带 coverage：搜了哪些区域、跳过多少）|
 | GET | `/api/stats?date=…` | 当天统计：kind/model/status 分布、token 四项、cache 命中率、耗时 p50/p95 |
-| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值（非标块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、beta 长尾），每项带 samples id |
+| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值，每项带 samples id + hosts 归属 + 特异 beta；`degraded` 段是本工具录制降级，性质不同 |
 | GET | `/api/captures/stream` | LIVE SSE：录制写入的实时增量 |
+
+上面每个查录制的端点都接受 `session=` / `exclude_session=`（前缀匹配）。两个 CC 并排跑、
+一个审计另一个时，把 `exclude_session` 指向审计者自己的会话 id——否则审计者每查一次就往
+同一份录制里加一条自己的请求，**自我污染是递增的**。
+
+判读雷达先看 `hosts`：某个未知只出现在单一第三方 host 上，那是**那个网关的形状差异**，
+不是 CC 的协议演进——照"协议演进"去改解析，会让官方链路真出问题时反而看不出来。
 
 三条铁律：
 

@@ -493,6 +493,8 @@ CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI �
 
 **查询参数**：`span`（默认 7，1-30，最近 N 个日历日含今天，无录制日记 0 不跳过）/ `model` / `kind`
 （精确过滤，AND）/ `limit`（默认 20，1-50）/ `exclude_session` / `session`（透传每日 `list_index`）。
+日期列表由 `diagnose.span_dates(span)` 算，**route 与 CLI `trends` 共用**（两边各算一份就是下一次
+`cache_creation` 式分叉）。
 
 **响应** `200`：
 ```json
@@ -523,14 +525,25 @@ CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI �
 字段说明：
 - `totals.cross_day_groups`：跨≥2 天的组数（复发信号）；`all_groups` = 全部去重组数
 - `items[].days_span`：活跃天数；`per_day` 仅含活跃天 `{date:count}`
-- `items[].trend`：`sporadic`（单天）/ `recurring`（稳态）/ `rising`（后半≥1.5×前半）/ `declining`（后半≤0.5×前半）
+- `items[].trend`：**只描述形状**——`burst`（单天 ≥ `BURST_MIN`=50 次，事故）/ `sporadic`（单天少量）/
+  `recurring`（稳态）/ `rising`（后半≥1.5×前半）/ `declining`（后半≤0.5×前半）
+- `items[].days_since_last` + `stale`：**新鲜度，与趋势正交**。`stale=true`（距窗口末日 ≥3 天且非 burst）
+  的组即使标着 `recurring` 也已经不在发生了——趋势看形状，新鲜度看时间，别用一个枚举同时表达两件事
+- `items[].degenerate`：上游消息空洞（空串或 `Error`/`timeout` 这类裸词）。这类组的归并键**额外带
+  host**（否则各供应商各原因的失败会并成一个没有诊断价值的垃圾桶组），且 `count`/`trend` 参考价值低，
+  要判因得看 `samples`
 - `items[].by_host/by_model/by_cc_version`：组内维度（值→count）；`by_host` 是**路由供应商**（wire 事实，
   非 model→vendor 推断——同 model 可能经多供应商/中转，host 才定得了供应商）
 - `items[].req_fields`：含 host/cc_version（单值=组内一致，列表=跨值）
 - 顶层 `by_host/by_model/by_cc_version`：全局切片（过滤后的失败请求，count 降序）
+- 顶层 `by_local_loopback`：**本机回环 host 单列**，不混进 `by_host`——它不是供应商，通常意味着
+  BASE_URL 自指（`doctor` 的 `self_reference` 规则管这个）或指向另一个本地网关。实测一次自指事故
+  能占窗口失败总数的 95%，混在一起会把真实供应商分布彻底淹没
 - `items` 排序：`days_span desc → count desc`（跨天复发优先于单天高频）
 
 **归并键**同 errors：`(err_kind, status, _fingerprint(err_msg))`，跨天用同一键合并，不重新指纹。
+**唯一的例外是退化消息**：`degenerate` 组的键追加 `host`。单天 `aggregate` 有意不这么做——一天之内
+还能靠 samples 追，跨天跨供应商跨版本才需要拆。两处归并键的这处差异是有意的，不是分叉。
 
 **新增 idx 字段**（`IDX_SCHEMA` 12→13）：`host`（`urlparse(upstream).netloc`，剥 userinfo 防 BASE_URL
 带凭据）+ `cc_version`（`user-agent` 解析 `claude-cli/<ver>`，user-agent 不脱敏）。历史录制可回填
@@ -538,54 +551,102 @@ CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI �
 `_IDX_PRIVATE`），列表/SSE 摘要可见——审计相关小标量，`classify_idx` 不读它们（与 `session_id`
 260802 移出 `_IDX_PRIVATE` 同决策）。
 
-> **自检**：改跨天归并 / 趋势逻辑改 `diagnose.trends` / `_trend` + 此契约。host / cc_version 取法
-> 改要同步 `classifier._host_of` / `_cc_version` + `index_record` + 此契约。
+> **自检**：改跨天归并 / 趋势逻辑改 `diagnose.trends` / `_trend` + 此契约 + CLI `trends` 子命令
+> + `diagnose_selftest.py` 第 8/14 段。host / cc_version 取法改要同步 `classifier._host_of` /
+> `_cc_version` + `index_record` + 此契约。
+
+---
+
+## 3.75 检索与统计（260802 从 CLI 抽公共到 HTTP）
+
+`grep` / `stats` 的核心逻辑在 `capture_store.grep` / `capture_store.stats`，**CLI 与 HTTP 共用
+同一个函数**。历史教训：这两个能力最初只有 CLI，HTTP 侧缺失，于是 agent 被迫直读 jsonl
+（违反 ai-guide 铁律①）；而 `stats` 漏 `cache_creation`（按 token 占比几个百分点、按成本占三到
+四成）正是"CLI/HTTP 各抄一份"这条路的产物——抽公共就是为了不再有第二份。
+
+### `GET /api/grep?date=&pattern=&in=all&limit=50&case=&fixed=&session=&exclude_session=`
+
+在指定日期录制里搜文本。**读主文件**（要全文），所以会话过滤是逐条现算
+（`classifier._session_id`，与索引里的取法同一个函数）。
+
+响应：`{ok, date, pattern, in, hits, items:[{id, ts_start, kind, where, snippet, match_count}], coverage, note}`
+
+- `coverage` = `{searched:[区域], skipped:[区域], skipped_ratio, note?}` —— **`hits:0` 必须连
+  `coverage` 一起读**：0 命中与"根本没搜那块"在输出上曾经无法区分，agent 会把假阴性当否定证据用。
+- `in` 可选 `all` / `system` / `user` / `assistant` / `sysmsg` / `tool_result` / `tool_use` / `tools`。
+  **`all` 不含 `tools`**：工具定义每个请求全量重发（实测占请求体 44%），进默认集合等于让每条命中
+  都混进同一份静态 schema。
+- 正则错误 → `400 {ok:false, error:"bad_pattern", message}`。
+
+### `GET /api/stats?date=&session=&exclude_session=`
+
+响应：`{ok, date, records, file_size, kinds, models, statuses, errors, tokens{input,output,
+cache_read,cache_creation}, cache_hit_ratio, total_ms{p50,p95,max}}`
+
+- **走索引不走主文件**（260802）：要的字段全在 idx 里。原先逐行 parse 主文件、每条还调
+  `classify(完整 record)`（等于把整条 `index_record` 重算一遍，含拿 ~108K 规则库匹配安全审查形状），
+  826MB 的天要 ~9s，走索引 ~50ms。
+- `cache_hit_ratio` = 读 ÷（读+写）；分母 0 给 `null` 而非 0——"没有缓存"≠"命中率 0%"。
+- **不做美元换算**：单价随模型/链路/TTL 变，硬编码必然腐化。给全 token 数，换算交给使用者。
+- `file_size` 是**当天整个文件**的大小，不随会话过滤变。
+
+> **自检**：改检索区域 / 统计口径要同步 `capture_store._GREP_AREAS` / `grep` / `stats` + 此契约
+> + CLI 对应子命令（同一函数，不必改两处逻辑，但参数要跟上）。
 
 ---
 
 ## 3.8 盲区雷达（260802）
 
 聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/
-thinking.type、beta 长尾特性。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
-盲区 + 样本 id，取样本看详情，据此提改进（新增解析/渲染/分类规则，稳定的并入
-`classifier.KNOWN_*`）。读 idx（`unknowns` 已在写时算好，schema≥10），不读主文件，比 stats 快。
+thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
+盲区 + 样本 id + 归属，据此提改进（新增解析/渲染/分类规则，确认是标准的并入
+`classifier.KNOWN_*`）。读 idx（`unknowns` 已在写时算好），不读主文件，比 stats 快。
 
-### `GET /api/unknowns?date=YYYY-MM-DD` — 盲区雷达
-
-**查询参数**：`date`（可选，默认今天）
+### `GET /api/unknowns?date=YYYY-MM-DD&session=&exclude_session=` — 盲区雷达
 
 **响应** `200`：
 ```json
 {
   "ok": true,
   "date": "2026-08-02",
-  "totals": {"records": 491, "with_unknowns": 376, "other_kind": 0},
-  "blocks":      [{"value": "web_search_tool_result", "count": 2, "samples": ["req_…", "req_…"]}],
-  "block_keys":  [{"value": "tool_use.caller", "count": 464, "samples": ["req_…"]}],
-  "body_fields": [{"value": "tool_choice", "count": 2, "samples": ["req_…"]}],
-  "stop_reason": [],
-  "thinking_type": [{"value": "adaptive", "count": 376, "samples": ["req_…"]}],
-  "betas": [{"value": "token-counting-2024-11-01", "count": 21}],
+  "totals": {"records": 553, "with_unknowns": 1, "degraded": 2, "other_kind": 0},
+  "blocks": [{
+    "value": "tool_result", "count": 1, "samples": ["req_8e2a773"],
+    "snippet": "{\"type\": \"tool_result\", \"tool_use_id\": \"call_1263c…\"}",
+    "betas": [], "hosts": {"open.bigmodel.cn": 1}, "cc_versions": {"2.1.220": 1}
+  }],
+  "block_keys": [], "body_fields": [], "stop_reason": [], "thinking_type": [],
+  "degraded": [{"value": "tool_use._input_raw", "count": 2, "samples": ["req_…"],
+                "snippet": "{\"dimension\":\"…", "betas": [],
+                "hosts": {"open.bigmodel.cn": 2}, "cc_versions": {"2.1.220": 2}}],
+  "betas": {"new": [], "known": [{"value": "token-counting-2024-11-01", "count": 21}]},
   "other_kind_samples": [],
-  "known": {
-    "block_types": ["server_tool_use", "text", "thinking", "tool_use"],
-    "block_keys": {"text": ["text", "type"], "tool_use": ["id", "input", "name", "type"]},
-    "body_fields": ["context_management", "diagnostics"],
-    "stop_reasons": ["end_turn", "max_tokens", "stop_sequence", "tool_use"],
-    "thinking_types": ["disabled", "enabled"]
-  },
-  "note": "已知集合（见 known）外的值 = CC 协议演进 / 录制盲区信号。取 samples id 调 /api/captures/{id} 看详情…"
+  "known": {"block_types": [...], "block_keys": {...}, "body_fields": [...],
+            "stop_reasons": [...], "thinking_types": [...], "betas": [...]},
+  "note": "已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。**判读顺序**：① 先看 hosts…"
 }
 ```
 
-- 每维度 `[{value, count, samples[≤5 id]}]`，按 count 降序。`betas` 特殊：全量按 count **升序**
-  （长尾低频特性即信号，排前面），不取 samples（查具体特性用 `/api/grep <beta 名>`）。
-- `other_kind_samples`：固化 `quota_probe`/`hook_eval` 后仍落 `other` 的真未知（理想为空）。
-- `known`：当前已知集合基准（真源 `classifier.KNOWN_*`），让 AI 判断「什么算未知」。稳定的
-  未知定期并入它 + bump `IDX_SCHEMA`。
+每维度 `[{value, count, samples[≤5 id], snippet, betas, hosts, cc_versions}]`，按 count 降序。
 
-> **自检**：加新 kind 或扩充 `KNOWN_*` 必须同步改 `classifier.py` + 此契约 + 架构总览 kind 列举
-> + 界面导览/报文解读的 kind 表 + `IDX_SCHEMA` bump。
+| 字段 | 含义 | 为什么是这个形状 |
+|---|---|---|
+| `hosts` | 该未知出现在哪些上游 host | **判读第一步**。单一第三方 host 独占 = 那个网关的形状差异，不是 CC 协议演进——照"协议演进"并进 `KNOWN_*`，会让官方链路真出现同名异构块时雷达反而哑掉 |
+| `betas` | 与该未知**特异相关**的 beta，`[{value, lift}]` | 提升度 = 组内出现率 ÷ 全体基线出现率，只留 ≥ `UNK_BETA_LIFT_MIN`(1.5)。**空列表是正常结果**。裸计数做不到这件事：单次出现的未知所有 beta 都并列 1，`most_common` 退化成"取 header 里的前几个"；高频未知则被基线 100% 的那几个支配 |
+| `snippet` | 值的前 ~80 字符 | 让 agent 一眼判断"这是哪类东西"，不必二次调详情 |
+| `degraded` | **本工具自己的降级标记**（`_input_raw` / `input_raw_fallback`，见 `classifier.CAPTURE_ARTIFACT_KEYS`）| 性质与其余维度不同：那是 SSE 在 `content_block_stop` 前断了 / 工具入参拼不出 JSON，说明**这条录制的正文是残的**，要查代理侧不是上游。混在 `block_keys` 里会双向坏事——真协议信号被自己的噪声顶掉，而录制降级又被埋在"协议演进"的语境里没人管 |
+| `betas.new` / `betas.known` | 分别是不在 / 在 `classifier.KNOWN_BETAS` 基线里的 | `new` 才是"CC 启用了新能力"的信号。原先全量按频次升序、称"长尾即信号"——实测每天把同样几个**结构性**低频的已知特性顶在最前（`structured-outputs` 只在标题请求带、`token-counting` 只在 count_tokens 探针带），低频与新出现是两回事 |
+| `totals.with_unknowns` / `degraded` | 分开计数 | 否则 `with_unknowns` 会被本工具自己的噪声撑起来 |
+| `other_kind_samples` | 固化 `quota_probe`/`hook_eval` 后仍落 `other` 的真未知（理想为空）| — |
+| `known` | 当前已知集合基准（真源 `classifier.KNOWN_*` + `KNOWN_BETAS`）| 让 AI 判断「什么算未知」 |
+
+**`KNOWN_BETAS` 的真源在 `classifier.py`**，前端由 `render_template(known_betas=…)` 注入消费——
+260802 之前它只硬编码在 `index.html`，于是唯一会问"有没有新 beta"的消费者（AI 走本端点）拿不到，
+只能退而按频次猜。
+
+> **自检**：加新 kind 或扩充 `KNOWN_*` / `KNOWN_BETAS` 必须同步改 `classifier.py` + 此契约 +
+> 架构总览 kind 列举 + 界面导览/报文解读的 kind 表 + `IDX_SCHEMA` bump + `cli_selftest.py`
+> 的 `[1.5] 盲区雷达` 段。
 
 ---
 

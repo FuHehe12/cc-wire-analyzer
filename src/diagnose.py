@@ -36,11 +36,25 @@ SAMPLES_PER_GROUP = 3        # 每组最多留几个代表样本 id
 DEFAULT_LIMIT = 20           # 默认最多回几组（输出有界）
 
 
+# 退化消息：上游只回一个空洞的词（或干脆空串）。这类消息不足以定义一个"问题"——
+# 任何供应商、任何原因的失败都会并进同一组，组的 count/trend 都没有诊断价值，
+# 而它还会因为跨天出现被排到最前（实测：`Error` 5 次散在两周里，排在一天 2650 次的
+# 真事故之上）。跨天归并时给这类组补 host，至少让"智谱回的 Error"和"官方回的 Error"分开。
+_DEGENERATE_WORDS = {"error", "timeout", "failed", "failure", "unknown", "exception", ""}
+_DEGENERATE_MAX_LEN = 12
+
+
 def _fingerprint(msg: str) -> str:
     norm = msg
     for pat, rep in _NORM:
         norm = pat.sub(rep, norm)
     return norm.strip()[:200]
+
+
+def _is_degenerate(fp: str) -> bool:
+    """这个指纹是否空洞到不足以单独定义一组。"""
+    s = fp.strip().strip(".:;!。：；").lower()
+    return s in _DEGENERATE_WORDS or len(s) < _DEGENERATE_MAX_LEN
 
 
 def _req_fields(idx: dict) -> dict:
@@ -146,21 +160,32 @@ def aggregate(records: list[dict], limit: int = DEFAULT_LIMIT) -> dict:
 
 # ===== 跨天趋势（/api/diagnose/trends）=====
 DEFAULT_TRENDS_LIMIT = 20      # 跨天组输出上限（route 又 clamp 到 ≤50）
+DEFAULT_SPAN = 7               # 默认看最近几天（route 与 CLI 共用）
+BURST_MIN = 50                 # 单日多少次算"爆发"而不是"零星"
+STALE_DAYS = 3                 # 最后一次距窗口末日多少天算"已经不在发生了"
 
 
 def _trend(per_day: dict) -> str:
     """活跃天 per_day{date:count}（仅活跃天，count≥1）→ 趋势标记。
 
-    sporadic = 只在一天出现（无论几次）；其余按活跃天对称二分的首尾比：
-    mid=n//2（奇数个活跃天中间那个不算），ratio=后半/前半；≥1.5 rising、≤0.5 declining、
-    否则 recurring。活跃天 count 恒 ≥1 故前半非空、不除零。
+    单天：count ≥ BURST_MIN → **burst**（一天内爆发＝事故），否则 sporadic（真·零星）。
+    这两个此前混在一个 sporadic 里，于是窗口内最大的一次事故（一天 2650 次失败，占窗口
+    失败总数 94%）顶着"零星"这个标签，对只读 trend 字段的 agent 是反向指示。
+
+    多天：按活跃天对称二分的首尾比：mid=n//2（奇数个活跃天中间那个不算），
+    ratio=后半/前半；≥1.5 rising、≤0.5 declining、否则 recurring。活跃天 count 恒 ≥1
+    故前半非空、不除零。
+
+    ⚠️ 趋势只描述**形状**，不描述新鲜度——一个两周前就停了的组，只要计数是平的，仍然
+    标 recurring。新鲜度是正交维度，见每组的 days_since_last / stale（塞进同一个枚举会
+    组合爆炸：rising-stale? declining-fresh?）。
 
     实测验证：quota_probe 429（5天各1次）→recurring；SSL 超时（3天 19/5/2）→declining；
-    2天 [1,3]→rising、[3,1]→declining、[1,1]→recurring。"""
+    2天 [1,3]→rising、[3,1]→declining、[1,1]→recurring；upstream_timeout（1天 2650）→burst。"""
     days = sorted(per_day.keys())
     n = len(days)
     if n <= 1:
-        return "sporadic"
+        return "burst" if (sum(per_day.values()) >= BURST_MIN) else "sporadic"
     mid = n // 2
     first = sum(per_day[d] for d in days[:mid])
     second = sum(per_day[d] for d in days[n - mid:])
@@ -198,6 +223,76 @@ def _dims_to_list(counter: Counter) -> list:
     return [{"value": v, "count": n} for v, n in counter.most_common()]
 
 
+def _is_loopback(host: str) -> bool:
+    """本机回环 host。它不是"路由供应商"——出现在这里通常意味着 BASE_URL 自指
+    （代理转发给自己，doctor 的 self_reference 规则管这个）或指向另一个本地网关。
+    实测一天的自指事故能占到窗口失败总数的 95%，混进 by_host 会把真实供应商分布彻底淹没。"""
+    h = (host or "").strip().lower()
+    if h.startswith("["):            # [::1]:5051 —— IPv6 带端口
+        h = h[1:].split("]")[0]
+    elif h.count(":") == 1:          # host:port（裸 IPv6 有多个冒号，别在这里切）
+        h = h.split(":")[0]
+    return h in ("localhost", "::1", "0.0.0.0") or h.startswith("127.")
+
+
+def span_dates(span: int = DEFAULT_SPAN, today=None) -> list[str]:
+    """最近 span 天的日期列表（升序，含今天）。route 与 CLI 共用——两边各算一份日期
+    正是 stats 漏 cache_creation 那类分叉的温床。"""
+    import datetime
+    today = today or datetime.date.today()
+    return [(today - datetime.timedelta(days=i)).isoformat()
+            for i in range(max(1, span))][::-1]
+
+
+def _new_group(r: dict, ek: str, msg: str, fp: str, degenerate: bool) -> dict:
+    """一个跨天组的初始形状。字段分三组：身份（err_kind/status/message/fingerprint/degenerate）、
+    累积量（count/per_day/days/kinds/sessions/samples）、维度（req_fields/by_*）。"""
+    return {
+        "err_kind": ek,
+        "status": r.get("status"),
+        "message": msg[:300],
+        "fingerprint": hashlib.md5(fp.encode("utf-8", "replace")).hexdigest()[:8],
+        "degenerate": degenerate,
+        "count": 0,
+        "first_ts": r.get("ts_start"),
+        "last_ts": r.get("ts_start"),
+        "per_day": Counter(),
+        "days": set(),
+        "kinds": {},
+        "sessions": set(),
+        "samples": [],
+        "req_fields": {k: set() for k in _req_fields(r)},
+        "by_host": Counter(),
+        "by_model": Counter(),
+        "by_cc_version": Counter(),
+    }
+
+
+def _accumulate(g: dict, r: dict, d: str, r_kind: str) -> None:
+    """把一条失败记录并进它所属的跨天组。纯累积，与日期循环 / 序列化无耦合——
+    260802 从 `trends` 抽出：那个函数在几轮迭代里长到 160 行，而这 30 行是其中唯一
+    与「跨天」无关的部分。"""
+    g["count"] += 1
+    g["per_day"][d] += 1
+    g["days"].add(d)
+    ts = r.get("ts_start") or ""
+    if ts and (not g["first_ts"] or ts < g["first_ts"]):
+        g["first_ts"] = ts
+    if ts and (not g["last_ts"] or ts > g["last_ts"]):
+        g["last_ts"] = ts
+    g["kinds"][r_kind] = g["kinds"].get(r_kind, 0) + 1
+    if r.get("session_id"):
+        g["sessions"].add(r["session_id"])
+    if len(g["samples"]) < SAMPLES_PER_GROUP:
+        g["samples"].append(r.get("id"))
+    for k, v in _req_fields(r).items():
+        g["req_fields"][k].add(v)
+    for field, counter in (("host", g["by_host"]), ("model", g["by_model"]),
+                           ("cc_version", g["by_cc_version"])):
+        if r.get(field):
+            counter[r[field]] += 1
+
+
 def trends(records_by_date: dict, model: str | None = None,
            kind: str | None = None, limit: int = DEFAULT_TRENDS_LIMIT) -> dict:
     """{date: [idx records]} → 三层（每日曲线 / 跨天归并组 / 维度切片）。
@@ -211,8 +306,9 @@ def trends(records_by_date: dict, model: str | None = None,
     """
     dates = sorted(records_by_date.keys())
     per_day: list[dict] = []
-    cross: dict[tuple, dict] = {}       # (err_kind, status, fp) → 组累积
+    cross: dict[tuple, dict] = {}       # (err_kind, status, fp[, host]) → 组累积
     g_host = Counter()                   # 全局维度切片（过滤后的失败请求）
+    g_loopback = Counter()               # 本机回环单列，别淹没真实供应商分布
     g_model = Counter()
     g_ccver = Counter()
     total_records = 0
@@ -234,54 +330,20 @@ def trends(records_by_date: dict, model: str | None = None,
             total_failures += 1
             ek, msg = _kind_and_msg(r)
             fp = _fingerprint(msg)
-            key = (ek, r.get("status"), fp)
+            # 退化消息（'Error' / 'timeout' / 空）不足以定义一组：补 host 才不会把
+            # 各供应商各原因的失败并成一个没有诊断价值的垃圾桶组。**单天 aggregate 有意
+            # 不这么做**——一天之内还能靠 samples 追，跨天跨供应商跨版本才需要拆。
+            degenerate = _is_degenerate(fp)
+            key = (ek, r.get("status"), fp, r.get("host") if degenerate else None)
             if r.get("host"):
-                g_host[r["host"]] += 1
+                (g_loopback if _is_loopback(r["host"]) else g_host)[r["host"]] += 1
             if r.get("model"):
                 g_model[r["model"]] += 1
             if r.get("cc_version"):
                 g_ccver[r["cc_version"]] += 1
-            g = cross.get(key)
-            if g is None:
-                g = cross[key] = {
-                    "err_kind": ek,
-                    "status": r.get("status"),
-                    "message": msg[:300],
-                    "fingerprint": hashlib.md5(fp.encode("utf-8", "replace")).hexdigest()[:8],
-                    "count": 0,
-                    "first_ts": r.get("ts_start"),
-                    "last_ts": r.get("ts_start"),
-                    "per_day": Counter(),
-                    "days": set(),
-                    "kinds": {},
-                    "sessions": set(),
-                    "samples": [],
-                    "req_fields": {k: set() for k in _req_fields(r)},
-                    "by_host": Counter(),
-                    "by_model": Counter(),
-                    "by_cc_version": Counter(),
-                }
-            g["count"] += 1
-            g["per_day"][d] += 1
-            g["days"].add(d)
-            ts = r.get("ts_start") or ""
-            if ts and (not g["first_ts"] or ts < g["first_ts"]):
-                g["first_ts"] = ts
-            if ts and (not g["last_ts"] or ts > g["last_ts"]):
-                g["last_ts"] = ts
-            g["kinds"][r_kind] = g["kinds"].get(r_kind, 0) + 1
-            if r.get("session_id"):
-                g["sessions"].add(r["session_id"])
-            if len(g["samples"]) < SAMPLES_PER_GROUP:
-                g["samples"].append(r.get("id"))
-            for k, v in _req_fields(r).items():
-                g["req_fields"][k].add(v)
-            if r.get("host"):
-                g["by_host"][r["host"]] += 1
-            if r.get("model"):
-                g["by_model"][r["model"]] += 1
-            if r.get("cc_version"):
-                g["by_cc_version"][r["cc_version"]] += 1
+            if key not in cross:
+                cross[key] = _new_group(r, ek, msg, fp, degenerate)
+            _accumulate(cross[key], r, d, r_kind)
         per_day.append({"date": d, "records": n_match, "failures": n_fail, "groups": 0})
 
     # 每日去重组数：从 cross 反查（每个组在某日活跃则该日 groups+1）
@@ -291,19 +353,28 @@ def trends(records_by_date: dict, model: str | None = None,
             pd_idx[d]["groups"] += 1
 
     # 跨天归并组序列化（跨天天数 desc → count desc）
+    last_day = dates[-1] if dates else None
     items = []
     for g in sorted(cross.values(), key=lambda x: (-len(x["days"]), -x["count"])):
+        trend = _trend(g["per_day"])
+        since = _days_between(max(g["days"]), last_day) if g["days"] else None
         items.append({
             "err_kind": g["err_kind"],
             "status": g["status"],
             "message": g["message"],
             "fingerprint": g["fingerprint"],
+            # 上游没给有信息量的消息（'Error' / 'timeout' / 空）：这组是按 host 拆过的，
+            # 组内仍可能混着不同原因，要判因得看 samples，别拿 count/trend 下结论。
+            "degenerate": g["degenerate"],
             "count": g["count"],
             "days_span": len(g["days"]),
             "first_seen": g["first_ts"],
             "last_seen": g["last_ts"],
+            # 新鲜度与趋势正交：stale 的组即使标着 recurring，也已经不在发生了。
+            "days_since_last": since,
+            "stale": bool(since is not None and since >= STALE_DAYS and trend != "burst"),
             "per_day": dict(sorted(g["per_day"].items())),
-            "trend": _trend(g["per_day"]),
+            "trend": trend,
             "kinds": dict(sorted(g["kinds"].items(), key=lambda kv: -kv[1])),
             "sessions": len(g["sessions"]),
             "samples": g["samples"],
@@ -329,11 +400,27 @@ def trends(records_by_date: dict, model: str | None = None,
         "truncated": truncated,            # 契约：给 AI 的输出一律标注是否被截断
         "items": items[:limit],
         "by_host": _dims_to_list(g_host),
+        # 本机回环单列：这不是供应商，通常是 BASE_URL 自指或指向另一个本地网关。
+        "by_local_loopback": _dims_to_list(g_loopback),
         "by_model": _dims_to_list(g_model),
         "by_cc_version": _dims_to_list(g_ccver),
-        "note": ("Cross-day failure groups (same key as /api/diagnose/errors, merged across days). "
-                 "items sorted by days_span desc then count desc. trend: sporadic=single day; "
-                 "recurring/rising/declining compare first-half vs second-half counts of active days "
-                 "(ratio>=1.5 rising, <=0.5 declining, else recurring). per_day[date]=count only for "
-                 "active days. For one day in depth use /api/diagnose/errors?date=."),
+        "note": ("Cross-day failure groups (merged across days). items sorted by days_span desc "
+                 "then count desc. trend describes SHAPE only: burst=one day with >=50 hits "
+                 "(an incident), sporadic=one day with fewer, rising/declining/recurring compare "
+                 "first-half vs second-half counts of active days (ratio>=1.5 / <=0.5 / else). "
+                 "Freshness is separate: days_since_last + stale=true means it stopped happening, "
+                 "even when trend says recurring. degenerate=true means the upstream message was "
+                 "empty or a bare word ('Error'), so the group was split by host and count/trend "
+                 "carry little meaning — read samples instead. by_local_loopback is NOT a vendor "
+                 "(usually a self-referencing BASE_URL). For one day in depth use "
+                 "/api/diagnose/errors?date=."),
     }
+
+
+def _days_between(d1: str | None, d2: str | None) -> int | None:
+    """两个 YYYY-MM-DD 相差几天（d2 - d1）。解析不了给 None，不猜。"""
+    import datetime
+    try:
+        return (datetime.date.fromisoformat(d2) - datetime.date.fromisoformat(d1)).days
+    except (TypeError, ValueError):
+        return None

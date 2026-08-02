@@ -392,7 +392,8 @@ def cmd_get(a) -> None:
 
 def cmd_grep(a) -> None:
     # 核心逻辑在 capture_store.grep（HTTP 与 CLI 共用，单一真源）。
-    r = capture_store.grep(a.date, a.pattern, in_=a.in_, limit=a.limit, case=a.case, fixed=a.fixed)
+    r = capture_store.grep(a.date, a.pattern, in_=a.in_, limit=a.limit, case=a.case, fixed=a.fixed,
+                           exclude_session=a.exclude_session, session=a.session)
     if not r.get("ok") and r.get("error") == "bad_pattern":
         _die("bad_pattern", r.get("message", "正则错误"))   # 保留 CLI 非零退出语义
     _out(r)
@@ -423,7 +424,30 @@ def cmd_errors(a) -> None:
 
 def cmd_stats(a) -> None:
     # 核心逻辑在 capture_store.stats（HTTP 与 CLI 共用，单一真源）。
-    _out(capture_store.stats(a.date))
+    _out(capture_store.stats(a.date, a.exclude_session, a.session))
+
+
+def cmd_unknowns(a) -> None:
+    """盲区雷达：已知集合外的值。**只读**，不需要代理在跑、不碰 settings.json。
+
+    此前只有 HTTP 一面，而本机自审工作流规定走 CLI —— 想看一眼未知就得起 serve，
+    而 serve 会 patch 用户真 settings.json（`.claude/workflows/self-audit.md` 铁律 1 是"只读"）。
+    分析面一律要有 CLI 入口。"""
+    _out(capture_store.unknowns(a.date, a.exclude_session, a.session))
+
+
+def cmd_trends(a) -> None:
+    """跨天失败趋势。与 /api/diagnose/trends 同源（diagnose.trends + span_dates）。"""
+    import diagnose
+    span = max(1, min(30, a.span))
+    by_date = {}
+    for d in diagnose.span_dates(span):
+        try:
+            by_date[d] = capture_store.list_index(d, a.exclude_session, a.session)
+        except capture_store.StoreError:
+            by_date[d] = []          # 无录制日 → 空，曲线记 0（与路由同语义）
+    _out({"ok": True, **diagnose.trends(by_date, model=(a.model or None),
+                                        kind=(a.kind or None), limit=a.limit)})
 
 
 def cmd_clear(a) -> None:
@@ -460,8 +484,10 @@ def _serve() -> None:
 
 
 def _session_args(sp) -> None:
-    """list/dag/errors 共用的会话过滤参数（与 HTTP API 的 session/exclude_session 同语义，
-    前缀匹配）。典型场景：一个 CC 干活、另一个 CC 审计时，排除审计者自身的会话线。"""
+    """**所有检查面**共用的会话过滤参数（与 HTTP API 的 session/exclude_session 同语义，
+    前缀匹配）。典型场景：一个 CC 干活、另一个 CC 审计时，排除审计者自身的会话线——
+    审计方每查一次就往同一份录制里加一条自己的请求，自我污染是递增的。
+    新加检查面时必须一并挂上它：260802 的 grep/stats/unknowns 就是漏挂的三个。"""
     sp.add_argument("--session", default="",
                     help="只看该会话 id（前缀匹配，可只给前几字符）")
     sp.add_argument("--exclude-session", dest="exclude_session", default="",
@@ -515,6 +541,7 @@ def main(argv=None) -> None:
     pr.add_argument("--fixed", action="store_true", help="按字面量而非正则")
     pr.add_argument("--case", action="store_true", help="区分大小写")
     pr.add_argument("--limit", type=int, default=20)
+    _session_args(pr)
     pr.set_defaults(fn=cmd_grep)
 
     pd = sub.add_parser("dag", help="时序 DAG（泳道/节点/边）")
@@ -531,7 +558,21 @@ def main(argv=None) -> None:
     perr.set_defaults(fn=cmd_errors)
 
     pt = sub.add_parser("stats", help="当日聚合：kind/模型/状态/token/耗时分位")
-    pt.add_argument("--date"); pt.set_defaults(fn=cmd_stats)
+    pt.add_argument("--date"); _session_args(pt)
+    pt.set_defaults(fn=cmd_stats)
+
+    pu = sub.add_parser("unknowns", help="盲区雷达：已知集合外的值（协议演进 / 录制盲区）")
+    pu.add_argument("--date"); _session_args(pu)
+    pu.set_defaults(fn=cmd_unknowns)
+
+    ptr = sub.add_parser("trends", help="跨天失败趋势（跨天归并 + 每日曲线 + host/版本切片）")
+    ptr.add_argument("--span", type=int, default=7, help="看最近几天（默认 7，clamp 到 1-30）")
+    ptr.add_argument("--model", default="", help="只看该 model")
+    ptr.add_argument("--kind", default="", choices=["", *classifier.KIND_ORDER],
+                     help="只看该 kind")
+    ptr.add_argument("--limit", type=int, default=20, help="最多回几组（默认 20）")
+    _session_args(ptr)
+    ptr.set_defaults(fn=cmd_trends)
 
     pc = sub.add_parser("clear", help="清除录制")
     pc.add_argument("--date"); pc.add_argument("--mode", default="purge", choices=["purge", "archive"])

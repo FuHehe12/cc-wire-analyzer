@@ -63,6 +63,30 @@ def _fake_record(rid: str, kind: str) -> dict:
     }
 
 
+def _radar_record(rid: str, *, betas: str, session: str, host: str,
+                  blocks: list[dict]) -> dict:
+    """造一条给盲区雷达用的记录：beta 头 / 会话 / 上游 host / 响应块都可控。
+
+    雷达的三条语义（未知带 host 归属、beta 关联算提升度、本工具的降级标记单列）此前零覆盖，
+    而它们恰恰是最容易悄悄退化的那种逻辑——错了不报错，只是把 AI 引向错误的改进方向。"""
+    return {
+        "id": rid, "ts_start": "2026-07-13T10:00:00.000", "ts_end": "2026-07-13T10:00:05.000",
+        "method": "POST", "path": "v1/messages", "upstream": f"https://{host}/v1/messages",
+        "request": {
+            "headers_safe": {"anthropic-beta": betas, "X-Claude-Code-Session-Id": session,
+                             "user-agent": "claude-cli/2.1.220 (external, cli)"},
+            "body": {"model": "glm-5.2", "max_tokens": 32000,
+                     "system": [{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}],
+                     "tools": [{"name": "Read"}],
+                     "messages": [{"role": "user", "content": "hi"}]},
+        },
+        "response": {"status": 200, "ttft_ms": 100, "total_ms": 500,
+                     "usage": {"input_tokens": 10, "output_tokens": 5},
+                     "stop_reason": "end_turn", "content_blocks": blocks},
+        "error": None,
+    }
+
+
 def run(env, *args, expect_ok=True) -> dict:
     r = subprocess.run([sys.executable, CLI, *args], env=env, capture_output=True,
                        text=True, encoding="utf-8")
@@ -128,6 +152,52 @@ def main() -> None:
         check("grep 命中", o.get("hits") == 1, f"hits={o.get('hits')}")
         o = run(env, "dag", "--date", "2026-07-12")
         check("dag 出泳道", len(o.get("lanes", [])) >= 1)
+
+        print("\n[1.5] 盲区雷达（unknowns）")
+        UBIQ = "claude-code-20250219"          # 每条都带 → 基线 100%，提升度恒 1，不该被当"来源"
+        NEW = "brand-new-feature-2026-08-01"   # 只跟未知一起出现 → 才是真来源
+        SID_MAIN, SID_ODD = "sess-main-0001", "sess-odd-0002"
+        with (tmp / "captures" / "2026-07-13.jsonl").open("w", encoding="utf-8") as f:
+            for i in range(5):                 # 5 条正常记录（无未知）
+                f.write(json.dumps(_radar_record(
+                    f"req_ok{i}", betas=UBIQ, session=SID_MAIN, host="api.anthropic.com",
+                    blocks=[{"type": "text", "text": "fine"}]), ensure_ascii=False) + "\n")
+            f.write(json.dumps(_radar_record(   # 1 条带未知块 + 本工具的降级标记
+                "req_unk1", betas=f"{UBIQ},{NEW}", session=SID_ODD, host="gw.example.com",
+                blocks=[{"type": "weird_block", "payload": "??"},
+                        {"type": "tool_use", "name": "Read", "_input_raw": '{"file'}],
+            ), ensure_ascii=False) + "\n")
+        o = run(env, "unknowns", "--date", "2026-07-13")
+        check("雷达只把真未知计入 with_unknowns（降级不算）",
+              o.get("totals", {}).get("with_unknowns") == 1 and o["totals"]["degraded"] == 1,
+              str(o.get("totals")))
+        blk = (o.get("blocks") or [{}])[0]
+        check("未知块被报出", blk.get("value") == "weird_block", str(blk.get("value")))
+        check("未知带 host 归属（判读第一步：是不是某个网关的形状差异）",
+              blk.get("hosts") == {"gw.example.com": 1}, str(blk.get("hosts")))
+        check("未知带 cc 版本", blk.get("cc_versions") == {"2.1.220": 1}, str(blk.get("cc_versions")))
+        lift_betas = [b["value"] for b in (blk.get("betas") or [])]
+        check("beta 关联只留特异的（提升度 ≥1.5）", lift_betas == [NEW], str(blk.get("betas")))
+        check("基线 100% 的 beta 不冒充来源", UBIQ not in lift_betas)
+        check("本工具的降级标记单列 degraded",
+              [d["value"] for d in (o.get("degraded") or [])] == ["tool_use._input_raw"],
+              str(o.get("degraded")))
+        check("降级标记不混进 block_keys",
+              all("_input_raw" not in b["value"] for b in (o.get("block_keys") or [])),
+              str([b["value"] for b in (o.get("block_keys") or [])]))
+        check("betas.new 认出没见过的扩展",
+              [b["value"] for b in o.get("betas", {}).get("new", [])] == [NEW],
+              str(o.get("betas", {}).get("new")))
+        check("已知 beta 归 known 段",
+              UBIQ in [b["value"] for b in o.get("betas", {}).get("known", [])])
+        o = run(env, "unknowns", "--date", "2026-07-13", "--exclude-session", SID_ODD)
+        check("会话过滤生效（双 CC 审计时排除审计者自身）",
+              o.get("totals", {}).get("with_unknowns") == 0 and not o.get("blocks"),
+              str(o.get("totals")))
+        o = run(env, "stats", "--date", "2026-07-13", "--session", SID_ODD)
+        check("stats 也能按会话过滤", o.get("records") == 1, str(o.get("records")))
+        o = run(env, "trends", "--span", "1")
+        check("trends 走 CLI 不需要服务在跑", o.get("ok") is True and "per_day" in o)
 
         print("\n[2] proxy start —— 真起 daemon + 真 patch（假 settings）")
         o = run(env, "proxy", "start")

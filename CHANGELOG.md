@@ -32,11 +32,16 @@
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
 - **Next steps**:
-  1. **Failure grouping across days — landed in Unreleased.** `/api/diagnose/trends` now answers
-  "new or recurring?" with per-day curves, recurring/rising/declining/sporadic tags, and
-  host/model/cc_version slices (HTTP-only, no GUI). Still open: hardening recurring patterns
-  into doctor rules automatically — `effort_max_rejected_upstream` came from a manually-spotted
-  recurring failure, and closing that loop end-to-end is the remaining half.
+  1. **Failure grouping across days — landed in Unreleased, then corrected.** `/api/diagnose/trends`
+  answers "new or recurring?" with per-day curves, trend tags, staleness and
+  host/model/cc_version slices (HTTP + CLI, no GUI). A re-check against 12 days of real captures
+  fixed what the labels were actually saying: a single-day 2650-failure incident used to be tagged
+  *sporadic*, a group that stopped two weeks ago still read as *recurring*, and every vendor's
+  opaque `Error` merged into one junk-drawer group. Same pass corrected the blind-spot radar
+  (host attribution, lift-based beta provenance, our own degradation markers split out). Still
+  open: hardening recurring patterns into doctor rules automatically — `effort_max_rejected_upstream`
+  came from a manually-spotted recurring failure, and closing that loop end-to-end is the remaining
+  half.
   2. **Recording-blind-spot audit: closed (both halves).** The 260731 *protocol-side* audit
   (against what CC declares: headers, body fields, SSE branches) found nine gaps, all addressed.
   The *capability-side* half — running each CC ability through the proxy and checking the recording
@@ -48,6 +53,29 @@
 ## Unreleased
 
 ### Added
+- **CLI gets `unknowns` and `trends`; every read-only surface takes a session filter.** The blind-spot
+  radar and cross-day trends shipped HTTP-only, but the local self-audit workflow is CLI-first for a
+  reason: `serve` patches your real `settings.json` (that's how recording works), while auditing is
+  supposed to be read-only. Looking at "what unknowns piled up this week" therefore required the one
+  action in the project that has side effects. Both are now CLI subcommands over the same functions
+  the routes call (`capture_store.unknowns` / `diagnose.trends`), and `/api/grep`, `/api/stats`,
+  `/api/unknowns` finally honour `session` / `exclude_session` — v0.4.6 promised "every inspection
+  surface can filter by session" and these three were outside it. `stats` now reads the index instead
+  of re-parsing the main file (every field it uses was already indexed; it also called
+  `classify(full record)` per row, which re-ran the whole of `index_record` — including matching the
+  ~108K security ruleset — for each of thousands of records).
+- **`tools/doc_audit.py` — machine reconciliation of code facts vs. what the docs claim.** The doc
+  strategy has listed this as "to be implemented" for a while, by its own rule that *a remedy for rot
+  which needs periodic human syncing is itself the next thing to rot*. It checks six mechanically
+  decidable things: endpoints present in `API契约.md` (the designated single source — "some doc
+  mentions it" doesn't count), CLI subcommands documented, file paths referenced by docs that don't
+  exist, the `IDX_SCHEMA` value asserted in prose, self-test files listed in the guide, and
+  references to endpoints that no longer exist. Reports differences, never verdicts, always exits 0.
+  First run found four: `/api/grep` and `/api/stats` had never made it into the API contract, 17 CLI
+  subcommands had no listing in any public doc, the architecture doc still pinned `IDX_SCHEMA` at 10
+  (code was at 14), and `tools/check_i18n_js.py` was a one-shot script with a hard-coded absolute
+  path and hard-coded key names sitting in `tools/` as if it were general (now rewritten).
+
 - **`/api/grep` + `/api/stats` HTTP endpoints.** Previously CLI-only — an AI had to read the
   jsonl directly to search content or count tokens, violating ai-guide rule ① ("don't read whole
   recordings"). Core logic moved to `capture_store.grep/stats` (single source, shared by CLI and
@@ -90,6 +118,43 @@
   scalars, `classify_idx` doesn't read them; same call as `session_id` in 260802).
 
 ### Changed
+- **Radar: three fixes to what it actually points at.** Re-checked against 12 days / 5505 real
+  records. (1) Every unknown now carries `hosts` / `cc_versions`. On the day checked, *all five*
+  unknowns came from a single third-party gateway (an OpenAI-shaped `tool_result` block in the
+  response) — while the endpoint said "protocol evolution, fold stable ones into `KNOWN_*`".
+  Following that advice would loosen the criteria for the official link using a gateway's quirk, so
+  the radar would go quiet exactly when the official link later produced a same-named, different-shaped
+  block. Host attribution is now the first thing you read. (2) `betas` per unknown is computed as
+  lift — `P(beta|this unknown) / P(beta|all requests)`, keeping only ≥1.5 — instead of a raw count.
+  Raw counts always returned the betas every request carries (the five reported were exactly the day's
+  100%/96% baseline ones), and for a single-occurrence unknown every beta ties at 1, so `most_common`
+  degenerates into "the first few in the header". An empty list is now the honest answer. (3) This
+  tool's own degradation markers (`_input_raw` / `input_raw_fallback`, produced when an SSE stream is
+  cut before `content_block_stop` or tool input won't parse) move to a separate `degraded` dimension:
+  they say *this recording's body is incomplete*, which is a proxy-side matter, not protocol drift —
+  and on one day they were 100% of the reported "unknowns", crowding out the real signal.
+- **Radar: known-set coverage.** `compaction` — a block type this tool's own SSE accumulator builds —
+  was in no known set and had no renderer, so the first real context compaction would have had the
+  radar reporting our own output as an unknown protocol block (now known, and rendered). `KNOWN_BETAS`
+  moved from `index.html` into `classifier.py` and is injected into the template: the list lived only
+  in the frontend, so the one consumer that ever asks "is this beta new?" (an AI calling
+  `/api/unknowns`) couldn't reach it, and the endpoint fell back to ranking betas by ascending
+  frequency, calling the tail a signal. Measured: the top five "signals" were the same known,
+  structurally-low-frequency features every single day (`structured-outputs` only rides on title
+  requests, `token-counting` only on the token-estimate probe). The beta dimension is now split into
+  `new` (not in the baseline — the actual signal) and `known` (usage distribution). Bumps
+  `IDX_SCHEMA` 13→14.
+- **Trends: `burst`, staleness, and no more junk-drawer groups.** `sporadic` meant "one day, however
+  many hits", so the largest incident in a 30-day window — 2650 failures in a single day, 94% of all
+  failures — was labelled *sporadic* and ranked below a five-hit group. One day with ≥50 hits is now
+  `burst`. `trend` describes shape only; freshness is a separate, orthogonal pair of fields
+  (`days_since_last` + `stale`), because a group that stopped two weeks ago still reads as
+  `recurring` when its counts are flat. Groups whose upstream message is empty or a bare word
+  (`Error`, `timeout`) are now split by host and flagged `degenerate` — otherwise every vendor's
+  unrelated failures merge into one group with no diagnostic value, which then ranks first by virtue
+  of appearing across days. And local loopback hosts get their own `by_local_loopback` slice: 95% of
+  failures in the window pointed at `127.0.0.1` (a self-referencing BASE_URL), which is not a vendor
+  and was drowning out the real vendor distribution.
 - **`/api/captures` list summaries now carry `session_id`.** `_IDX_PRIVATE` used to strip
   `session_id` as a "DAG classification input", so list/SSE summaries hid session ownership while
   the DAG lane exposed it — inconsistent. Under v0.4.6's session-filter scenario (two CCs side by
@@ -158,6 +223,19 @@
   content but the timeline stayed empty until I clicked other days a few times".
 
 ### Docs
+- **Doc restructure driven by the audit, not by taste.** The API contract gained the two sections it
+  never had (`/api/grep`, `/api/stats`) and its radar/trends sections were rewritten around the new
+  semantics; `AI_USAGE.md` gained a full CLI table (17 subcommands, previously listed nowhere — the
+  docs took shape when GUI+HTTP was the focus and the CLI grew quietly afterwards) plus a "how to
+  read the radar" section; the architecture doc stopped keeping its own copy of the `IDX_SCHEMA`
+  value and now points at the constant; the doc-strategy SSOT table gained rows for endpoints, CLI
+  subcommands, `KNOWN_BETAS` and the schema value, and dropped its own rotting "current size" column.
+  Problem-domain handbook unit 10 gained the three counter-intuitive lessons this round produced
+  (unknowns are three different kinds of thing; "rare" is not "new"; provenance needs lift, not raw
+  counts) — those generalise to anyone building the same tool for another harness. The self-audit
+  workflow now uses `trends` and `unknowns` instead of the per-day loop and manual header inspection
+  it still described.
+
 - README "when you'd reach for this" + the worked example, rewritten in all three languages.
   The framing was previously third-party-gateway troubleshooting; it's now about understanding
   the real CC↔model conversation — what CC sends, the prompts behind each stage (main / title /

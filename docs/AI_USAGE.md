@@ -143,10 +143,10 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/dag?date=YYYY-MM-DD` | 会话时序的 lanes / nodes / edges |
 | GET | `/api/health/config` | **配置体检**（只读）：CC 的配置自相矛盾吗？ |
 | GET | `/api/diagnose/errors?date=…&limit=N` | **失败聚合**：到底哪里出了问题，按上游错误消息分组 |
-| GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + recurring/rising/declining/sporadic + host/model/cc_version 切片。看失败是新发还是老毛病复发、集中哪个供应商/CC 版本 |
+| GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + trend（burst/sporadic/rising/declining/recurring）+ stale（还在不在发生）+ host/model/cc_version 切片。看失败是新发还是老毛病复发、集中哪个供应商/CC 版本 |
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少）。比直读 jsonl 安全 |
 | GET | `/api/stats?date=…` | **统计**：kind/model/status 分布、token 四项（含 cache_creation）、cache 命中率、耗时 p50/p95 |
-| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、beta 长尾特性。每项带 samples id。调它发现 CC 协议演进与录制盲区，取样本看详情，提改进（新增解析/渲染/分类规则，稳定的并入 KNOWN_*）|
+| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、没见过的 beta。每项带 samples id + `hosts` 归属 + 特异 beta（提升度筛过）。另有 `degraded` 段＝本工具录制降级，性质不同。**判读先看 hosts**（见下）|
 | GET | `/api/config` / POST `/api/config` | 读 / 改配置（ui_lang、retention_days、translate…）|
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 | GET | `/api/captures/stream` | **LIVE SSE**：录制写入时的实时增量（用于实时监控）|
@@ -155,6 +155,68 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 解读，带防注入定界符）、`/api/open-folder`（在文件管理器打开备份目录）。
 
 `/api/captures/<id>` 返回完整 body——所以先拉摘要列表、挑 id、再取那一条。别全拉。
+
+### 会话过滤：两个 CC 并排跑的时候
+
+上表里**每个查录制的端点**都接受 `session=` / `exclude_session=`（前缀匹配，给会话 id 的前几个
+字符就够）。驱动场景是「一个 CC 干活、另一个 CC 经代理审计它」：审计方自己的请求会落进同一份
+录制，污染每个视图，而且**自我污染是递增的**——每查一次就多一条自己的。把 `exclude_session`
+指向审计者自己的会话 id，剩下的才是被审计的流量。过滤发生在分页之前，`total` 保持真实。
+
+### 判读盲区雷达：先看 hosts，再看 betas
+
+`/api/unknowns` 报的是「已知集合之外的值」，但**集合外不等于 CC 协议演进**。判读顺序：
+
+1. **`hosts`** —— 某个未知只出现在单一第三方 host 上，那是**那个网关的形状差异**（例：某网关
+   在响应里回 OpenAI 风格的 `tool_result` 块）。照"协议演进"把它并进 `KNOWN_*`，会让官方链路
+   将来真出现同名异构块时**雷达反而哑掉**。
+2. **`betas`** —— 与这个未知**特异相关**的 beta（按提升度筛：组内出现率 ÷ 全体基线出现率
+   ≥ 1.5）。空列表是正常结果，表示没有哪个 beta 与它特别相关；不要把"每条请求都带的那几个
+   beta"当成来源。
+3. **`samples`** —— 拿 id 调 `/api/captures/<id>` 看完整上下文，再决定要不要提改进。
+
+`degraded` 段是另一回事：那是**本工具自己的降级标记**（SSE 在 `content_block_stop` 之前断了、
+工具入参 JSON 拼不出来），说明那条录制的正文是残的——要查的是代理侧，不是上游。
+
+`betas.new` 是没在基线里出现过的扩展，才是"CC 启用了新能力"的信号；`betas.known` 只是用量分布。
+
+---
+
+## CLI（源码模式的只读分析面）
+
+打包的 exe **只有 `serve` 和 `--help`**，没有子命令。但从源码跑时有一整套 CLI，全部输出 JSON：
+
+```bash
+uv run python src/cli.py <子命令>
+```
+
+它存在的理由是 HTTP 面没有的那一条：**离线只读**——查录制不需要服务在跑、不需要代理在录、
+**不碰 `settings.json`**（`serve` 会 patch 它，那是录制机制的一部分）。想看一眼过去几天有什么
+问题，用 CLI；要录新流量，才需要 `serve`。
+
+| 子命令 | 做什么 | 副作用 |
+|---|---|---|
+| `paths` | 数据目录 / 当天录制 / 日志 / settings.json 在哪（第一步）| 只读 |
+| `dates` | 有哪些日期的录制、各多少条多大 | 只读 |
+| `status` | 代理是否处于 patch 态、当前 BASE_URL、实例是否在跑 | 只读 |
+| `list --date --kind --limit --offset` | 摘要列表（不含 body）| 只读 |
+| `get <id> --date --part --max-chars/--full` | 单条记录，默认截断防炸上下文 | 只读 |
+| `grep <pattern> --in --fixed --case` | 搜文本，带 coverage | 只读 |
+| `stats --date` | kind/模型/状态分布、token 四项、耗时分位 | 只读 |
+| `errors --date --limit` | 单天失败聚合 | 只读 |
+| `trends --span --model --kind --limit` | 跨天失败趋势 | 只读 |
+| `unknowns --date` | 盲区雷达 | 只读 |
+| `dag --date` | 时序 DAG（泳道/节点/边）| 只读 |
+| `doctor` | 配置体检 | 只读 |
+| `proxy start` / `proxy stop` | 起/停代理（**会改 settings.json**）| ⚠️ 有 |
+| `restore` | 强制恢复 settings.json（进程被强杀后救回）| ⚠️ 有 |
+| `clear --date --mode` / `clear --older-than N` | 删除 / 压缩存档录制 | ⚠️ 有 |
+
+前 12 条只读的都接受 `--session` / `--exclude-session`（语义同 HTTP）。
+`--help` 与 `<子命令> --help` 是权威参数清单，本表只讲各条**做什么、有没有副作用**。
+
+> **自检**：加 CLI 子命令时必须更新本表，`tools/doc_audit.py` 会对账
+> `cli.py` 的 `add_parser` 全集与本文提到的名字。
 
 ### 主线 vs 子代理（已定案，别再重新推导）
 
