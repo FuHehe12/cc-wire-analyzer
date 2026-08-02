@@ -87,7 +87,7 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     转发也无 error，于是失败聚合（只读索引）完全看不见，而那条录制的正文
 #                     其实是丢的。与 v0.4.3 修的「流内错误被录成成功致失败率低报」同型，
 #                     是它漏掉的另一半（详见 issues/open/260801_decode_error不计入失败统计.md）
-IDX_SCHEMA = 8
+IDX_SCHEMA = 9
 
 
 # ===== 请求体取文本 =====
@@ -460,6 +460,10 @@ def index_record(rec: dict) -> dict:
         "decode_error": (resp.get("decode_error") or ""),
         "effort": ((body.get("output_config") or {}).get("effort")
                    if isinstance(body.get("output_config"), dict) else None),
+        # structured-outputs（structured-outputs-2025-12-15）：CC 强制 json_schema 输出
+        # （如标题请求只要 {title}）。只存 format.type 小标量，schema 内容详情页 body 可见。
+        "format": (((body.get("output_config") or {}).get("format") or {}).get("type")
+                   if isinstance((body.get("output_config") or {}).get("format"), dict) else None),
         "thinking": ((body.get("thinking") or {}).get("type")
                      if isinstance(body.get("thinking"), dict) else None),
         "stream": bool(body.get("stream")),

@@ -79,12 +79,17 @@ def new_record() -> dict:
     }
 
 
-# 索引记录里不对外（列表/SSE/DAG 输出）的内部字段：
+# 索引记录里不对外（列表/SSE 摘要）的内部字段：
 # off/len 是 seek 锚点，v 是 schema 版本，其余是 DAG 分类原料（classifier 内部消费）。
 # 新增分类原料字段时也要登记到这里，否则会漏进列表/SSE 摘要（契约是「列表项形状」）。
+# ⚠️ session_id 虽是 lane 分组键（分类原料），但同时也是 agent 审计标识——能对上
+# ~/.claude/projects/ 下的 jsonl 会话文件名。v0.4.6 的 session filter 场景里，审计方
+# exclude_session 排除自己后，必须在结果里看到每条请求的归属，否则「能过滤、看不见」。
+# 260802 从此移除，列表/SSE 摘要现在带 session_id（DAG lane 本就暴露，两处归一）。
+# is_subagent/entrypoint/agent_fp 是真正的子代理判别位（身份指纹），仍归内部不暴露。
 _IDX_PRIVATE = ("off", "len", "v", "sys_head", "first_user", "last_user",
                 "tools_n", "uid", "task_prompts", "turn_start", "tool_uses",
-                "is_subagent", "entrypoint", "session_id", "agent_fp", "first_user_task")
+                "is_subagent", "entrypoint", "agent_fp", "first_user_task")
 
 
 def _public_summary(idx: dict) -> dict:
@@ -343,6 +348,176 @@ def list_full(date: str | None = None, limit: int = 100000) -> list[dict]:
                 if len(out) >= limit:
                     break
     return out
+
+
+# ===== 内容搜索 / 统计（260802：从 cli 抽出作单一真源，HTTP 与 CLI 共用）=====
+# 此前 grep/stats 逻辑只在 cli.py，HTTP 端没有——AI 搜内容/算 token 被迫直读 jsonl，
+# 违反 ai-guide「别整文件读录制」。抽到数据层后 /api/grep、/api/stats 与 cli 同源，
+# 不再有 CLI/HTTP 各抄一份的分叉（stats cache_creation 漏字段事故的根因）。
+_GREP_AREAS = ("system", "user", "assistant", "sysmsg", "tool_result", "tool_use", "tools")
+_GREP_ALL = ("system", "user", "assistant", "sysmsg", "tool_result", "tool_use")
+
+
+def _grep_fields(rec: dict, body: dict, areas: tuple) -> dict:
+    """按区域抽取可搜文本。键 = where 标签，值 = 该区域全部文本拼接。"""
+    out = {}
+    if "system" in areas:
+        out["system"] = classifier._system_text(body)
+    if "user" in areas:
+        out["user"] = "\n".join(classifier._user_texts(body))
+    if "assistant" in areas:
+        out["assistant"] = "\n".join(
+            b.get("text") or "" for b in ((rec.get("response") or {}).get("content_blocks") or [])
+            if b.get("type") == "text")
+    if "tools" in areas:
+        out["tools"] = json.dumps(body.get("tools") or [], ensure_ascii=False)
+    # 下面三块都藏在 messages 里，是 _system_text/_user_texts 覆盖不到的部分：
+    # role=system 的 mid-conversation 消息（skill 清单、注入提醒）、工具返回、工具调用参数。
+    # tool_use 区域含**工具名**，且同时覆盖请求侧历史与响应侧当轮（260801 踩出来：只收 input
+    # 搜工具名恒 0；只收 messages 历史时当轮调用搜不到）。
+    sysmsg, tres, tuse = [], [], []
+    for blk in ((rec.get("response") or {}).get("content_blocks") or []):
+        if isinstance(blk, dict) and blk.get("type") == "tool_use":
+            tuse.append((blk.get("name") or "") + " " +
+                        json.dumps(blk.get("input") or {}, ensure_ascii=False))
+    for m in body.get("messages") or []:
+        role, content = m.get("role"), m.get("content")
+        if role == "system":
+            sysmsg.append(content if isinstance(content, str)
+                          else classifier._text_of_content(content))
+            continue
+        for blk in (content if isinstance(content, list) else []):
+            if not isinstance(blk, dict):
+                continue
+            t = blk.get("type")
+            if t == "tool_result":
+                c = blk.get("content")
+                tres.append(c if isinstance(c, str) else json.dumps(c, ensure_ascii=False))
+            elif t == "tool_use":
+                tuse.append((blk.get("name") or "") + " " +
+                            json.dumps(blk.get("input") or {}, ensure_ascii=False))
+    if "sysmsg" in areas:
+        out["sysmsg"] = "\n".join(sysmsg)
+    if "tool_result" in areas:
+        out["tool_result"] = "\n".join(tres)
+    if "tool_use" in areas:
+        out["tool_use"] = "\n".join(tuse)
+    return out
+
+
+def grep(date: str | None = None, pattern: str = "", in_: str = "all",
+         limit: int = 50, case: bool = False, fixed: bool = False) -> dict:
+    """在指定日期录制里搜文本。返回结构同 cli cmd_grep（不含 date；HTTP 路由自行包装）。
+
+    命中撞 limit 提前 break 时，两个字符计数只覆盖扫过的那部分记录——此时给比例会偏，
+    不如不给。扫完全部（hits < limit，含 0 命中这个最要紧的情形）才报 skipped_ratio。"""
+    import re
+    date = date or time.strftime("%Y-%m-%d", time.localtime())
+    flags = 0 if case else re.IGNORECASE
+    try:
+        pat = re.compile(re.escape(pattern) if fixed else pattern, flags)
+    except re.error as e:
+        return {"ok": False, "error": "bad_pattern", "message": f"正则错误：{e}"}
+    areas = _GREP_ALL if in_ == "all" else (in_,)
+    skipped = [x for x in _GREP_AREAS if x not in areas]
+    hits = []
+    searched_chars = skipped_chars = 0
+    f = CAPTURES_DIR / f"{date}.jsonl"
+    if f.exists():
+        with f.open("r", encoding="utf-8") as fh:
+            for ln in fh:
+                try:
+                    rec = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                body = (rec.get("request") or {}).get("body") or {}
+                if not isinstance(body, dict):
+                    body = {}
+                fields = _grep_fields(rec, body, areas)
+                searched_chars += sum(len(v or "") for v in fields.values())
+                skipped_chars += sum(len(v or "") for v in _grep_fields(rec, body, tuple(skipped)).values())
+                for where, text in fields.items():
+                    m = pat.search(text or "")
+                    if not m:
+                        continue
+                    s = max(0, m.start() - 50)
+                    hits.append({
+                        "id": rec.get("id"), "ts_start": rec.get("ts_start"),
+                        "kind": classifier.classify(rec), "where": where,
+                        "snippet": (text[s:m.end() + 50]).replace("\n", " "),
+                        "match_count": len(pat.findall(text or "")),
+                    })
+                    if len(hits) >= limit:
+                        break
+                if len(hits) >= limit:
+                    break
+    scanned_all = len(hits) < limit
+    total = searched_chars + skipped_chars
+    ratio = round(skipped_chars / total, 4) if (scanned_all and total) else None
+    coverage = {"searched": list(areas), "skipped": skipped, "skipped_ratio": ratio}
+    if not hits:
+        coverage["note"] = (
+            "0 命中 ≠ 不存在：本次未搜索的区域" +
+            (f"占请求体 {ratio:.1%}" if ratio is not None else "未统计") +
+            ("；用 --in <区域> 搜它们" if skipped else "")
+        )
+    return {"ok": True, "pattern": pattern, "in": in_, "hits": len(hits), "items": hits,
+            "coverage": coverage,
+            "note": "只回片段；要看全文用 get <id> --part system|messages"}
+
+
+def stats(date: str | None = None) -> dict:
+    """指定日期的请求 / token / 耗时统计。返回结构同 cli cmd_stats（含 date）。
+
+    cache_creation 必须累加：它按 token 数只占几个百分点，按**成本**却可能占三到四成
+    （缓存写入单价是读取的 12.5~20 倍）。漏掉它，用 stats 做成本判断会系统性低估，
+    且低估的正是「上下文被反复重建」这个最该优化的信号（260801）。"""
+    from collections import Counter
+    date = date or time.strftime("%Y-%m-%d", time.localtime())
+    kinds, models, statuses = Counter(), Counter(), Counter()
+    tin = tout = tcache = tcreate = 0
+    durs = []
+    errors = 0
+    n = 0
+    f = CAPTURES_DIR / f"{date}.jsonl"
+    if f.exists():
+        with f.open("r", encoding="utf-8") as fh:
+            for ln in fh:
+                try:
+                    rec = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                n += 1
+                body = (rec.get("request") or {}).get("body") or {}
+                resp = rec.get("response") or {}
+                kinds[classifier.classify(rec)] += 1
+                models[(body if isinstance(body, dict) else {}).get("model") or "?"] += 1
+                statuses[str(resp.get("status"))] += 1
+                u = classifier.usage_norm(resp)
+                tin += (u["input"] or 0)
+                tout += (u["output"] or 0)
+                tcache += (u["cache_read"] or 0)
+                tcreate += (u["cache_creation"] or 0)
+                if resp.get("total_ms"):
+                    durs.append(resp["total_ms"])
+                if rec.get("error"):
+                    errors += 1
+    durs.sort()
+
+    def pct(p):
+        return durs[min(int(len(durs) * p), len(durs) - 1)] if durs else None
+
+    # cache_hit_ratio：读 /（读+写）。分母 0 给 None 而非 0——「没有缓存」≠「命中率 0%」。
+    # 不做美元换算：单价随模型/链路/TTL 变，硬编码必然腐化；给全 token 数，换算交给使用者。
+    cache_total = tcache + tcreate
+    return {"ok": True, "date": date, "records": n,
+            "file_size": (f.stat().st_size if f.exists() else 0),
+            "kinds": dict(kinds), "models": dict(models), "statuses": dict(statuses),
+            "errors": errors,
+            "tokens": {"input": tin, "output": tout,
+                       "cache_read": tcache, "cache_creation": tcreate},
+            "cache_hit_ratio": (round(tcache / cache_total, 4) if cache_total else None),
+            "total_ms": {"p50": pct(0.5), "p95": pct(0.95), "max": (durs[-1] if durs else None)}}
 
 
 def get_capture(rid: str, date: str | None = None) -> dict | None:

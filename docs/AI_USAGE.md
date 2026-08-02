@@ -130,6 +130,8 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/dag?date=YYYY-MM-DD` | 会话时序的 lanes / nodes / edges |
 | GET | `/api/health/config` | **配置体检**（只读）：CC 的配置自相矛盾吗？ |
 | GET | `/api/diagnose/errors?date=…&limit=N` | **失败聚合**：到底哪里出了问题，按上游错误消息分组 |
+| GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少）。比直读 jsonl 安全 |
+| GET | `/api/stats?date=…` | **统计**：kind/model/status 分布、token 四项（含 cache_creation）、cache 命中率、耗时 p50/p95 |
 | GET | `/api/config` / POST `/api/config` | 读 / 改配置（ui_lang、retention_days、translate…）|
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 | GET | `/api/captures/stream` | **LIVE SSE**：录制写入时的实时增量（用于实时监控）|

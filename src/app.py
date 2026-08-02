@@ -224,6 +224,40 @@ def captures_list():
         request.args.get("exclude_session", ""), request.args.get("session", "")))
 
 
+@app.route("/api/grep")
+def api_grep():
+    """在指定日期录制里搜文本（与 cli grep 同源，走 capture_store.grep）。
+    AI 搜内容留在 API 层，不必直读 jsonl——直读正是 ai-guide 铁律①禁止的。
+    参数：date（默认今天）/ pattern / in（默认 all，可选 system|user|assistant|sysmsg|
+    tool_result|tool_use|tools）/ limit（默认 50）/ case / fixed（后两个传 1/true 启用）。
+    返回 items:[{id,ts_start,kind,where,snippet,match_count}] + coverage（搜了哪、跳过多少）。"""
+    date = request.args.get("date") or time.strftime("%Y-%m-%d", time.localtime())
+    def _to_int(v, d):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return d
+    limit = _to_int(request.args.get("limit", 50), 50)
+    truthy = ("1", "true", "yes", "on")
+    case = request.args.get("case", "").lower() in truthy
+    fixed = request.args.get("fixed", "").lower() in truthy
+    r = capture_store.grep(date, request.args.get("pattern", ""),
+                           in_=request.args.get("in", "all"),
+                           limit=limit, case=case, fixed=fixed)
+    r["date"] = date
+    code = 400 if (not r.get("ok") and r.get("error") == "bad_pattern") else 200
+    return jsonify(r), code
+
+
+@app.route("/api/stats")
+def api_stats():
+    """指定日期的请求 / token / 耗时统计（与 cli stats 同源，走 capture_store.stats）。
+    AI 算成本 / 缓存命中 / 失败率留在 API 层。参数：date（默认今天）。
+    返回 kinds/models/statuses 分布 + tokens 四项（含 cache_creation）+ cache_hit_ratio +
+    total_ms{p50,p95,max}。不做美元换算（单价随模型/链路/TTL 变）。"""
+    return jsonify(capture_store.stats(request.args.get("date")))
+
+
 @app.route("/api/captures/<rid>")
 def capture_detail(rid):
     date = request.args.get("date")  # 历史日期详情要带 date（审计 260712 #4）
@@ -649,6 +683,8 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/dag?date=…` | 会话时序：lanes / nodes / edges |
 | GET | `/api/health/config` | 配置体检（只读）：CC 的配置自相矛盾吗 |
 | GET | `/api/diagnose/errors?date=…&limit=N` | 失败聚合：当天失败按上游错误消息归并 |
+| GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | 在录制里搜文本（带 coverage：搜了哪些区域、跳过多少）|
+| GET | `/api/stats?date=…` | 当天统计：kind/model/status 分布、token 四项、cache 命中率、耗时 p50/p95 |
 | GET | `/api/captures/stream` | LIVE SSE：录制写入的实时增量 |
 
 三条铁律：

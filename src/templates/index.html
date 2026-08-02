@@ -254,7 +254,8 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
   border:2px solid var(--border);border-top-color:var(--gold-text);animation:lbRot .8s linear infinite;}
 @keyframes lbRot{to{transform:rotate(360deg);}}
 .cap-time{font-family:var(--font-mono);font-size:11px;color:var(--apple-secondary);
-  font-variant-numeric:tabular-nums;}
+  font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:1px;line-height:1.25;}
+.cap-sid{font-size:9.5px;opacity:.62;letter-spacing:-.02em;}
 .cap-dot{width:8px;height:8px;border-radius:50%;}
 .cap-dot.s2xx{background:var(--ok);}
 .cap-dot.s4xx{background:var(--warn);}
@@ -2102,6 +2103,11 @@ async function fetchCaptures(date){
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
     S.date = d.date; S.items = d.items || []; S.total = d.total || 0;
+    /* multiSession：items 含 >1 个 session_id 时，列表行才显示 session 短码（260802）。
+       单 session 静默，避免噪音；多 CC 并排（v0.4.6 场景）才需要区分归属。
+       session_id 由后端 260802 改动起带进列表摘要。SSE 增量新 session 进来不实时重算——刷新归位。 */
+    const _sids = new Set(S.items.map(it => it.session_id).filter(Boolean));
+    S.multiSession = _sids.size > 1;
     S.dates = d.dates_available || [];
     /* 跟随今天 = 当前看的就是今天。用户点历史 chip 后置 false，跨天不再把他抢走 */
     S.followToday = (S.date === todayStr());
@@ -2169,7 +2175,9 @@ function rowHtml(it, isNew){
   /* 单元格顺序即 grid 列顺序，**每行都要发满 10 个**（main 行的 kind、非安全行的判定发空格子）：
      grid 靠自动流排列，少一个格子后面全部左移一列（260730） */
   return '<div class="cap-row' + (isNew ? " new" : "") + (isAux ? " probe" : "") + '" data-rid="' + esc(it.id) + '" onclick="openDetail(\'' + esc(it.id) + '\',\'list\')">' +
-    '<span class="cap-time">' + timePart(it.ts_start) + '</span>' +
+    '<span class="cap-time">' + timePart(it.ts_start) +
+      (S.multiSession && it.session_id ? '<span class="cap-sid">' + esc(it.session_id.slice(0,8)) + '</span>' : '') +
+    '</span>' +
     '<span class="cap-dot ' + dotCls + '"></span>' +
     '<span class="cap-path" title="' + esc(path) + '">' + esc(path) + '</span>' +
     '<span class="cap-kind">' +
@@ -2571,6 +2579,10 @@ function renderMsg(m){
     }else if(b.type === "tool_use"){
       inner += '<div class="tooluse-box">→ ' + esc(b.name || "tool") + " " +
         esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
+    }else if(b.type === "server_tool_use"){
+      inner += '<div class="tooluse-box">⟐ <span class="chip" style="background:var(--node-system)">server</span> ' +
+        esc(b.name || "tool") + " " +
+        esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
     }else if(b.type === "tool_result"){
       const txt = typeof b.content === "string" ? b.content
         : (Array.isArray(b.content) ? b.content.map(c => c.text || "").join("\n") : JSON.stringify(b.content));
@@ -2595,6 +2607,15 @@ function renderRespBlock(b){
   }
   if(b.type === "tool_use"){
     return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--info)">tool_use</span>' +
+      (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
+      '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
+      esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';
+  }
+  /* server_tool_use：上游/服务端代执行的工具（web_search、webReader 等），形态同 tool_use
+     （都有 name + input）但发起方是服务端。260802 前走 default 的 JSON dump，看不出调了什么；
+     现复用 tool_use 样式，chip 用 node-system 色与客户端 tool_use 区分。 */
+  if(b.type === "server_tool_use"){
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--node-system)">server_tool_use</span>' +
       (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
       '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
       esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';

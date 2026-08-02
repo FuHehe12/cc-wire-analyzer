@@ -386,110 +386,16 @@ def cmd_get(a) -> None:
 # 44%），进默认集合等于让每条命中都混进同一份静态 schema。要搜它显式 `--in tools`。
 # 260801 之前 `all` 只有前三项，覆盖率 14%——而 0 命中与「搜遍了没有」在输出上完全
 # 无法区分，agent 会把假阴性当否定证据用（详见 issues/closed/260801_检索层盲区）。
-_GREP_AREAS = ("system", "user", "assistant", "sysmsg", "tool_result", "tool_use", "tools")
-_GREP_ALL = ("system", "user", "assistant", "sysmsg", "tool_result", "tool_use")
-
-
-def _grep_fields(rec: dict, body: dict, areas: tuple) -> dict:
-    """按区域抽取可搜文本。键 = where 标签，值 = 该区域全部文本拼接。"""
-    out = {}
-    if "system" in areas:
-        out["system"] = classifier._system_text(body)
-    if "user" in areas:
-        out["user"] = "\n".join(classifier._user_texts(body))
-    if "assistant" in areas:
-        out["assistant"] = "\n".join(
-            b.get("text") or "" for b in ((rec.get("response") or {}).get("content_blocks") or [])
-            if b.get("type") == "text")
-    if "tools" in areas:
-        out["tools"] = json.dumps(body.get("tools") or [], ensure_ascii=False)
-    # 下面三块都藏在 messages 里，是 _system_text/_user_texts 覆盖不到的部分：
-    # role=system 的 mid-conversation 消息（skill 清单、注入的提醒都在这儿）、
-    # 工具返回、工具调用参数。
-    sysmsg, tres, tuse = [], [], []
-    # tool_use 区域含**工具名**，且同时覆盖请求侧历史与响应侧当轮——两个都是 260801 踩出来的：
-    # 只收 input 时搜工具名恒 0 命中；只收 messages 里的历史时，当轮那次调用（还只存在于
-    # response.content_blocks）搜不到，而"这次调了什么工具"恰恰是最常问的。
-    for blk in ((rec.get("response") or {}).get("content_blocks") or []):
-        if isinstance(blk, dict) and blk.get("type") == "tool_use":
-            tuse.append((blk.get("name") or "") + " " +
-                        json.dumps(blk.get("input") or {}, ensure_ascii=False))
-    for m in body.get("messages") or []:
-        role, content = m.get("role"), m.get("content")
-        if role == "system":
-            sysmsg.append(content if isinstance(content, str)
-                          else classifier._text_of_content(content))
-            continue
-        for blk in (content if isinstance(content, list) else []):
-            if not isinstance(blk, dict):
-                continue
-            t = blk.get("type")
-            if t == "tool_result":
-                c = blk.get("content")
-                tres.append(c if isinstance(c, str) else json.dumps(c, ensure_ascii=False))
-            elif t == "tool_use":
-                tuse.append((blk.get("name") or "") + " " +
-                            json.dumps(blk.get("input") or {}, ensure_ascii=False))
-    if "sysmsg" in areas:
-        out["sysmsg"] = "\n".join(sysmsg)
-    if "tool_result" in areas:
-        out["tool_result"] = "\n".join(tres)
-    if "tool_use" in areas:
-        out["tool_use"] = "\n".join(tuse)
-    return out
+# grep 的区域常量（_GREP_AREAS / _GREP_ALL）与 _grep_fields 已于 260802 搬到
+# capture_store（HTTP 与 CLI 共用，单一真源；避免 CLI/HTTP 各抄一份的分叉）。
 
 
 def cmd_grep(a) -> None:
-    flags = 0 if a.case else re.IGNORECASE
-    try:
-        pat = re.compile(re.escape(a.pattern) if a.fixed else a.pattern, flags)
-    except re.error as e:
-        _die("bad_pattern", f"正则错误：{e}")
-    areas = _GREP_ALL if a.in_ == "all" else (a.in_,)
-    skipped = [x for x in _GREP_AREAS if x not in areas]
-    hits = []
-    searched_chars = skipped_chars = 0
-    for ln in _lines(a.date):
-        try:
-            rec = json.loads(ln)
-        except json.JSONDecodeError:
-            continue
-        body = (rec.get("request") or {}).get("body") or {}
-        if not isinstance(body, dict):
-            body = {}
-        fields = _grep_fields(rec, body, areas)
-        searched_chars += sum(len(v or "") for v in fields.values())
-        skipped_chars += sum(len(v or "") for v in _grep_fields(rec, body, tuple(skipped)).values())
-        for where, text in fields.items():
-            m = pat.search(text or "")
-            if not m:
-                continue
-            s = max(0, m.start() - 50)
-            hits.append({
-                "id": rec.get("id"), "ts_start": rec.get("ts_start"),
-                "kind": classifier.classify(rec), "where": where,
-                "snippet": (text[s:m.end() + 50]).replace("\n", " "),
-                "match_count": len(pat.findall(text or "")),
-            })
-            if len(hits) >= a.limit:
-                break
-        if len(hits) >= a.limit:
-            break
-    # 命中撞上 limit 就提前 break 了，两个计数只覆盖扫过的那部分记录——此时给出比例
-    # 会是个偏的数字，不如不给。扫完全部（hits < limit，含 0 命中这个最要紧的情形）才报。
-    scanned_all = len(hits) < a.limit
-    total = searched_chars + skipped_chars
-    ratio = round(skipped_chars / total, 4) if (scanned_all and total) else None
-    coverage = {"searched": list(areas), "skipped": skipped, "skipped_ratio": ratio}
-    if not hits:
-        coverage["note"] = (
-            "0 命中 ≠ 不存在：本次未搜索的区域" +
-            (f"占请求体 {ratio:.1%}" if ratio is not None else "未统计") +
-            ("；用 --in <区域> 搜它们" if skipped else "")
-        )
-    _out({"ok": True, "pattern": a.pattern, "in": a.in_, "hits": len(hits), "items": hits,
-          "coverage": coverage,
-          "note": "只回片段；要看全文用 get <id> --part system|messages"})
+    # 核心逻辑在 capture_store.grep（HTTP 与 CLI 共用，单一真源）。
+    r = capture_store.grep(a.date, a.pattern, in_=a.in_, limit=a.limit, case=a.case, fixed=a.fixed)
+    if not r.get("ok") and r.get("error") == "bad_pattern":
+        _die("bad_pattern", r.get("message", "正则错误"))   # 保留 CLI 非零退出语义
+    _out(r)
 
 
 def cmd_dag(a) -> None:
@@ -516,55 +422,8 @@ def cmd_errors(a) -> None:
 
 
 def cmd_stats(a) -> None:
-    from collections import Counter
-    kinds, models, statuses = Counter(), Counter(), Counter()
-    tin = tout = tcache = tcreate = 0
-    durs = []
-    errors = 0
-    n = 0
-    for ln in _lines(a.date):
-        try:
-            rec = json.loads(ln)
-        except json.JSONDecodeError:
-            continue
-        n += 1
-        body = (rec.get("request") or {}).get("body") or {}
-        resp = rec.get("response") or {}
-        kinds[classifier.classify(rec)] += 1
-        models[(body if isinstance(body, dict) else {}).get("model") or "?"] += 1
-        statuses[str(resp.get("status"))] += 1
-        u = _usage(resp)
-        tin += (u["input"] or 0)
-        tout += (u["output"] or 0)
-        tcache += (u["cache_read"] or 0)
-        # cache_creation 必须一起累加：它按 token 数只占几个百分点，按**成本**却可能占三到四成
-        # ——缓存写入单价是缓存读取的 12.5~20 倍（随 TTL）。漏掉它，用 stats 做成本判断会
-        # 系统性低估，且低估的正是「上下文被反复重建」这个最该优化的信号（260801）。
-        tcreate += (u["cache_creation"] or 0)
-        if resp.get("total_ms"):
-            durs.append(resp["total_ms"])
-        if rec.get("error"):
-            errors += 1
-    durs.sort()
-    date = a.date or time.strftime("%Y-%m-%d", time.localtime())
-    f = capture_store.CAPTURES_DIR / f"{date}.jsonl"
-
-    def pct(p):
-        return durs[min(int(len(durs) * p), len(durs) - 1)] if durs else None
-
-    # 缓存命中率：读 /（读 + 写）。比四个原始数字更能直接回答「上下文是不是在被反复重建」。
-    # 分母为 0（当天没有任何缓存活动）时给 None 而不是 0——「没有缓存」和「命中率 0%」是
-    # 两回事，后者会被误读成缓存全失效。**不做美元换算**：单价随模型 / 链路 / TTL 变，
-    # 硬编码必然腐化；给全 token 数，换算交给使用者。
-    cache_total = tcache + tcreate
-    _out({"ok": True, "date": date, "records": n,
-          "file_size": (f.stat().st_size if f.exists() else 0),
-          "kinds": dict(kinds), "models": dict(models), "statuses": dict(statuses),
-          "errors": errors,
-          "tokens": {"input": tin, "output": tout,
-                     "cache_read": tcache, "cache_creation": tcreate},
-          "cache_hit_ratio": (round(tcache / cache_total, 4) if cache_total else None),
-          "total_ms": {"p50": pct(0.5), "p95": pct(0.95), "max": (durs[-1] if durs else None)}})
+    # 核心逻辑在 capture_store.stats（HTTP 与 CLI 共用，单一真源）。
+    _out(capture_store.stats(a.date))
 
 
 def cmd_clear(a) -> None:
@@ -651,7 +510,7 @@ def main(argv=None) -> None:
 
     pr = sub.add_parser("grep", help="在录制里搜文本，只回 id + 片段")
     pr.add_argument("pattern"); pr.add_argument("--date")
-    pr.add_argument("--in", dest="in_", default="all", choices=["all", *_GREP_AREAS],
+    pr.add_argument("--in", dest="in_", default="all", choices=["all", *capture_store._GREP_AREAS],
                     help="搜哪个区域；all=除 tools 外全部（tools 每请求全量重发，噪音大，要搜请显式指定）")
     pr.add_argument("--fixed", action="store_true", help="按字面量而非正则")
     pr.add_argument("--case", action="store_true", help="区分大小写")

@@ -43,6 +43,42 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
+## 未发布
+
+### Added
+- **`/api/grep` + `/api/stats` 两个 HTTP 端点。** 此前 grep/stats 只在 CLI，HTTP 没有——AI 搜内容 /
+  算 token 被迫直读 jsonl，违反 ai-guide 铁律①「别整文件读录制」。核心逻辑从 cli 抽到
+  `capture_store.grep/stats`（单一真源，CLI 与 HTTP 共用），`/api/grep`（带 coverage：搜了哪些区域、
+  跳过多少）+ `/api/stats`（kind/model/status 分布、token 四项含 cache_creation、cache 命中率、
+  耗时 p50/p95）。抽公共避免 CLI/HTTP 各抄一份的分叉（stats `cache_creation` 漏字段事故的根因）；
+  ai-guide 端点表 + `docs/AI_USAGE.md` 同步补两条。
+
+### Changed
+- **`/api/captures` 列表摘要现在带 `session_id`。** 此前 `_IDX_PRIVATE` 把 `session_id`
+  当「DAG 分类原料」剥掉，列表/SSE 摘要里看不到会话归属，而 DAG lane 却暴露它——两处不一致。
+  v0.4.6 的 session filter 场景（两个 CC 并排、一个审计另一个）下，审计方 `exclude_session`
+  排除自己后，剩下的请求无法在结果里确认归属、无法对上 `~/.claude/projects/` 的 jsonl 文件名，
+  只能靠 total 数盲推——「能过滤、看不见」。一次真实双 CC 录制撞见。从 `_IDX_PRIVATE` 移除
+  `session_id`，列表/SSE 摘要与 DAG lane 归一。无需 bump IDX_SCHEMA（字段本在写时索引，
+  覆盖率 100%）；前端 `rowHtml` 按需取字段，多一个字段不会多列；真正的判别位
+  `is_subagent`/`entrypoint`/`agent_fp` 仍归内部不暴露。
+- **列表行在多会话时显示 session 短码。** 此前端列表的两个 CC 请求按时间混排，看不出归属，
+  要分清只能切去 DAG。现在 `fetchCaptures` 检测到 items 含多个 session_id 时，每行时间下方
+  显示 session 前 8 位（与 DAG lane 的短码一致）；单会话静默不显示，避免噪音。不加新 grid 列
+  （固定 10 列 px，加列要重算三语列宽），短码进 `cap-time` 格子的第二行。
+- **`server_tool_use` 响应块专门渲染。** 此前走 default 分支（整块 JSON dump），看不出调了什么。
+  `renderRespBlock`/`renderMsg` 加专门 case，复用 tool_use 样式（`→ name {input}`），chip 用不同色
+  区分服务端工具（web_search、webReader 等上游代执行的工具）。
+- **`output_config.format` 进索引。** structured-outputs 特性（CC 强制 json_schema 输出，如标题请求
+  只要 `{title}`）此前 `index_record` 只取 `effort`、不取 `format`。现加 `format` 字段
+  （`output_config.format.type`，如 `json_schema`）；bump `IDX_SCHEMA` 8→9（旧索引读时自动重建）。
+
+### Docs
+- 问题域手册单元 0 补一条结构性教训：**跨观测面对账，计量单位不可直接对齐**。用 harness
+  的 jsonl 当 ground truth 验证 wire 录制时，jsonl「一个 API 响应拆多行」（thinking / text /
+  每个 tool_use 各一行）会让「行数 vs 请求数」给出自信又错误的对比；对账要按逻辑响应边界，
+  不按行数。服务 0.6.x wire↔jsonl 合流。
+
 ## v0.4.6 - 2026-08-01
 
 ### Added
