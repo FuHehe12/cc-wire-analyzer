@@ -131,6 +131,7 @@ def _proxy_state() -> dict:
         # settings.json 被外部改动（cc-switch 等）→ 代理已被绕过（260717）。
         # UI 据此显示"已断开"+ 一键重新接管；serve 模式下 AI 轮询 status 同样感知。
         "external_change": settings_guard.get_external_change(),
+        "base_url_warning": settings_guard.get_base_url_warning(),
     }
 
 

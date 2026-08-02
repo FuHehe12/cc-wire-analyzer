@@ -72,6 +72,13 @@
 - **`output_config.format` 进索引。** structured-outputs 特性（CC 强制 json_schema 输出，如标题请求
   只要 `{title}`）此前 `index_record` 只取 `effort`、不取 `format`。现加 `format` 字段
   （`output_config.format.type`，如 `json_schema`）；bump `IDX_SCHEMA` 8→9（旧索引读时自动重建）。
+- **启动时检测 `BASE_URL` 已是本机地址并主动提醒。** 此前只在「BASE_URL 指向本代理自身」（同端口
+  loopback，forward 会无限递归）时硬拒绝；而「代理前的 BASE_URL 就是别的本机地址」——上次录制残留、
+  cc-switch 存了被污染的 profile、或手改——snapshot 不拦也不吭声，用户往往到「录完发现全 504 /
+  录不到东西」才意识到。`snapshot_original` 现对 loopback 非自身的 URL 记 `_base_url_warning`
+  （不拒绝：也可能是合法本地网关如 `:8080` 的 vLLM），`/api/proxy/status` 暴露 `base_url_warning`
+  字段，前端复用 external-bar 样式醒目提示「检查 BASE_URL」（三语）。warning 跨整个录制持续，
+  下次启动 `snapshot_original` 重算时清。
 
 ### Docs
 - AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
@@ -82,6 +89,10 @@
   的 jsonl 当 ground truth 验证 wire 录制时，jsonl「一个 API 响应拆多行」（thinking / text /
   每个 tool_use 各一行）会让「行数 vs 请求数」给出自信又错误的对比；对账要按逻辑响应边界，
   不按行数。服务 0.6.x wire↔jsonl 合流。
+- README 三语「是否安全」第 4 点补两条注意事项：录制期间用 cc-switch「保存当前为 profile」会把
+  本机代理地址存进该 profile（settings 只被读走、没被改，工具侧防不住——切换上游那条路径已由
+  `check_external_change` 覆盖）；以及启动录制时若 `BASE_URL` 已是本机地址，软件会提醒检查（对应
+  上面的 `base_url_warning` 检测）。
 
 ## v0.4.6 - 2026-08-01
 

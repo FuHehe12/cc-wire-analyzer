@@ -878,6 +878,7 @@ zh: {
   "status.external": "监控已断开——配置被外部修改",
   "btn.retake": "重新接管",
   "external.bar": "检测到 settings.json 被外部修改（cc-switch 切换？）：BASE_URL 现为 {url}，CC 已绕过代理直连上游，监控已断档。点「重新接管」把新上游收编进代理。",
+  "status.baseUrlWarning": "⚠️ BASE_URL={url} 是本机地址（loopback），不是远程上游——可能是上次录制残留、cc-switch profile 污染或手改。若这不是你有意设置的本地网关，请检查 ~/.claude/settings.json。",
   "external.keyRemoved": "（键已删，直连官方）",
   "doctor.title": "配置体检", "doctor.detail": "查看详情", "doctor.close": "收起",
   "doctor.readonly": "只读检查，不会修改任何文件 · 改完配置需重启 CC 才生效（正在跑的会话保持启动时的设置）",
@@ -1047,6 +1048,7 @@ en: {
   "status.external": "Monitoring disconnected — settings changed externally",
   "btn.retake": "Re-attach",
   "external.bar": "settings.json was modified externally (cc-switch?): BASE_URL is now {url}. CC is bypassing the proxy — monitoring has stopped. Click \"Re-attach\" to capture the new upstream.",
+  "status.baseUrlWarning": "⚠️ BASE_URL={url} is a local address (loopback), not a remote upstream — possibly a leftover from a previous recording, cc-switch profile contamination, or a manual edit. If this isn't an intentional local gateway, check ~/.claude/settings.json.",
   "external.keyRemoved": "(key removed — direct to official)",
   "doctor.title": "Config check", "doctor.detail": "Details", "doctor.close": "Collapse",
   "doctor.readonly": "Read-only — no file is ever modified · restart CC for config changes to take effect (a running session keeps the settings it started with)",
@@ -1213,6 +1215,7 @@ ja: {
   "status.external": "監視が切断されました——設定が外部で変更されました",
   "btn.retake": "再接続",
   "external.bar": "settings.json が外部で変更されました（cc-switch？）：BASE_URL は現在 {url} です。CC はプロキシを迂回しており、監視は停止しています。「再接続」で新しい上流を取り込みます。",
+  "status.baseUrlWarning": "⚠️ BASE_URL={url} はローカルアドレス（loopback）であり、リモート上流ではありません——前回の録画残留、cc-switch プロファイル汚染、手動編集の可能性。意図的なローカルゲートウェイでなければ ~/.claude/settings.json を確認してください。",
   "external.keyRemoved": "（キー削除、公式へ直結）",
   "doctor.title": "設定チェック", "doctor.detail": "詳細", "doctor.close": "閉じる",
   "doctor.readonly": "読み取り専用——ファイルは一切変更しません · 設定変更は CC の再起動後に有効（稼働中のセッションは起動時の設定を保持）",
@@ -1876,6 +1879,11 @@ function renderStatus(){
   if(ext){
     const cur = st.external_change.current || t18("external.keyRemoved");
     $("externalText").textContent = t18("external.bar", {url: cur});
+    $("externalBar").hidden = false;
+  }else if(st.base_url_warning){
+    /* 启动时检测到 BASE_URL 是 loopback 非自身（残留/污染）：录制期间持续提醒检查（260802）。
+       复用 externalBar（红色 fail-bar）——同属「配置异常，注意检查」。 */
+    $("externalText").textContent = t18("status.baseUrlWarning", {url: st.base_url_warning});
     $("externalBar").hidden = false;
   }else{
     $("externalBar").hidden = true;

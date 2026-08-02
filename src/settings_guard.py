@@ -48,6 +48,8 @@ _patched_at: str | None = None          # patch 起始时间（ISO，供 UI 显�
 _guards_installed: bool = False
 _external_change: dict | None = None    # 外部接管检测结果（cc-switch 等改了 BASE_URL），
                                         # 重新 patch（重新接管）时清空
+_base_url_warning: str | None = None    # 启动时 BASE_URL 是 loopback 但非本代理自身（残留/污染）
+                                        # 的提醒文案；非自身不拒绝（可能是合法本地网关如 vLLM）
 # watcher 线程与 Flask 线程会并发进 patch/restore/外部检测，改状态前必须持锁
 _LOCK = threading.RLock()
 
@@ -186,7 +188,8 @@ def snapshot_original(path: Path | None = None) -> str:
     _is_local_proxy_url 早就在 check_orphan_backup/restore 用了，唯独这里漏了
     ——「守卫函数存在但调用点缺失」教训的又一复现。绝 不静默回退到 DEFAULT_UPSTREAM：
     对第三方 token 用户等于拿 bigmodel 的 key 打 anthropic 官方，更糟。"""
-    global _original_base_url, _original_had_key
+    global _original_base_url, _original_had_key, _base_url_warning
+    _base_url_warning = None   # 每次 snapshot 重算：上次启动的 loopback 提醒不跨启动残留
     p = path or CFG.CLAUDE_SETTINGS
     url = _read_base_url(p)
     if url:
@@ -197,6 +200,12 @@ def snapshot_original(path: Path | None = None) -> str:
                 "把请求转发给它自己 → 无限递归 → 全 504。"
                 "请先把 ~/.claude/settings.json 的 ANTHROPIC_BASE_URL 改回真上游"
                 "（例如 https://api.anthropic.com 或你的第三方网关），再启动代理。")
+        if _is_local_proxy_url(url):
+            # loopback 但非本代理自身（端口不同）：可能是上次录制残留 / cc-switch profile 污染 /
+            # 手改。**不拒绝**——也可能是合法本地网关（如 :8080 的 vLLM）。只提醒用户确认，
+            # 因为「代理前的 BASE_URL 就是本机地址」往往是出了问题才意识到（260802）。
+            _base_url_warning = url   # 只存 url；文案交给前端 i18n（三语）
+            log.warning("BASE_URL 是 loopback 非自身：%s（可能是残留/污染）", url)
         _original_base_url = url
         _original_had_key = True
     else:
@@ -240,6 +249,8 @@ def patch_base_url(local_listen: str, path: Path | None = None) -> None:
         _patched_listen = local_listen
         _patched_at = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
         _external_change = None   # 重新接管：上一次的外部改动记录随之翻篇
+        # _base_url_warning 不在此清：它是启动时检测到的配置异常，录制期间应持续提醒，
+        # 直到 BASE_URL 被改回非 loopback（下次 snapshot_original 重算时清）。
         if _original_base_url:
             _write_marker(_original_base_url, local_listen, _original_had_key)
         log.info("patched BASE_URL → %s", local_listen)
@@ -434,6 +445,12 @@ def check_external_change(path: Path | None = None) -> dict | None:
 
 def get_external_change() -> dict | None:
     return _external_change
+
+
+def get_base_url_warning() -> str | None:
+    """启动时检测到 BASE_URL 是 loopback 非自身的提醒（None=无异常）。
+    供 status 暴露 + UI 醒目提示。重新 patch 后清空。"""
+    return _base_url_warning
 
 
 # ===== 崩溃保护（三重）=====

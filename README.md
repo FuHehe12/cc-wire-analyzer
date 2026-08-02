@@ -96,7 +96,11 @@ points:
 - **It coexists with your existing setup.** Official endpoint direct, a third-party gateway, or
   cc-switch — all supported. While the proxy is running, don't switch endpoints with cc-switch:
   that rewrites `BASE_URL` and CC would bypass the proxy. The app watches for exactly this and
-  tells you when it happens.
+  tells you when it happens. Also avoid cc-switch's "save current as profile" while recording —
+  it would read the patched settings and store the local-proxy address into that profile, so
+  switching to it later points CC at a dead port (the app can't prevent this; settings.json is
+  only read, not changed). And if `BASE_URL` is already a local address when recording starts
+  (leftover from a previous run, or a contaminated profile), the app warns you to check it.
 
 ## Features
 
