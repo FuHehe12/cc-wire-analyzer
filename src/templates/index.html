@@ -991,7 +991,7 @@ zh: {
   "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
   "dag.foldTurns": "按轮折叠", "dag.unfoldTurns": "展开所有轮",
   "dag.foldTurnsTitle": "按对话轮折叠：一轮一张卡，卡上是你那轮说的话、派生的子代理与辅助调用；点卡片展开该轮逐条请求",
-  "dag.turnNo": "轮 {n}", "dag.turnSteps": "{n} 步", "dag.turnYou": "你：",
+  "dag.turnNo": "轮 {n}", "dag.turnSteps": "{n} 步", "dag.turnYou": "你：", "dag.turnSpawn": "派生：",
   "dag.turnPartial": "（残轮：只录到中间段）", "dag.turnEmptyUser": "（这轮的用户消息未录到）",
   "dag.turnCollapse": "折叠本轮", "dag.legTurnCard": "轮卡 = 一次用户消息及其引发的全部请求",
   "dag.hideMid": "隐藏工具循环步", "dag.showMid": "显示工具循环步",
@@ -1164,7 +1164,7 @@ en: {
   "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
   "dag.foldTurns": "Fold by turn", "dag.unfoldTurns": "Expand all turns",
   "dag.foldTurnsTitle": "Fold by conversation turn: one card per turn showing what you said, the subagents it spawned and the auxiliary calls; click a card to expand that turn's requests",
-  "dag.turnNo": "turn {n}", "dag.turnSteps": "{n} steps", "dag.turnYou": "you: ",
+  "dag.turnNo": "turn {n}", "dag.turnSteps": "{n} steps", "dag.turnYou": "you: ", "dag.turnSpawn": "spawned with: ",
   "dag.turnPartial": "(partial turn: only the middle was captured)", "dag.turnEmptyUser": "(the user message for this turn was not captured)",
   "dag.turnCollapse": "fold this turn", "dag.legTurnCard": "turn card = one user message and everything it triggered",
   "dag.hideMid": "Hide tool-loop steps", "dag.showMid": "Show tool-loop steps",
@@ -1337,7 +1337,7 @@ ja: {
   "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
   "dag.foldTurns": "ターンで折りたたむ", "dag.unfoldTurns": "全ターンを展開",
   "dag.foldTurnsTitle": "会話ターン単位で折りたたみ：1 ターン 1 カードに、あなたの発言・派生したサブエージェント・補助呼び出しをまとめます。カードをクリックするとそのターンの各リクエストが開きます",
-  "dag.turnNo": "ターン {n}", "dag.turnSteps": "{n} ステップ", "dag.turnYou": "あなた：",
+  "dag.turnNo": "ターン {n}", "dag.turnSteps": "{n} ステップ", "dag.turnYou": "あなた：", "dag.turnSpawn": "派生指示：",
   "dag.turnPartial": "（部分ターン：途中からの記録）", "dag.turnEmptyUser": "（このターンのユーザーメッセージは未記録）",
   "dag.turnCollapse": "このターンを折りたたむ", "dag.legTurnCard": "ターンカード = 1 回のユーザー発言とそれが引き起こした全リクエスト",
   "dag.hideMid": "ツールループを隠す", "dag.showMid": "ツールループを表示",
@@ -2954,8 +2954,10 @@ function dagNodeHtml(n){
    模型回答的摘要是请求视角，而人回溯时找的是自己说过的话。下面两行放这轮派生的子代理
    （点徽章直接跳到那条泳道）与辅助调用计数。点卡片展开本轮逐条请求。 */
 function dagTurnCardHtml(t, pos, laneColor){
+  /* 子代理泳道的"用户消息"其实是派生方给它的 prompt，不是人说的话——标签要说实话 */
+  const speaker = DG.laneKind[t.lane] === "subagent" ? "dag.turnSpawn" : "dag.turnYou";
   const you = t.user_text
-    ? '<span class="dn-you-k">' + t18("dag.turnYou") + '</span>' + esc(t.user_text)
+    ? '<span class="dn-you-k">' + t18(speaker) + '</span>' + esc(t.user_text)
     : '<span class="dn-turn-dim">' + t18(t.partial ? "dag.turnPartial" : "dag.turnEmptyUser") + '</span>';
   const subs = (t.subagents || []).map(s =>
     '<span class="turn-badge sub" style="background:' + (DG.laneColor[s.lane_id] || LANE_COLOR.subagent) +
@@ -2964,7 +2966,8 @@ function dagTurnCardHtml(t, pos, laneColor){
   const auxOrder = ["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
   const auxIcon = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", other: "•" };
   const aux = auxOrder.filter(k => (t.aux || {})[k]).map(k =>
-    '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + '">' + auxIcon[k] + (t.aux[k]) + '</span>').join("");
+    '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + ' ×' + t.aux[k] + '">' +
+    auxIcon[k] + (t.aux[k]) + '</span>').join("");
   const badges = (subs || aux) ? '<div class="dn-badges">' + subs + aux + '</div>' : "";
   /* 整卡染红只留给「整轮全挂」；轮里有几次失败（重试/瞬时 429）给 ⚠N 徽章。
      实测一天 68 轮有 29 轮含至少一次失败——一律染红等于把红色用废。 */
@@ -3048,6 +3051,11 @@ function dagPlace(n){
   if(DG.hideMid && tier === "mid") return null;
   if(laneHidden(n.lane)) return null;
   if(DG.hideAux && DG.laneKind[n.lane] === "aux") return null;
+  /* 辅助也跟着轮折叠（260802）：轮卡上的 🏷N 🛡N 已经把「这轮触发了几次辅助」说清楚，
+     那些行不必再占位——一天里辅助占节点数近四分之一，留着它们折叠态的图仍然是散的。
+     **没有归属轮的辅助照常显示**：那是 near 边没挂上的（本会话主线没被录到/跨天截断），
+     藏了就是静默丢数据。展开那一轮，它的辅助随之回到 aux 列。 */
+  if(DG.foldTurns && DG.laneKind[n.lane] === "aux" && n.turn && !DG.expandedTurns.has(n.turn)) return null;
   /* 260729：辅助调用跟随其关联主线一起隐藏——关掉一条主线，挂在它上面的 title/security/
      count_tokens/compact 等 aux 节点（auxAssoc 记的 near 关联）一并隐去，避免"主线没了、
      辅助还在显示却不知属于谁"的困惑。auxAssoc 在 renderDagFull 由 near 边建立。 */
@@ -3185,8 +3193,11 @@ function renderDagFull(d){
   const visLanes = lanes.filter(l => {
     if(laneHidden(l.lane_id)) return false;
     if(DG.hideAux && l.kind === "aux") return false;
-    /* 260729：aux lane 若所有节点都随其关联主线被（级联）隐藏了，整列也不再占位 */
-    if(l.kind === "aux") return nodes.some(n => n.lane === l.lane_id && !(DG.auxAssoc[n.id] && laneHidden(DG.auxAssoc[n.id])));
+    /* 260729：aux lane 若所有节点都随其关联主线被（级联）隐藏了，整列也不再占位。
+       260802 追加：折叠态下并进轮卡的那些也不算——全折叠且辅助全部有归属时，aux 列自然消失。 */
+    if(l.kind === "aux") return nodes.some(n => n.lane === l.lane_id
+      && !(DG.auxAssoc[n.id] && laneHidden(DG.auxAssoc[n.id]))
+      && !(DG.foldTurns && n.turn && !DG.expandedTurns.has(n.turn)));
     return true;
   });
   DG.laneX = {}; visLanes.forEach((l, i) => DG.laneX[l.lane_id] = DGX.X0 + i * (DGX.LW + DGX.LG));

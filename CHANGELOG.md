@@ -61,7 +61,10 @@
   splitting rule is the existing `turn_start`), and folded main/subagent lanes draw one card per
   turn: your message as the body, badges for the subagents that turn spawned (click one to focus its
   lane), and counts for the auxiliary calls it triggered. Click a card to expand that turn's
-  requests. Both toggles stay — folding is aggregation, hiding is filtering, and the latter still
+  requests. Auxiliary calls fold with their turn too — collapsed, they are the counts on the
+  card rather than rows of their own, and the aux column disappears entirely when everything is
+  folded (measured: 19 lanes / 192 nodes down to 18 lanes / 68 cards on one day). Auxiliary calls
+  that could not be attributed to a turn stay visible: hiding those would be silent data loss. Both toggles stay — folding is aggregation, hiding is filtering, and the latter still
   applies inside an expanded turn. Failures show as ⚠N on the card; only a turn where *every*
   request failed goes red, because one transient 429 inside 31 steps is not a failed turn (measured:
   29 of 68 turns on one day contain at least one failure — tinting them all would waste the colour).
