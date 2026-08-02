@@ -33,6 +33,9 @@ Claude Code 展示的是它自己视角下的会话；wire 层展示的是实际
 |---|---|
 | ![Detail](docs/screenshots/zh/view-b-detail.png) | ![Settings](docs/screenshots/zh/view-c-settings.png) |
 
+截图用的是 v0.4.7 起的默认外观「深色专业」。设置页还有「经典暖灰」（v0.4.7 之前的界面）与
+「实验室日光」；外观只属于界面本地，不会碰你的代理配置。
+
 ## 一个真实例子：把录制交给 agent
 
 会话标题一直没生成，而 Claude Code 未报任何错误——标题就是不出现。不必用眼睛到处翻，你把工具指给一个 agent：

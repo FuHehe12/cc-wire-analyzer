@@ -46,6 +46,10 @@ want to understand the real conversation between CC and the model:
 |---|---|
 | ![Detail](docs/screenshots/en/view-b-detail.png) | ![Settings](docs/screenshots/en/view-c-settings.png) |
 
+Shown in Dark Professional, the default since v0.4.7. Settings also offers Classic Warm (the
+pre-v0.4.7 interface) and Lab Daylight; the choice is local to the interface and never touches
+your proxy configuration.
+
 ## A real example: hand the recording to an agent
 
 Session titles had stopped generating. Claude Code showed no error — titles simply never
