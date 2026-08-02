@@ -43,69 +43,90 @@
   unit 0 of `docs/问题域手册.md`.
   3. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures now supply statistical evidence — 225 subagent requests, all `cc_entrypoint=cli`, all carrying the flag, no counterexample — but that is not the same as a session captured and checked against ground truth, which is what closing this actually needs.
 
-## 未发布
+## Unreleased
 
-### 新增
-- **`/api/grep` + `/api/stats` 两个 HTTP 端点。** 此前 grep/stats 只在 CLI，HTTP 没有——AI 搜内容 /
-  算 token 被迫直读 jsonl，违反 ai-guide 铁律①「别整文件读录制」。核心逻辑从 cli 抽到
-  `capture_store.grep/stats`（单一真源，CLI 与 HTTP 共用），`/api/grep`（带 coverage：搜了哪些区域、
-  跳过多少）+ `/api/stats`（kind/model/status 分布、token 四项含 cache_creation、cache 命中率、
-  耗时 p50/p95）。抽公共避免 CLI/HTTP 各抄一份的分叉（stats `cache_creation` 漏字段事故的根因）；
-  ai-guide 端点表 + `docs/AI_USAGE.md` 同步补两条。
-- **盲区雷达 `/api/unknowns`：已知集合外的值一键可查。** 此前"未知"只能靠人翻 jsonl 发现——
-  非标响应块类型、未解析的请求字段、非标枚举值，默默存在却无人知晓。`index_record` 现对每条算
-  `unknowns`（命中 `KNOWN_*` 集合外的值：块类型 / 块字段 / 请求字段 / stop_reason / thinking.type），
-  `/api/unknowns?date=` 聚合返回每维度 `{value, count, samples[≤5 id]}` + beta 全量升序（长尾低频
-  特性即协议演进信号）+ `known` 基准 + note。AI 调一次拿到全部盲区 + 样本 id，据此提改进（新增
-  解析 / 渲染 / 分类规则，稳定的并入 `KNOWN_*`）。bump `IDX_SCHEMA` 9→10。扫 12 天 5414 条首跑发现：
-  `tool_use.caller`(464 条，疑似工具调用发起者标记，此前完全没解析)、`thinking.type=adaptive`
-  (3206，非标准枚举)、`web_search_tool_result` / `tool_result`(响应里异常位置) 块类型、
-  `text.citations`、`tool_choice` 请求字段。
-- **`quota_probe` + `hook_eval` 两个新 kind。** 此前落 `other` 的 10 条经分析实为两类稳定形状：
-  CC 配额嗅探（`user="quota"` + maxtok=1，9 条全 429/401/timeout）与 StopConditions hook 评估
-  （system 含 "stop-condition hook"，1 条）。`classify_idx` 在 other fallback 前固化二者，历史 10 条
-  other 全改判，**other 归零**。
+### Added
+- **`/api/grep` + `/api/stats` HTTP endpoints.** Previously CLI-only — an AI had to read the
+  jsonl directly to search content or count tokens, violating ai-guide rule ① ("don't read whole
+  recordings"). Core logic moved to `capture_store.grep/stats` (single source, shared by CLI and
+  HTTP): `/api/grep` (with coverage — which regions were searched, how much skipped) +
+  `/api/stats` (kind/model/status distribution, four token fields incl. cache_creation, cache hit
+  ratio, latency p50/p95). Extracting the common source prevents CLI/HTTP drift — the root cause
+  of the earlier stats `cache_creation` missing-field bug. ai-guide endpoint table +
+  `docs/AI_USAGE.md` updated.
+- **Blind-spot radar `/api/unknowns`: one call for every value outside the known sets.** Before,
+  "unknowns" could only be found by a human scanning jsonl — non-standard response block types,
+  unhandled request fields, non-standard enum values, silently present but unnoticed.
+  `index_record` now computes an `unknowns` block per record (values outside the `KNOWN_*` sets:
+  block types/fields, request fields, stop_reason, thinking.type); `/api/unknowns?date=` aggregates
+  each dimension as `{value, count, samples[≤5 ids]}` + the full beta tail in ascending frequency
+  (low-frequency = protocol-drift signal) + a `known` baseline + note. One call hands an agent
+  every blind spot + sample ids to investigate, driving improvements (new parsing / rendering /
+  classification rules; stable ones get folded into `KNOWN_*`). Bumps `IDX_SCHEMA` 9→10. First
+  sweep across 12 days / 5414 records surfaced `tool_use.caller` (464, a caller-attribution field
+  never previously parsed), `thinking.type=adaptive` (3206, non-standard enum),
+  `web_search_tool_result` / `tool_result` block types, `text.citations`, and `tool_choice`.
+- **`quota_probe` + `hook_eval` kinds.** The 10 records that used to fall into `other` are two
+  stable shapes: CC's quota probe (`user="quota"` + maxtok=1; all 9 return 429/401/timeout) and a
+  StopConditions hook evaluation (system contains "stop-condition hook"; 1 record). `classify_idx`
+  now fixes both before the `other` fallback; all 10 historical `other` reclassify, and
+  **other drops to zero**.
 
-### 变更
-- **`/api/captures` 列表摘要现在带 `session_id`。** 此前 `_IDX_PRIVATE` 把 `session_id`
-  当「DAG 分类原料」剥掉，列表/SSE 摘要里看不到会话归属，而 DAG lane 却暴露它——两处不一致。
-  v0.4.6 的 session filter 场景（两个 CC 并排、一个审计另一个）下，审计方 `exclude_session`
-  排除自己后，剩下的请求无法在结果里确认归属、无法对上 `~/.claude/projects/` 的 jsonl 文件名，
-  只能靠 total 数盲推——「能过滤、看不见」。一次真实双 CC 录制撞见。从 `_IDX_PRIVATE` 移除
-  `session_id`，列表/SSE 摘要与 DAG lane 归一。无需 bump IDX_SCHEMA（字段本在写时索引，
-  覆盖率 100%）；前端 `rowHtml` 按需取字段，多一个字段不会多列；真正的判别位
-  `is_subagent`/`entrypoint`/`agent_fp` 仍归内部不暴露。
-- **列表行在多会话时显示 session 短码。** 此前端列表的两个 CC 请求按时间混排，看不出归属，
-  要分清只能切去 DAG。现在 `fetchCaptures` 检测到 items 含多个 session_id 时，每行时间下方
-  显示 session 前 8 位（与 DAG lane 的短码一致）；单会话静默不显示，避免噪音。不加新 grid 列
-  （固定 10 列 px，加列要重算三语列宽），短码进 `cap-time` 格子的第二行。
-- **`server_tool_use` 响应块专门渲染。** 此前走 default 分支（整块 JSON dump），看不出调了什么。
-  `renderRespBlock`/`renderMsg` 加专门 case，复用 tool_use 样式（`→ name {input}`），chip 用不同色
-  区分服务端工具（web_search、webReader 等上游代执行的工具）。
-- **`output_config.format` 进索引。** structured-outputs 特性（CC 强制 json_schema 输出，如标题请求
-  只要 `{title}`）此前 `index_record` 只取 `effort`、不取 `format`。现加 `format` 字段
-  （`output_config.format.type`，如 `json_schema`）；bump `IDX_SCHEMA` 8→9（旧索引读时自动重建）。
-- **启动时检测 `BASE_URL` 已是本机地址并主动提醒。** 此前只在「BASE_URL 指向本代理自身」（同端口
-  loopback，forward 会无限递归）时硬拒绝；而「代理前的 BASE_URL 就是别的本机地址」——上次录制残留、
-  cc-switch 存了被污染的 profile、或手改——snapshot 不拦也不吭声，用户往往到「录完发现全 504 /
-  录不到东西」才意识到。`snapshot_original` 现对 loopback 非自身的 URL 记 `_base_url_warning`
-  （不拒绝：也可能是合法本地网关如 `:8080` 的 vLLM），`/api/proxy/status` 暴露 `base_url_warning`
-  字段，前端复用 external-bar 样式醒目提示「检查 BASE_URL」（三语）。warning 跨整个录制持续，
-  下次启动 `snapshot_original` 重算时清。
+### Changed
+- **`/api/captures` list summaries now carry `session_id`.** `_IDX_PRIVATE` used to strip
+  `session_id` as a "DAG classification input", so list/SSE summaries hid session ownership while
+  the DAG lane exposed it — inconsistent. Under v0.4.6's session-filter scenario (two CCs side by
+  side, one auditing the other), once the auditor used `exclude_session`, the remaining requests
+  could neither confirm ownership in the result nor line up with `~/.claude/projects/` jsonl
+  filenames — only blind inference from totals: "can filter, can't see". Hit during a real dual-CC
+  recording. `session_id` is removed from `_IDX_PRIVATE`; list/SSE summaries now match the DAG
+  lane. No IDX_SCHEMA bump needed (the field was already indexed at write time, 100% coverage);
+  the real discriminator bits `is_subagent` / `entrypoint` / `agent_fp` stay internal.
+- **List rows show a session short-code when multiple sessions are present.** The list used to
+  interleave two CCs' requests by time with no ownership cue — you had to switch to the DAG to
+  tell them apart. `fetchCaptures` now detects when items span multiple session_ids and shows each
+  row's first 8 session chars under the time (matching the DAG lane short-code); silent for
+  single-session to avoid noise. No new grid column (the 10-column px layout is fixed; adding one
+  would force re-computing the tri-lingual column widths) — the short-code goes in the second line
+  of the `cap-time` cell.
+- **`server_tool_use` response blocks get dedicated rendering.** Previously fell through to the
+  default branch (raw JSON dump), hiding what was called. `renderRespBlock` / `renderMsg` add a
+  dedicated case reusing the tool_use style (`→ name {input}`), with a different chip color to
+  distinguish server-side tools (web_search, webReader, etc. — tools the upstream executes on CC's
+  behalf).
+- **`output_config.format` is now indexed.** For the structured-outputs feature (CC forcing
+  json_schema output, e.g. a title request wanting only `{title}`), `index_record` previously took
+  `effort` but not `format`. It now adds a `format` field (`output_config.format.type`, e.g.
+  `json_schema`); bumps `IDX_SCHEMA` 8→9 (old indexes auto-rebuild on read).
+- **Detect at startup when `BASE_URL` is already a local address, and warn.** Only "BASE_URL
+  points at the proxy itself" (same-port loopback, which would infinite-loop on forward) used to
+  be hard-rejected; a BASE_URL that's *some other* local address — leftover from a prior run, a
+  cc-switch profile contaminated with the local-proxy address, or a hand edit — was neither
+  blocked nor reported, so users only noticed after "recorded everything as 504 / captured
+  nothing". `snapshot_original` now records `_base_url_warning` for non-self loopback URLs (not
+  rejected: could be a legitimate local gateway like `:8080` vLLM); `/api/proxy/status` exposes
+  `base_url_warning`; the UI reuses the external-bar style for a prominent "check BASE_URL" prompt
+  (tri-lingual). The warning persists across the whole recording and clears on the next
+  `snapshot_original` recompute.
 
-### 文档
-- AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
-  保存 profile 会把本机代理地址存进去（工具侧防不住——settings 没被改、只是被读走，settings_guard
-  检测不到；切换上游这条路径则已由 `check_external_change` 检测+降旗覆盖）；opus 订阅/key 变动后
-  需 `stop` + `start` 重启代理。
-- 问题域手册单元 0 补一条结构性教训：**跨观测面对账，计量单位不可直接对齐**。用 harness
-  的 jsonl 当 ground truth 验证 wire 录制时，jsonl「一个 API 响应拆多行」（thinking / text /
-  每个 tool_use 各一行）会让「行数 vs 请求数」给出自信又错误的对比；对账要按逻辑响应边界，
-  不按行数。服务 0.6.x wire↔jsonl 合流。
-- README 三语「是否安全」第 4 点补两条注意事项：录制期间用 cc-switch「保存当前为 profile」会把
-  本机代理地址存进该 profile（settings 只被读走、没被改，工具侧防不住——切换上游那条路径已由
-  `check_external_change` 覆盖）；以及启动录制时若 `BASE_URL` 已是本机地址，软件会提醒检查（对应
-  上面的 `base_url_warning` 检测）。
+### Docs
+- AI_USAGE.md gains "coexisting with cc-switch and other config tools" + "when the proxy needs a
+  restart": saving a profile via cc-switch during recording stores the local-proxy address into
+  that profile (undefendable on the tool side — settings isn't modified, only read out, so
+  settings_guard can't detect it; the switch-upstream path is already covered by
+  `check_external_change`'s detect-and-stand-down); opus subscription / key changes require
+  `stop` + `start` to restart the proxy.
+- The domain handbook (docs/问题域手册.md) unit 0 gains a structural lesson: **when reconciling
+  across observation surfaces, the units don't line up directly.** Using the harness's jsonl as
+  ground truth to validate a wire recording, jsonl "splits one API response into multiple lines"
+  (thinking / text / each tool_use on its own line), making "line count vs request count" a
+  confident-but-wrong comparison; reconcile by logical response boundary, not line count. Serves
+  the 0.6.x wire↔jsonl convergence.
+- README tri-lingual "is it safe" point 4 gains two notes: saving a profile via cc-switch during
+  recording stores the local-proxy address into that profile (settings only read, not modified —
+  undefendable on the tool side; the switch-upstream path is already covered by
+  `check_external_change`); and if `BASE_URL` is already a local address when recording starts,
+  the app warns you to check it (the `base_url_warning` detection above).
 
 ## v0.4.6 - 2026-08-01
 
