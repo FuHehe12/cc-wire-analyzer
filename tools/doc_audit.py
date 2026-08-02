@@ -10,12 +10,18 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
 是错的，还真的骗到了人）、验证清单指向不存在的 `settings_guard_selftest.py`、
 `IDX_SCHEMA` 在文档里标 4 而代码是 5。这些**全都是机器可判定的**。
 
-对账五项（都只查"机器能判定"的，语义正确性交给人）：
+对账六项（都只查"机器能判定"的，语义正确性交给人）：
   1. HTTP 端点：`@app.route` 的全集 vs 各文档端点表提到的
   2. CLI 子命令：`sub.add_parser` 的全集 vs 文档提到的
   3. 文档里写到的仓库文件路径是否真实存在（防"指了个空"）
   4. 文档里引用的 `IDX_SCHEMA = N` 是否与代码一致
   5. 开发指南「验证」节列的自测命令，对应文件是否存在
+  6. 界面语义 token：深色块里的每个 token，`classic`/`light` 是否都给了取值；有没有无人引用的死 token
+
+第 6 项是 v0.4.7 加的，来由与前五项一样：三主题落地后，"新加的 token 要三套都定义"
+这条只存在于人的记忆里——实测当时就有 7 个 token 定义了从没被引用。为了让它可判定，
+`:root` 拆成了「主题无关」与「深色取值」两块（见 index.html 顶部注释）：**共用的不该出现在
+主题块里，深色块里的必须在两个主题块里都有**——这两句都是纯机械判断。
 
 与 `lane_probe` / `self-audit 工作流` 同哲学：**摊开证据，不替人做判断**——差异不等于错误
 （文档有意不提某个内部端点是合理的），所以输出是清单不是断言，退出码永远 0。
@@ -61,6 +67,40 @@ def _cli_commands() -> set[str]:
 def _idx_schema() -> int | None:
     m = re.search(r"^IDX_SCHEMA\s*=\s*(\d+)", _read(SRC / "classifier.py"), re.M)
     return int(m.group(1)) if m else None
+
+
+def _theme_tokens() -> dict:
+    """index.html 的语义 token 覆盖面。
+
+    三块的定位：`主题无关` = 三套共用（字体/圆角/过渡），`深色取值` = 默认外观的颜色与阴影，
+    两个 `html[data-theme=...]` = 另外两套的取值。判据两条，都是机械的：
+      · 深色块里的每个 token，classic 与 light 都必须给出取值——漏一个，那套外观会静默
+        落回深色的颜色（不报错、不白屏，只是某个组件在浅底上变成深色块）；
+      · 定义了却没人 `var()` 引用的 token 是死的——留着只会让下一个人从里面挑错。
+    主题块**覆盖**共用 token 是合法的（实验室日光覆盖了画布网格），不算差异。
+    """
+    text = _read(SRC / "templates" / "index.html")
+
+    def block(pat: str) -> set[str]:
+        m = re.search(pat, text, re.S)
+        return set(re.findall(r"(--[a-z0-9-]+)\s*:", m.group(1))) if m else set()
+
+    shared = block(r"主题无关 token.*?\n:root\{(.*?)\n\}")
+    dark = block(r"\n:root\{\n\s*/\* ===== 深色专业模式(.*?)\n\}")
+    themes = {name: block(r'html\[data-theme="' + name + r'"\]\{(.*?)\n\}')
+              for name in ("classic", "light")}
+    used = set(re.findall(r"var\((--[a-z0-9-]+)", text))
+    # 主题选择器上的局部变量（.theme-option 的色板样例）不是全局 token，不参与
+    local = set(re.findall(r"--swatch-[a-z]+", text))
+
+    return {
+        "counts": {"shared": len(shared), "dark": len(dark),
+                   **{k: len(v) for k, v in themes.items()}},
+        "theme_gaps": [{"theme": k, "missing": sorted(dark - v)}
+                       for k, v in themes.items() if dark - v],
+        "shared_leaked": sorted((shared & dark)),   # 拆块拆漏了：同一个 token 两边都定义
+        "dead_tokens": sorted((shared | dark) - used - local),
+    }
 
 
 def audit() -> dict:
@@ -124,6 +164,7 @@ def audit() -> dict:
         "missing_paths": missing_paths,
         "idx_schema_drift": schema_drift,
         "missing_selftest_files": sorted(set(missing_selftests)),
+        "tokens": _theme_tokens(),
         "note": "差异 ≠ 错误：有意不写进文档的内部端点也会出现在 undocumented 里。人判断。",
     }
 
@@ -133,15 +174,22 @@ def main() -> None:
     if "--json" in sys.argv:
         print(json.dumps(r, ensure_ascii=False, indent=2))
         return
+    tk = r["tokens"]
     print(f"代码事实：{r['routes']} 个路由 / {r['cli_commands']} 个 CLI 子命令 / "
-          f"IDX_SCHEMA={r['idx_schema']}\n")
+          f"IDX_SCHEMA={r['idx_schema']} / 语义 token "
+          f"{tk['counts']['shared']} 共用 + {tk['counts']['dark']} 深色"
+          f"（classic {tk['counts']['classic']} / light {tk['counts']['light']}）\n")
     rows = [("文档里没提到的端点", r["undocumented_routes"]),
             ("文档提到但代码没有的端点", r["ghost_routes"]),
             ("文档里没提到的 CLI 子命令", r["undocumented_cli"]),
             ("文档指向的不存在文件", [f"{x['doc']} → {x['path']}" for x in r["missing_paths"]]),
             ("IDX_SCHEMA 数值不一致", [f"{x['doc']} 写 {x['says']}，代码 {x['code']}"
                                        for x in r["idx_schema_drift"]]),
-            ("自测清单里不存在的文件", r["missing_selftest_files"])]
+            ("自测清单里不存在的文件", r["missing_selftest_files"]),
+            ("某套外观缺取值的 token", [f"{g['theme']} 缺 {', '.join(g['missing'])}"
+                                        for g in tk["theme_gaps"]]),
+            ("共用块与深色块重复定义的 token", tk["shared_leaked"]),
+            ("定义了但无人引用的 token", tk["dead_tokens"])]
     clean = True
     for title, items in rows:
         if items:
@@ -152,5 +200,28 @@ def main() -> None:
     print("对账干净：机器可判定的六项没有差异。" if clean else f"\n{r['note']}")
 
 
+def _selftest() -> int:
+    """给 token 检查造两个反例，确认它真的会报——检查本身不被验证，就是下一个"存在但不生效"
+    的守卫（本项目的惯犯 bug 之一）。不碰真文件，只对字符串跑一遍解析。"""
+    import tempfile
+    real = (SRC / "templates" / "index.html").read_text(encoding="utf-8")
+    broken = real.replace("--focus-ring:rgba(166,107,19,0.45);", "", 1)   # classic 去掉一个
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "index.html"
+    tmp.write_text(broken, encoding="utf-8")
+    orig = globals()["SRC"]
+    try:
+        globals()["SRC"] = tmp.parent.parent          # 让 _theme_tokens 读到临时文件
+        (tmp.parent.parent / "templates").mkdir(exist_ok=True)
+        (tmp.parent.parent / "templates" / "index.html").write_text(broken, encoding="utf-8")
+        gaps = _theme_tokens()["theme_gaps"]
+    finally:
+        globals()["SRC"] = orig
+    ok = any(g["theme"] == "classic" and "--focus-ring" in g["missing"] for g in gaps)
+    print("[token 检查自测]", "PASS 缺失能被检出" if ok else "FAIL 缺失没被检出")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(_selftest())
     main()

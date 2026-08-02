@@ -25,18 +25,29 @@
 @font-face{font-family:'JetBrains Mono';src:url('/static/fonts/JetBrainsMono.ttf') format('truetype');font-weight:100 800;font-style:normal;font-display:swap;}
 @font-face{font-family:'Noto Sans SC';src:url('/static/fonts/NotoSansSC.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap;}
 
+/* ===== 主题无关 token（三套外观共用；改这里等于三套一起改）=====
+   与下面的深色取值分开放，是为了让「哪些必须三套各给一份」变成机器可判定的：
+   tools/doc_audit.py 只检查深色块里的 token，共用的这些不该出现在 classic/light。 */
+:root{
+  --apple-transition:all .16s ease;
+  --font-body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono","SF Mono","Menlo","Courier New",monospace;
+  --radius-sm:8px;
+  --radius-md:12px;
+  --radius-lg:16px;
+  --brand:var(--accent);
+  --canvas-pattern:none;
+  --canvas-pattern-size:auto;
+}
 :root{
   /* ===== 深色专业模式（260802 unUI 全量改版：暖米金 → 深炭+驼金发光）=====
      设计判断：深色衬浮起卡片+内高光+饱和状态色，质感跨度最大；贴合流量分析工具的
      "开发者/数据聚焦"属性（深色是 DevTools/终端/VSCode 的母语）+ 用户光影厚度偏好。
      驼金 accent 在深底发光，保留品牌金脉络。文字浅阶在 #13131E/#1E1E26 上 WCAG 均 >4.5:1。 */
   --apple-primary:#E8B855;
-  --apple-bg:#131318;
-  --apple-surface:#1E1E26;
   --apple-text:#F5F5F7;
   --apple-text-secondary:#C8C8D0;
   --apple-secondary:#9898A2;
-  --apple-border:#2E2E38;
   --apple-tertiary:#74747F;
   /* 阴影系统（深色下黑阴影 alpha 加重，浮起感更强；近+远双层保留）*/
   --apple-shadow-sm:0 1px 2px rgba(0,0,0,0.40),0 2px 6px rgba(0,0,0,0.30);
@@ -46,17 +57,10 @@
   /* 内高光（深色上白高光减弱到 0.08，顶部亮边不刺眼）*/
   --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.08);
   --apple-text-strong:#FFFFFF;  /* 关键文字纯白，深底最强重音 */
-  --apple-transition:all .16s ease;
-  --font-display:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-  --font-body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-  --font-mono:"JetBrains Mono","SF Mono","Menlo","Courier New",monospace;
   --node-user:#E8B855;
   --node-assistant:#9A93A8;
   --node-system:#6A6478;
-  --node-tool:#7A7488;
-  --node-file:#7A7488;
-  --node-agent:#E8B855;
-  --accent:#E8B855; --accent-deep:#C2882B; --brand:var(--accent);
+  --accent:#E8B855; --accent-deep:#C2882B;
   --gold-text:#E8B855; --gold-text-2:#D69A36;
   --bg-canvas:#131318; --bg-card:#1E1E26;
   --bg-soft:#25252F; --bg-softer:#2A2A35;
@@ -82,15 +86,12 @@
   --terminal-text:#D6D6DE; --input-focus-bg:#2F2F3C;
   --danger-node-hover:#3A2020; --node-hover-ring:rgba(232,184,85,0.35);
   --theme-selected-ring:rgba(232,184,85,0.24);
-  --canvas-pattern:none; --canvas-pattern-size:auto;
-  --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
 }
 /* 经典暖灰：origin 的功能型视觉基线。保留较平的白卡和暖金，用来和两套改版公平对照。 */
 html[data-theme="classic"]{
   --apple-primary:#C2882B;
-  --apple-bg:#DED8CC; --apple-surface:#FFFFFF;
   --apple-text:#1A1A1A; --apple-text-secondary:#5C564C;
-  --apple-secondary:#6E665C; --apple-tertiary:#756C5D; --apple-border:#E7E2D8;
+  --apple-secondary:#6E665C; --apple-tertiary:#756C5D;
   --apple-shadow-sm:0 1px 3px rgba(45,35,20,0.07);
   --apple-shadow:0 3px 12px rgba(45,35,20,0.08);
   --apple-shadow-md:0 8px 24px rgba(45,35,20,0.11);
@@ -98,7 +99,6 @@ html[data-theme="classic"]{
   --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.78);
   --apple-text-strong:#1A1A1A;
   --node-user:#C98A25; --node-assistant:#675F55; --node-system:#81796D;
-  --node-tool:#756D62; --node-file:#756D62; --node-agent:#C98A25;
   --accent:#C98A25; --accent-deep:#A66B13;
   --gold-text:#6B4A12; --gold-text-2:#806025;
   --bg-canvas:#DED8CC; --bg-card:#FFFFFF;
@@ -123,9 +123,8 @@ html[data-theme="classic"]{
 /* 实验室日光：冷矿物纸面 + 精密青蓝。轻微 24px 网格只留在画布，呼应流量测量和 DAG 坐标。 */
 html[data-theme="light"]{
   --apple-primary:#1E6972;
-  --apple-bg:#E8EEF0; --apple-surface:#FFFFFF;
   --apple-text:#17212B; --apple-text-secondary:#3D4C57;
-  --apple-secondary:#52636E; --apple-tertiary:#667780; --apple-border:#CBD6DB;
+  --apple-secondary:#52636E; --apple-tertiary:#667780;
   --apple-shadow-sm:0 1px 3px rgba(31,57,66,0.10),0 1px 2px rgba(31,57,66,0.06);
   --apple-shadow:0 8px 22px rgba(31,57,66,0.11),0 2px 6px rgba(31,57,66,0.07);
   --apple-shadow-md:0 12px 30px rgba(31,57,66,0.14),0 3px 8px rgba(31,57,66,0.08);
@@ -133,7 +132,6 @@ html[data-theme="light"]{
   --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.88);
   --apple-text-strong:#101820;
   --node-user:#247B84; --node-assistant:#586B7A; --node-system:#657985;
-  --node-tool:#486C78; --node-file:#486C78; --node-agent:#247B84;
   --accent:#1E6972; --accent-deep:#15545B;
   --gold-text:#185A62; --gold-text-2:#276B73;
   --bg-canvas:#E8EEF0; --bg-card:#FFFFFF;
