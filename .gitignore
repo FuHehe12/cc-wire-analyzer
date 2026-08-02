@@ -33,8 +33,10 @@ port.txt
 
 # 本地维护文件（工作区规范，不上传开源仓库）
 # CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
+# ROADMAP.local.md = 从 CLAUDE.md 拆出的路线图构想（260802）——不是承诺，也不该每会话加载
 # .claude/ = 本地操作规程（workflows/self-audit.md 等，含本机路径与采集姿势）
 CLAUDE.md
+ROADMAP.local.md
 issues/
 promo/
 .claude/
