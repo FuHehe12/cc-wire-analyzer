@@ -189,7 +189,7 @@ data: {...}
 
 ```json
 {
-  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false}],
+  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|quota_probe|hook_eval|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false}],
   "edges": [{"from":"req_…","to":"req_…","type":"seq|trigger|near"}],
   "lanes": [{"lane_id":"s-…","kind":"main|subagent|aux","first_ts":"…","count":3}]
 }
@@ -487,6 +487,52 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 
 ---
 
+## 3.8 盲区雷达（260802）
+
+聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/
+thinking.type、beta 长尾特性。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
+盲区 + 样本 id，取样本看详情，据此提改进（新增解析/渲染/分类规则，稳定的并入
+`classifier.KNOWN_*`）。读 idx（`unknowns` 已在写时算好，schema≥10），不读主文件，比 stats 快。
+
+### `GET /api/unknowns?date=YYYY-MM-DD` — 盲区雷达
+
+**查询参数**：`date`（可选，默认今天）
+
+**响应** `200`：
+```json
+{
+  "ok": true,
+  "date": "2026-08-02",
+  "totals": {"records": 491, "with_unknowns": 376, "other_kind": 0},
+  "blocks":      [{"value": "web_search_tool_result", "count": 2, "samples": ["req_…", "req_…"]}],
+  "block_keys":  [{"value": "tool_use.caller", "count": 464, "samples": ["req_…"]}],
+  "body_fields": [{"value": "tool_choice", "count": 2, "samples": ["req_…"]}],
+  "stop_reason": [],
+  "thinking_type": [{"value": "adaptive", "count": 376, "samples": ["req_…"]}],
+  "betas": [{"value": "token-counting-2024-11-01", "count": 21}],
+  "other_kind_samples": [],
+  "known": {
+    "block_types": ["server_tool_use", "text", "thinking", "tool_use"],
+    "block_keys": {"text": ["text", "type"], "tool_use": ["id", "input", "name", "type"]},
+    "body_fields": ["context_management", "diagnostics"],
+    "stop_reasons": ["end_turn", "max_tokens", "stop_sequence", "tool_use"],
+    "thinking_types": ["disabled", "enabled"]
+  },
+  "note": "已知集合（见 known）外的值 = CC 协议演进 / 录制盲区信号。取 samples id 调 /api/captures/{id} 看详情…"
+}
+```
+
+- 每维度 `[{value, count, samples[≤5 id]}]`，按 count 降序。`betas` 特殊：全量按 count **升序**
+  （长尾低频特性即信号，排前面），不取 samples（查具体特性用 `/api/grep <beta 名>`）。
+- `other_kind_samples`：固化 `quota_probe`/`hook_eval` 后仍落 `other` 的真未知（理想为空）。
+- `known`：当前已知集合基准（真源 `classifier.KNOWN_*`），让 AI 判断「什么算未知」。稳定的
+  未知定期并入它 + bump `IDX_SCHEMA`。
+
+> **自检**：加新 kind 或扩充 `KNOWN_*` 必须同步改 `classifier.py` + 此契约 + 架构总览 kind 列举
+> + 界面导览/报文解读的 kind 表 + `IDX_SCHEMA` bump。
+
+---
+
 ## 4. 约定
 
 - **headers_safe**：所有 headers 字段经脱敏，`authorization` / `x-api-key` / `anthropic-auth-token` 显示 `<redacted>`，列表/详情都不返回真实 token。**脱敏无条件生效，没有开关**（曾有个 `redact_headers` 配置项，但从未接线；260713 连开关一起删掉 —— 提供"明文存 key"的选项本身就是危险，何况录制现在可被 AI 经 CLI 读取）。
@@ -498,8 +544,8 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - **lane_id 命名规则**：
   - 主线泳道：`s-<md5(session_id)[:8]>`（session_id 来自 `X-Claude-Code-Session-Id` 头，回落 `metadata.user_id` 内 session_id）
   - 子代理泳道：`agent-<md5(派生者id + 派生prompt前200字)[:8]>`（对齐命中时）或 `agent-<agent_fp>`（对齐未命中回落，agent_fp = system block[2] md5 短码）
-  - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/other 合一列）
-- **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
+  - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/quota_probe/hook_eval/other 合一列）
+- **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `quota_probe` / `hook_eval` / `other`。`quota_probe`（CC 配额嗅探：`user="quota"`+maxtok=1）与 `hook_eval`（StopConditions hook 评估）260802 前落 `other`，现固化；其余未知形状仍落 `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
 - **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx` / `stream_error`（HTTP 200 但 SSE 流内报错，260731 补）。
 - **harness 声明面字段**（索引项，`IDX_SCHEMA=6` 起）：`beta`（`anthropic-beta` 拆成的特性数组——CC 声明启用了哪些协议扩展）/ `agent_id`（`x-claude-code-agent-id`，CC 给的子代理实例 ID）/ `ctx_mgmt` / `diagnostics` / `stop_seqs_n` / `thinking_budget`。这些是**发现录制盲区的信号源**，不是判别位——子代理判别仍以 system block[0] 计费头的 `cc_is_subagent` 为准（见 [开发指南.md](开发指南.md) 子代理判别定案）。
 - **大字段**：`request.body` / `response.content_blocks` 可能很大（MB 级），详情接口一次性返回；前端用虚拟滚动/折叠渲染。

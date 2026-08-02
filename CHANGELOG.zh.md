@@ -30,6 +30,69 @@
   2. **录制盲区审计：已收口（协议面 + 能力面两半都完成）。** 260731 的协议面对账（对账 CC 声明的请求头、请求体字段、SSE 分支）查出九个缺口、现已全部有交代；能力面这半——把 CC 每个能力实际跑一遍录制、检查解析——也已完成：7 个维度 14 条录制，核心解析零硬 bug，并修掉一处文档姿势失效（见 v0.4.3）。方法见 `docs/开发指南.md` 第二·五节；泛化版是 `docs/问题域手册.md` 单元 0。最后一条（对可疑记录保留原始字节）作为设计定案随存储治理留到 0.5.x。
   3. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理仍缺一次人工核对过的采集。历史录制已能提供统计旁证——225 条子代理请求全部是 `cc_entrypoint=cli`、判别位全部在、零反例——但这与「采一次会话并逐条对照 ground truth」不是一回事，后者才是关闭这条所需要的。
 
+## 未发布
+
+### 新增
+- **`/api/grep` + `/api/stats` 两个 HTTP 端点。** 此前 grep/stats 只在 CLI，HTTP 没有——AI 搜内容 /
+  算 token 被迫直读 jsonl，违反 ai-guide 铁律①「别整文件读录制」。核心逻辑从 cli 抽到
+  `capture_store.grep/stats`（单一真源，CLI 与 HTTP 共用），`/api/grep`（带 coverage：搜了哪些区域、
+  跳过多少）+ `/api/stats`（kind/model/status 分布、token 四项含 cache_creation、cache 命中率、
+  耗时 p50/p95）。抽公共避免 CLI/HTTP 各抄一份的分叉（stats `cache_creation` 漏字段事故的根因）；
+  ai-guide 端点表 + `docs/AI_USAGE.md` 同步补两条。
+- **盲区雷达 `/api/unknowns`：已知集合外的值一键可查。** 此前"未知"只能靠人翻 jsonl 发现——
+  非标响应块类型、未解析的请求字段、非标枚举值，默默存在却无人知晓。`index_record` 现对每条算
+  `unknowns`（命中 `KNOWN_*` 集合外的值：块类型 / 块字段 / 请求字段 / stop_reason / thinking.type），
+  `/api/unknowns?date=` 聚合返回每维度 `{value, count, samples[≤5 id]}` + beta 全量升序（长尾低频
+  特性即协议演进信号）+ `known` 基准 + note。AI 调一次拿到全部盲区 + 样本 id，据此提改进（新增
+  解析 / 渲染 / 分类规则，稳定的并入 `KNOWN_*`）。bump `IDX_SCHEMA` 9→10。扫 12 天 5414 条首跑发现：
+  `tool_use.caller`(464 条，疑似工具调用发起者标记，此前完全没解析)、`thinking.type=adaptive`
+  (3206，非标准枚举)、`web_search_tool_result` / `tool_result`(响应里异常位置) 块类型、
+  `text.citations`、`tool_choice` 请求字段。
+- **`quota_probe` + `hook_eval` 两个新 kind。** 此前落 `other` 的 10 条经分析实为两类稳定形状：
+  CC 配额嗅探（`user="quota"` + maxtok=1，9 条全 429/401/timeout）与 StopConditions hook 评估
+  （system 含 "stop-condition hook"，1 条）。`classify_idx` 在 other fallback 前固化二者，历史 10 条
+  other 全改判，**other 归零**。
+
+### 变更
+- **`/api/captures` 列表摘要现在带 `session_id`。** 此前 `_IDX_PRIVATE` 把 `session_id`
+  当「DAG 分类原料」剥掉，列表/SSE 摘要里看不到会话归属，而 DAG lane 却暴露它——两处不一致。
+  v0.4.6 的 session filter 场景（两个 CC 并排、一个审计另一个）下，审计方 `exclude_session`
+  排除自己后，剩下的请求无法在结果里确认归属、无法对上 `~/.claude/projects/` 的 jsonl 文件名，
+  只能靠 total 数盲推——「能过滤、看不见」。一次真实双 CC 录制撞见。从 `_IDX_PRIVATE` 移除
+  `session_id`，列表/SSE 摘要与 DAG lane 归一。无需 bump IDX_SCHEMA（字段本在写时索引，
+  覆盖率 100%）；真正的判别位 `is_subagent`/`entrypoint`/`agent_fp` 仍归内部不暴露。
+- **列表行在多会话时显示 session 短码。** 此前端列表的两个 CC 请求按时间混排，看不出归属，
+  要分清只能切去 DAG。现在 `fetchCaptures` 检测到 items 含多个 session_id 时，每行时间下方
+  显示 session 前 8 位（与 DAG lane 的短码一致）；单会话静默不显示，避免噪音。不加新 grid 列
+  （固定 10 列 px，加列要重算三语列宽），短码进 `cap-time` 格子的第二行。
+- **`server_tool_use` 响应块专门渲染。** 此前走 default 分支（整块 JSON dump），看不出调了什么。
+  `renderRespBlock`/`renderMsg` 加专门 case，复用 tool_use 样式（`→ name {input}`），chip 用不同色
+  区分服务端工具（web_search、webReader 等上游代执行的工具）。
+- **`output_config.format` 进索引。** structured-outputs 特性（CC 强制 json_schema 输出，如标题请求
+  只要 `{title}`）此前 `index_record` 只取 `effort`、不取 `format`。现加 `format` 字段
+  （`output_config.format.type`，如 `json_schema`）；bump `IDX_SCHEMA` 8→9（旧索引读时自动重建）。
+- **启动时检测 `BASE_URL` 已是本机地址并主动提醒。** 此前只在「BASE_URL 指向本代理自身」（同端口
+  loopback，forward 会无限递归）时硬拒绝；而「代理前的 BASE_URL 就是别的本机地址」——上次录制残留、
+  cc-switch 存了被污染的 profile、或手改——snapshot 不拦也不吭声，用户往往到「录完发现全 504 /
+  录不到东西」才意识到。`snapshot_original` 现对 loopback 非自身的 URL 记 `_base_url_warning`
+  （不拒绝：也可能是合法本地网关如 `:8080` 的 vLLM），`/api/proxy/status` 暴露 `base_url_warning`
+  字段，前端复用 external-bar 样式醒目提示「检查 BASE_URL」（三语）。warning 跨整个录制持续，
+  下次启动 `snapshot_original` 重算时清。
+
+### 文档
+- AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
+  保存 profile 会把本机代理地址存进去（工具侧防不住——settings 没被改、只是被读走，settings_guard
+  检测不到；切换上游那条路径则已由 `check_external_change` 检测+降旗覆盖）；opus 订阅/key 变动后
+  需 `stop` + `start` 重启代理。
+- 问题域手册单元 0 补一条结构性教训：**跨观测面对账，计量单位不可直接对齐**。用 harness
+  的 jsonl 当 ground truth 验证 wire 录制时，jsonl「一个 API 响应拆多行」（thinking / text /
+  每个 tool_use 各一行）会让「行数 vs 请求数」给出自信又错误的对比；对账要按逻辑响应边界，
+  不按行数。服务 0.6.x wire↔jsonl 合流。
+- README 三语「是否安全」第 4 点补两条注意事项：录制期间用 cc-switch「保存当前为 profile」会把
+  本机代理地址存进该 profile（settings 只被读走、没被改，工具侧防不住——切换上游那条路径已由
+  `check_external_change` 覆盖）；以及启动录制时若 `BASE_URL` 已是本机地址，软件会提醒检查（对应
+  上面的 `base_url_warning` 检测）。
+
 ## v0.4.6 - 2026-08-01
 
 ### 新增
