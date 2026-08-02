@@ -121,7 +121,10 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     citations + web_search_tool_result / redacted_thinking / tool_choice /
 #                     adaptive thinking），旧索引的 unknowns 按旧 KNOWN 算、会把这些当未知，
 #                     需重建。同时 index_record 加 tool_choice 字段。
-IDX_SCHEMA = 11
+#   v11 → v12（260802）：unknowns v2——_unknowns 的 blocks/block_keys/body_fields 从 set 改为
+#                     value→snippet dict（带内容片段），供 /api/unknowns 的 snippet 字段 +
+#                     beta 关联。旧索引的 unknowns 是 list 结构，需重建。
+IDX_SCHEMA = 12
 
 
 # ===== 请求体取文本 =====
@@ -413,42 +416,50 @@ def _error_message(record: dict) -> str:
 # build_dag / 列表摘要实际只用其中几十个字段——录制时（record 本就在内存）一次性提取
 # 成 1~2KB 的索引记录写进 {date}.idx.jsonl，之后 DAG/列表只读索引，
 # 不再每次全量 parse 主文件（实测 826MB/2993 条：全量 parse ~9s → 索引 ~50ms）。
+def _snippet(v) -> str:
+    """未知字段值的简短片段（盲区雷达 v2，260802：让 AI 一次调用就判断，省二次调详情）。"""
+    if isinstance(v, str):
+        return v[:80]
+    try:
+        return json.dumps(v, ensure_ascii=False)[:80]
+    except Exception:
+        return str(v)[:80]
+
+
 def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
     """这条记录命中的未知维度（盲区雷达，260802）。
 
-    只存小标量，不存内容（控体积）。空 dict = 无未知。已知集合见顶部 KNOWN_* 常量——
-    出现集合外的值就是 CC 协议演进的信号。index_record 写时本就拿到完整 body/resp，零额外读。"""
+    blocks / block_keys / body_fields 是 **value → snippet** dict（不只值名，还带一段内容片段，
+    让 AI 不必二次调 /api/captures/{id} 就能判断）；stop_reason / thinking_type 是标量单值。
+    空 dict = 无未知。已知集合见顶部 KNOWN_*——出现集合外的值就是协议演进信号。"""
     out: dict = {}
-    # 响应块类型 + 块字段（caller / citations / _input_raw 等非标准字段在此暴露）
-    unk_blocks: set[str] = set()
-    unk_bkeys: set[str] = set()
+    unk_blocks: dict[str, str] = {}    # 块类型 -> 该块片段
+    unk_bkeys: dict[str, str] = {}     # "type.key" -> 值片段
     for blk in resp.get("content_blocks") or []:
         if not isinstance(blk, dict):
             continue
         t = blk.get("type")
         if t and t not in KNOWN_BLOCK_TYPES:
-            unk_blocks.add(t)
+            preview = {k: v for k, v in blk.items() if k != "content"}
+            unk_blocks[t] = _snippet(preview) or _snippet(blk)
         known_keys = KNOWN_BLOCK_KEYS.get(t) if t else None
         for k in blk.keys():
             if k == "type":
                 continue
             if known_keys and k in known_keys:
                 continue
-            unk_bkeys.add(f"{t}.{k}")
+            unk_bkeys[f"{t}.{k}"] = _snippet(blk.get(k))
     if unk_blocks:
-        out["blocks"] = sorted(unk_blocks)
+        out["blocks"] = unk_blocks
     if unk_bkeys:
-        out["block_keys"] = sorted(unk_bkeys)
-    # 请求体顶层字段（tool_choice 等在此暴露）
+        out["block_keys"] = unk_bkeys
     if isinstance(body, dict):
-        uf = sorted(k for k in body.keys() if k not in KNOWN_BODY_FIELDS)
+        uf = {k: _snippet(body[k]) for k in body.keys() if k not in KNOWN_BODY_FIELDS}
         if uf:
             out["body_fields"] = uf
-    # stop_reason 非标准
     sr = resp.get("stop_reason")
     if sr and sr not in KNOWN_STOP_REASONS:
         out["stop_reason"] = sr
-    # thinking.type 非标准（adaptive 等）
     th = body.get("thinking") if isinstance(body, dict) else None
     if isinstance(th, dict):
         tt = th.get("type")

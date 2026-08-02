@@ -121,6 +121,14 @@
   shows a result summary + count (was a raw JSON dump), and `text.citations` shows cited_text + url
   (was hidden). After the sweep, with_unknowns on a test day dropped 259→1 (the remainder is
   `_input_raw`, a genuine fallback field). Bumps `IDX_SCHEMA` 10→11.
+- **Blind-spot radar v2: each unknown now carries a content snippet and its beta provenance.** v1
+  reported only `{value, count, samples}` — judging an unknown meant a second `/api/captures/{id}`
+  call to see the surrounding content. The payload now adds two fields per value: `snippet` (the
+  value's first ~80 chars — an agent can tell at a glance what kind of thing it is) and `betas`
+  (the beta features on the requests where this value appears, i.e. its *provenance* — a value
+  tracking the `advanced-tool-use-*` beta tells you which capability introduced it). Underneath,
+  `classifier._unknowns` was rewritten from a set of bare values to a value→snippet dict so the
+  content is captured at index time. Bumps `IDX_SCHEMA` 11→12.
 
 ### Docs
 - AI_USAGE.md gains "coexisting with cc-switch and other config tools" + "when the proxy needs a
@@ -140,6 +148,15 @@
   undefendable on the tool side; the switch-upstream path is already covered by
   `check_external_change`); and if `BASE_URL` is already a local address when recording starts,
   the app warns you to check it (the `base_url_warning` detection above).
+- **The blind-spot radar documented as a portability + protocol-drift tool.** The domain handbook
+  gains unit 10 ("Blind-spot radar — protocol-drift early warning + protocol discovery on
+  migration"): the radar isn't a list of what's known, it's the tool for *finding what's unknown*
+  — most valuable when porting the analyzer to a new harness, where it turns "guess the new
+  protocol" into "scan once, confirm each unknown, build that harness's known set". The
+  maintainer's guide §2.5 expands the radar's implementation + the KNOWN_* maintenance loop
+  (radar finds → human confirms it's Anthropic-standard → fold into `KNOWN_*` + bump `IDX_SCHEMA`
+  → radar clears that item → only true unknowns remain). The three READMEs gain a one-line radar
+  feature.
 
 ## v0.4.6 - 2026-08-01
 

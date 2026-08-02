@@ -522,16 +522,21 @@ def stats(date: str | None = None) -> dict:
 
 def unknowns(date: str | None = None) -> dict:
     """盲区雷达（260802）：聚合当天索引里所有「已知集合外」的值，给 AI 当协议演进 / 录制
-    盲区的改进线索。读 idx（unknowns 已在写时算好，schema≥10），不读主文件——比 stats 快。
+    盲区的改进线索。读 idx（unknowns 已在写时算好，schema≥12），不读主文件——比 stats 快。
 
-    每个维度返回 [{value, count, samples[≤5 id]}]，samples 让 AI 直接调 /api/captures/{id}
-    看详情。beta 不分已知/未知，全量按频次**升序**（长尾低频特性即信号，排前面）。"""
+    每个维度返回 [{value, count, samples[≤5 id], snippet, betas}]：
+      - snippet：该未知值的内容片段（schema v12 起 _unknowns 带片段），AI 不必二次调
+        /api/captures/{id} 就能判断；
+      - betas：该值出现在哪些 beta 特性的请求里（字段来源——caller 关联 advanced-tool-use
+        即知是那个 beta 引入的）。beta 全量另按频次**升序**（长尾低频特性即信号，排前面）。"""
     from collections import Counter, defaultdict
     date = date or time.strftime("%Y-%m-%d", time.localtime())
     SAMPLE_MAX = 5
     blocks, block_keys, body_fields = Counter(), Counter(), Counter()
     stop_reasons, thinking_types, betas = Counter(), Counter(), Counter()
     samples = defaultdict(list)
+    snippets = {}                       # dim:value -> 内容片段（首次见到的作样例）
+    beta_assoc = defaultdict(Counter)   # dim:value -> 该值出现的请求的 beta Counter
     other_ids = []
     records = with_unknowns = 0
 
@@ -540,28 +545,44 @@ def unknowns(date: str | None = None) -> dict:
         if len(lst) < SAMPLE_MAX:
             lst.append(rid)
 
+    def _tally(dim: str, val: str, snip: str, rid, r_betas) -> None:
+        """记一个未知值：样本 id + 首次片段 + beta 关联（计数在调用处）。"""
+        _push(dim + ":" + val, rid)
+        snippets.setdefault(dim + ":" + val, snip)
+        bc = beta_assoc[dim + ":" + val]
+        for b in r_betas:
+            bc[b] += 1
+
     for r in list_index(date):
         records += 1
         u = r.get("unknowns") or {}
         if u:
             with_unknowns += 1
-        for b in u.get("blocks", []):
-            blocks[b] += 1; _push("blocks:" + b, r.get("id"))
-        for bk in u.get("block_keys", []):
-            block_keys[bk] += 1; _push("block_keys:" + bk, r.get("id"))
-        for bf in u.get("body_fields", []):
-            body_fields[bf] += 1; _push("body_fields:" + bf, r.get("id"))
-        if u.get("stop_reason"):
-            stop_reasons[u["stop_reason"]] += 1; _push("stop_reason:" + u["stop_reason"], r.get("id"))
-        if u.get("thinking_type"):
-            thinking_types[u["thinking_type"]] += 1; _push("thinking_type:" + u["thinking_type"], r.get("id"))
-        for b in (r.get("beta") or []):
+        rid = r.get("id")
+        r_betas = r.get("beta") or []
+        # blocks / block_keys / body_fields 是 value→snippet dict（schema v12）
+        for val, snip in (u.get("blocks") or {}).items():
+            blocks[val] += 1; _tally("blocks", val, snip, rid, r_betas)
+        for val, snip in (u.get("block_keys") or {}).items():
+            block_keys[val] += 1; _tally("block_keys", val, snip, rid, r_betas)
+        for val, snip in (u.get("body_fields") or {}).items():
+            body_fields[val] += 1; _tally("body_fields", val, snip, rid, r_betas)
+        sr = u.get("stop_reason")
+        if sr:
+            stop_reasons[sr] += 1; _tally("stop_reason", sr, sr, rid, r_betas)
+        tt = u.get("thinking_type")
+        if tt:
+            thinking_types[tt] += 1; _tally("thinking_type", tt, tt, rid, r_betas)
+        for b in r_betas:
             betas[b] += 1
         if classifier.classify_idx(r) == "other":
-            other_ids.append(r.get("id"))
+            other_ids.append(rid)
 
     def _agg(counter: Counter, dim: str) -> list:
-        return [{"value": v, "count": n, "samples": samples[dim + ":" + v][:SAMPLE_MAX]}
+        return [{"value": v, "count": n,
+                 "samples": samples[dim + ":" + v][:SAMPLE_MAX],
+                 "snippet": snippets.get(dim + ":" + v, ""),
+                 "betas": [b for b, _ in beta_assoc[dim + ":" + v].most_common(5)]}
                 for v, n in counter.most_common()]
 
     return {
@@ -585,9 +606,9 @@ def unknowns(date: str | None = None) -> dict:
             "stop_reasons": sorted(classifier.KNOWN_STOP_REASONS),
             "thinking_types": sorted(classifier.KNOWN_THINKING_TYPES),
         },
-        "note": ("已知集合（见 known）外的值 = CC 协议演进 / 录制盲区信号。"
-                 "取 samples 里的 id 调 /api/captures/{id} 看详情，据此提改进"
-                 "（新增解析 / 渲染 / 分类规则，稳定的并入 KNOWN_*）。"),
+        "note": ("已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。每项带 snippet（内容片段，"
+                 "不必二次调详情）+ betas（关联的 beta 特性 = 字段来源）。取 samples id 调 "
+                 "/api/captures/{id} 看完整上下文。稳定的未知并入 KNOWN_* + bump IDX_SCHEMA。"),
     }
 
 

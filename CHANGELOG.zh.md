@@ -88,6 +88,12 @@
   web_search 链现可读——`web_search_tool_result` 显示结果摘要 + 数量（原 JSON dump）、`text.citations`
   显示引用来源（原隐藏）。审查后测试日 with_unknowns **259→1**（余 `_input_raw` 真降级字段）。
   bump `IDX_SCHEMA` 10→11。
+- **盲区雷达 v2：每个未知值现带内容片段 + beta 字段来源。** v1 只报 `{value, count, samples}`——
+  判断一个未知得二次调 `/api/captures/{id}` 才看得到上下文。现在每项未知值多两个字段：`snippet`
+  （值的前 ~80 字符，让 agent 一眼判断「这是哪类东西」）与 `betas`（这个值出现在哪些 beta 特性的
+  请求里 = **字段来源**——某值随 `advanced-tool-use-*` beta 出现就说明是那个能力引入的）。底层
+  `classifier._unknowns` 从裸值 set 重写为 value→snippet 字典，内容在写时索引。bump `IDX_SCHEMA`
+  11→12。
 
 ### 文档
 - AI_USAGE.md 补「与 cc-switch 等配置工具共存」+「代理需重启的情形」说明：录制期间 cc-switch
@@ -102,6 +108,11 @@
   本机代理地址存进该 profile（settings 只被读走、没被改，工具侧防不住——切换上游那条路径已由
   `check_external_change` 覆盖）；以及启动录制时若 `BASE_URL` 已是本机地址，软件会提醒检查（对应
   上面的 `base_url_warning` 检测）。
+- **盲区雷达作为「可迁移 + 协议演进」工具写进文档。** 问题域手册新增单元 10（「盲区雷达——协议演进
+  预警 + 迁移时的协议发现」）：雷达不是「已知的清单」，而是**发现未知的工具**——迁移到新 harness 时
+  价值最大，把「猜新协议」变成「扫一遍、逐个确认未知、建新框架的已知集合」。开发指南 §2.5 扩充雷达
+  实现 + KNOWN_* 维护循环（雷达发现 → 人确认是 Anthropic 标准 → 并入 `KNOWN_*` + bump `IDX_SCHEMA`
+  → 雷达清空这项 → 只剩真未知）。三份 README 各加一行雷达特性。
 
 ## v0.4.6 - 2026-08-01
 
