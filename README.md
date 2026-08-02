@@ -19,24 +19,22 @@ Record and inspect every HTTP request **Claude Code** makes. A local MITM proxy 
 ## When you'd reach for this
 
 Claude Code shows you its own version of a session. The wire shows what was actually sent and
-what actually came back — and the two are not the same thing. You'd want the wire when:
+what actually came back — and the two are not the same thing. You'd reach for the wire when you
+want to understand the real conversation between CC and the model:
 
-- **Claude Code goes through a third-party gateway and something is off.** A request fails, a
-  model answers differently than expected, costs look wrong — and CC's interface only tells you
-  that *something* happened. The upstream's actual response, including its error message, is on
-  the wire.
-- **You want to see what CC actually sends.** The full system prompt as transmitted (watermark
+- **See exactly what CC sends to the model.** The full system prompt as transmitted (watermark
   fields and all), which tools were declared on which request, when a subagent was spawned and
   with what prompt, the background security-classifier calls you never see, SSE chunk timing,
   and token counts as the upstream reported them — not as they were later summarized.
-- **You want a session on record.** Everything is written to plain JSONL on your machine, so you
-  (or another agent, over the HTTP API) can go back through it afterwards instead of trying to
-  reproduce the problem.
-
-**Probably not for you** if you use the official endpoint, nothing is going wrong, and you
-mainly want conversation history — `~/.claude/projects/*.jsonl` already has that, and it is
-easier to read. This tool earns its place when the question is *"what actually went over the
-wire?"*
+- **Read the prompts behind every stage.** CC isn't one conversation — it's main chat plus
+  title generation, security review, and context compaction, each with its own system prompt and
+  tool list. The wire lays them out side by side: what the main system prompt actually says, how
+  tool descriptions are worded, how a user message gets wrapped and injected, how a subagent's
+  prompt differs from the one that spawned it. The prompt engineering is right there on the page.
+- **Hand it to an agent to analyze.** Everything is written to plain JSONL on your machine, and
+  the same endpoints the GUI uses are open over HTTP — so you (or another agent) can walk back
+  through a session afterwards, search it, cross-analyze it, instead of trying to reproduce the
+  moment.
 
 ## Screenshots
 
@@ -48,13 +46,17 @@ wire?"*
 |---|---|
 | ![Detail](docs/screenshots/en/view-b-detail.png) | ![Settings](docs/screenshots/en/view-c-settings.png) |
 
-## A real example: session titles that were silently failing
+## A real example: hand the recording to an agent
 
-Recorded on the maintainer's own machine. Session titles had stopped being generated. Claude
-Code showed no error — titles simply never appeared, which is easy to not even notice.
+Session titles had stopped generating. Claude Code showed no error — titles simply never
+appeared. Instead of hunting for it by eye, you point an agent at the tool:
 
-Every title request in the recording had come back `400`, and the upstream had already
-explained why:
+> Read `http://127.0.0.1:<port>/api/ai-guide`, then find out why session titles aren't being
+> generated.
+
+The agent walks the endpoints itself — `GET /api/diagnose/errors` to see the day's failures
+grouped by upstream message, then `GET /api/captures/<id>` on a sample — and comes back with
+the upstream's actual answer:
 
 ```
 output_config.effort 'max' is not supported when thinking is disabled on this model.
@@ -62,14 +64,14 @@ Use effort 'high' or below, or enable thinking.
 ```
 
 The cause was a config contradiction: `settings.json` had `effortLevel: low` at the top level,
-while the environment set `CLAUDE_CODE_EFFORT_LEVEL: max` — and the environment wins. Nothing
-in CC's own view showed this; the failing requests were only visible at the wire layer.
+while the environment set `CLAUDE_CODE_EFFORT_LEVEL: max` — and the environment wins. Nothing in
+CC's own view showed this; the failing requests were only visible at the wire layer. One agent
+call, one answer — no eyeballing the timeline, no reproducing the moment.
 
-That one finding turned into two rules in the built-in **config check**, so the same
-contradiction now gets flagged before you start the proxy rather than found by accident. This is
-the loop the tool is built around: a failure the upstream already diagnosed once, made visible,
-and then turned into a check. It does not fix anything for you — it shows you what happened and
-names the field.
+That same finding can be turned into a check (the built-in config health-check does exactly
+this), but the point here is the loop the tool is built around: **the recording is
+machine-readable, and the failures in it have already been diagnosed once by the upstream — an
+agent can read that diagnosis back out without you in the middle.**
 
 ## Is it safe to point your traffic at it?
 

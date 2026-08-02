@@ -158,6 +158,12 @@
   content but the timeline stayed empty until I clicked other days a few times".
 
 ### Docs
+- README "when you'd reach for this" + the worked example, rewritten in all three languages.
+  The framing was previously third-party-gateway troubleshooting; it's now about understanding
+  the real CC↔model conversation — what CC sends, the prompts behind each stage (main / title /
+  security / compaction), and handing the recording to an agent to analyze. Dropped the
+  "probably not for you" paragraph. The example shifts from "found by accident by a human" to
+  "an agent walks the endpoints and hands you the upstream's diagnosis."
 - AI_USAGE.md gains "coexisting with cc-switch and other config tools" + "when the proxy needs a
   restart": saving a profile via cc-switch during recording stores the local-proxy address into
   that profile (undefendable on the tool side — settings isn't modified, only read out, so
