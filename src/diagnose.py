@@ -147,6 +147,7 @@ def aggregate(records: list[dict], limit: int = DEFAULT_LIMIT) -> dict:
                     "kinds": dict(sorted(g["kinds"].items(), key=lambda kv: -kv[1]))})
     truncated = len(out) > limit
     return {
+        "ok": True,                      # 与其他 CLI/API 输出一致（260803：此前唯独 errors 缺）
         "total_records": total,
         "failures": len(failures),
         "groups": len(out),
