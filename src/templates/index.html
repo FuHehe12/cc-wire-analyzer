@@ -3095,7 +3095,7 @@ function renderDagLegend(lanes, laneColor, laneNum){
    800ms 防抖形同虚设，界面接近冻结。布局按 ts 全局递增、新节点只可能追加在底部，
    所以 LIVE 稳态只 append 新节点/新边，已有 DOM 零改动；
    仅当 lane 数变化 / 已有节点 tier 改判（pure_chat 轮回填）/ 数据变少（清理）才全量重渲。 */
-const DGX = { X0: 16, LW: 260, LG: 40, Y0: 52, NH: 62, NH_MID: 26, NH_TURN: 96, VG: 20,
+const DGX = { X0: 16, LW: 260, LG: 40, Y0: 52, NH: 62, NH_MID: 26, NH_TURN: 96, NH_AGG: 76, VG: 20,
               ZOOM_FIT_MIN: 0.5 };
 const DG = {
   date: null, rendered: false, hideMid: false, hideAux: false,
@@ -3421,7 +3421,10 @@ function dagPlace(n){
       if(DG.auxAggFirst[al] !== n.id) return null;   /* 非组首：并进聚合卡，不占位 */
       const x = DG.laneX[n.lane];
       if(x == null) return "UNKNOWN_LANE";
-      const pos = { x, y: DG.yCur, h: DGX.NH };
+      /* NH_AGG=76（260803）：聚合卡是三行结构（r1/meta/badges≈72px），复用普通卡 NH=62
+         会把 badges 行裁到只剩一条缝（overflow:hidden）——per-kind 数量徽章视觉不可读，
+         用户报「看不到具体的数量」。轮卡同构但有自己的 NH_TURN=96，没踩到。 */
+      const pos = { x, y: DG.yCur, h: DGX.NH_AGG };
       DG.auxAgg[al] = { key: al, lane: al, ids: DG.auxAggMembers[al], pos, chunkIdx: null };
       DG.auxAggMembers[al].forEach(id => { DG.auxAggOf[id] = al; });
       DG.yCur += pos.h + DGX.VG;
