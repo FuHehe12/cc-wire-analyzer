@@ -34,10 +34,13 @@ port.txt
 # 本地维护文件（工作区规范，不上传开源仓库）
 # CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
 # ROADMAP.local.md = 从 CLAUDE.md 拆出的路线图构想（260802）——不是承诺，也不该每会话加载
+# UI-BACKLOG.local.md = 零散 UI 改进候选池（260808 从 issues/open/ 搬出：它不是 issue，
+#   issues/open/ 只放正在推进的改动）；挑到值得做的再单开 issue
 # .claude/ = 本地操作规程（workflows/self-audit.md 等，含本机路径与采集姿势）
-# sections/ = 项目断面（按版本线做的冻结快照，给人把握全貌用；见 issues/open/260807_引入项目断面机制…）
+# sections/ = 项目断面（按版本线做的冻结快照，给人把握全貌用；见 issues/closed/260807_引入项目断面机制…）
 CLAUDE.md
 ROADMAP.local.md
+UI-BACKLOG.local.md
 issues/
 sections/
 promo/
