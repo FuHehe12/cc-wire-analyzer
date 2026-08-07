@@ -12,7 +12,7 @@
 绝不依赖内存状态。若检测到已有实例（GUI 或 daemon）在跑，就驱动它的 /api/*，而不是另起一个服务器
 ——两个进程同时 patch 同一个 settings.json 是灾难。
 
-用法见 docs/AI_USAGE.md。
+用法见 docs/reference/AI_USAGE.md。
 """
 from __future__ import annotations
 

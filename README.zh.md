@@ -7,12 +7,12 @@
 [发版列表](../../releases) · [更新日志](CHANGELOG.zh.md)
 
 > 第一次来？按你想干什么挑一份：
-> **[docs/界面导览.md](docs/界面导览.md)** 人在 UI 里能看到什么 ·
-> **[docs/报文解读.md](docs/报文解读.md)** Claude Code 到底发了什么出去 ·
-> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** 用 AI agent 驱动本工具 ·
-> **[docs/架构总览.md](docs/架构总览.md)** 这个软件怎么搭起来的 ·
-> **[docs/开发指南.md](docs/开发指南.md)** 改代码前必读 ·
-> **[docs/问题域手册.md](docs/问题域手册.md)** 想给别的 agent 工具做同类分析器 ·
+> **[docs/reference/界面导览.md](docs/reference/界面导览.md)** 人在 UI 里能看到什么 ·
+> **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** Claude Code 到底发了什么出去 ·
+> **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** 用 AI agent 驱动本工具 ·
+> **[docs/reference/架构总览.md](docs/reference/架构总览.md)** 这个软件怎么搭起来的 ·
+> **[docs/reference/开发指南.md](docs/reference/开发指南.md)** 改代码前必读 ·
+> **[docs/methodology/问题域手册.md](docs/methodology/问题域手册.md)** 想给别的 agent 工具做同类分析器 ·
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** 这些文档怎么保持同步。
 
 ## 什么时候你会需要它
@@ -150,7 +150,7 @@ curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 ```
 
 单条录制可超过 5 MB，先查摘要、按 id 取单条。完整 API、记录 schema 与安全注意事项见
-**[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
+**[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)**。
 
 macOS 同样是一个二进制 —— `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`。
 
@@ -173,4 +173,4 @@ macOS 同样是一个二进制 —— `cc-wire-analyzer.app/Contents/MacOS/cc-wi
 - 打包字体（Inter / JetBrains Mono / Noto Sans SC）：**SIL OFL 1.1**。
 - 打包 JS（marked.js：MIT；DOMPurify：Apache-2.0/MPL-2.0）。
 
-全文见 [LICENSE](LICENSE)（英文）。API 契约等技术文档见 [docs/API契约.md](docs/API契约.md)（中文）。开发设置见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+全文见 [LICENSE](LICENSE)（英文）。API 契约等技术文档见 [docs/reference/API契约.md](docs/reference/API契约.md)（中文）。开发设置见 [CONTRIBUTING.md](CONTRIBUTING.md)。

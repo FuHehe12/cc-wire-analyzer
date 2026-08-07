@@ -410,7 +410,7 @@ def _beta_features(record: dict) -> list[str]:
 
     这是 CC 声明「我启用了哪些协议扩展」的地方，地位等同于 `Accept-Encoding` 之于解压格式：
     **它就是我们必须留意的能力清单**。实测 10 天出现 18 个特性、18 种组合，随 CC 版本漂移
-    ——出现没见过的特性就是「可能有新盲区」的信号（docs/开发指南.md §2.5）。"""
+    ——出现没见过的特性就是「可能有新盲区」的信号（docs/reference/开发指南.md §2.5）。"""
     raw = _header(record, "anthropic-beta")
     return [s.strip() for s in raw.split(",") if s.strip()] if raw else []
 
@@ -665,7 +665,7 @@ def index_record(rec: dict) -> dict:
         # ---- harness 声明面（260731 对账审计）----
         # CC 自己声明的东西，此前一条都没进索引。它们的用处不是当下判别，是**发现下一个盲区**：
         # 出现没见过的 beta 特性或新的请求体字段，就意味着 CC 启用了新能力，
-        # 而新能力往往带来我们还不认识的请求字段或响应块（详见 docs/开发指南.md §2.5）。
+        # 而新能力往往带来我们还不认识的请求字段或响应块（详见 docs/reference/开发指南.md §2.5）。
         "beta": _beta_features(rec),
         # CC 直接在 HTTP 头上给的子代理实例 ID。**取证结论（9 天 4,629 条）：
         # 它与计费头 cc_is_subagent=true 完全一致，225/225 零反例，且 225 条全部是

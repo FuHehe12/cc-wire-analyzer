@@ -11,7 +11,7 @@
 已移除：`redact_headers`（260713）。它曾是个假开关——设置页承诺"可关闭脱敏"，而 `proxy._redact()`
 一直是无条件调用的。没有把它接线实现，而是**连开关一起删掉、脱敏恒开**：真让它生效 =
 提供一个把 API key 明文写进 jsonl 的选项，而我们刚给 AI agent 开了读这些 jsonl 的 CLI
-（见 docs/AI_USAGE.md）—— 等于给 key 修一条直通 AI 上下文的路。老 config.json 里残留该键会被忽略。
+（见 docs/reference/AI_USAGE.md）—— 等于给 key 修一条直通 AI 上下文的路。老 config.json 里残留该键会被忽略。
 """
 from __future__ import annotations
 

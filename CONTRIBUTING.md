@@ -3,7 +3,7 @@
 Thanks for your interest in improving this tool! This page covers **environment setup, building,
 and the PR checklist**.
 
-> **Before you write any code, read [`docs/开发指南.md`](docs/开发指南.md) (Development Guide).**
+> **Before you write any code, read [`docs/reference/开发指南.md`](docs/reference/开发指南.md) (Development Guide).**
 > It is the single source of truth for this project's conventions — safety invariants, the
 > recurring bug types, the defensive-design table, the subagent-identification ruling, the
 > self-tests, and the frontend rules. Counts grow over time, so the guide holds them — not this
@@ -34,7 +34,7 @@ uv run python src/dev_seed.py         # seed demo captures to exercise the UI
 
 > **Template edits need a dev-server restart** — `app.run(debug=False)` caches Jinja templates, so
 > editing `index.html` and refreshing still shows the old page. Why this happens and how to verify
-> a change took effect: see [`docs/开发指南.md`](docs/开发指南.md) §5.
+> a change took effect: see [`docs/reference/开发指南.md`](docs/reference/开发指南.md) §5.
 
 ## Building
 
@@ -57,14 +57,14 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 ## Before submitting a PR
 
 1. **Run all six self-tests.** The commands are listed in
-   [`docs/开发指南.md`](docs/开发指南.md) §5 — copy them from there rather than from memory,
+   [`docs/reference/开发指南.md`](docs/reference/开发指南.md) §5 — copy them from there rather than from memory,
    since the set has grown over time.
 2. If you touched the frontend, exercise the affected UI in a browser (open the port from the
    startup log or `~/.cc-wire-analyzer/port.txt`) — **restart the dev server first** (see the
    template-caching note above).
 3. If you added or changed user-visible strings, update **all three** i18n locales
    (`zh` / `en` / `ja`) in `index.html`. The three key sets must match exactly.
-4. Check your change against the safety invariants in [`docs/开发指南.md`](docs/开发指南.md) §1.
+4. Check your change against the safety invariants in [`docs/reference/开发指南.md`](docs/reference/开发指南.md) §1.
    Anything that writes `settings.json`, renders upstream content, or produces output for an AI
    agent needs a second look.
 5. Don't commit `dist/`, `build/`, or anything under `~/.cc-wire-analyzer/` (they're gitignored).
@@ -73,12 +73,12 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 
 | I want to… | Read |
 |---|---|
-| change code without breaking things | [`docs/开发指南.md`](docs/开发指南.md) |
-| understand how the app is put together | [`docs/架构总览.md`](docs/架构总览.md) |
-| call the HTTP API | [`docs/API契约.md`](docs/API契约.md) |
-| drive the tool from an AI agent | [`docs/AI_USAGE.md`](docs/AI_USAGE.md) |
-| understand the UI | [`docs/界面导览.md`](docs/界面导览.md) |
-| understand what Claude Code actually sends | [`docs/报文解读.md`](docs/报文解读.md) |
+| change code without breaking things | [`docs/reference/开发指南.md`](docs/reference/开发指南.md) |
+| understand how the app is put together | [`docs/reference/架构总览.md`](docs/reference/架构总览.md) |
+| call the HTTP API | [`docs/reference/API契约.md`](docs/reference/API契约.md) |
+| drive the tool from an AI agent | [`docs/reference/AI_USAGE.md`](docs/reference/AI_USAGE.md) |
+| understand the UI | [`docs/reference/界面导览.md`](docs/reference/界面导览.md) |
+| understand what Claude Code actually sends | [`docs/methodology/报文解读.md`](docs/methodology/报文解读.md) |
 | edit the docs themselves | [`docs/文档维护策略.md`](docs/文档维护策略.md) |
 
 Issue reports and PRs welcome.

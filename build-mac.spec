@@ -17,7 +17,7 @@ from PyInstaller.utils.hooks import collect_submodules
 datas = [
     ('src/templates', 'templates'),   # Flask 模板
     ('src/static', 'static'),         # vendored marked/DOMPurify + 打包字体（Inter/JetBrains Mono/Noto Sans SC）
-    ('docs/AI_USAGE.md', 'docs'),     # /api/ai-guide 的正文，必须随产物走（issue 260801）
+    ('docs/reference/AI_USAGE.md', 'docs'),     # /api/ai-guide 的正文，必须随产物走（issue 260801）
 ]
 
 # pywebview 在 macOS 用 WebKit（pyobjc）后端。

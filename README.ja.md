@@ -7,12 +7,12 @@ Claude Code と上流エンドポイント間の全 HTTP トラフィックを�
 [リリース一覧](../../releases) · [変更履歴](CHANGELOG.md)
 
 > 初めての方へ（ドキュメントはすべて中国語）：
-> **[docs/界面导览.md](docs/界面导览.md)** — UI で人が見るもの ·
-> **[docs/报文解读.md](docs/报文解读.md)** — Claude Code が実際に送っているもの ·
-> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** — 本ツールを操作する AI エージェント向け ·
-> **[docs/架构总览.md](docs/架构总览.md)** — アプリの構成 ·
-> **[docs/开发指南.md](docs/开发指南.md)** — コードを変更する前に必読 ·
-> **[docs/问题域手册.md](docs/问题域手册.md)** — 別のエージェント基盤で同種のツールを作る場合 ·
+> **[docs/reference/界面导览.md](docs/reference/界面导览.md)** — UI で人が見るもの ·
+> **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** — Claude Code が実際に送っているもの ·
+> **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** — 本ツールを操作する AI エージェント向け ·
+> **[docs/reference/架构总览.md](docs/reference/架构总览.md)** — アプリの構成 ·
+> **[docs/reference/开发指南.md](docs/reference/开发指南.md)** — コードを変更する前に必読 ·
+> **[docs/methodology/问题域手册.md](docs/methodology/问题域手册.md)** — 別のエージェント基盤で同種のツールを作る場合 ·
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** — これらの文書の同期を保つ方法。
 > *（詳細ドキュメントは中国語です。必要なら機械翻訳を。）*
 
@@ -154,7 +154,7 @@ curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 ```
 
 1 件の記録が 5 MB を超えることがあるため、まず概要を取得し id で個別取得します。
-API 全一覧・レコード schema・安全上の注意は **[docs/AI_USAGE.md](docs/AI_USAGE.md)**。
+API 全一覧・レコード schema・安全上の注意は **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)**。
 
 macOS も同じバイナリ 1 つ —— `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`。
 
@@ -177,4 +177,4 @@ macOS も同じバイナリ 1 つ —— `cc-wire-analyzer.app/Contents/MacOS/cc
 - 同梱フォント（Inter / JetBrains Mono / Noto Sans SC）：**SIL OFL 1.1**。
 - 同梱 JS（marked.js：MIT、DOMPurify：Apache-2.0/MPL-2.0）。
 
-全文は [LICENSE](LICENSE)（英語）を参照。技術ドキュメントは [docs/API契约.md](docs/API契约.md)、開発設定は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。
+全文は [LICENSE](LICENSE)（英語）を参照。技術ドキュメントは [docs/reference/API契约.md](docs/reference/API契约.md)、開発設定は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。

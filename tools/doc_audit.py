@@ -43,9 +43,15 @@ except Exception:
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC, DOCS = ROOT / "src", ROOT / "docs"
+# 260808 docs/ 分层：reference/ = ①参考手册（描述当前实现，会腐化，**这就是对账范围**），
+# methodology/ = ③可迁移方法论，根下 = ④元文档。范围是**路径规则不是文件清单**——
+# 新文档放进 reference/ 自动进对账，清单式的名单则会因为"忘了加"而漏。
+REFERENCE = DOCS / "reference"
+# 具名依赖的文档路径集中在此，配 `_read_required` 使用（见那个函数的 docstring）。
+GUIDE = REFERENCE / "开发指南.md"
 # 文档面：仓库里会提到端点/命令/路径的公开文档（本地 CLAUDE.md 与 issues/ 不进对账——
 # 它们是过程记录，允许留下当时的说法）。
-DOC_FILES = sorted(DOCS.glob("*.md")) + [ROOT / "README.md", ROOT / "README.zh.md",
+DOC_FILES = sorted(DOCS.rglob("*.md")) + [ROOT / "README.md", ROOT / "README.zh.md",
                                          ROOT / "README.ja.md", ROOT / "CONTRIBUTING.md"]
 # 端点表也在代码里躺着一份（产物自带的说明书回落），一并当"文档面"对账。
 GUIDE_FALLBACK = SRC / "app.py"
@@ -56,6 +62,25 @@ def _read(p: pathlib.Path) -> str:
         return p.read_text(encoding="utf-8")
     except OSError:
         return ""
+
+
+def _read_required(p: pathlib.Path) -> str:
+    """读一份**具名依赖**的文档——缺了就报错，不容忍。
+
+    与 `_read` 的区别正是本函数存在的理由：`_read` 读不到就返回 `""`，这对**批量扫描**是对的
+    （少一份文档不该让整个对账崩）；但对**具名依赖**是灾难——文档被移走后正则匹配不到任何
+    东西，那条检查就静默变成「永远通过」，而脚本照样打印「对账干净」。**「文件不见了」与
+    「文件里没问题」在返回值上无法区分**，于是审计工具自己成了惯犯 ③（静默吞异常）。
+
+    260808 把 `docs/` 拆成子目录时就差点踩中：自测清单检查硬编码读 `DOCS / "开发指南.md"`，
+    而那份文档已经移进了 `reference/`。
+    """
+    if not p.exists():
+        raise SystemExit(
+            f"[doc_audit] 具名文档不存在：{p.relative_to(ROOT)}\n"
+            f"  文档被移动或改名了？请更新本文件顶部的路径常量——\n"
+            f"  别让这条检查静默失效（那比没有检查更坏，因为它还会报「对账干净」）。")
+    return p.read_text(encoding="utf-8")
 
 
 def _routes() -> set[str]:
@@ -160,7 +185,7 @@ def audit() -> dict:
 
     # 5. 自测命令对应文件存在吗
     missing_selftests = []
-    for m in re.finditer(r"uv run python (src/[A-Za-z0-9_]+\.py)", _read(DOCS / "开发指南.md")):
+    for m in re.finditer(r"uv run python (src/[A-Za-z0-9_]+\.py)", _read_required(GUIDE)):
         if not (ROOT / m.group(1)).exists():
             missing_selftests.append(m.group(1))
 

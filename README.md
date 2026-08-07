@@ -7,12 +7,12 @@ Record and inspect every HTTP request **Claude Code** makes. A local MITM proxy 
 [Releases](../../releases) · [Changelog](CHANGELOG.md)
 
 > First time here? All docs are in Chinese.
-> **[docs/界面导览.md](docs/界面导览.md)** — what humans see in the UI ·
-> **[docs/报文解读.md](docs/报文解读.md)** — what Claude Code actually sends ·
-> **[docs/AI_USAGE.md](docs/AI_USAGE.md)** — for AI agents driving the tool ·
-> **[docs/架构总览.md](docs/架构总览.md)** — how the app is built ·
-> **[docs/开发指南.md](docs/开发指南.md)** — read this before changing code ·
-> **[docs/问题域手册.md](docs/问题域手册.md)** — building the same tool for another agent harness ·
+> **[docs/reference/界面导览.md](docs/reference/界面导览.md)** — what humans see in the UI ·
+> **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** — what Claude Code actually sends ·
+> **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** — for AI agents driving the tool ·
+> **[docs/reference/架构总览.md](docs/reference/架构总览.md)** — how the app is built ·
+> **[docs/reference/开发指南.md](docs/reference/开发指南.md)** — read this before changing code ·
+> **[docs/methodology/问题域手册.md](docs/methodology/问题域手册.md)** — building the same tool for another agent harness ·
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** — how these docs stay in sync.
 > *(Deep-dive docs are in Chinese; machine-translate if needed.)*
 
@@ -202,7 +202,7 @@ curl "127.0.0.1:$port/api/captures?date=2026-07-13"
 ```
 
 One capture can exceed 5 MB, so fetch summaries first and single records by id. Full reference,
-record schema, and safety notes: **[docs/AI_USAGE.md](docs/AI_USAGE.md)**.
+record schema, and safety notes: **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)**.
 
 On macOS it's the same single binary — `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`.
 

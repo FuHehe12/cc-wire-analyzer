@@ -70,7 +70,7 @@
   UI 应提示"外部接管，点重新接管收编新上游"。
 
 > **自检**：加新代理状态字段时，必须同步更新 `_proxy_state()` 函数（`src/app.py`）+ 此契约
-> + `docs/AI_USAGE.md` 的 status 表 + 前端 `templates/index.html` 的 `refreshStatus()` 渲染。
+> + `docs/reference/AI_USAGE.md` 的 status 表 + 前端 `templates/index.html` 的 `refreshStatus()` 渲染。
 
 ### `GET /api/settings/upstream-history` — 上游配置历史（260807）
 
@@ -105,7 +105,7 @@
 - `current.recording`：代理是否正在 patch 态。前端据此决定「当前 BASE_URL」那行显示内存里的
   原上游（录制中）还是文件真值（未录制）——代理从未成功启动过时内存快照是空的。
 - `current.needs_fix`：当前 BASE_URL 是本机地址**且代理没在录制** → 中了"本机地址被固化进
-  切换工具的 profile"这个病（录制期间 cc-switch 保存 profile 所致，见 `docs/AI_USAGE.md`
+  切换工具的 profile"这个病（录制期间 cc-switch 保存 profile 所致，见 `docs/reference/AI_USAGE.md`
   「与 cc-switch 等配置工具共存」）。代理正在录制时本机地址是正常的，此字段为 `false`。
 
 ### `POST /api/settings/upstream-restore` — 一键还原（260807）
@@ -380,7 +380,7 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - 隔离头尾代码写死，设置只能改任务描述段（防注入不可被配置绕开）
 
 > **自检**：改 SSE event 格式时，必须同步改前端 `llmToolAction()`（`templates/index.html`）
-> + 此契约 + `docs/AI_USAGE.md`。改隔离定界符时必须同步改 `_translate_parts` /
+> + 此契约 + `docs/reference/AI_USAGE.md`。改隔离定界符时必须同步改 `_translate_parts` /
 > `_explain_parts`（`src/app.py`）。
 
 ### `POST /api/translate/test` — LLM 连通测试
@@ -417,7 +417,7 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
    数据目录 / 录制目录 / 被接管的 settings.json / 日志路径，全部是**绝对路径**。
    动机：文档正文写的是 `~/.cc-wire-analyzer/` 与"端口从 5051 起挑"，而调用方需要的是这台机器上
    的确切值。
-2. **完整用法说明正文**：`docs/AI_USAGE.md`，随产物打包（`build.spec` / `build-mac.spec` 的
+2. **完整用法说明正文**：`docs/reference/AI_USAGE.md`，随产物打包（`build.spec` / `build-mac.spec` 的
    `datas`），冻结态从 `_MEIPASS/docs/` 读、源码模式从仓库 `docs/` 读。
 
 **永不 500、永不空**：两条路径都取不到文件时回落到内置的最小速查（端点表 + 三条铁律），并在
@@ -747,6 +747,6 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 - **错误透传**：上游 4xx/5xx 也要录（response 存原文 snippet），原样返回给 CC，不破坏 CC 错误处理。
 - **路径前缀**：UI 所有路由必须 `/api/` 开头，否则会被代理 catch-all 当成上游流量转发。
 
-> **本文档维护**：按 [文档维护策略.md](文档维护策略.md) 的 SSOT 原则——枚举真源在各模块
+> **本文档维护**：按 [文档维护策略.md](../文档维护策略.md) 的 SSOT 原则——枚举真源在各模块
 > docstring，本契约引用而不重复定义。改字段集必须 bump `IDX_SCHEMA` 并同步此契约 + AI_USAGE
 > + 界面导览 + 架构总览四份文档的相关段。

@@ -29,7 +29,7 @@ import upstream_history
 log = logging.getLogger(__name__)
 
 # 版本号唯一真源是 git tag。CI 构建时由 release.yml 从 tag 生成 src/_version.py（见
-# docs/开发指南.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
+# docs/reference/开发指南.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
 try:
     from _version import VERSION
 except ImportError:
@@ -856,8 +856,11 @@ def _ai_guide_body() -> str:
 
     绝不 500、绝不返回空——给 AI 的输出宁可少也不能是错误页（同不变量⑦「输出必须有界且诚实」）。
     """
-    for p in (_RES_BASE / "docs" / "AI_USAGE.md",                              # 冻结态：_MEIPASS/docs
-              Path(__file__).resolve().parent.parent / "docs" / "AI_USAGE.md"):  # 源码模式：仓库 docs/
+    # 两条路径的**布局不同，这是有意的**：产物内把它放在扁平的 `docs/` 下（spec 负责打进去），
+    # 而仓库里 260808 起分了层，它在 `docs/reference/` 中。产物不必跟着仓库的分类结构走——
+    # 那套分类是给维护者和文档对账用的，下载到 exe 的人不需要。改这里记得同步两份 spec。
+    for p in (_RES_BASE / "docs" / "AI_USAGE.md",                                # 冻结态：_MEIPASS/docs
+              Path(__file__).resolve().parent.parent / "docs" / "reference" / "AI_USAGE.md"):  # 源码模式
         try:
             text = p.read_text(encoding="utf-8")
             if text.strip():
