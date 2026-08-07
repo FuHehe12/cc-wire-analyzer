@@ -72,6 +72,62 @@
 > **自检**：加新代理状态字段时，必须同步更新 `_proxy_state()` 函数（`src/app.py`）+ 此契约
 > + `docs/AI_USAGE.md` 的 status 表 + 前端 `templates/index.html` 的 `refreshStatus()` 渲染。
 
+### `GET /api/settings/upstream-history` — 上游配置历史（260807）
+
+最近 5 套**真实上游**的 `ANTHROPIC_*` env 组合 + 当前是否处于「本机死地址」病态。
+
+```json
+{
+  "ok": true,
+  "max_items": 5,
+  "items": [
+    {
+      "id": "b65d7c60",
+      "at": "2026-08-07T14:22:03",
+      "seen": 3,
+      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "keys": ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_OPUS_MODEL"],
+      "env": {"ANTHROPIC_AUTH_TOKEN": "glm…1234", "ANTHROPIC_BASE_URL": "https://…", "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.2[1M]"},
+      "has_token": true,
+      "current": false,
+      "token_match": true
+    }
+  ],
+  "current": {"base_url": "http://127.0.0.1:5051", "is_local": true, "is_self": true,
+              "recording": false, "needs_fix": true, "in_history": null}
+}
+```
+
+- `id`：键值组合的内容指纹（sha1 前 8）。同一套配置反复切换只占一条。
+- `base_url` 为 `null` = 官方订阅态（**根本没有 BASE_URL 键**），前端出专门文案，不要显示 "null"。
+- `env`：**凭据类键已脱敏**（`前3…后4`），明文永不出接口。模型映射等非凭据键原样。
+- `token_match`：凭据与当前配置相同但组合不同 = **同一个供应商的干净版本**，前端默认选中它。
+- `current.recording`：代理是否正在 patch 态。前端据此决定「当前 BASE_URL」那行显示内存里的
+  原上游（录制中）还是文件真值（未录制）——代理从未成功启动过时内存快照是空的。
+- `current.needs_fix`：当前 BASE_URL 是本机地址**且代理没在录制** → 中了"本机地址被固化进
+  切换工具的 profile"这个病（录制期间 cc-switch 保存 profile 所致，见 `docs/AI_USAGE.md`
+  「与 cc-switch 等配置工具共存」）。代理正在录制时本机地址是正常的，此字段为 `false`。
+
+### `POST /api/settings/upstream-restore` — 一键还原（260807）
+
+**请求**：`{"id": "b65d7c60"}`
+
+把 settings.json 的 `ANTHROPIC_*` 命名空间**全量对齐**到该快照：删掉当前有而快照没有的键，
+写入快照里的全部键。`OTEL_*`/`permissions`/`model` 等一律不动，行尾符保持原样，写前自动备份。
+空集快照 = 把 `ANTHROPIC_*` 删干净，回到官方订阅原状。
+
+**响应** `200`：
+```json
+{ "ok": true, "id": "b65d7c60", "base_url": "https://open.bigmodel.cn/api/anthropic",
+  "added": [], "updated": ["ANTHROPIC_BASE_URL"], "removed": [],
+  "backup": "~/.cc-wire-analyzer/backups/settings.json.20260807-234149.353",
+  "current": {"needs_fix": false, "...": "..."} }
+```
+
+**错误**：`400 missing_id` / `404 not_found`（只接受本机采集过的 id，不接受任意 URL/token）/
+`409 proxy_running`（录制中，此时 BASE_URL 本就该是本机地址）/ `400 self_reference` /
+`500 write_failed`。失败路径一律**不碰 settings.json**。
+
 ---
 
 ## 2. 捕获列表

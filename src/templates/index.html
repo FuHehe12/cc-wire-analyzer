@@ -653,6 +653,16 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .test-result.busy{color:var(--info);}
 .test-result.ok{color:var(--ok);}
 .test-result.err{color:var(--err);}
+/* 上游修复提示（260807）。**必须自己声明字号**：设置页的小字规则是 `.srow .sub{font-size:10.5px}`，
+   带 `.srow` 前缀，而这块提示是 .scard 的直接子元素（它要横跨整行，不属于任何一行）——不给字号
+   就继承卡片默认字号，比周围小字大出一圈，用户第一眼就说"字大了、不协调"（260807 实测）。
+   报警态做成淡底+左边框的提示块而不是一片大红字：同样醒目，但和卡片里其他行是同一套语气。 */
+.fix-note{font-size:11px;line-height:1.65;color:var(--apple-secondary);margin:-2px 0 2px;}
+.fix-note:empty{display:none;}
+.fix-note.err{color:var(--err);background:var(--bg-error-soft);border-left:2px solid var(--err);
+  padding:7px 10px;border-radius:var(--radius-sm);margin:2px 0 6px;}
+.fix-note.ok{color:var(--ok);}
+.fix-note.busy{color:var(--info);}
 .save-row{display:flex;justify-content:flex-end;gap:10px;}
 .about-row{display:flex;gap:40px;flex-wrap:wrap;padding:4px 0;margin-top:8px;}
 .about-item .l{font-size:10.5px;color:var(--apple-secondary);}
@@ -921,6 +931,21 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
             <button class="btn" onclick="openBackupDir()" data-i18n="set.backupOpen">打开</button>
           </div>
         </div>
+        <!-- 上游配置历史与一键修复（260807）。修的病：录制期间 BASE_URL 是本地地址，cc-switch
+             此时切走会把它固化进该供应商的记录，日后切回来 CC 就连不上任何上游了。 -->
+        <!-- 这一行的三个内联 flex 值是量出来的，别当装饰删掉：`.srow>div:first-child` 全局是
+             `flex:1 1 auto`，auto basis = 内容宽度，长 sub 文案会把标签块撑到贪掉大半行，下拉
+             只剩 196px（文本 199px，刚好截断）；而给下拉设 `min-width:280px` 又会让它拒绝收缩，
+             把按钮整个顶出卡片 61px。把两侧都改成**有下限的弹性 basis**，窄窗口下按比例让位，
+             宽窗口下下拉拿到足够宽度，两种毛病都不犯。 -->
+        <div class="srow" style="flex-wrap:wrap">
+          <div style="flex:1 1 150px"><div class="lbl" data-i18n="set.fix">上游配置历史</div><div class="sub" data-i18n="set.fixSub">记录最近 5 套真实上游配置（含 token 与模型映射）。若 BASE_URL 被固化成了本机地址，选一套一键改回</div></div>
+          <div class="in-group" style="flex:1 1 320px;justify-content:flex-end">
+            <select id="cfgFixPick" style="flex:1 1 auto;min-width:0;max-width:300px"></select>
+            <button class="btn" id="cfgFixBtn" onclick="restoreUpstream()" data-i18n="set.fixBtn">一键修复</button>
+          </div>
+        </div>
+        <div class="fix-note" id="cfgFixNote"></div>
         <div class="srow">
           <div><div class="lbl" id="lblAutoStart" data-i18n="set.autostart">自动启动代理</div><div class="sub" data-i18n="set.autostartSub">打开软件时自动开始捕获</div></div>
           <button class="toggle" id="cfgAutoStart" type="button" role="switch" aria-checked="false"
@@ -1146,6 +1171,7 @@ zh: {
   "toast.opFailed": "操作失败：{msg}", "toast.loadFailed": "加载失败：{msg}",
   "toast.tooShort": "内容太短",
   "toast.cfgSaved": "配置已保存", "toast.cfgSaveFailed": "保存失败：{msg}",
+  "toast.fixDone": "上游配置已修复",
   "toast.themeChanged": "已切换为「{name}」",
   "toast.cfgLoadFailed": "配置加载失败：{msg}", "toast.backupDir": "备份目录：{dir}",
   "dates.meta": "显示 {shown} / {total} 条", "dates.live": " · 新请求实时插入顶部",
@@ -1244,6 +1270,19 @@ zh: {
   "set.path": "settings.json 路径", "set.pathSub": "CC 配置文件位置（只读）",
   "set.baseurl": "当前 BASE_URL", "set.baseurlSub": "停止代理后恢复为原值（只读）",
   "set.backup": "备份目录", "set.backupSub": "保留最近 5 份，孤儿备份启动时自动恢复", "set.backupOpen": "打开", "set.backupCount": "当前 {n} 份",
+  "set.fix": "上游配置历史",
+  "set.fixSub": "记录最近 5 套真实上游配置（含 token 与模型映射）。若 BASE_URL 被固化成了本机地址，选一套一键改回",
+  "set.fixBtn": "一键修复",
+  "set.fixOptOauth": "官方订阅（无 BASE_URL）",
+  "set.fixOptCurrent": "· 当前",
+  "set.fixOptMatch": "· 推荐",
+  "set.fixEmpty": "还没记录到上游配置——软件运行期间会自动记录 settings.json 的变化，启动一次代理也会立即记下当前配置。",
+  "set.fixNeed": "⚠️ 当前 BASE_URL={url} 是本机地址，而代理并没有在录制——很可能是录制期间被切换工具固化进了该供应商的配置。此时 CC 连不上任何上游（第三方 token 与官方订阅一样失效）。选一套历史配置点「一键修复」。",
+  "set.fixBusy": "正在修复…",
+  "set.fixOk": "已修复：BASE_URL → {url}（写入 {n} 项、删除 {m} 项，其余字段未动）· 改前已自动备份",
+  "set.fixOkOauth": "已修复：删除 {m} 个 ANTHROPIC_* 键，回到官方订阅原状 · 改前已自动备份",
+  "set.fixRunning": "代理正在录制——此时 BASE_URL 本就该是本机地址。请先停止代理再修复。",
+  "set.fixFail": "修复失败：{msg}",
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
   "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）。上游模型自身也有输出上限，填得再大也不会超过它",
@@ -1329,6 +1368,7 @@ en: {
   "toast.opFailed": "Operation failed: {msg}", "toast.loadFailed": "Load failed: {msg}",
   "toast.tooShort": "Content too short",
   "toast.cfgSaved": "Settings saved", "toast.cfgSaveFailed": "Save failed: {msg}",
+  "toast.fixDone": "Upstream config restored",
   "toast.themeChanged": "Switched to “{name}”",
   "toast.cfgLoadFailed": "Failed to load settings: {msg}", "toast.backupDir": "Backup dir: {dir}",
   "dates.meta": "{shown} / {total} shown", "dates.live": " · new requests appear on top",
@@ -1427,6 +1467,19 @@ en: {
   "set.path": "settings.json path", "set.pathSub": "CC config file location (read-only)",
   "set.baseurl": "Current BASE_URL", "set.baseurlSub": "Restored to original when the proxy stops (read-only)",
   "set.backup": "Backup dir", "set.backupSub": "Keeps last 5; orphan backups auto-restored at startup", "set.backupOpen": "Open", "set.backupCount": "current {n}",
+  "set.fix": "Upstream config history",
+  "set.fixSub": "Keeps the last 5 real upstream configs (token and model mapping included). If BASE_URL got frozen to a local address, pick one and restore it in one click",
+  "set.fixBtn": "Fix it",
+  "set.fixOptOauth": "Official subscription (no BASE_URL)",
+  "set.fixOptCurrent": "· current",
+  "set.fixOptMatch": "· recommended",
+  "set.fixEmpty": "No upstream config recorded yet — changes to settings.json are captured while this app runs, and starting the proxy records the current one right away.",
+  "set.fixNeed": "⚠️ BASE_URL is {url}, a local address, yet the proxy is not recording — most likely a switcher tool froze the proxy's local address into that provider's config while recording. Claude Code cannot reach any upstream in this state (third-party tokens and the official subscription alike). Pick a history entry and click Fix it.",
+  "set.fixBusy": "Restoring…",
+  "set.fixOk": "Fixed: BASE_URL → {url} ({n} key(s) written, {m} removed; nothing else touched) · backed up first",
+  "set.fixOkOauth": "Fixed: removed {m} ANTHROPIC_* key(s), back to the official subscription state · backed up first",
+  "set.fixRunning": "The proxy is recording — BASE_URL is supposed to be a local address right now. Stop the proxy first.",
+  "set.fixFail": "Restore failed: {msg}",
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
   "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default). The upstream model has its own ceiling — a larger value here cannot exceed it",
@@ -1512,6 +1565,7 @@ ja: {
   "toast.opFailed": "操作に失敗：{msg}", "toast.loadFailed": "読み込みに失敗：{msg}",
   "toast.tooShort": "内容が短すぎます",
   "toast.cfgSaved": "設定を保存しました", "toast.cfgSaveFailed": "保存に失敗：{msg}",
+  "toast.fixDone": "上流設定を復元しました",
   "toast.themeChanged": "「{name}」に切り替えました",
   "toast.cfgLoadFailed": "設定の読み込みに失敗：{msg}", "toast.backupDir": "バックアップ先：{dir}",
   "dates.meta": "{shown} / {total} 件表示", "dates.live": " · 新リクエストは先頭に追加",
@@ -1610,6 +1664,19 @@ ja: {
   "set.path": "settings.json パス", "set.pathSub": "CC 設定ファイルの場所（読み取り専用）",
   "set.baseurl": "現在の BASE_URL", "set.baseurlSub": "プロキシ停止時に元の値へ復元（読み取り専用）",
   "set.backup": "バックアップ先", "set.backupSub": "直近 5 件を保持、孤児バックアップは起動時に自動復元", "set.backupOpen": "開く", "set.backupCount": "現在 {n} 件",
+  "set.fix": "上流設定の履歴",
+  "set.fixSub": "直近 5 件の実際の上流設定（トークンとモデルマッピング込み）を保持。BASE_URL がローカルアドレスのまま固定された場合、選んでワンクリックで戻せます",
+  "set.fixBtn": "ワンクリック修復",
+  "set.fixOptOauth": "公式サブスクリプション（BASE_URL なし）",
+  "set.fixOptCurrent": "· 現在",
+  "set.fixOptMatch": "· 推奨",
+  "set.fixEmpty": "上流設定はまだ記録されていません — 本アプリの実行中に settings.json の変更を自動記録し、プロキシを起動すると現在の設定を即座に記録します。",
+  "set.fixNeed": "⚠️ 現在の BASE_URL={url} はローカルアドレスですが、プロキシは録画していません — 録画中に切替ツールがこのローカルアドレスをプロバイダ設定へ固定した可能性が高いです。この状態では Claude Code はどの上流にも接続できません（サードパーティのトークンも公式サブスクリプションも無効）。履歴を選んで「ワンクリック修復」を押してください。",
+  "set.fixBusy": "修復中…",
+  "set.fixOk": "修復しました：BASE_URL → {url}（{n} 項目を書き込み、{m} 項目を削除。他のフィールドは未変更）· 変更前にバックアップ済み",
+  "set.fixOkOauth": "修復しました：ANTHROPIC_* キーを {m} 件削除し、公式サブスクリプションの状態へ復帰 · 変更前にバックアップ済み",
+  "set.fixRunning": "プロキシが録画中です — この間 BASE_URL はローカルアドレスで正常です。先にプロキシを停止してください。",
+  "set.fixFail": "修復に失敗：{msg}",
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
   "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上流のデフォルト）。上流モデル自体にも出力上限があり、これを超えることはできません",
@@ -1780,6 +1847,9 @@ function renderSettingsI18n(){
     S.aiPrompt = t18("set.ai.promptText", {url: S.aiGuideUrl});   /* 复制按钮拷的是它，必须同步 */
     ap.textContent = S.aiPrompt;
   }
+  /* 上游历史的下拉项与病态提示也是 JS 拼的（含「（当前）」「（同一供应商·推荐）」等后缀），
+     切语言必须重算。重取一次而不是缓存重排：这条数据很小，且顺带刷新 needs_fix 判定。 */
+  if($("cfgFixPick")) loadUpstreamHistory();
 }
 
 async function setLang(lang){
@@ -3918,6 +3988,105 @@ async function testLlm(){
 function toggleKeyVisible(){
   const inp = $("cfgTransKey");
   inp.type = inp.type === "password" ? "text" : "password";
+}
+/* ===== 上游配置历史与一键修复（260807）=====
+   病：录制期间 BASE_URL 被 patch 成本机地址，cc-switch 此时切走会把这份带本机地址的配置
+   固化进它的供应商记录；日后切回该供应商，写进 settings.json 的就是个早已关掉的本地端口，
+   第三方 token 与官方订阅 OAuth 全部失效——而配置表面上「看着是好的」，极难认。 */
+/* 提示行的唯一写入口：文本与状态类一起设，避免某处 className= 把 fix-note 基类冲掉
+   （那会让它退回继承卡片字号，就是"字大了"那个毛病的复发路径）。 */
+function setFixNote(text, state){
+  const n = $("cfgFixNote");
+  if(!n) return;
+  n.textContent = text || "";
+  n.className = "fix-note" + (state ? " " + state : "");
+}
+function upstreamLabel(it){
+  const when = (it.at || "").slice(5, 16).replace("T", " ");   /* MM-DD hh:mm */
+  const host = it.base_url ? (it.base_url.replace(/^https?:\/\//, "").split("/")[0])
+                           : t18("set.fixOptOauth");
+  let tail = "";
+  if(it.current) tail = " " + t18("set.fixOptCurrent");
+  else if(it.token_match) tail = " " + t18("set.fixOptMatch");
+  return when + " · " + host + tail;
+}
+async function loadUpstreamHistory(){
+  const sel = $("cfgFixPick"), btn = $("cfgFixBtn");
+  if(!sel) return;
+  try{
+    const j = await (await fetch("/api/settings/upstream-history")).json();
+    S.upstream = j;
+    sel.innerHTML = "";
+    (j.items || []).forEach(it => {
+      const o = document.createElement("option");
+      o.value = it.id; o.textContent = upstreamLabel(it);
+      sel.appendChild(o);
+    });
+    /* 默认选中同一供应商的干净快照——那正是这个病的解药，用户不必自己认哪条对应哪个供应商。
+       没有则退到第一条非当前项（还原成当前配置是个空操作，不该是默认）。 */
+    const items = j.items || [];
+    const pref = items.find(x => x.token_match) || items.find(x => !x.current) || items[0];
+    if(pref) sel.value = pref.id;
+    const empty = items.length === 0;
+    sel.disabled = empty; btn.disabled = empty;
+    const cur = j.current || {};
+    if(empty){
+      setFixNote(t18("set.fixEmpty"));
+    }else if(cur.needs_fix){
+      setFixNote(t18("set.fixNeed", {url: cur.base_url || "—"}), "err");
+    }else if(!$("cfgFixNote").classList.contains("ok")){
+      /* 不覆盖刚刚的「已修复」回执：修复成功会 loadConfig() → renderSettingsI18n() →
+         回到这里，于是成功提示被自己触发的刷新当场清掉，用户只看得到一闪而过的 toast
+         （实测）。ok 态由 restoreUpstream 自己定时收走。 */
+      setFixNote("");
+    }
+    /* 病态时把上面「当前 BASE_URL」那行也换成**文件真值**并标红。那行平时显示的是
+       `status.original_base_url`（内存快照，语义是"停代理后会恢复成这个"），而中了这个病时
+       内存里还留着上次录制记下的真上游 —— 于是同一张卡上半部分写着 bigmodel.cn、下半部分
+       红字说 BASE_URL 是 127.0.0.1，自相矛盾（截图实测发现）。病态下以文件为准。 */
+    const bu = $("cfgBaseUrl");
+    if(bu){
+      /* 没在录制时以**文件真值**为准。那行平时读 status.original_base_url（内存快照，语义是
+         "停代理后会恢复成这个"），可代理若从未成功启动过——比如正是被这个病挡住了——快照是
+         空的，那行就显示 "—"（实测）。录制中则保持显示原上游，与该行文案一致。 */
+      if(!cur.recording) bu.textContent = cur.base_url || t18("set.fixOptOauth");
+      bu.style.color = cur.needs_fix ? "var(--err)" : "";
+    }
+  }catch(e){
+    setFixNote(t18("set.fixFail", {msg: e.message}), "err");
+  }
+}
+async function restoreUpstream(){
+  const sel = $("cfgFixPick"), btn = $("cfgFixBtn");
+  const id = sel.value;
+  if(!id) return;
+  btn.disabled = true;
+  setFixNote(t18("set.fixBusy"), "busy");
+  try{
+    const r = await fetch("/api/settings/upstream-restore", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id}),
+    });
+    const j = await r.json();
+    if(!j.ok){
+      setFixNote(t18(j.error === "proxy_running" ? "set.fixRunning" : "set.fixFail",
+                     {msg: j.detail || j.error || ("HTTP " + r.status)}), "err");
+    }else{
+      const n = (j.added || []).length + (j.updated || []).length, m = (j.removed || []).length;
+      setFixNote(j.base_url ? t18("set.fixOk", {url: j.base_url, n: n, m: m})
+                            : t18("set.fixOkOauth", {m: m}), "ok");
+      const noteEl = $("cfgFixNote");
+      setTimeout(() => { if(noteEl.classList.contains("ok")) setFixNote(""); }, 9000);
+      toast(t18("toast.fixDone"));
+      loadConfig();       /* 回读：当前 BASE_URL 那行要跟着变 */
+      refreshStatus();    /* 顶部状态条的 base_url 警告也该消失（函数名是 refreshStatus，
+                             写成 loadStatus 会 ReferenceError 把成功分支甩进 catch —— 表现是
+                             "修好了但回执不见了"，node --check 查不出未定义函数，真点击才暴露）*/
+    }
+  }catch(e){
+    setFixNote(t18("set.fixFail", {msg: e.message}), "err");
+  }
+  btn.disabled = false;
 }
 function openBackupDir(){
   const dir = $("cfgBackupDir").textContent;

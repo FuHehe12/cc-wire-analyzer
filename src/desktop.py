@@ -89,7 +89,6 @@ def _serve() -> None:
     atexit 不跑、marker 残留 → 下次任意模式启动时 check_orphan_backup 自愈
     （260713 已加固：陈旧 marker 不覆盖用户自行改的配置）。"""
     import logging
-    import settings_guard
     port = CFG.find_free_port()
     if not port:
         sys.exit(1)
@@ -98,12 +97,24 @@ def _serve() -> None:
     logging.getLogger(__name__).info(
         "=== started mode=serve pid=%s version=%s port=%s ===",
         os.getpid(), flask_app.VERSION, port)
-    try:   # 自动 patch（serve 的目的就是录制，一步到位；与 GUI 的 /api/proxy/start 同一套逻辑）
-        settings_guard.snapshot_original()
-        settings_guard.backup_file()
-        settings_guard.patch_base_url(f"http://127.0.0.1:{port}")
-    except Exception:
-        sys.exit(1)   # patch 失败 → 退出；crash guards 会尝试清理（未成功 patch 则 restore 是 no-op）
+    try:   # 自动 patch（serve 的目的就是录制，一步到位）。**与 GUI 的 /api/proxy/start 调同一个
+           # 函数**——260807 之前这里是抄过去的三行，新增的上游历史采集只加进了路由那份，
+           # serve 模式的历史于是永远是空的。声称"同一套逻辑"就得真的是同一个函数。
+        flask_app.begin_recording(port)
+    except Exception as e:
+        # 260807：patch 失败**不再退出**，服务照常起，只是没在录。
+        #
+        # 起因是一条真实且很难自己走出去的死路：BASE_URL 被固化成了本机代理地址（录制期间
+        # 切换工具保存 profile 所致）→ snapshot 的自指守卫拒绝 patch（拿它当上游会无限递归）
+        # → serve 进程直接 exit(1) → 而修复这个病的端点（`/api/settings/upstream-restore`）
+        # **正好在这个进程里**。于是 AI 侧一个能自救的路径都没有，只能人去手改 settings.json。
+        # 起着不录，比退出后什么都做不了强得多：status 会如实显示 running=false，
+        # 修复端点可用，修完调一次 /api/proxy/start 就开始录。
+        logging.getLogger(__name__).warning(
+            "自动 patch 失败（%s）——服务继续运行但未在录制。"
+            "若是 BASE_URL 被固化成本机地址，调 GET /api/settings/upstream-history 看 "
+            "current.needs_fix，再 POST /api/settings/upstream-restore 修复，然后 "
+            "POST /api/proxy/start 开始录制。", e)
     CFG.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     (CFG.CONFIG_DIR / "serve.pid").write_text(str(os.getpid()), encoding="utf-8")
     # 阻塞：Flask 持有主线程。被停止时（SIGTERM/kill）由已注册的 handler 恢复 settings 后退出。

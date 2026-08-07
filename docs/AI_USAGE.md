@@ -69,7 +69,15 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 录制期间 BASE_URL 被指向本机代理（如 `http://127.0.0.1:5051/api/anthropic`）。**不要在这期间用 cc-switch 切换或保存 profile**：
 
 - **切换上游**：cc-switch 改 settings.json 的 BASE_URL → 代理检测到（`check_external_change`）会**自动降旗断开**，录制停止（设计行为，不是 bug——代理已被绕过）。要继续录，停了再重启。
-- **保存当前为 profile**（更隐蔽）：cc-switch 把当前 settings 存进它的 profile，于是把**本机代理地址**存了进去；之后切到该 profile，BASE_URL 指向没人听的本地端口 → CC 连不上任何上游，只能手动改 cc-switch 那个 profile 回真上游。这条工具侧防不住（settings 没被改，只是被 cc-switch 读走，settings_guard 检测不到）。
+- **保存当前为 profile**（更隐蔽）：cc-switch 把当前 settings 存进它的 profile，于是把**本机代理地址**存了进去；之后切到该 profile，BASE_URL 指向没人听的本地端口 → CC 连不上任何上游，只能手动改 cc-switch 那个 profile 回真上游。**发生的当时仍然防不住**（settings 没被改，只是被 cc-switch 读走，`settings_guard` 无从检测），但 260807 起**事后可以一键修**：
+
+  ```bash
+  curl 127.0.0.1:$port/api/settings/upstream-history   # current.needs_fix=true 就是中了这一条
+  curl -X POST 127.0.0.1:$port/api/settings/upstream-restore \
+       -H 'Content-Type: application/json' -d '{"id":"<items[].id>"}'
+  ```
+
+  本工具在录制开始前与运行期间会把用户真实的 `ANTHROPIC_*` 组合记进历史（本机地址一律不记），还原时按整个 `ANTHROPIC_*` 命名空间对齐——token 与模型映射跟着一起回去，官方订阅那种"本来就没有 BASE_URL 键"的状态则还原成删键。挑哪条：优先 `token_match=true`（凭据与当前相同 = 同一个供应商的干净版本）。
 
 需要切上游时，顺序是：`POST /api/proxy/stop`（恢复原 BASE_URL）→ cc-switch 切 → 再 `start` 重启录制。
 
@@ -138,6 +146,8 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/proxy/status` | 代理在 patch settings.json 吗？当前 BASE_URL？写错计数？ |
 | POST | `/api/proxy/start` | patch settings.json + 开始转发（若未在跑）|
 | POST | `/api/proxy/stop` | 停转发 + 恢复 settings.json |
+| GET | `/api/settings/upstream-history` | 最近 5 套真实上游配置（`ANTHROPIC_*` 组合，**token 已脱敏**）+ `current.needs_fix`：当前 BASE_URL 是不是个本机死地址 |
+| POST | `/api/settings/upstream-restore` `{id}` | 把 `ANTHROPIC_*` 对齐到该历史快照（修被固化进 profile 的本机地址）。代理运行中 → 409 `proxy_running` |
 | GET | `/api/captures?date=YYYY-MM-DD&limit=N` | 最新在前的摘要——**不含 body**，可安全分页 |
 | GET | `/api/captures/<id>?date=...` | 一条完整 record（含 body）|
 | GET | `/api/dag?date=YYYY-MM-DD` | 会话时序的 lanes / nodes / edges |

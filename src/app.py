@@ -24,6 +24,7 @@ import capture_store
 import diagnose
 import doctor
 import settings_guard
+import upstream_history
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +85,10 @@ def _settings_watcher() -> None:
         time.sleep(2)
         try:
             settings_guard.check_external_change()   # 未 patch 时内部直接返回，零 IO
+            # 260807：顺带把用户当前的上游配置收进历史（mtime 没变则只是一次 stat）。
+            # 这是「上游配置历史」唯一能覆盖到**没开录制那段时间**的采集点——只靠
+            # proxy/start 时的备份，用户切到某供应商后一直没录制的话那套配置从未被记下。
+            upstream_history.observe()
         except Exception:
             log.exception("settings watcher error")  # watcher 绝不能死
 
@@ -220,10 +225,8 @@ def proxy_start():
             return jsonify({"running": False, "error": "config_unhealthy",
                             "health": health}), 409
     try:
-        upstream = settings_guard.snapshot_original()
-        bkp = settings_guard.backup_file()
+        upstream, bkp = begin_recording(_LISTEN_PORT)
         local_listen = f"http://127.0.0.1:{_LISTEN_PORT}"
-        settings_guard.patch_base_url(local_listen)
     except settings_guard.SettingsGuardError as e:
         return jsonify({"running": False, "error": "patch_failed", "detail": str(e)}), 500
     return jsonify({
@@ -232,6 +235,68 @@ def proxy_start():
         "upstream": upstream,
         "backup_created": str(bkp) if bkp else "",   # settings.json 不存在时无可备份（260801）
     })
+
+
+def begin_recording(port: int) -> tuple[str, Path | None]:
+    """开始录制的完整前置动作：snapshot → **记历史** → 备份 → patch。返回 (上游地址, 备份路径)。
+
+    GUI 的 `/api/proxy/start` 与 serve 模式的自动启动**必须共用这一个函数**。260807 之前它们
+    是两份副本——`desktop.py` 那三行的注释白纸黑字写着「与 GUI 的 /api/proxy/start 同一套逻辑」，
+    而实际上新增的历史采集只加进了路由那一份，于是 serve 模式下上游历史永远是空的
+    （UI 实测当场发现）。注释声称的"同一套逻辑"要靠调用同一个函数来保证，靠人记不住。
+
+    历史必须记在 patch **之前**：那是真上游最后一次可被观察到的时刻。下一步就把 BASE_URL 改成
+    本机地址了，而切换工具若在录制期间保存 profile，会把这个本机地址固化进供应商记录——
+    用户日后切回来时，这条历史是唯一能还原出真上游的东西。"""
+    upstream = settings_guard.snapshot_original()
+    try:
+        upstream_history.observe(force=True)   # force：不依赖 watcher 的 mtime 门控时序
+    except Exception:
+        log.exception("upstream history 采集失败（不影响启动录制）")
+    bkp = settings_guard.backup_file()
+    settings_guard.patch_base_url(f"http://127.0.0.1:{port}")
+    return upstream, bkp
+
+
+@app.route("/api/settings/upstream-history")
+def upstream_history_list():
+    """上游配置历史（最近 5 套 ANTHROPIC_* 组合）+ 当前状态是否需要修复。
+
+    修的是这个病（260807 用户实测）：录制期间 BASE_URL 被 patch 成本地地址，cc-switch 此时
+    切走会把这份带本地地址的配置固化进它的供应商记录；日后切回该供应商，写进 settings.json
+    的就是一个早已关掉的本地端口——第三方 token 与官方订阅 OAuth 全部失效，而配置表面上
+    "看着是好的"。`current.needs_fix=true` 就是这个状态。
+
+    **token 一律脱敏**（`sk-…3f7a` 形态），明文永不出接口——录制与接口现在可被 AI 经
+    CLI/HTTP 读取，给 key 修一条直通 AI 上下文的路是净损失（与 260713 删 redact_headers 同源）。"""
+    return jsonify({
+        "ok": True,
+        "items": upstream_history.list_entries(),
+        "current": upstream_history.current_state(),
+        "max_items": upstream_history.MAX_ITEMS,
+    })
+
+
+@app.route("/api/settings/upstream-restore", methods=["POST"])
+def upstream_history_restore():
+    """把 settings.json 的 ANTHROPIC_* 命名空间对齐到指定历史快照（其余字段一律不动）。
+
+    只接受**本机采集过的**快照 id，不接受任意 URL/token —— 不给自己开一个写凭据的任意入口
+    （开发指南不变量 9）。写前自动备份，走 settings_guard 的原子写。代理运行中时拒绝
+    （409 proxy_running）：那时 BASE_URL 本就该是本地地址，"修复"没有意义。"""
+    body = request.get_json(silent=True) or {}
+    entry_id = (body.get("id") or request.args.get("id") or "").strip()
+    if not entry_id:
+        return jsonify({"ok": False, "error": "missing_id"}), 400
+    try:
+        result = upstream_history.restore(entry_id)
+    except upstream_history.HistoryError as e:
+        code = 409 if e.code == "proxy_running" else (404 if e.code == "not_found" else 400)
+        return jsonify({"ok": False, "error": e.code, "detail": e.detail}), code
+    except OSError as e:
+        return jsonify({"ok": False, "error": "write_failed", "detail": str(e)}), 500
+    return jsonify({"ok": True, **result,
+                    "current": upstream_history.current_state()})
 
 
 @app.route("/api/proxy/stop", methods=["POST"])
@@ -751,6 +816,8 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/proxy/status` | 代理是否在 patch settings.json、当前上游、写盘错误计数 |
 | POST | `/api/proxy/start` | patch settings.json + 开始转发（`?force=1` 跳过体检拦截）|
 | POST | `/api/proxy/stop` | 停转发 + 恢复 settings.json |
+| GET | `/api/settings/upstream-history` | 最近 5 套上游配置（`ANTHROPIC_*` 组合，token 已脱敏）+ `current.needs_fix`：当前 BASE_URL 是不是个本机死地址 |
+| POST | `/api/settings/upstream-restore` `{id}` | 把 `ANTHROPIC_*` 对齐到该历史快照（修复被固化进供应商的本地地址；代理运行中返回 409）|
 | GET | `/api/captures?date=YYYY-MM-DD&limit=N` | 摘要列表（**不含 body**，可安全分页）|
 | GET | `/api/captures/<id>?date=…` | 单条完整记录（含 body，可达数 MB）|
 | GET | `/api/dag?date=…` | 会话时序：lanes / nodes / edges |
