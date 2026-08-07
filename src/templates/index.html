@@ -1255,6 +1255,7 @@ zh: {
   "ek.stream_error": "流内错误（HTTP 200）",
   "ek.decode_failed": "解码失败（响应体不完整）",
   "detail.decodeError": "响应正文未能解码，下面的解析结果不完整",
+  "detail.charsetFallback": "这段错误消息不是 UTF-8，已按此方式还原",
   "detail.betaTitle": "协议扩展",
   "detail.betaNew": "有 {n} 个没见过的扩展（橙色）——CC 启用了新能力，可能带来我们还不认识的字段或响应块",
   "detail.compaction": "上下文自动压缩的产出",
@@ -1452,6 +1453,7 @@ en: {
   "ek.stream_error": "in-stream error (HTTP 200)",
   "ek.decode_failed": "decode failed (body incomplete)",
   "detail.decodeError": "Response body could not be decoded — the parsed result below is incomplete",
+  "detail.charsetFallback": "This error message was not UTF-8; recovered this way",
   "detail.betaTitle": "Protocol extensions",
   "detail.betaNew": "{n} extension(s) we haven't seen before (orange) — CC enabled a new capability, which may bring fields or response blocks we don't yet recognise",
   "detail.compaction": "produced by automatic context compaction",
@@ -1649,6 +1651,7 @@ ja: {
   "ek.stream_error": "ストリーム内エラー（HTTP 200）",
   "ek.decode_failed": "デコード失敗（応答ボディ不完全）",
   "detail.decodeError": "レスポンス本文をデコードできませんでした。下の解析結果は不完全です",
+  "detail.charsetFallback": "このエラーメッセージは UTF-8 ではなく、この方法で復元しました",
   "detail.betaTitle": "プロトコル拡張",
   "detail.betaNew": "未知の拡張が {n} 件（オレンジ）——CC が新機能を有効化しており、未対応のフィールドやレスポンスブロックが含まれる可能性があります",
   "detail.compaction": "コンテキスト自動圧縮の産物",
@@ -2935,7 +2938,13 @@ function renderDetail(d){
     R += '<div class="err-card"><b>' + esc(errKindLabel(d.error.kind) || "error") + '</b>' +
       (d.error.status ? " · HTTP " + d.error.status : "") +
       (d.error.detail ? '<pre>' + esc(d.error.detail) + '</pre>' : "") +
-      (d.error.body_snippet ? '<pre>' + esc(d.error.body_snippet) + '</pre>' : "") + '</div>';
+      (d.error.body_snippet ? '<pre>' + esc(d.error.body_snippet) + '</pre>' : "") +
+      /* charset 回退（260807 P1）：错误体不是按 UTF-8 直接解出来的，而是猜的或按声明退的。
+         沿用 brotli 那次的做法——解不动可以，但必须说，否则用户无从判断这段文字可不可信。 */
+      (d.error.charset_fallback
+        ? '<div class="blk-meta" style="margin-top:6px;">' +
+            esc(t18("detail.charsetFallback")) + '：<code>' + esc(d.error.charset_fallback) + '</code></div>'
+        : "") + '</div>';
   }
 
   /* content blocks */

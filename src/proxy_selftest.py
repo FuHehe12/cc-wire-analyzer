@@ -163,6 +163,10 @@ MOCK_SSE_COMPACT = "\n".join([
     '',
 ])
 
+# 260807 运行分析在真实录制里捞到的那条消息（智谱网关 429 限流）。此前它落盘成
+# `[1302][�����˻��Ѵﵽ…]` —— 不是显示问题，二进制读索引文件存的就是替换字符。
+GBK_ERR_MSG = "[1302] 并发请求数已达上限，请稍后重试"
+
 mock_app = Flask("mock_upstream")
 
 
@@ -187,6 +191,18 @@ def _mock_messages():
             zstandard.ZstdCompressor().compress(json.dumps(MOCK_JSON_MSG).encode("utf-8")),
             status=200, mimetype="application/json",
             headers={"Content-Encoding": "zstd"})
+    # 非 UTF-8 的错误体（260807 P1 的真实形状）。要害是**不声明 charset**——智谱网关就是
+    # 这样，Content-Type 里只有 application/json，正文却是 GBK。用显式 headers 而不是
+    # mimetype= 来设，避免 Flask 自作主张补上 charset 把用例变成另一种情形。
+    if _rq.headers.get("x-gbk-err"):
+        payload = json.dumps({"error": {"message": GBK_ERR_MSG}}, ensure_ascii=False)
+        return Response(payload.encode("gbk"), status=429,
+                        headers={"Content-Type": "application/json"})
+    # 同样是 GBK 正文，但上游**谎报成 UTF-8**。这条守的是"别无条件相信声明"。
+    if _rq.headers.get("x-gbk-lying"):
+        payload = json.dumps({"error": {"message": GBK_ERR_MSG}}, ensure_ascii=False)
+        return Response(payload.encode("gbk"), status=429,
+                        headers={"Content-Type": "application/json; charset=utf-8"})
     if not body.get("stream"):        # 非流式：返回普通 JSON（安全分类器就走这条）
         return Response(json.dumps(MOCK_JSON_MSG), status=200, mimetype="application/json")
     if _rq.headers.get("x-stream-error"):     # 流内 error 帧（HTTP 仍是 200）
@@ -451,6 +467,66 @@ assert b6[2] == {"type": "text", "text": "据此",
                  "citations": [{"type": "web_search_result_location", "title": "来源A"}]}, \
     f"citations_delta 未追加进 text 块: {b6[2] if len(b6) > 2 else None}"
 print("    compaction 聚合 + stop_sequence + signature(赋值) + citations(追加) ✓")
+
+
+# ===== 6e. 非 UTF-8 的错误体 —— 按 charset 解，不能无条件 UTF-8（260807 P1）=====
+# 这条守的是**不可逆的数据损坏**：修复前 `body_snippet` 是 `decode("utf-8", errors="replace")`，
+# 非 UTF-8 的每个字节当场变 `�`，落盘即丢失、事后无法还原。放在所有 `total ==` 断言之后，
+# 免得新增录制打乱既有计数（这份自测的计数是硬编码的）。
+print("\n[3f] 上游用 GBK 回错误体（不声明 charset）...")
+r7 = httpx.post(
+    APP_BASE + "/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake",
+             "x-gbk-err": "1"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": True},
+    timeout=10.0,
+)
+assert r7.status_code == 429, f"GBK 错误体转发状态异常: {r7.status_code}"
+rec7 = capture_store.get_capture(capture_store.list_captures()["items"][0]["id"])
+err7 = rec7["error"]
+print(f"    body_snippet={err7['body_snippet'][:60]}")
+print(f"    charset_fallback={err7.get('charset_fallback')}")
+assert GBK_ERR_MSG in err7["body_snippet"], f"GBK 中文没解对: {err7['body_snippet'][:80]}"
+# 最要害的一条：替换字符一旦落盘，信息就永久没了
+assert "�" not in err7["body_snippet"], f"落盘仍有替换字符: {err7['body_snippet'][:80]}"
+assert err7.get("charset_fallback") == "charset_undeclared:gbk", \
+    f"回退标记不对: {err7.get('charset_fallback')}"
+print("    GBK 错误体：中文可读 + 无替换字符 + 回退如实标记 ✓")
+
+print("\n[3f'] 上游谎报 charset=utf-8、正文其实是 GBK...")
+r8 = httpx.post(
+    APP_BASE + "/v1/messages",
+    headers={"content-type": "application/json", "authorization": "Bearer fake",
+             "x-gbk-lying": "1"},
+    json={"model": "glm-5.2", "max_tokens": 100,
+          "messages": [{"role": "user", "content": "x"}], "stream": True},
+    timeout=10.0,
+)
+assert r8.status_code == 429, f"谎报 charset 转发状态异常: {r8.status_code}"
+err8 = capture_store.get_capture(capture_store.list_captures()["items"][0]["id"])["error"]
+print(f"    charset_fallback={err8.get('charset_fallback')}")
+assert GBK_ERR_MSG in err8["body_snippet"], f"声明错时没退到 GBK: {err8['body_snippet'][:80]}"
+assert err8.get("charset_fallback") == "charset_declared_wrong:utf-8→gbk", \
+    f"没标出「声明与实际不符」: {err8.get('charset_fallback')}"
+print("    声明不可信时按内容探测 + 标记声明错 ✓")
+
+# 纯单元断言：不走 HTTP，直接钉住解码函数的四条分支语义
+import proxy                                          # noqa: E402
+print("\n[3f''] _decode_error_body 分支语义...")
+_t, _f = proxy._decode_error_body("正常 UTF-8".encode("utf-8"), "application/json")
+assert (_t, _f) == ("正常 UTF-8", None), f"UTF-8 正常路径不该打标记: {(_t, _f)}"
+_t, _f = proxy._decode_error_body("诚实声明".encode("gbk"), "application/json; charset=gbk")
+assert (_t, _f) == ("诚实声明", None), f"上游诚实声明 GBK 时不该打标记: {(_t, _f)}"
+# Python 不认识的编码名：不能让 LookupError 冒出来打断录制
+_t, _f = proxy._decode_error_body("怪编码名".encode("utf-8"), "application/json; charset=x-weird-9")
+assert _t == "怪编码名", f"未知编码名应回退探测而非抛异常: {(_t, _f)}"
+# 谁都解不出的字节：latin-1 兜底永不失败，且**字节可从文本还原**（errors="replace" 的反面）
+_raw = b"\xff\xfe\x00\x81\xff"
+_t, _f = proxy._decode_error_body(_raw, "application/json")
+assert _f == "charset_undecodable:latin-1", f"兜底标记不对: {_f}"
+assert _t.encode("latin-1") == _raw, "latin-1 兜底必须无损（字节能原样还原）"
+print("    四条分支（正常/诚实声明/未知编码名/全解不出）语义正确 ✓")
 
 
 # ===== 7. 恢复 =====

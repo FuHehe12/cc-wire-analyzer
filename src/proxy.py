@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Iterator
 from urllib.parse import urlparse
@@ -100,6 +101,56 @@ def _decode_body(body: bytes, encoding: str) -> tuple[bytes, str | None]:
     except Exception as e:
         log.warning("body 解压失败 encoding=%s: %s", encoding, e)
         return body, f"decompress_failed:{encoding}:{type(e).__name__}"
+
+
+_CHARSET_RE = re.compile(r"charset\s*=\s*\"?([\w\-]+)", re.I)
+
+
+def _decode_error_body(body: bytes, content_type: str) -> tuple[str, str | None]:
+    """解码上游**错误体** → (文本, charset 回退标记或 None)。
+
+    为什么错误体要单独一条解码路径（260807 运行分析发现的 P1）：此前这里是
+    `body.decode("utf-8", errors="replace")`，非 UTF-8 的错误消息**落盘即损坏**——每个
+    非法字节当场变成 `�`，`errors="replace"` 有损且不可逆，事后无法还原。实测智谱网关的
+    429 限流消息存进索引就是一串 `�����˻��Ѵﵽ…`，而本项目的核心价值主张恰恰是
+    「上游的失败响应不是噪声，是已经被上游诊断过一次的问题报告」——一个读不出内容的
+    问题报告，等于这条主张在所有非 UTF-8 上游那里整个落空。
+
+    **要害是区分它与本文件另外两处 decode**（`_parse_sse` 前、非流式正文）：那两处走的是
+    Anthropic 的 SSE/JSON 协议，协议规定 UTF-8，按 UTF-8 解就是对的，**不要一起改**。
+    错误体不同——它来自**网关自身**而非模型响应，不受 CC/Anthropic 协议约束，可以是任何
+    编码。`_decode_body` 一直只管 content-**encoding**（gzip/br/zstd 压缩），从来没人管
+    **charset**：这是同一个病的两层，260731 brotli 那次只治了压缩层。
+
+    **顺序不能反**：先按声明，无声明则 UTF-8 严格优先、失败才退 GBK。反过来是陷阱——
+    GBK 是双字节编码，能"成功"解码大量 UTF-8 字节序列而不抛异常，只是解出乱码。
+    最后兜底 latin-1 **永不失败且不丢字节**（U+0000–U+00FF 与字节一一对应），所以即使
+    全猜错，原始字节仍可从文本还原——这正是 `errors="replace"` 的反面。
+
+    沿用 brotli 那次确立的做法：**解不动可以，但必须说**。回退标记写进记录供界面标出。
+    """
+    declared = None
+    m = _CHARSET_RE.search(content_type or "")
+    if m:
+        declared = m.group(1).lower()
+    if declared:
+        try:
+            return body.decode(declared), None
+        except UnicodeDecodeError:
+            pass            # 声明了但内容对不上（上游自己声明错了）
+        except LookupError:
+            pass            # Python 不认识这个编码名
+    for enc in ("utf-8", "gbk"):
+        if enc == declared:
+            continue        # 上面已试过且失败，别重复
+        try:
+            text = body.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        if declared:
+            return text, f"charset_declared_wrong:{declared}→{enc}"
+        return text, None if enc == "utf-8" else f"charset_undeclared:{enc}"
+    return body.decode("latin-1"), "charset_undecodable:latin-1"
 
 
 def forward(path: str) -> Response:
@@ -265,11 +316,16 @@ def _finalize(rec, status, resp_headers_raw, content_type, is_sse,
                 if isinstance(j.get("content"), list):
                     resp["content_blocks"] = j["content"]   # 已是 Anthropic block 数组，拿来即用
     if status >= 400:
+        # charset 感知解码（260807 P1）：错误体来自网关自身，不受 Anthropic 协议约束，
+        # 不能像上面两处那样无条件按 UTF-8 解。详见 `_decode_error_body`。
+        err_text, charset_fb = _decode_error_body(body_bytes, content_type)
         rec["error"] = {
             "kind": f"upstream_{status // 100}xx",
             "status": status,
-            "body_snippet": body_bytes.decode("utf-8", errors="replace")[:500],
+            "body_snippet": err_text[:500],
         }
+        if charset_fb:
+            rec["error"]["charset_fallback"] = charset_fb
     elif stream_error:
         # HTTP 200 但流里报了错。写 error 后 `has_error` 为真，这条才会进失败聚合
         # （diagnose.py 的 `_is_failure` 认 has_error）——这正是 G1 要修的：

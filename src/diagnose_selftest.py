@@ -146,6 +146,33 @@ varied = [
 a = diagnose.aggregate(varied)
 check("变动的 id/数字被归一 → 仍 1 组", a["groups"] == 1, str(a["groups"]))
 
+# 长 hex 标识符（260807 运行分析发现的真实形状：智谱网关的 429，消息尾部带 30 位无分隔
+# 十六进制请求 id）。这三条取自真实录制 2026-08-02 08:22–08:24 的那次连续限流——当时它们
+# 碎成了 16 个 count=1 的组。**必须用真实形状测**：造一个整齐的假 id 会同时被好几条规则
+# 匹配，测不出「数字与字母之间没有词边界」这个要害。
+hexid = [
+    rec("req_h1", "2026-08-02T08:22:59.000", status=429,
+        err=upstream_err(429, "rate_limit_error",
+                         "[1302] 并发请求数已达上限 [20260802082259ad76fffd275f413f]")),
+    rec("req_h2", "2026-08-02T08:23:00.000", status=429,
+        err=upstream_err(429, "rate_limit_error",
+                         "[1302] 并发请求数已达上限 [202608020823003b2f6bd64c844453]")),
+    rec("req_h3", "2026-08-02T08:23:02.000", status=429,
+        err=upstream_err(429, "rate_limit_error",
+                         "[1302] 并发请求数已达上限 [20260802082302428f5d046d044b98]")),
+]
+a = diagnose.aggregate(hexid)
+check("长 hex 请求 id 被归一 → 3 条并成 1 组", a["groups"] == 1, str(a["groups"]))
+check("并成的那组 count=3", a["items"][0]["count"] == 3, str(a["items"][0]["count"]))
+
+# 归一后的指纹里不该还留着任何一个原始 id（否则就是只抹了一部分）
+fp_all = diagnose._fingerprint("[1302] x [20260802082259ad76fffd275f413f]")
+check("长 hex 被替换成占位符", "<hex-id>" in fp_all and "ad76fffd" not in fp_all, fp_all)
+
+# 反向：短 hex 不该被抹掉（它可能是有诊断意义的错误码，抹了会让不同问题并成一组）
+fp_short = diagnose._fingerprint("bad status 0xdeadbeef here")
+check("短 hex 保留不归一", "<hex-id>" not in fp_short, fp_short)
+
 # 不同原因不能被合并
 a = diagnose.aggregate(same + varied)
 check("不同原因保持分组", a["groups"] == 2, str(a["groups"]))

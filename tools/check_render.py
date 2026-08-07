@@ -23,6 +23,15 @@ import re
 import sys
 from pathlib import Path
 
+# Windows 默认控制台是 GBK，编不出 ✓ 之类的字符 → print 抛 UnicodeEncodeError，脚本以非零码
+# 退出，**检查全过也会被读成失败**（260808 撞到：check_render 全 OK 却崩在最后那句 ALL PASSED）。
+# src/ 的自测脚本一直有这段，tools/ 四个漏了；中文输出在 GBK 下也只是乱码不可读。
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+
 INDEX = Path(__file__).resolve().parent.parent / "src" / "templates" / "index.html"
 ROW_H = 18   # 最大内容行高（dn-r1 / dn-badges，实测）
 
