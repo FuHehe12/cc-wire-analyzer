@@ -179,6 +179,32 @@ def _doctor_codes() -> set[str]:
     return set(re.findall(r'_issue\(\s*"([a-z_]+)"', _read_required(SRC / "doctor.py")))
 
 
+_SPECS = ("build.spec", "build-mac.spec")
+
+
+def _spec_facts() -> dict:
+    """两份 PyInstaller spec 的 `datas` 源路径与显式 `hiddenimports`。
+
+    两条检查，各防一个已经发生过的事故：
+
+    1. **datas 源路径必须存在**。260808 把 `docs/AI_USAGE.md` 移进 `reference/` 时，两份 spec
+       里的源路径是**靠人工 grep 发现的**——漏了的话打包会失败，或者更糟：产物少一份说明书，
+       而 `/api/ai-guide` 找不到文件时是**静默回落**到最小速查的，没人会注意到。
+    2. **两份 spec 不许分叉**。注释自己记着「260801 发现两个 spec 分叉」：mac spec 没跟上
+       `brotli`，于是 macOS 产物对非流式响应（安全分类器正是非流式）的 body/usage 整段丢失。
+       平台后端不同是合理的（EdgeChromium vs WebKit），所以只对账**显式写死的那部分**。
+    """
+    out = {}
+    for name in _SPECS:
+        t = _read(ROOT / name)
+        m = re.search(r"datas\s*=\s*\[(.*?)\n\]", t, re.S)
+        datas = re.findall(r"\(\s*'([^']+)'\s*,", m.group(1)) if m else []
+        h = re.search(r"hiddenimports\s*=[^\n]*?\+\s*\[([^\]]*)\]", t)
+        hidden = re.findall(r"'([A-Za-z_][A-Za-z_0-9]*)'", h.group(1)) if h else []
+        out[name] = {"datas": sorted(datas), "hidden": sorted(hidden)}
+    return out
+
+
 def _git_ignored(paths: list[str]) -> set[str]:
     """这些路径里哪些被 `.gitignore` 排除——**生成物，文档提到它们不算断链**。
 
@@ -332,9 +358,25 @@ def audit() -> dict:
         missing = sorted(v for v in code_set if not _mentioned_anywhere(joined, v))
         enums.append({"enum": label, "ghost": ghosts, "undocumented": missing})
 
+    # 7. PyInstaller spec：打包源路径是否存在 + 两份 spec 是否分叉
+    specs = _spec_facts()
+    spec_missing = sorted({f"{name} → {d}" for name, f in specs.items()
+                           for d in f["datas"] if not (ROOT / d).exists()})
+    a, b = specs.get("build.spec", {}), specs.get("build-mac.spec", {})
+    spec_divergence = []
+    if a and b:
+        if a["datas"] != b["datas"]:
+            spec_divergence.append(
+                f"datas 不一致：build.spec={a['datas']} / build-mac.spec={b['datas']}")
+        if a["hidden"] != b["hidden"]:
+            spec_divergence.append(
+                f"显式 hiddenimports 不一致：build.spec={a['hidden']} / build-mac.spec={b['hidden']}")
+
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
         "enums": enums,
+        "spec_missing_datas": spec_missing,
+        "spec_divergence": spec_divergence,
         "undocumented_routes": undocumented,
         "ghost_routes": ghost_routes,
         "undocumented_cli": undocumented_cmds,
@@ -371,7 +413,9 @@ def _rows(r: dict) -> tuple[list, list]:
             ("自测清单里不存在的文件", r["missing_selftest_files"]),
             ("某套外观缺取值的 token（会变成隐形字）", [f"{g['theme']} 缺 {', '.join(g['missing'])}"
                                                         for g in tk["theme_gaps"]]),
-            ("共用块与深色块重复定义的 token", tk["shared_leaked"])]
+            ("共用块与深色块重复定义的 token", tk["shared_leaked"]),
+            ("spec 要打包的文件不存在", r.get("spec_missing_datas", [])),
+            ("两份 spec 分叉了", r.get("spec_divergence", []))]
     hard += [(f"文档列了但代码没有的 {e['enum']} 值", e["ghost"])
              for e in r.get("enums", [])]
     soft = [("文档里没提到的端点", r["undocumented_routes"]),
@@ -489,6 +533,18 @@ def _selftest() -> int:
         # 于是这条差异只在干净 checkout 里现身。生成物不算断链。
         ("gitignore 的生成物被豁免", _git_ignored(["src/_version.py"]) == {"src/_version.py"}),
         ("普通缺失文件不被豁免", _git_ignored(["docs/definitely-not-here.md"]) == set()),
+    ]
+    # spec 对账：提取器要真读到东西（读空了会让检查静默变成永远通过），
+    # 两份 spec 的一致性是 260801 真事故（mac spec 没跟上 brotli）的防线。
+    sf = _spec_facts()
+    a, b = sf.get("build.spec", {}), sf.get("build-mac.spec", {})
+    ecases += [
+        ("两份 spec 都提取到 datas", bool(a.get("datas")) and bool(b.get("datas"))),
+        ("spec 的 datas 源路径都存在",
+         all((ROOT / d).exists() for f in sf.values() for d in f["datas"])),
+        ("两份 spec 的 datas 一致", a.get("datas") == b.get("datas")),
+        ("两份 spec 的显式 hiddenimports 一致", a.get("hidden") == b.get("hidden")),
+        ("说明书确实在打包清单里", any("AI_USAGE" in d for d in a.get("datas", []))),
     ]
     for name, passed in ecases:
         print("[枚举对账]", ("PASS " if passed else "FAIL ") + name)
