@@ -1468,6 +1468,9 @@ zh: {
   "an.verdictDiff": "存在实质差异",
   "an.counts": "相同 {same} 行 · 改动 {changed} · 新增 {added} · 删除 {removed}",
   "an.guardTitle": "可比性提醒（不拦你比，只是别误读）",
+  "an.guard.wire_kind": "请求类型不同（主线 / 子代理 / 标题 / 安全审查……），差异多半来自类型本身",
+  "an.guard.agent_fp": "提示词身份指纹不同——这两段本就是不同的提示词，不是同一段的两个版本",
+  "an.guard.model": "模型不同", "an.guard.upstream": "上游供应商不同", "an.guard.harness": "CC 版本不同",
   "an.hiddenTitle": "隐蔽差异",
   "an.hiddenHint": "肉眼看不出的差异：不可见字符与同形异码。字符水印正是这个形状。",
   "an.metaTitle": "元数据差异（往往就是「为什么变了」的答案）",
@@ -1757,6 +1760,9 @@ en: {
   "an.verdictDiff": "Substantive differences",
   "an.counts": "{same} same \u00b7 {changed} changed \u00b7 {added} added \u00b7 {removed} removed",
   "an.guardTitle": "Comparability note (not blocking \u2014 just don't misread it)",
+  "an.guard.wire_kind": "Different request types (main / subagent / title / safety review\u2026) \u2014 most differences come from the type itself",
+  "an.guard.agent_fp": "The prompt identity fingerprints differ \u2014 these were never two versions of one prompt; they are two different prompts",
+  "an.guard.model": "Different models", "an.guard.upstream": "Different upstream providers", "an.guard.harness": "Different CC versions",
   "an.hiddenTitle": "Hidden differences",
   "an.hiddenHint": "Differences the eye cannot see: invisible characters and homoglyphs. Character watermarks look exactly like this.",
   "an.metaTitle": "Metadata differences (often the answer to \u201cwhy did it change\u201d)",
@@ -2044,6 +2050,9 @@ ja: {
   "an.verdictDiff": "実質的な差異あり",
   "an.counts": "同一 {same} 行 · 変更 {changed} · 追加 {added} · 削除 {removed}",
   "an.guardTitle": "比較可能性の注意（比較は妨げません。誤読しないために）",
+  "an.guard.wire_kind": "リクエスト種別が異なります（メイン / サブエージェント / タイトル / セキュリティ審査…）— 差異の大部分は種別そのものに由来します",
+  "an.guard.agent_fp": "プロンプトの身元フィンガープリントが異なります——これは一つのプロンプトの二つの版ではなく、元々別のプロンプトです",
+  "an.guard.model": "モデルが異なります", "an.guard.upstream": "上流プロバイダーが異なります", "an.guard.harness": "CC バージョンが異なります",
   "an.hiddenTitle": "見えない差異",
   "an.hiddenHint": "肉眼では分からない差異：不可視文字と同形異字。文字透かしはまさにこの形です。",
   "an.metaTitle": "メタデータの差異（「なぜ変わったか」の答えであることが多い）",
@@ -4913,7 +4922,12 @@ function renderDiff(d, into){
   const meta = d.meta || {};
   if((meta.warnings || []).length){
     h += '<div class="card an-guard"><b>' + t18("an.guardTitle") + '</b><ul>' +
-      meta.warnings.map(w => '<li>' + esc(w.why) + '</li>').join("") + '</ul></div>';
+      meta.warnings.map(w => {
+        /* why 是后端中文（snapshot_diff 硬编码），切语言不跟随——前端按 field 映射到
+           an.guard.<field>，命中用译文、否则回退 why（HTTP agent 仍可读后端原文）。260808 */
+        const k = "an.guard." + w.field, loc = (I18N[LANG] && I18N[LANG][k]) || I18N.zh[k];
+        return "<li>" + esc(loc || w.why) + "</li>";
+      }).join("") + '</ul></div>';
   }
 
   /* ③ 隐蔽差异专区：不可见字符与同形异码。**这是本工具相对通用 diff 的独门增量**，
