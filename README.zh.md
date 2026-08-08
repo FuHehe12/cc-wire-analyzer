@@ -33,6 +33,10 @@ Claude Code 展示的是它自己视角下的会话；wire 层展示的是实际
 |---|---|
 | ![Detail](docs/screenshots/zh/view-b-detail.png) | ![Settings](docs/screenshots/zh/view-c-settings.png) |
 
+| 分析 —— 快照与对比 |
+|---|
+| ![Analyse](docs/screenshots/zh/view-e-analyse.png) |
+
 截图用的是 v0.4.7 起的默认外观「深色专业」。设置页还有「经典暖灰」（v0.4.7 之前的界面）与
 「实验室日光」；外观只属于界面本地，不会碰你的代理配置。
 

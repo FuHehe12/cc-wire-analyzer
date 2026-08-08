@@ -34,6 +34,10 @@ Claude Code が見せるのは CC 自身の視点でのセッションです。w
 |---|---|
 | ![Detail](docs/screenshots/ja/view-b-detail.png) | ![Settings](docs/screenshots/ja/view-c-settings.png) |
 
+| 分析 —— スナップショット＆差分 |
+|---|
+| ![Analyse](docs/screenshots/ja/view-e-analyse.png) |
+
 スクリーンショットは v0.4.7 からの既定の外観「ダーク・プロ」です。設定画面には
 「クラシック暖色」（v0.4.7 以前のインターフェース）と「ラボ・デイライト」もあります。
 外観はインターフェースにローカルな設定で、プロキシの構成には一切触れません。
