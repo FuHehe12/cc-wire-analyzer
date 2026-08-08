@@ -33,14 +33,16 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
 `:root` 拆成了「主题无关」与「深色取值」两块（见 index.html 顶部注释）：**共用的不该出现在
 主题块里，深色块里的必须在两个主题块里都有**——这两句都是纯机械判断。
 
-与 `lane_probe` / `self-audit 工作流` 同哲学：**摊开证据，不替人做判断**——差异不等于错误
-（文档有意不提某个内部端点是合理的），所以输出是清单不是断言，退出码永远 0。
+对**软**差异仍与 `lane_probe` / `self-audit 工作流` 同哲学：摊开证据、不替人做判断——
+文档有意不提某个内部端点是合理的，那类输出是清单不是断言。硬差异不适用这条：
+文档说了代码里不成立的事，没有"留给人判断"的余地。
 """
 from __future__ import annotations
 
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 # Windows 默认控制台是 GBK，编不出 ✓ 之类的字符 → print 抛 UnicodeEncodeError，脚本以非零码
@@ -177,6 +179,29 @@ def _doctor_codes() -> set[str]:
     return set(re.findall(r'_issue\(\s*"([a-z_]+)"', _read_required(SRC / "doctor.py")))
 
 
+def _git_ignored(paths: list[str]) -> set[str]:
+    """这些路径里哪些被 `.gitignore` 排除——**生成物，文档提到它们不算断链**。
+
+    来由是 `src/_version.py`（260808 CI 首跑抓到）：CI 构建前从 git tag 生成它，仓库里没有。
+    本地跑对账时它存在（本地构建生成过），**干净 checkout 里不存在**——所以这条差异
+    在本地永远看不见，只在 CI 里现身。这正是加 CI 验证的价值，也说明"本地全绿"从来
+    不等于"没问题"。
+
+    用 `git check-ignore` 而不是硬编码一张豁免名单：名单是要人维护的，下一个生成物
+    出现时没人记得加——而那正是这个项目反复记录的腐化形态。
+    没有 git 时退回严格判断（宁可多报，不可漏报）。
+    """
+    if not paths:
+        return set()
+    try:
+        r = subprocess.run(["git", "check-ignore", "--stdin"],
+                           input="\n".join(paths), capture_output=True,
+                           text=True, cwd=ROOT, timeout=15)
+        return {ln.strip().replace("\\", "/") for ln in r.stdout.splitlines() if ln.strip()}
+    except (OSError, subprocess.SubprocessError):
+        return set()
+
+
 def _lane_kinds() -> set[str]:
     """泳道的 kind（`classifier.build_dag` 里的 `lane_kind`）——**与请求的 kind 是两个枚举**，
     只是恰好都叫 kind。契约里 `"lanes": [{"kind":"main|subagent|aux"}]` 列的是这一个。
@@ -260,10 +285,14 @@ def audit() -> dict:
 
     # 3. 文档提到的仓库文件是否存在
     missing_paths = []
+    _cands = []
     for name, text in doc_text.items():
         for m in re.finditer(r"`((?:src|tools|docs)/[A-Za-z0-9_./-]+\.(?:py|md|html))`", text):
             if not (ROOT / m.group(1)).exists():
-                missing_paths.append({"doc": name, "path": m.group(1)})
+                _cands.append({"doc": name, "path": m.group(1)})
+    # 生成物（gitignore 的）不算断链：仓库里本来就没有，文档提它是在讲构建机制
+    _ignored = _git_ignored(sorted({c["path"] for c in _cands}))
+    missing_paths = [c for c in _cands if c["path"] not in _ignored]
 
     # 4. 文档里**断言当前值**的 IDX_SCHEMA（`IDX_SCHEMA = N`）。历史叙述（`9→10`、
     #    `IDX_SCHEMA=6 起`）是对的，不该报——只有"当前是 N"会误导下一个读者。
@@ -456,6 +485,10 @@ def _selftest() -> int:
         # 回归：首版用一条通用的「反引号斜杠列举」判据，把文档里的字段列举全当成枚举，
         # 一次报出 149 处误报。这条守住真实文档必须零幽灵。
         ("真实文档零幽灵", all(not e["ghost"] for e in audit()["enums"])),
+        # 回归：CI 首跑抓到 `src/_version.py`——CI 从 tag 生成、仓库里没有，本地却存在，
+        # 于是这条差异只在干净 checkout 里现身。生成物不算断链。
+        ("gitignore 的生成物被豁免", _git_ignored(["src/_version.py"]) == {"src/_version.py"}),
+        ("普通缺失文件不被豁免", _git_ignored(["docs/definitely-not-here.md"]) == set()),
     ]
     for name, passed in ecases:
         print("[枚举对账]", ("PASS " if passed else "FAIL ") + name)
