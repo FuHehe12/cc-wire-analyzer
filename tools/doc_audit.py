@@ -146,6 +146,91 @@ def _theme_tokens() -> dict:
     }
 
 
+# ---- 枚举三件套：代码侧真源 ----------------------------------------------------
+# 文档维护策略「策略一 SSOT」为这三类各指定了一个权威位置，但此前没有任何东西**验证**
+# 文档抄过去的值还对得上。三者都是具名依赖，用 `_read_required` 读（文件被移走要立刻炸，
+# 不能像 `_read` 那样返回 "" 让检查静默变成永远通过）。
+
+def _kinds() -> set[str]:
+    """`classifier.KIND_ORDER` 是 kind 的单一真源。"""
+    m = re.search(r"KIND_ORDER\s*=\s*\(([^)]*)\)",
+                  _read_required(SRC / "classifier.py"), re.S)
+    return set(re.findall(r'"([a-z_]+)"', m.group(1))) if m else set()
+
+
+def _err_kinds() -> set[str]:
+    """`proxy.py` 里每个 `error.kind` 赋值点。
+
+    其中一个是 f-string：`f"upstream_{status // 100}xx"`。它只在 `status >= 400` 的分支里
+    执行，所以实际取值只可能是 4xx / 5xx——**这个展开是硬编码的**，因为正则读不出运行时
+    的取值范围。改那个分支的条件（比如开始记 3xx）时必须回来改这里。
+    """
+    t = _read_required(SRC / "proxy.py")
+    out = set(re.findall(r'"kind":\s*"([a-z_0-9]+)"', t))
+    if re.search(r'"kind":\s*f"upstream_\{', t):
+        out |= {"upstream_4xx", "upstream_5xx"}
+    return out
+
+
+def _doctor_codes() -> set[str]:
+    """`doctor.py` 的 `_issue(code, ...)` 首个实参 = 规则 code。"""
+    return set(re.findall(r'_issue\(\s*"([a-z_]+)"', _read_required(SRC / "doctor.py")))
+
+
+def _lane_kinds() -> set[str]:
+    """泳道的 kind（`classifier.build_dag` 里的 `lane_kind`）——**与请求的 kind 是两个枚举**，
+    只是恰好都叫 kind。契约里 `"lanes": [{"kind":"main|subagent|aux"}]` 列的是这一个。
+
+    不单独对账它，只是把它并进"已知合法值"全集：首版没有这一步，于是 `aux` 被当成
+    err_kind 的幽灵报了出来——文档其实完全正确，是对账工具自己不认识这个枚举。
+    """
+    t = _read_required(SRC / "classifier.py")
+    return set(re.findall(r'lane_kind\s*=\s*"([a-z_]+)"', t))
+
+
+# ---- 枚举三件套：文档侧声称值 --------------------------------------------------
+# **两个方向用两套判据，这是首版写错的地方。**
+#
+# 首版对两个方向共用一条"反引号斜杠列举"规则，结果一次报出 149 处全是误报——文档里
+# `input` / `output` / `cache_read` 这类字段列举、参数列举全是同一个形态，而三类枚举又共用
+# 同一份提取结果，于是同一批词被当成三类的幽灵各报一遍。教训：**这些值是 `main` / `other` /
+# `connect` 这样的普通英文词，任何不锚定上下文的提取都必然误报**，而误报会毁掉闸门
+# （验收线是 0 误报——同 check_refs 的两条判据）。
+#
+#   幽灵方向（文档列了、代码没有）→ **窄**：只认各自专属的锚点语法，宁可漏报
+#   未文档化方向（代码有、文档没列）→ **宽**：只问这个词在文档里出现过没有
+#
+# 宽窄相反是有道理的：幽灵是硬差异要挡发版，判错代价高；未文档化只是提示，宽匹配
+# 让它不至于因为"文档换了种写法提"就虚报。
+
+# 「kind 枚举」这个显式标签所在行里的反引号项（API契约的写法：
+#   **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / …）
+_KIND_ANCHOR = re.compile(r"kind\s*枚举[^\n]*")
+# 含管道的 JSON 值是全枚举列举：`"kind": "connect|timeout|http_error|…"`
+_PIPE_JSON = re.compile(r'"(?:err_)?kind":\s*"([a-z_0-9]+(?:\|[a-z_0-9]+)+)"')
+_ERRK_JSON = re.compile(r'"err_kind":\s*"([a-z_0-9]+)"')
+# doctor 规则表：| `dead_port_leftover` | error | …
+_SEVERITY_ROW = re.compile(r"\|\s*`([a-z_]{4,})`\s*\|\s*(?:error|warning|info)\s*\|")
+_CODE_JSON = re.compile(r'"code":\s*"([a-z_]+)"')
+
+
+def _doc_enum_claims(text: str) -> dict[str, set[str]]:
+    """文档**以枚举语法明确列出**的值，按三类分开。"""
+    kinds: set[str] = set()
+    for line in _KIND_ANCHOR.findall(text):
+        kinds |= set(re.findall(r"`([a-z][a-z_0-9]{2,})`", line))
+    errk: set[str] = set(_ERRK_JSON.findall(text))
+    for v in _PIPE_JSON.findall(text):
+        errk |= set(v.split("|"))
+    codes: set[str] = set(_SEVERITY_ROW.findall(text)) | set(_CODE_JSON.findall(text))
+    return {"kind": kinds, "err_kind": errk, "doctor_code": codes}
+
+
+def _mentioned_anywhere(text: str, value: str) -> bool:
+    """这个枚举值在文档里出现过没有——宽匹配，用于「代码有、文档没列」那一侧。"""
+    return re.search(rf"(?<![a-z_0-9]){re.escape(value)}(?![a-z_0-9])", text) is not None
+
+
 def audit() -> dict:
     routes, cmds, schema = _routes(), _cli_commands(), _idx_schema()
     doc_text = {p.name: _read(p) for p in DOC_FILES if p.exists()}
@@ -199,8 +284,28 @@ def audit() -> dict:
         if not (ROOT / m.group(1)).exists():
             missing_selftests.append(m.group(1))
 
+    # 6. 枚举三件套：kind / err_kind / doctor rule code
+    #    幽灵值（文档列了、代码没有）是硬差异——agent 会照着分支处理一个永远不出现的值，
+    #    人会去找一条不存在的规则。未文档化（代码有、文档没列）是软的，与端点同判据。
+    kinds, err_kinds, dcodes = _kinds(), _err_kinds(), _doctor_codes()
+    claims = _doc_enum_claims(joined)
+    all_code_enums = kinds | err_kinds | dcodes | _lane_kinds()
+
+    enums = []
+    for label, code_set in (("kind", kinds), ("err_kind", err_kinds),
+                            ("doctor_code", dcodes)):
+        # 幽灵 = 文档以枚举语法列出、却不属于**任何一类**的代码真源。减去全集而不只是本类，
+        # 是因为锚点之间仍会串味（`"kind": "connect|…"` 那行列的其实是 err_kind 的值）。
+        # 代价：把 err_kind 的值误写进 kind 的枚举表这种错查不出来——但那种错很罕见，
+        # 而误报会让整个闸门被绕过。**宁可漏一种罕见错，不可制造常见误报。**
+        ghosts = sorted(claims[label] - all_code_enums)
+        # 未文档化用宽匹配：文档里压根没出现过这个词才算
+        missing = sorted(v for v in code_set if not _mentioned_anywhere(joined, v))
+        enums.append({"enum": label, "ghost": ghosts, "undocumented": missing})
+
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
+        "enums": enums,
         "undocumented_routes": undocumented,
         "ghost_routes": ghost_routes,
         "undocumented_cli": undocumented_cmds,
@@ -238,9 +343,13 @@ def _rows(r: dict) -> tuple[list, list]:
             ("某套外观缺取值的 token（会变成隐形字）", [f"{g['theme']} 缺 {', '.join(g['missing'])}"
                                                         for g in tk["theme_gaps"]]),
             ("共用块与深色块重复定义的 token", tk["shared_leaked"])]
+    hard += [(f"文档列了但代码没有的 {e['enum']} 值", e["ghost"])
+             for e in r.get("enums", [])]
     soft = [("文档里没提到的端点", r["undocumented_routes"]),
             ("文档里没提到的 CLI 子命令", r["undocumented_cli"]),
             ("定义了但无人引用的 token", tk["dead_tokens"])]
+    soft += [(f"代码有但文档没列的 {e['enum']} 值", e["undocumented"])
+             for e in r.get("enums", [])]
     return hard, soft
 
 
@@ -329,6 +438,27 @@ def _selftest() -> int:
     ]
     for name, passed in cases:
         print("[闸门分类]", ("PASS " if passed else "FAIL ") + name)
+        ok = ok and passed
+
+    # 枚举对账：提取器要认得真源、幽灵要能检出、合法值不许被误报
+    allc = _kinds() | _err_kinds() | _doctor_codes() | _lane_kinds()
+    fake = "**kind 枚举**（真源 `src/classifier.py`）：`main` / `subagent` / `ghost_kind`。"
+    ecases = [
+        ("kind 真源可提取", {"main", "subagent", "other"} <= _kinds()),
+        ("err_kind 含动态展开的 upstream_4xx/5xx",
+         {"upstream_4xx", "upstream_5xx", "connect"} <= _err_kinds()),
+        ("doctor code 可提取", "effort_max_rejected_upstream" in _doctor_codes()),
+        ("幽灵枚举能检出",
+         sorted(_doc_enum_claims(fake)["kind"] - allc) == ["ghost_kind"]),
+        # 回归：`aux` 是 lane kind，首版把它报成了 err_kind 的幽灵——文档没错，是工具
+        # 不认识第四个枚举。合法值被报成硬差异会直接卡住发版。
+        ("lane kind aux 不算幽灵", "aux" in allc),
+        # 回归：首版用一条通用的「反引号斜杠列举」判据，把文档里的字段列举全当成枚举，
+        # 一次报出 149 处误报。这条守住真实文档必须零幽灵。
+        ("真实文档零幽灵", all(not e["ghost"] for e in audit()["enums"])),
+    ]
+    for name, passed in ecases:
+        print("[枚举对账]", ("PASS " if passed else "FAIL ") + name)
         ok = ok and passed
     return 0 if ok else 1
 
