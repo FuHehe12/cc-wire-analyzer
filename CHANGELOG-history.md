@@ -1,6 +1,6 @@
 # Changelog — released versions
 
-> Full notes for every released version, v0.4.7 and earlier. The current version and the
+> Full notes for every released version, v0.4.8 and earlier. The current version and the
 > unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
 > to build a release's notes. Each version below is also published, unchanged, on its
 > [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
@@ -8,6 +8,17 @@
 > Why the split: CHANGELOG.md serves two readers at once — the overview at its top is read
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
+
+## v0.4.9 - 2026-08-03 (hotfix)
+
+### Fixed
+
+- **The aux aggregate card's per-kind counts are visible again.** v0.4.8's aggregate card reused the plain node height (62px) for a three-row layout (time row / meta row / per-kind badge row ≈ 72px); the card is a flex column with `overflow:hidden`, so the badge row was first squeezed by `flex-shrink` and then clipped to a 10px sliver — the per-kind counts (title / security / count_tokens) were in the DOM and the tooltip but visually unreadable ("the counts are gone"). The card gets its own height constant (`NH_AGG` = 76); `dagPlace` is shared by full and incremental renders, so both paths pick it up. Worth noting for the next fixed-height card: flex squeezes the last row *inside* the box before `overflow` clips it, so `scrollHeight == clientHeight` — a pure overflow check cannot see this; you have to measure the last row's own height.
+- **CLI `errors` now returns `ok: true`** like the other ten subcommands. It was the only one without the top-level flag, so an agent checking `data["ok"]` got `undefined`.
+
+### Added
+
+- **`tools/check_render.py` — a static audit that a fixed-height card's content rows fit its height constant.** The root cause shared by both recent visual bugs (v0.4.7 hiding the aux lane, v0.4.8 clipping the aggregate card) is that the six selftests are all backend data-layer e2e — front-end visual completeness had zero automated cover. The project has no browser automation (single-exe, no playwright), so runtime DOM overflow scans can't be automated; instead this maintains a `card → rows → padding → height-constant` table and asserts `rows × 18 + padding ≤ constant`, with the constants parsed live from `const DGX={}` so changing one needs no script edit. It catches the v0.4.8 shape (NH_AGG=62 would report 70 > 62); `--self-test` mutates NH_AGG to 62 to prove the check actually fires. Added to the dev guide's static-reconciliation list alongside `check_i18n_js` and `doc_audit`.
 
 ## v0.4.8 - 2026-08-02 (hotfix)
 

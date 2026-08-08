@@ -1,11 +1,22 @@
 # 变更历史 — 已发布版本
 
-> v0.4.7 及更早每一版的完整说明。当前版本与未发布滚动清单在 [CHANGELOG.zh.md](CHANGELOG.zh.md)，
+> v0.4.8 及更早每一版的完整说明。当前版本与未发布滚动清单在 [CHANGELOG.zh.md](CHANGELOG.zh.md)，
 > 那份也是 CI 生成 release notes 的真源。下面每一版同样原样发布在各自的
 > [GitHub Release 页](https://github.com/FuHehe12/cc-wire-analyzer/releases)。
 >
 > 为什么拆开：CHANGELOG 同时服务两个读者——顶部速览每次接手都要读、必须短，
 > 下方流水要完整。两者拉扯的方向相反，于是流水搬到这里。
+
+## v0.4.9 - 2026-08-03（紧急修复）
+
+### 修复
+
+- **辅助聚合卡的分类计数徽章重新可见。** v0.4.8 的聚合卡复用了普通节点高度（62px）装三行内容（时间行 / meta 行 / 分类徽章行 ≈ 72px）；卡片是 flex 纵列 + `overflow:hidden`，徽章行先被 `flex-shrink` 压扁、再被裁成 10px 一条缝——分类计数（标题 / 安全 / 计数）在 DOM 和 tooltip 里都有，视觉上却读不出来（「计数不见了」）。聚合卡现在有自己的高度常量（`NH_AGG` = 76）；`dagPlace` 全量与增量渲染共用，两条路径同时生效。值得给下一张固定高度卡记一笔：flex 会先在盒内把末行压扁、overflow 才裁，所以 `scrollHeight == clientHeight`——纯 overflow 判据测不出来，得量末行自身的高度。
+- **CLI `errors` 现在返回 `ok: true`**，与其他十个子命令一致。此前唯独它没有这个顶层字段，agent 判 `data["ok"]` 会拿到 `undefined`。
+
+### 新增
+
+- **`tools/check_render.py`——静态审计固定高度卡的内容行数是否塞得下高度常量。** 最近两个视觉 bug（v0.4.7 藏掉辅助泳道、v0.4.8 裁掉聚合卡计数）的共同根因是：六条自测全是后端数据层 e2e，前端视觉完整性零自动化覆盖。项目无浏览器自动化（单 exe、无 playwright），运行时 DOM 溢出扫描无法自动化；改为维护一张「卡片 → 行数 → padding → 高度常量」表，断言 `行数 × 18 + padding ≤ 常量`，常量从 `const DGX={}` 实时解析，改常量不用改脚本。它能抓 v0.4.8 的形状（NH_AGG=62 会报 70 > 62）；`--self-test` 把 NH_AGG 改 62 验证检查确实会报。已加进开发约定的静态对账清单，与 `check_i18n_js`、`doc_audit` 并列。
 
 ## v0.4.8 - 2026-08-02（紧急修复）
 
