@@ -10,8 +10,53 @@ permissions:
   contents: write   # release job 发 release 需要
 
 jobs:
+  # 260808 新增。此前这个 workflow 从 checkout 直接到 PyInstaller 再到发 release，
+  # **中间没有任何验证**——一次没跑过自测的 tag 可以直接产出 release。
+  #
+  # 为什么跑在 windows-latest 而不是更快的 ubuntu：六条自测（尤其 cli_selftest 真起 daemon、
+  # 真 patch/restore settings.json）只在 Windows 上有实证，项目一直在 Windows 上开发。
+  # 换平台省几分钟、换来一个从没跑通过的环境，第一次发版就会红在与代码无关的地方。
+  # 要上 Linux 应该单独做一次验证再改，不该顺手夹带在闸门这件事里。
+  verify:
+    name: Verify (self-tests + doc gate)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dependencies
+        run: uv sync
+
+      # 顺序有意：先语法、再静态对账（秒级，失败得最快）、最后跑真起进程的 e2e 自测。
+      - name: Syntax
+        run: uv run python -m py_compile src/*.py tools/*.py
+
+      # doc_audit 是**闸门**：文档说了代码里不成立的事就退出 1（幽灵端点/断链/过期 IDX_SCHEMA/
+      # 不存在的自测文件/缺取值的 token）。「代码有、文档没写」只提示，不挡——否则第一个
+      # 有意不公开的内部端点就会卡住发版。判据见 tools/doc_audit.py 的 _rows()。
+      - name: Static reconciliation
+        run: |
+          uv run python tools/doc_audit.py
+          uv run python tools/check_i18n_js.py
+          uv run python tools/check_render.py
+          uv run python tools/check_refs.py
+
+      - name: Self-tests
+        run: |
+          uv run python src/settings_guard.py --self-test
+          uv run python src/upstream_history.py --self-test
+          uv run python src/proxy_selftest.py
+          uv run python src/cli_selftest.py
+          uv run python src/doctor_selftest.py
+          uv run python src/diagnose_selftest.py
+
   build:
     name: Build (${{ matrix.os }})
+    needs: verify        # fail-fast：验证不过就不进 PyInstaller，更不会产出 release
     strategy:
       fail-fast: false   # 一个平台失败不影响另一个
       matrix:

@@ -1,7 +1,17 @@
-"""文档对账：把**代码里的事实**与**文档里的说法**摆在一起，只报差异，不改任何东西。
+"""文档对账闸门：把**代码里的事实**与**文档里的说法**摆在一起，不改任何东西，但会挡发版。
 
-    uv run python tools/doc_audit.py            # 人看
-    uv run python tools/doc_audit.py --json     # 给 agent
+    uv run python tools/doc_audit.py            # 人看；有硬差异则退出码 1
+    uv run python tools/doc_audit.py --json     # 给 agent；数据里看 `ok` 字段
+    uv run python tools/doc_audit.py --self-test
+
+**退出码语义（260808 从"永远 0"改成"硬差异即 1"）**：差异分两类，判据见 `_rows()`——
+文档**说错**（幽灵端点 / 断链 / 过期的 `IDX_SCHEMA` / 不存在的自测文件 / 缺取值的 token）
+会挡；文档**没说**（内部端点、未登记的子命令、死 token）只提示。不分类就一律挡的话，
+第一个有意不公开的内部端点就会卡住发版，接着有人会加 `|| true`，闸门永久失效。
+
+这一步是它从"报告"变成"门"的关键：一个永远 exit 0 的检查靠人记得跑、记得看，而
+`docs/文档维护策略.md` 自己的判据就是**需要人工定期同步的药方自己就是下一处腐化**。
+`.github/workflows/release.yml` 在 PyInstaller 之前跑它，fail-fast。
 
 为什么存在（`docs/文档维护策略.md` 策略五挂了很久的"待实现"）：
 那份策略自己给出的判据是——**给腐化开的药方如果需要人工定期同步，它自己就是下一处腐化**。
@@ -198,39 +208,80 @@ def audit() -> dict:
         "idx_schema_drift": schema_drift,
         "missing_selftest_files": sorted(set(missing_selftests)),
         "tokens": _theme_tokens(),
-        "note": "差异 ≠ 错误：有意不写进文档的内部端点也会出现在 undocumented 里。人判断。",
+        "note": ("硬差异（ghost_routes / missing_paths / idx_schema_drift / "
+                 "missing_selftest_files / tokens.theme_gaps / tokens.shared_leaked）"
+                 "是文档说错了，会挡发版；软差异（undocumented_*、dead_tokens）只是文档没写，"
+                 "有意不公开的内部端点会一直待在那里，人判断。看 `ok` 字段，别猜退出码。"),
     }
+
+
+def _rows(r: dict) -> tuple[list, list]:
+    """把九类差异分成「挡发版的」和「只报告的」两组。
+
+    **判据只有一句：文档说了一件代码里不成立的事，还是代码有的东西文档没说。**
+
+    前者（硬）会主动误导读者——照着文档去调一个不存在的端点、点一条断链、信一个过期的
+    `IDX_SCHEMA`、按清单跑一个不存在的自测文件。后者（软）只是覆盖不全，读者顶多查不到，
+    不会被骗，而且**有意不写进文档的内部端点会永远待在这一类里**。
+
+    这个区分是这个脚本能变成硬门的前提。原先它退出码永远 0，理由正是"差异 ≠ 错误、判断留给
+    人"——那个理由对软类成立、对硬类不成立。如果不分类就一律 exit 1，第一个内部端点就会卡住
+    发版，接着有人会在 CI 里加 `|| true`，**闸门就永久失效了**——这比没有闸门更糟，因为它还
+    挂在那里冒充防线。
+    """
+    tk = r["tokens"]
+    hard = [("文档提到但代码没有的端点", r["ghost_routes"]),
+            ("文档指向的不存在文件", [f"{x['doc']} → {x['path']}" for x in r["missing_paths"]]),
+            ("IDX_SCHEMA 数值不一致", [f"{x['doc']} 写 {x['says']}，代码 {x['code']}"
+                                       for x in r["idx_schema_drift"]]),
+            ("自测清单里不存在的文件", r["missing_selftest_files"]),
+            ("某套外观缺取值的 token（会变成隐形字）", [f"{g['theme']} 缺 {', '.join(g['missing'])}"
+                                                        for g in tk["theme_gaps"]]),
+            ("共用块与深色块重复定义的 token", tk["shared_leaked"])]
+    soft = [("文档里没提到的端点", r["undocumented_routes"]),
+            ("文档里没提到的 CLI 子命令", r["undocumented_cli"]),
+            ("定义了但无人引用的 token", tk["dead_tokens"])]
+    return hard, soft
 
 
 def main() -> None:
     r = audit()
+    hard, soft = _rows(r)
+    n_hard = sum(len(v) for _, v in hard)
+    r["ok"] = n_hard == 0          # 与 CLI 各子命令同惯例：agent 看 ok，不猜退出码语义
+
     if "--json" in sys.argv:
         print(json.dumps(r, ensure_ascii=False, indent=2))
-        return
+        # --json 同样遵守退出码，否则 CI 里换个 --json 就悄悄绕过了闸门
+        raise SystemExit(0 if r["ok"] else 1)
+
     tk = r["tokens"]
     print(f"代码事实：{r['routes']} 个路由 / {r['cli_commands']} 个 CLI 子命令 / "
           f"IDX_SCHEMA={r['idx_schema']} / 语义 token "
           f"{tk['counts']['shared']} 共用 + {tk['counts']['dark']} 深色"
           f"（classic {tk['counts']['classic']} / light {tk['counts']['light']}）\n")
-    rows = [("文档里没提到的端点", r["undocumented_routes"]),
-            ("文档提到但代码没有的端点", r["ghost_routes"]),
-            ("文档里没提到的 CLI 子命令", r["undocumented_cli"]),
-            ("文档指向的不存在文件", [f"{x['doc']} → {x['path']}" for x in r["missing_paths"]]),
-            ("IDX_SCHEMA 数值不一致", [f"{x['doc']} 写 {x['says']}，代码 {x['code']}"
-                                       for x in r["idx_schema_drift"]]),
-            ("自测清单里不存在的文件", r["missing_selftest_files"]),
-            ("某套外观缺取值的 token", [f"{g['theme']} 缺 {', '.join(g['missing'])}"
-                                        for g in tk["theme_gaps"]]),
-            ("共用块与深色块重复定义的 token", tk["shared_leaked"]),
-            ("定义了但无人引用的 token", tk["dead_tokens"])]
-    clean = True
-    for title, items in rows:
+
+    for title, items in hard:
         if items:
-            clean = False
-            print(f"[{len(items)}] {title}")
+            print(f"[FAIL {len(items)}] {title}")
             for it in items:
                 print("   -", it)
-    print("对账干净：清单上每一项都没有差异。" if clean else f"\n{r['note']}")
+    n_soft = sum(len(v) for _, v in soft)
+    if n_soft:
+        print(f"\n以下 {n_soft} 项**不挡发版**，是提示：代码有、文档没写。"
+              f"有意不公开的内部端点/子命令会一直待在这里，人判断。")
+        for title, items in soft:
+            if items:
+                print(f"[提示 {len(items)}] {title}")
+                for it in items:
+                    print("   -", it)
+
+    if r["ok"]:
+        print("\n对账通过：没有任何「文档说了代码里不成立的事」。" if n_soft
+              else "对账干净：清单上每一项都没有差异。")
+    else:
+        print(f"\n对账失败：{n_hard} 处文档与代码矛盾。这些会直接误导读者，修完再发版。")
+    raise SystemExit(0 if r["ok"] else 1)
 
 
 def _selftest() -> int:
@@ -251,6 +302,34 @@ def _selftest() -> int:
         globals()["SRC"] = orig
     ok = any(g["theme"] == "classic" and "--focus-ring" in g["missing"] for g in gaps)
     print("[token 检查自测]", "PASS 缺失能被检出" if ok else "FAIL 缺失没被检出")
+
+    # 门本身也要被验证：分类错了（把硬差异归进软类）闸门就形同虚设，而它照样打印
+    # 「对账通过」——正是本项目惯犯 ③「静默失效」的形状，且这次犯在守卫自己身上。
+    base = {"routes": 0, "cli_commands": 0, "idx_schema": 1,
+            "undocumented_routes": [], "ghost_routes": [], "undocumented_cli": [],
+            "missing_paths": [], "idx_schema_drift": [], "missing_selftest_files": [],
+            "tokens": {"counts": {}, "theme_gaps": [], "shared_leaked": [], "dead_tokens": []}}
+
+    def n_hard(**over):
+        d = {**base, **over}
+        return sum(len(v) for _, v in _rows(d)[0])
+
+    cases = [
+        ("幽灵端点挡", n_hard(ghost_routes=["/api/gone"]) == 1),
+        ("断链挡", n_hard(missing_paths=[{"doc": "x.md", "path": "docs/nope.md"}]) == 1),
+        ("IDX_SCHEMA 漂移挡", n_hard(idx_schema_drift=[{"doc": "x", "says": 1, "code": 2}]) == 1),
+        ("缺失自测文件挡", n_hard(missing_selftest_files=["src/nope.py"]) == 1),
+        ("缺 token 取值挡",
+         n_hard(tokens={**base["tokens"], "theme_gaps": [{"theme": "light", "missing": ["--x"]}]}) == 1),
+        # 反向：软差异**不该**挡，否则第一个内部端点就卡住发版
+        ("未登记端点不挡", n_hard(undocumented_routes=["/api/internal"]) == 0),
+        ("未登记子命令不挡", n_hard(undocumented_cli=["secret"]) == 0),
+        ("死 token 不挡",
+         n_hard(tokens={**base["tokens"], "dead_tokens": ["--unused"]}) == 0),
+    ]
+    for name, passed in cases:
+        print("[闸门分类]", ("PASS " if passed else "FAIL ") + name)
+        ok = ok and passed
     return 0 if ok else 1
 
 
