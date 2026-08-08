@@ -212,7 +212,8 @@ def _r_dead_port(ctx: dict) -> dict | None:
         return None       # 有人在听 → 可能是另一个实例或 cc-switch，闭嘴（宁可漏报）
     return _issue("dead_port_leftover", "error", f"env.{ENV_BASE_URL}", raw,
                   "BASE_URL points at a local port with nothing listening — CC cannot "
-                  "connect at all. Restore the real upstream, or start the proxy.")
+                  "connect at all. Restore the real upstream: Settings → Upstream config "
+                  "history → Fix it, or edit settings.json manually.")
 
 
 def _r_self_reference(ctx: dict) -> dict | None:
@@ -226,7 +227,9 @@ def _r_self_reference(ctx: dict) -> dict | None:
         return None
     return _issue("self_reference_state", "error", f"env.{ENV_BASE_URL}", raw,
                   "BASE_URL points at this tool's own port while the tool is not in "
-                  "patched state (leftover from a previous exit). Stop, then start again.")
+                  "patched state. Starting the proxy will be refused (self-referential "
+                  "loop). Restore the real upstream via Settings → Upstream config "
+                  "history → Fix it, or edit settings.json manually.")
 
 
 def _r_oauth_expired(ctx: dict) -> dict | None:

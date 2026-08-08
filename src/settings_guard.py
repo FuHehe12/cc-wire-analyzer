@@ -449,8 +449,27 @@ def get_external_change() -> dict | None:
 
 def get_base_url_warning() -> str | None:
     """启动时检测到 BASE_URL 是 loopback 非自身的提醒（None=无异常）。
-    供 status 暴露 + UI 醒目提示。重新 patch 后清空。"""
+    供 status 暴露 + UI 醒目提示。生命周期：snapshot_original 重算；一键修复后由
+    resolve_base_url_warning 同步（patch 期间不清——录制中 BASE_URL 本就是 loopback）。"""
     return _base_url_warning
+
+
+def resolve_base_url_warning(url: str | None) -> None:
+    """一键修复改回 BASE_URL 后调：据新值重算 `_base_url_warning` 缓存。
+
+    `_base_url_warning` 的生命周期原本只挂在「启动代理」(snapshot_original) 上，而一键修复
+    (upstream_history.restore) 是**另一条**改 settings.json 的路径——它原先漏了同步这个缓存，
+    于是修复完顶部红色横幅纹丝不动（status 取到的还是修复前的 loopback 值）。这条路径改完
+    必须让缓存跟上，否则同一个 BASE_URL 有两份状态、其中一份静默过期（惯犯③）。
+
+    判定条件与 snapshot_original 设值处一致：loopback 且非本代理自身 → 设值提醒，否则清空。
+    还原到订阅态（url is None）或真上游 → 清；还原到合法本地网关（如 :8080 vLLM）→ 仍提醒；
+    自指地址 → 不提醒（snapshot 守卫已拦，正常不会到这里，双保险）。"""
+    global _base_url_warning
+    if url and _is_local_proxy_url(url) and not _is_self_reference(url):
+        _base_url_warning = url
+    else:
+        _base_url_warning = None
 
 
 # ===== 崩溃保护（三重）=====
@@ -519,7 +538,7 @@ def self_test() -> None:
         "permissions": {"defaultMode": "auto"},
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    global BACKUP_DIR, _PATCHED_MARKER, _original_base_url, _patched, _patched_listen, _original_had_key
+    global BACKUP_DIR, _PATCHED_MARKER, _original_base_url, _patched, _patched_listen, _original_had_key, _base_url_warning
     old_backup_dir = BACKUP_DIR
     old_marker = _PATCHED_MARKER
     BACKUP_DIR = tmpdir / "backups"
@@ -725,6 +744,21 @@ def self_test() -> None:
         snapshot_original(legal_local)   # 不抛即通过
         assert _original_base_url == "http://127.0.0.1:8080", "合法本地上游应被接受"
         print(f"[16] 合法本地上游（http://127.0.0.1:8080，端口≠本代理）→ 放行 ✓")
+
+        # 17. resolve_base_url_warning：一键修复改回后重算 _base_url_warning 缓存（260808）。
+        #     补的是 upstream_history.restore 那条改文件路径漏掉的状态同步——否则修复完顶部
+        #     红色横幅不消（_base_url_warning 还是修复前的 loopback 值）。
+        _base_url_warning = "http://127.0.0.1:5051"   # 假装启动时检测到的残留提醒
+        resolve_base_url_warning("https://api.anthropic.com")   # 修复成真上游
+        assert _base_url_warning is None, "修复成真上游后提醒应清空"
+        resolve_base_url_warning(None)   # 还原到订阅态（删键）
+        assert _base_url_warning is None, "还原到订阅态提醒应清空"
+        resolve_base_url_warning("http://127.0.0.1:8080")   # 合法本地网关（vLLM）
+        assert _base_url_warning == "http://127.0.0.1:8080", "合法本地网关提醒应保留"
+        resolve_base_url_warning("http://127.0.0.1:5051")   # 自指（防御，不该触发提醒）
+        assert _base_url_warning is None, "自指地址不该触发提醒（与 snapshot 守卫同条件）"
+        _base_url_warning = None   # 收尾，不污染后续
+        print(f"[17] resolve_base_url_warning OK：真上游/订阅态清空，合法本地网关保留 ✓")
 
         print("\n[ALL PASSED] ✓")
     finally:
