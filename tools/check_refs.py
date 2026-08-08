@@ -62,6 +62,10 @@ KEYWORDS = {
     "if", "for", "while", "switch", "catch", "function", "return", "typeof", "new",
     "await", "else", "do", "try", "delete", "void", "in", "of", "instanceof",
     "case", "yield", "throw", "with", "super", "constructor",
+    # `async (…) => …`（异步箭头函数）在词法上与调用同形。260808 加更新面板时撞到：
+    # `setInterval(async () => {…}, 500)` 被判成"调用了一个叫 async 的函数"。
+    # 这是判据的漏洞，不是代码的问题——按项目铁律，check_refs 的验收线是 0 误报。
+    "async",
 }
 # 这些关键字后面的 `/` 是正则开头而不是除号
 REGEX_OK_AFTER = {

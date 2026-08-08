@@ -12,7 +12,19 @@
 # 注意：本开发环境为 Windows，此 spec 未在 macOS 实测——macOS 打包靠 GitHub Actions
 # macos runner（.github/workflows/release.yml）+ 用户 macOS 验证。
 
+import os
+import sys
+
 from PyInstaller.utils.hooks import collect_submodules
+
+# 版本资源（issue 260808）：Finder「显示简介」里的版本号来自 Info.plist 的
+# CFBundleShortVersionString——不设就是空的，跟 Windows 属性页没有「文件版本」是同一个病。
+# **与 build.spec 共用 tools/version_res.py**，两份 spec 不各写一份（分叉过一次）。
+sys.path.insert(0, os.path.join(SPECPATH, 'tools'))
+# 只取 mac 那半边：`windows_version_info` 会 import `PyInstaller.utils.win32.versioninfo`，
+# 而它在非 Windows 上 import 就炸（compat 里 win32api 只在 is_win 下定义）。
+# version_res 把这个 import 放在函数体内，所以模块本身在 macOS 上是安全的。
+from version_res import mac_info_plist  # noqa: E402
 
 datas = [
     ('src/templates', 'templates'),   # Flask 模板
@@ -64,4 +76,6 @@ app = BUNDLE(
     name='cc-wire-analyzer.app',
     icon=None,
     bundle_identifier=None,
+    # Finder「显示简介」的版本号（issue 260808）。版本真源仍是 git tag，见 tools/version_res.py。
+    info_plist=mac_info_plist(),
 )

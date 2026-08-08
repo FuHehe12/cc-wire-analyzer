@@ -201,7 +201,12 @@ def _spec_facts() -> dict:
         datas = re.findall(r"\(\s*'([^']+)'\s*,", m.group(1)) if m else []
         h = re.search(r"hiddenimports\s*=[^\n]*?\+\s*\[([^\]]*)\]", t)
         hidden = re.findall(r"'([A-Za-z_][A-Za-z_0-9]*)'", h.group(1)) if h else []
-        out[name] = {"datas": sorted(datas), "hidden": sorted(hidden)}
+        # 3. **两份 spec 都必须刻版本资源**（260808）。产物在程序外能不能看出版本，
+        #    全靠 `tools/version_res.py`；哪份 spec 掉了这行，那个平台的产物就退回
+        #    "属性页一片空白"。两个平台各取一半（Windows 的 VERSIONINFO / macOS 的
+        #    Info.plist），所以只对账"有没有用这个模块"，不对账具体调用了哪个函数。
+        out[name] = {"datas": sorted(datas), "hidden": sorted(hidden),
+                     "version_res": "from version_res import" in t}
     return out
 
 
@@ -371,6 +376,10 @@ def audit() -> dict:
         if a["hidden"] != b["hidden"]:
             spec_divergence.append(
                 f"显式 hiddenimports 不一致：build.spec={a['hidden']} / build-mac.spec={b['hidden']}")
+        for name, f in ((n, specs[n]) for n in _SPECS if n in specs):
+            if not f.get("version_res"):
+                spec_divergence.append(
+                    f"{name} 没有引入 tools/version_res.py —— 该平台的产物在程序外看不到版本号")
 
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
@@ -545,6 +554,11 @@ def _selftest() -> int:
         ("两份 spec 的 datas 一致", a.get("datas") == b.get("datas")),
         ("两份 spec 的显式 hiddenimports 一致", a.get("hidden") == b.get("hidden")),
         ("说明书确实在打包清单里", any("AI_USAGE" in d for d in a.get("datas", []))),
+        ("两份 spec 都刻了版本资源", a.get("version_res") and b.get("version_res")),
+        # 反向断言：掉了版本资源必须被判成硬差异。检查本身不被验证，就是下一个
+        # 「守卫函数存在但调用点缺失」。
+        ("spec 掉了版本资源会挡发版",
+         n_hard(spec_divergence=["build-mac.spec 没有引入 tools/version_res.py"]) == 1),
     ]
     for name, passed in ecases:
         print("[枚举对账]", ("PASS " if passed else "FAIL ") + name)

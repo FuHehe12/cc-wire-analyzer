@@ -77,10 +77,12 @@ points:
 
 - **No recording leaves your machine.** Recordings are written to `~/.cc-wire-analyzer/` as plain
   JSONL, and traffic is forwarded to the same upstream CC was already using. There is no
-  telemetry, no account, no upload. The app makes exactly two outbound calls of its own, both
+  telemetry, no account, no upload. The app makes exactly three outbound calls of its own, all
   only when you click them: the optional translate / ask-AI feature in the detail view (sends the
-  selected content to an endpoint **you** configure) and "check for updates" in the About panel
-  (asks api.github.com for the latest release tag, sends nothing about you).
+  selected content to an endpoint **you** configure), "check for updates" in the About panel
+  (asks api.github.com for the latest release tag, sends nothing about you), and — if you then
+  press download — fetching that release asset from GitHub. There is no background update check
+  and no silent install: every step is a click.
 - **One config field, restored on exit.** The proxy edits `ANTHROPIC_BASE_URL` in
   `~/.claude/settings.json` and nothing else — token, model mapping and OTLP config are left
   alone. The file is backed up before the edit, and restoration is hooked to the window-close
@@ -118,7 +120,10 @@ points:
 
 ### Option A — download a release build
 
-Grab the latest `cc-wire-analyzer-windows.exe` or `cc-wire-analyzer-macos.zip` from [Releases](../../releases). No Python needed.
+Grab the latest `cc-wire-analyzer-v<version>-windows.exe` or `cc-wire-analyzer-v<version>-macos.zip`
+from [Releases](../../releases). No Python needed. The version is in the file name and in the file's
+own properties (Windows: Details tab; macOS: Get Info), so you can tell builds apart without opening
+them. `SHA256SUMS.txt` next to them is what the in-app updater verifies a download against.
 
 - **Windows**: double-click the `.exe`. If it warns about WebView2 missing, install [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 - **macOS**: unzip, drag `cc-wire-analyzer.app` to `/Applications`. The app is **unsigned and un-notarized** (normal for a free open-source project — code-signing costs $99/year), so **Gatekeeper blocks the first launch**. Allow it once:

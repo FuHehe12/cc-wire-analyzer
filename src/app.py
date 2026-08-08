@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -27,6 +28,7 @@ import settings_guard
 import snapshot_diff
 import snapshot_extract
 import snapshot_store
+import updater
 import upstream_history
 
 log = logging.getLogger(__name__)
@@ -110,6 +112,16 @@ try:
         log.info("retention: purged %d day(s): %s", len(_RETENTION_REMOVED), _RETENTION_REMOVED)
 except Exception as e:
     log.error("retention sweep failed: %s", e)
+
+# 上一次就地更新留下的 `<exe>.old` / `.new`：那时它们还被占用着删不掉（正在跑的就是旧文件），
+# 只能等下一次启动。删不掉也不报错——残留一个 30MB 的旧 exe 是小事，
+# 为它中断启动是大事（260808）。
+try:
+    _n = updater.cleanup_leftovers()
+    if _n:
+        log.info("update: cleaned %d leftover file(s) from a previous in-place update", _n)
+except Exception as e:
+    log.warning("update leftover cleanup failed: %s", e)
 
 
 # ===== 页面 =====
@@ -842,6 +854,67 @@ def about():
     })
 
 
+# ===== 就地更新（260808，issue 260808_自动更新与产物版本号可见）=====
+# **"点一下就换好"，不是"自动升级"**：没有定时检查、没有静默安装，每一步都由用户点击触发。
+# 逻辑全在 updater.py（含安全边界，见开发约定不变量 10），这里只是把它接到 HTTP 上——
+# 让 agent 与界面走同一份实现，也免得前端自己再查一次 GitHub 得到第二个答案。
+
+@app.route("/api/update/check")
+def update_check():
+    """查最新 release（只读，不写盘不下载）。网络不通时返回 `ok:false` + 手动下载地址。"""
+    return jsonify(updater.check(VERSION))
+
+
+@app.route("/api/update/status")
+def update_status():
+    """轮询下载进度与当前阶段。"""
+    return jsonify(updater.status(VERSION))
+
+
+@app.route("/api/update/download", methods=["POST"])
+def update_download():
+    """开始下载（立即返回，进度走 /api/update/status）。"""
+    return jsonify(updater.start_download(VERSION))
+
+
+@app.route("/api/update/cancel", methods=["POST"])
+def update_cancel():
+    return jsonify(updater.cancel())
+
+
+@app.route("/api/update/open-releases", methods=["POST"])
+def update_open_releases():
+    """系统浏览器打开发布页。**无入参**——地址是 updater 里硬编码的常量。"""
+    return jsonify(updater.open_releases_page())
+
+
+@app.route("/api/update/apply", methods=["POST"])
+def update_apply():
+    """替换产物。Windows 就地替换后重启；macOS 解压并在 Finder 指出，不动运行中的 .app。
+
+    录制中一律拒绝（409）——**不代劳停止**：停代理要写用户的 settings.json，
+    那是有副作用的动作，不该由"我想升级"这个意图顺带触发。
+    """
+    r = updater.apply(settings_guard.is_patched(), _exit_for_update)
+    return jsonify(r), (200 if r.get("ok") else 409)
+
+
+def _exit_for_update() -> None:
+    """更新替换完成后退出本进程。**走与正常关闭同一条恢复路径**。
+
+    这里理论上已经不需要恢复（apply 在录制中直接拒绝），但仍然调一次：
+    `_safe_restore` 幂等，而"退出前必恢复"是不变量 2，多一条退出路径就多一处要守住它——
+    在这里省掉它，就等于把一条新的、绕过恢复的退出通道加进了进程。
+    """
+    try:
+        settings_guard._safe_restore()
+        log.info("=== exit: update applied pid=%s ===", os.getpid())
+        logging.shutdown()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 # ===== 自描述：产物自己带着给 AI 的说明书（260801，issue 260801_异机AI自描述入口）=====
 # 用户从 Release 下载到的是**单个 exe**，仓库里的 docs/ 一份都不跟着走；而 serve 模式的
 # 消费者正是 AI。此前另一台机器上的 AI 三条路全堵：exe 是 noconsole（没有 stdout，
@@ -883,6 +956,9 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | POST | `/api/analyze/chat` | 让软件内低成本模型多轮分析某快照（SSE，问答落盘）|
 | POST | `/api/snapshots/clear` | 批量清理快照（`preview=true` 先看命中几条）|
 | GET | `/api/snapshots/<id>/brief?lang=` | 一段现成指令文本，给能自己发 HTTP 的 agent |
+| GET | `/api/update/check` | 有没有新版本 + 本平台资产 + 能不能就地替换（源码模式 / macOS 各有原因码）|
+| POST | `/api/update/download` | 下载新版本（进度走 `/api/update/status`；校验不过即删文件）|
+| POST | `/api/update/apply` | 替换产物并重启。**录制中返回 409**——不代你停代理（那要写你的 settings.json）|
 
 上面每个查录制的端点都接受 `session=` / `exclude_session=`（前缀匹配）。两个 CC 并排跑、
 一个审计另一个时，把 `exclude_session` 指向审计者自己的会话 id——否则审计者每查一次就往

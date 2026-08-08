@@ -64,6 +64,7 @@ jobs:
           uv run python src/doctor_selftest.py
           uv run python src/diagnose_selftest.py
           uv run python src/snapshot_selftest.py
+          uv run python src/update_selftest.py
 
   build:
     name: Build (${{ matrix.os }})
@@ -72,14 +73,16 @@ jobs:
       fail-fast: false   # 一个平台失败不影响另一个
       matrix:
         include:
+          # 产物名从 260808 起带版本号（`cc-wire-analyzer-v0.4.11-windows.exe`）：下载目录里
+          # 躺着的就是文件名，而属性页要点三下。所以这里用通配，具体名字在重命名步骤里拼。
           - os: windows-latest
             spec: build.spec
             extra: ''
-            artifact: dist/cc-wire-analyzer-windows.exe
+            artifact: dist/cc-wire-analyzer-v*-windows.exe
           - os: macos-latest
             spec: build-mac.spec
             extra: '--extra mac'   # 装 pyobjc（macOS WebKit 后端）
-            artifact: dist/cc-wire-analyzer-macos.zip
+            artifact: dist/cc-wire-analyzer-v*-macos.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +111,10 @@ jobs:
           fi
           printf 'VERSION = "%s"  # CI 从 tag 注入，勿手改（见 docs/reference/开发约定.md 第九节）\n' "$V" > src/_version.py
           sed -i.bak "s/^version = \".*\"/version = \"$V\"/" pyproject.toml && rm pyproject.toml.bak
+          # 后面的重命名步骤要用它拼产物名。两份 spec 也读同一个 _version.py 刻进
+          # PE 版本资源 / Info.plist（tools/version_res.py），所以"文件名说的"和
+          # "属性页说的"必然是同一个数——它们来自同一个源，不是两处各写一次。
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
           echo "Injected version: $V"
 
       # 单 exe（260713 合并）：无参/双击开 GUI，`serve` 起 headless 服务给 AI，`--help` 打印说明。
@@ -124,12 +131,12 @@ jobs:
       # 与 Windows 侧的 cc-wire-analyzer-windows.exe 看着像两个项目的产物。
       - name: Zip macOS app
         if: runner.os == 'macOS'
-        run: cd dist && ditto -c -k --sequesterRsrc --keepParent cc-wire-analyzer.app cc-wire-analyzer-macos.zip
+        run: cd dist && ditto -c -k --sequesterRsrc --keepParent cc-wire-analyzer.app "cc-wire-analyzer-v${APP_VERSION}-macos.zip"
 
       - name: Rename Windows exe
         if: runner.os == 'Windows'
         shell: bash
-        run: mv dist/cc-wire-analyzer.exe dist/cc-wire-analyzer-windows.exe
+        run: mv dist/cc-wire-analyzer.exe "dist/cc-wire-analyzer-v${APP_VERSION}-windows.exe"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -168,6 +175,15 @@ jobs:
       # 不用 generate_release_notes：它按 PR 分组列 "What's Changed"，本项目是单人直接
       # push commit（无 PR），结果只剩一行 Full Changelog 链接，CHANGELOG 和 tag message
       # 全被忽略——v0.1.0/v0.2.0 的 release 页面即如此（260714 修）。
+      # 校验和清单（260808）：软件内的「下载并安装」会取这个文件比对下载到的字节，
+      # 对不上就删文件并报错。**没有它时软件会明说"本次无校验和"**，而不是默默降级——
+      # 所以这一步不能悄悄失效。只 glob 产物名，不写 `*`：那会把清单自己也算进去。
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum cc-wire-analyzer-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Build release notes from CHANGELOG
         run: |
           TAG="${GITHUB_REF_NAME}"   # 例 v0.2.0

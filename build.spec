@@ -3,7 +3,16 @@
 # 用法（项目根目录）：uv run pyinstaller build.spec
 # 产出 dist/cc-wire-analyzer.exe（单文件，noconsole）
 
+import os
+import sys
+
 from PyInstaller.utils.hooks import collect_submodules
+
+# 版本资源（issue 260808）：让下载到磁盘上的 exe 在「属性 → 详细信息」里直接显示版本号，
+# 不必双击打开程序才知道手上是哪一版。**两份 spec 共用 tools/version_res.py**，
+# 不各写一份——两份 spec 因"要同时改"分叉过一次（mac spec 漏 brotli）。
+sys.path.insert(0, os.path.join(SPECPATH, 'tools'))
+from version_res import windows_version_info  # noqa: E402
 
 datas = [
     ('src/templates', 'templates'),   # Flask 模板，app.py 用 sys._MEIPASS/templates 找
@@ -48,4 +57,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,   # --noconsole：不弹黑色控制台窗口
     icon=None,
+    # 版本号真源仍是 git tag（CI 打包前生成 src/_version.py）；这里只是把它刻进 PE 资源。
+    # 本地无 _version.py 时刻的是 0.0.0/"dev"，一眼能看出不是发行版。
+    version=windows_version_info(),
 )

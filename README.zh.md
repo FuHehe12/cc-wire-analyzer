@@ -52,7 +52,7 @@ Use effort 'high' or below, or enable thinking.
 
 对任何自称 MITM 代理的东西，这都是该问的问题。诚实的回答，四点：
 
-- **录制不会离开你的机器。** 录制以纯 JSONL 写入 `~/.cc-wire-analyzer/`，流量转发给 CC 本来就在用的那个上游。没有遥测、没有账号、没有上传。本应用自身只有两处外发，且都只在你点击时发生：详情页可选的翻译 / AI 解读（把选中内容发往**你自己**配置的端点），以及关于页的「检查更新」（向 api.github.com 询问最新 release tag，不发送任何与你有关的信息）。
+- **录制不会离开你的机器。** 录制以纯 JSONL 写入 `~/.cc-wire-analyzer/`，流量转发给 CC 本来就在用的那个上游。没有遥测、没有账号、没有上传。本应用自身只有三处外发，且都只在你点击时发生：详情页可选的翻译 / AI 解读（把选中内容发往**你自己**配置的端点）、关于页的「检查更新」（向 api.github.com 询问最新 release tag，不发送任何与你有关的信息），以及你随后点「下载」时从 GitHub 取那个安装包。**没有后台定时检查，也没有静默安装**——每一步都要你点。
 - **只动一个配置字段，退出即恢复。** 代理只改 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL`，其余一概不碰——token、模型映射、OTLP 配置原样保留。改动前先备份，恢复挂在窗口关闭事件、`atexit`、信号以及启动时的孤儿检查上，另有 `restore` 命令兜底。恢复只会撤销它还能证明是自己做的那一笔——如果期间你或 cc-switch 改过 `BASE_URL`，它不碰你的文件。
 - **凭据会脱敏，消息内容不会。** `Authorization` 等 header 以脱敏形式存储；请求与响应的 body **原样存储**——这正是本工具的意义所在，但也意味着一份录制里含有你的 prompt、被引入会话的文件内容，以及完整的 system prompt。请把 capture 文件当作敏感数据：别不看一眼就粘进聊天窗口或附到 bug 报告里。
 - **它与你现有的配置共存。** 官方端点直连、第三方网关、cc-switch 都支持。代理运行期间不要用 cc-switch 切换端点：那会重写 `BASE_URL`，CC 就绕过代理了。本应用专门盯着这件事，一旦发生会告诉你。同样别在录制时用 cc-switch「保存当前为 profile」——它会读到被改写的 settings，把本机代理地址存进该 profile，之后切到它 CC 就指向一个没人听的端口（这条防不住：settings.json 只是被读走、没被改）。另外，若启动录制时 `BASE_URL` 已经是本机地址（上次录制残留、或被污染的 profile），本应用会提醒你检查。
@@ -74,7 +74,7 @@ Use effort 'high' or below, or enable thinking.
 
 ### 方式 A —— 下载 release 构建
 
-从 [Releases](../../releases) 下载最新的 `cc-wire-analyzer-windows.exe` 或 `cc-wire-analyzer-macos.zip`。不需要 Python。
+从 [Releases](../../releases) 下载最新的 `cc-wire-analyzer-v<版本>-windows.exe` 或 `cc-wire-analyzer-v<版本>-macos.zip`。不需要 Python。版本号既在文件名里，也刻在文件属性里（Windows 右键属性 →「详细信息」，macOS「显示简介」），**不打开程序也能分辨手上是哪一版**。旁边的 `SHA256SUMS.txt` 就是软件内自动更新用来校验下载的那份清单。
 
 - **Windows**：双击 `.exe`。如果提示 WebView2 缺失，装一下 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
 - **macOS**：解压，把 `cc-wire-analyzer.app` 拖到 `/Applications`。应用**未签名、未公证**（免费开源项目常态——签名要 $99/年），所以**首次启动会被 Gatekeeper 拦**。放行一次即可：

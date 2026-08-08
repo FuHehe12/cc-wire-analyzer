@@ -673,6 +673,21 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .about-item .l{font-size:10.5px;color:var(--apple-secondary);}
 .about-item .v{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);margin-top:2px;}
 
+/* 更新面板（260808）。只用既有语义 token，不新增变量——新 token 要在三套外观里各给一次取值，
+   而这块面板没有任何需要独立配色的东西。 */
+.upd{margin-top:14px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);
+  background:var(--bg-soft);}
+.upd-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.upd-title{font-size:12px;font-weight:600;color:var(--apple-text);}
+.upd-sub{font-size:11px;color:var(--apple-secondary);}
+.upd-bar{height:6px;border-radius:3px;background:var(--bg-softer);overflow:hidden;margin-top:10px;}
+.upd-fill{height:100%;width:0;background:var(--accent);transition:width .2s ease;}
+.upd-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.upd-note{font-size:10.5px;color:var(--text-faint);margin-top:8px;line-height:1.55;
+  word-break:break-all;overflow-wrap:anywhere;}
+.upd-note.warn{color:var(--warn);}
+.upd-note.err{color:var(--err);}
+
 /* ===== Toast ===== */
 #toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(8px);z-index:999;
   background:var(--toast-bg);color:var(--toast-fg);font-size:12px;padding:9px 18px;border-radius:10px;
@@ -1267,6 +1282,25 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
           <div class="about-item"><div class="l" data-i18n="set.about.dataDir">数据目录</div><div class="v" id="aboutDataDir">—</div></div>
           <div class="about-item"><div class="l" data-i18n="set.about.log">运行日志</div><div class="v" id="aboutLogPath">—</div></div>
         </div>
+
+        <!-- 更新面板（260808）：检查出新版本后就地下载 → 校验 → 替换重启。
+             **每一步都要用户点**：没有后台定时检查，也没有静默安装——本工具在录制期间
+             持有用户 settings.json 的 patch 态，背着用户换掉自己再重启是这里最不该做的事。 -->
+        <div class="upd" id="updPanel" hidden>
+          <div class="upd-head">
+            <span class="upd-title" id="updTitle">—</span>
+            <span class="upd-sub" id="updSub"></span>
+          </div>
+          <div class="upd-bar" id="updBarWrap" hidden><div class="upd-fill" id="updFill"></div></div>
+          <div class="upd-acts">
+            <button class="btn primary" id="updDlBtn" onclick="updDownload()" hidden data-i18n="set.upd.download">下载</button>
+            <button class="btn" id="updCancelBtn" onclick="updCancel()" hidden data-i18n="set.upd.cancel">取消</button>
+            <button class="btn primary" id="updApplyBtn" onclick="updApply()" hidden data-i18n="set.upd.apply">安装并重启</button>
+            <button class="btn" id="updFolderBtn" onclick="updOpenFolder()" hidden data-i18n="set.upd.folder">打开所在文件夹</button>
+            <button class="btn" id="updPageBtn" onclick="updOpenPage()" hidden data-i18n="set.upd.page">打开发布页</button>
+          </div>
+          <div class="upd-note" id="updNote"></div>
+        </div>
       </div>
 
       <div class="save-row">
@@ -1704,6 +1738,23 @@ zh: {
   "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
   "set.about.title": "关于", "set.about.version": "版本", "set.about.dataDir": "数据目录", "set.about.log": "运行日志",
   "set.about.checkBtn": "检查更新", "set.about.checking": "检查中…", "set.about.upToDate": "已是最新版本", "set.about.newVersion": "发现新版本 {v}", "set.about.checkFailed": "检查失败（网络不通？）",
+  "set.upd.download": "下载", "set.upd.cancel": "取消", "set.upd.apply": "安装并重启",
+  "set.upd.confirm": "确认安装？", "set.upd.folder": "打开所在文件夹", "set.upd.page": "打开发布页",
+  "set.upd.available": "新版本 {v}（当前 {cur}）", "set.upd.upToDate": "已是最新版本 {v}",
+  "set.upd.verifying": "校验中…", "set.upd.ready": "{v} 已下载完毕，可以安装",
+  "set.upd.applying": "正在安装…", "set.upd.restarting": "已替换，正在重启新版本…",
+  "set.upd.checkFailed": "检查更新失败", "set.upd.err": "出错：{msg}",
+  "set.upd.shaOk": "已按发布页的 SHA-256 清单校验通过。",
+  "set.upd.shaNone": "这个版本的发布页没有提供 SHA-256 清单，只有 HTTPS 传输层保证。实测校验值：{sha}…",
+  "set.upd.revealed": "已在文件管理器中指出：{path}",
+  "set.upd.noteSource": "当前是源码运行，没有可替换的产物——请用 git pull 更新。",
+  "set.upd.noteNoAsset": "这个版本的发布页没有本平台的安装包，请到发布页手动查看。",
+  "set.upd.noteMac": "macOS 不做就地替换：校验完成后会在访达中指出新版本，请自行拖入「应用程序」并重新打开。",
+  "set.upd.noteRecording": "正在录制，请先停止代理再安装。停止代理会写回你的 settings.json，这一步该由你自己按。",
+  "set.upd.noteNotWritable": "无法就地替换（多半是程序所在目录没有写权限）。安装包已下载好，可手动替换。",
+  "set.upd.noteNotReady": "安装包还没准备好，请先下载。",
+  "set.upd.noteFileGone": "下载好的安装包不见了，请重新下载。",
+  "set.upd.noteUnpack": "解压安装包失败，请手动到发布页下载。",
   "set.save": "保存配置",
   "err.no_api_key": "未配置 LLM API Key（设置页「LLM 模型」）",
   "err.no_base_url": "未配置 LLM Base URL（设置页「LLM 模型」）",
@@ -1995,6 +2046,23 @@ en: {
   "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
   "set.about.title": "About", "set.about.version": "Version", "set.about.dataDir": "Data dir", "set.about.log": "Log file",
   "set.about.checkBtn": "Check for updates", "set.about.checking": "Checking…", "set.about.upToDate": "Up to date", "set.about.newVersion": "New version {v} available", "set.about.checkFailed": "Check failed (network blocked?)",
+  "set.upd.download": "Download", "set.upd.cancel": "Cancel", "set.upd.apply": "Install and restart",
+  "set.upd.confirm": "Confirm install?", "set.upd.folder": "Open containing folder", "set.upd.page": "Open releases page",
+  "set.upd.available": "Version {v} available (you have {cur})", "set.upd.upToDate": "You are on the latest version {v}",
+  "set.upd.verifying": "Verifying…", "set.upd.ready": "{v} downloaded and ready to install",
+  "set.upd.applying": "Installing…", "set.upd.restarting": "Replaced — restarting into the new version…",
+  "set.upd.checkFailed": "Update check failed", "set.upd.err": "Error: {msg}",
+  "set.upd.shaOk": "Verified against the SHA-256 manifest published with the release.",
+  "set.upd.shaNone": "This release ships no SHA-256 manifest, so only HTTPS protects the transfer. Measured digest: {sha}…",
+  "set.upd.revealed": "Revealed in the file manager: {path}",
+  "set.upd.noteSource": "Running from source — there is no binary to replace. Use git pull instead.",
+  "set.upd.noteNoAsset": "This release has no build for your platform; check the releases page.",
+  "set.upd.noteMac": "No in-place replacement on macOS: once verified, the new version is revealed in Finder — drag it into Applications and reopen it yourself.",
+  "set.upd.noteRecording": "Recording is active. Stop the proxy first — stopping writes your settings.json back, and that is a step you should press yourself.",
+  "set.upd.noteNotWritable": "Cannot replace in place (most likely the install directory is not writable). The download is ready, so you can swap it manually.",
+  "set.upd.noteNotReady": "Nothing downloaded yet — download it first.",
+  "set.upd.noteFileGone": "The downloaded file is gone; download it again.",
+  "set.upd.noteUnpack": "Could not unpack the download; grab it from the releases page instead.",
   "set.save": "Save settings",
   "err.no_api_key": "LLM API Key not configured (Settings → LLM model)",
   "err.no_base_url": "LLM Base URL not configured (Settings → LLM model)",
@@ -2285,6 +2353,23 @@ ja: {
   "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
   "set.about.title": "情報", "set.about.version": "バージョン", "set.about.dataDir": "データ保存先", "set.about.log": "ログ",
   "set.about.checkBtn": "更新を確認", "set.about.checking": "確認中…", "set.about.upToDate": "最新です", "set.about.newVersion": "新バージョン {v} があります", "set.about.checkFailed": "確認失敗（ネットワーク不通？）",
+  "set.upd.download": "ダウンロード", "set.upd.cancel": "キャンセル", "set.upd.apply": "インストールして再起動",
+  "set.upd.confirm": "インストールしますか？", "set.upd.folder": "保存先を開く", "set.upd.page": "リリースページを開く",
+  "set.upd.available": "新バージョン {v}（現在 {cur}）", "set.upd.upToDate": "最新バージョン {v} です",
+  "set.upd.verifying": "検証中…", "set.upd.ready": "{v} のダウンロードが完了しました",
+  "set.upd.applying": "インストール中…", "set.upd.restarting": "置き換えました。新バージョンを起動しています…",
+  "set.upd.checkFailed": "更新の確認に失敗しました", "set.upd.err": "エラー：{msg}",
+  "set.upd.shaOk": "リリースの SHA-256 一覧と照合済みです。",
+  "set.upd.shaNone": "このリリースには SHA-256 一覧がなく、HTTPS の通信保護のみです。実測値：{sha}…",
+  "set.upd.revealed": "ファイルマネージャで表示しました：{path}",
+  "set.upd.noteSource": "ソースから実行中のため置き換える実行ファイルがありません。git pull で更新してください。",
+  "set.upd.noteNoAsset": "このリリースには本プラットフォーム向けの成果物がありません。リリースページをご確認ください。",
+  "set.upd.noteMac": "macOS では直接置き換えません：検証後に Finder で新バージョンを表示するので、ご自身で「アプリケーション」へ入れて開き直してください。",
+  "set.upd.noteRecording": "記録中です。先にプロキシを停止してください。停止はあなたの settings.json を書き戻す操作なので、ご自身で押すべき一手です。",
+  "set.upd.noteNotWritable": "その場での置き換えができません（インストール先に書き込み権限がない可能性が高いです）。ダウンロードは完了しているので手動で置き換えられます。",
+  "set.upd.noteNotReady": "まだダウンロードしていません。先にダウンロードしてください。",
+  "set.upd.noteFileGone": "ダウンロード済みのファイルが見つかりません。もう一度ダウンロードしてください。",
+  "set.upd.noteUnpack": "ダウンロードした書庫を展開できません。リリースページから取得してください。",
   "set.save": "設定を保存",
   "err.no_api_key": "LLM API Key が未設定です（設定 → LLM モデル）",
   "err.no_base_url": "LLM Base URL が未設定です（設定 → LLM モデル）",
@@ -2470,6 +2555,9 @@ async function setLang(lang){
       if(c[0] && c[1] && AN.rDiff) renderDiff(AN.rDiff, "anRecOut");
     }
   }
+  /* 更新面板同理：标题/进度/校验和说明全是 t18 拼出来烤进 DOM 的（同上一条教训，
+     第三次换视图了）。缓存的是最后一次后端状态，重放一次即可，不用再请求。 */
+  if(UPD.st) updRender(UPD.st);
   try{
     await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ui_lang: lang})});
@@ -5513,7 +5601,6 @@ async function loadConfig(){
     $("cfgTransLang").value = tr.target_lang || "zh";
     $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
     $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
-    S.curVersion = about.version || "";
     $("aboutDataDir").textContent = about.data_dir || "—";
     $("aboutLogPath").textContent = about.log_path || "—";
     /* 给 AI 用：端口取自当前页面地址（find_free_port 从 5051 起挑，被占就顺延——
@@ -5526,40 +5613,181 @@ async function loadConfig(){
     toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
   }
 }
-/* 检查更新：fetch GitHub 最新 release 比对版本号（260729）。
-   走 api.github.com（支持 CORS）；12s 超时；网络不通时降级为提示手动去 GitHub releases 看。 */
+/* ===== 更新：检查 → 下载 → 校验 → 安装（260808，issue 260808）=====
+   260729 这里是前端直连 api.github.com、比完 tag 打印一行地址就结束——通知做完了，
+   最麻烦的六步（记地址、开浏览器、找资产、下载、关掉正在跑的程序、覆盖）全留给用户。
+   现在整条链路挪到后端 /api/update/*：agent 也能用，资产匹配与校验和本来就得在后端做，
+   而前后端各查一次 GitHub 会得到两份可能不一致的答案。
+   **没有后台定时检查、没有静默安装**：每一步都对应一次点击（见 updater.py 开头）。 */
+const UPD = {timer: null, st: null, confirming: false};
+
 async function checkUpdate(){
   const btn = $("aboutCheckBtn"), res = $("aboutUpdateResult");
   if(!btn) return;
   btn.disabled = true; btn.textContent = t18("set.about.checking"); res.textContent = "";
-  const GH = "github.com/Fuhehe12/cc-wire-analyzer/releases";
   try{
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 12000);
-    const r = await fetch("https://api.github.com/repos/Fuhehe12/cc-wire-analyzer/releases/latest", {signal: ctrl.signal});
-    clearTimeout(to);
-    if(!r.ok) throw new Error("HTTP " + r.status);
-    const j = await r.json();
-    const latest = (j.tag_name || "").replace(/^v/, "");
-    if(latest && S.curVersion && cmpVer(latest, S.curVersion) > 0){
-      res.textContent = t18("set.about.newVersion", {v: j.tag_name}) + "  →  " + GH;
-    }else if(latest){
-      res.textContent = t18("set.about.upToDate");
+    const j = await (await fetch("/api/update/check")).json();
+    UPD.st = j;
+    if(!j.ok){
+      res.textContent = t18("set.about.checkFailed");
+    }else if(j.has_update){
+      res.textContent = t18("set.about.newVersion", {v: "v" + j.latest});
     }else{
-      throw new Error("no tag");
+      res.textContent = t18("set.about.upToDate");
     }
+    updRender(j);
   }catch(e){
-    res.textContent = t18("set.about.checkFailed") + "  →  " + GH;
+    UPD.st = {ok: false, error: e.message};
+    res.textContent = t18("set.about.checkFailed");
+    updRender(UPD.st);
   }
   btn.disabled = false; btn.textContent = t18("set.about.checkBtn");
 }
-function cmpVer(a, b){
-  const pa = String(a).split("."), pb = String(b).split(".");
-  for(let i = 0; i < Math.max(pa.length, pb.length); i++){
-    const da = parseInt(pa[i] || "0", 10), db = parseInt(pb[i] || "0", 10);
-    if(da !== db) return da - db;
+
+/* 单一渲染入口：/api/update/check 与 /api/update/status 返回的是同一组字段，
+   两处都喂给它。切语言时也重放最后一次状态（applyI18n 里调）——260808 刚在分析页
+   踩过"渲染结果把译文烤进 DOM、切语言不跟着变"这个坑，这里从一开始就别再犯。 */
+function updRender(st){
+  if(!st) return;
+  UPD.st = st;
+  const panel = $("updPanel"); if(!panel) return;
+  const phase = st.phase || "idle";
+  const dl = $("updDlBtn"), cancel = $("updCancelBtn"), apply = $("updApplyBtn"),
+        folder = $("updFolderBtn"), page = $("updPageBtn"),
+        barWrap = $("updBarWrap"), note = $("updNote");
+  for(const el of [dl, cancel, apply, folder, page]) el.hidden = true;
+  barWrap.hidden = true;
+  note.className = "upd-note";
+  let title = "", sub = "", noteText = "";
+
+  if(st.ok === false && st.error && phase !== "error"){
+    /* 检查本身失败：多半是连不上 GitHub（很多网络下要走代理）。给手动出口，别把人堵死。 */
+    panel.hidden = false;
+    $("updTitle").textContent = t18("set.upd.checkFailed");
+    $("updSub").textContent = "";
+    note.className = "upd-note err";
+    note.textContent = t18("set.upd.err", {msg: st.error});
+    page.hidden = false;
+    return;
   }
-  return 0;
+  if(!st.has_update && phase === "idle"){
+    panel.hidden = false;
+    $("updTitle").textContent = t18("set.upd.upToDate", {v: "v" + (st.current || "")});
+    $("updSub").textContent = ""; note.textContent = ""; page.hidden = false;
+    return;
+  }
+  panel.hidden = false;
+  const a = st.asset || {};
+  title = t18("set.upd.available", {v: "v" + (st.latest || ""), cur: "v" + (st.current || "")});
+  if(a.size) sub = fmtBytes(a.size) + " · " + (a.name || "");
+
+  if(phase === "downloading" || phase === "verifying"){
+    barWrap.hidden = false;
+    const pct = st.total ? Math.min(100, Math.round(st.downloaded * 100 / st.total)) : 0;
+    $("updFill").style.width = pct + "%";
+    sub = phase === "verifying" ? t18("set.upd.verifying")
+        : fmtBytes(st.downloaded || 0) + " / " + fmtBytes(st.total || 0) + "  " + pct + "%";
+    cancel.hidden = false;
+  }else if(phase === "ready"){
+    title = t18("set.upd.ready", {v: "v" + (st.latest || "")});
+    sub = "";
+    /* 校验和：有就说验过了，没有就**明说没有**并把实测值摆出来。
+       默默降级成"仅传输层保护"却不吭声，比不做更糟。 */
+    noteText = st.sha256_verified ? t18("set.upd.shaOk")
+             : t18("set.upd.shaNone", {sha: (st.sha256 || "").slice(0, 32)});
+    if(st.can_apply && st.in_place){ apply.hidden = false; }
+    else { folder.hidden = false; }
+    if(!st.in_place && st.can_apply) noteText = t18("set.upd.noteMac") + "\n" + noteText;
+  }else if(phase === "applying"){
+    title = t18("set.upd.applying"); sub = "";
+  }else if(phase === "error"){
+    note.className = "upd-note err";
+    noteText = t18("set.upd.err", {msg: st.error || ""});
+    dl.hidden = false; page.hidden = false;
+  }else{
+    dl.hidden = false; page.hidden = false;
+  }
+
+  /* 能不能就地安装，原因要说清楚——一句笼统的"不支持"会被当成坏了。 */
+  if(st.can_apply === false && phase !== "downloading" && phase !== "verifying"){
+    const k = {source: "set.upd.noteSource", no_asset: "set.upd.noteNoAsset"}[st.apply_reason];
+    if(k){ noteText = t18(k) + (noteText ? "\n" + noteText : ""); note.className = "upd-note warn"; }
+  }
+  $("updTitle").textContent = title;
+  $("updSub").textContent = sub;
+  note.textContent = noteText;
+}
+
+async function updDownload(){
+  try{
+    const j = await (await fetch("/api/update/download", {method: "POST"})).json();
+    if(!j.ok){ toast(j.error || "", true); return; }
+    updPoll();
+  }catch(e){ toast(e.message, true); }
+}
+
+async function updCancel(){
+  try{ await fetch("/api/update/cancel", {method: "POST"}); }catch(e){ /* 取消失败不值得打扰 */ }
+}
+
+/* 轮询而不是 SSE：这是个只在设置页开着、只在下载期间存在的进度条，
+   为它再拉一条流不划算。ready/error/idle 三个终态就停表。 */
+function updPoll(){
+  if(UPD.timer) clearInterval(UPD.timer);
+  UPD.timer = setInterval(async () => {
+    try{
+      const st = await (await fetch("/api/update/status")).json();
+      updRender(st);
+      if(["ready", "error", "idle"].includes(st.phase || "")){
+        clearInterval(UPD.timer); UPD.timer = null;
+      }
+    }catch(e){ clearInterval(UPD.timer); UPD.timer = null; }
+  }, 500);
+}
+
+/* 安装要点两次：这一步会替换掉正在运行的程序并重启它，
+   和「按标签批量删快照」同级——不给一键。 */
+async function updApply(){
+  const btn = $("updApplyBtn");
+  if(!UPD.confirming){
+    UPD.confirming = true;
+    btn.textContent = t18("set.upd.confirm");
+    setTimeout(() => { UPD.confirming = false; btn.textContent = t18("set.upd.apply"); }, 5000);
+    return;
+  }
+  UPD.confirming = false; btn.textContent = t18("set.upd.apply"); btn.disabled = true;
+  try{
+    const r = await fetch("/api/update/apply", {method: "POST"});
+    const j = await r.json();
+    if(j.ok && j.restart){
+      $("updTitle").textContent = t18("set.upd.restarting");
+      $("updSub").textContent = ""; $("updNote").textContent = "";
+      $("updApplyBtn").hidden = true;
+      return;   /* 进程 1 秒后退出并拉起新版本，界面到此为止 */
+    }
+    if(j.ok){ $("updNote").textContent = t18("set.upd.revealed", {path: j.path || ""}); return; }
+    const k = {recording: "set.upd.noteRecording", source: "set.upd.noteSource",
+               not_writable: "set.upd.noteNotWritable", not_ready: "set.upd.noteNotReady",
+               file_gone: "set.upd.noteFileGone", unpack_failed: "set.upd.noteUnpack"}[j.reason];
+    const note = $("updNote");
+    note.className = "upd-note warn";
+    note.textContent = k ? t18(k) : (j.error || j.reason || "");
+    if(j.reason === "not_writable") $("updFolderBtn").hidden = false;
+  }catch(e){ toast(e.message, true); }
+  btn.disabled = false;
+}
+
+function updOpenFolder(){
+  fetch("/api/open-folder", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({path: (UPD.st && UPD.st.updates_dir) || ""})})
+    .then(r => r.json()).then(j => { if(!j.ok) toast(j.error || "", true); })
+    .catch(e => toast(e.message, true));
+}
+
+function updOpenPage(){
+  fetch("/api/update/open-releases", {method: "POST"})
+    .then(r => r.json()).then(j => { if(!j.ok) toast(j.error || "", true); })
+    .catch(e => toast(e.message, true));
 }
 async function saveConfig(){
   const payload = {

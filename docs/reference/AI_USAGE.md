@@ -168,9 +168,18 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/config` / POST `/api/config` | 读 / 改配置（ui_lang、retention_days、translate…）|
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 | GET | `/api/captures/stream` | **LIVE SSE**：录制写入时的实时增量（用于实时监控）|
+| GET | `/api/update/check` | 有没有新版本 + 本平台资产 + `can_apply`/`in_place`（能不能就地替换）。连不上 GitHub 时 `ok:false` + 手动下载地址，不是 500 |
+| GET | `/api/update/status` | 下载进度与阶段：`idle`/`downloading`/`verifying`/`ready`/`applying`/`error`，含 `sha256_verified`（是否与 release 的 SHA256SUMS 比对过）|
+| POST | `/api/update/download` | 开始下载（立即返回，进度走 status）。校验不过会删文件并转 `error` |
+| POST | `/api/update/apply` | 替换产物并重启（Windows）。**录制中返回 409 `recording`——本工具不会代你停代理**，因为那要写你的 settings.json |
 
 人类向端点（GUI 用，agent 一般用不到）：`/api/translate`（SSE 翻译）、`/api/explain`（SSE AI
-解读，带防注入定界符）、`/api/open-folder`（在文件管理器打开备份目录）。
+解读，带防注入定界符）、`/api/open-folder`（在文件管理器打开备份目录）、
+`/api/update/cancel`、`/api/update/open-releases`。
+
+更新这一组的性质与别的端点不同：**它会下载并执行一个二进制**。所以来源是硬编码的本仓库
+release、只走 https 且逐跳校验重定向主机、有 `SHA256SUMS.txt` 就强制比对（没有则如实标注
+"未校验"而不是默默放行）。**不存在"自动更新"开关**——每一步都要显式调用。
 
 `/api/captures/<id>` 返回完整 body——所以先拉摘要列表、挑 id、再取那一条。别全拉。
 

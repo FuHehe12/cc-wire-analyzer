@@ -431,6 +431,74 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 
 ---
 
+## 3.55 就地更新（260808）
+
+**"点一下就换好"，不是"自动升级"**：没有定时检查、没有静默安装，每个端点都对应界面上的
+一次点击。安全边界见 [开发约定.md](开发约定.md) 不变量 10（来源硬编码 / 逐跳 host 白名单 /
+校验和有则必比、无则明说 / 半成品先落 `.part`）。
+
+### `GET /api/update/check` — 查最新 release
+
+只读，不写盘不下载。
+
+```json
+{
+  "ok": true, "current": "0.4.10", "latest": "0.4.11", "has_update": true,
+  "asset": {"name": "cc-wire-analyzer-v0.4.11-windows.exe", "size": 28311552,
+            "url": "https://github.com/…/releases/download/v0.4.11/…"},
+  "releases_url": "https://github.com/FuHehe12/cc-wire-analyzer/releases",
+  "notes_url": "https://github.com/…/releases/tag/v0.4.11",
+  "updates_dir": "~/.cc-wire-analyzer/updates",
+  "can_apply": true, "apply_reason": "", "in_place": true
+}
+```
+
+- 连不上 GitHub 时返回 `ok:false` + `error` + `releases_url`（**不是 500**）——网络不通是这个
+  功能最常见的结局，一个手动下载地址比一个错误页有用。
+- `asset` **按模式匹配**（`*windows.exe` / `*macos.zip`），不按固定文件名：资产名从 260808 起
+  带版本号。没有本平台资产时为 `null`。
+- `can_apply` / `apply_reason` / `in_place` 是**能力自陈**：源码运行 → `apply_reason:"source"`；
+  macOS → `in_place:false`（只下载 + 校验 + 在访达指出，不替换运行中的 `.app`）。
+
+### `GET /api/update/status` — 进度与阶段
+
+`phase`：`idle` / `downloading` / `verifying` / `ready` / `applying` / `error`。
+另有 `downloaded` / `total` 字节数、`path`（就绪后的本地文件）、`sha256`、
+`sha256_verified`（是否与 release 的 `SHA256SUMS.txt` 比对过）、`error`。
+
+### `POST /api/update/download` — 开始下载
+
+立即返回 `{"ok": true, "sha256_expected": true}`，进度走 `status`。已有任务在跑时
+`{"ok": false, "error": "…"}`。校验不通过会删除文件并转入 `phase:"error"`。
+
+### `POST /api/update/cancel` — 中止下载
+
+`{"ok": true}`。半成品 `.part` 一并删除，状态回 `idle`（**不计为错误**）。
+
+### `POST /api/update/apply` — 替换产物
+
+成功：`{"ok": true, "in_place": true, "restart": true, "path": "…"}` —— 旧文件改名为
+`<exe>.old`（下次启动清理），1 秒后拉起新版本并让本进程走正常退出路径（先恢复
+settings.json）。macOS 返回 `in_place:false, restart:false` + 解压出的 `.app` 路径。
+
+失败返回 **409** + `reason`：
+
+| reason | 含义 |
+|---|---|
+| `not_ready` | 还没下载完 |
+| `source` | 源码运行，没有可替换的产物 |
+| `recording` | 代理正在录制。**不代劳停止**——停代理要写用户的 settings.json |
+| `file_gone` | 下载好的文件不见了 |
+| `not_writable` | 所在目录不可写（如装在 Program Files）。此时回落成"已下载，请手动替换" |
+| `unpack_failed` | macOS 解压失败 |
+
+### `POST /api/update/open-releases` — 系统浏览器打开发布页
+
+**无入参**：地址是 `updater.py` 里硬编码的常量。做成无参而不是"打开某个 URL"，是因为后者
+等于给出一个"用系统浏览器打开任意地址"的本机无认证接口。
+
+---
+
 ## 3.6 配置体检（260718 方向 B / 260725 落地）
 
 开代理前跑 8 条只读规则，回答"配置有没有矛盾"。三条铁律：**绝不写入** settings.json/凭据、
