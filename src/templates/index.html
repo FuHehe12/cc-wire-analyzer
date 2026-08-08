@@ -2451,6 +2451,15 @@ async function setLang(lang){
       renderRec(AN.recData, AN.recSources || []);
       anChatPresetsRender(); anChatRender();
     }
+    /* 对比结果也是 JS 拼的——renderDiff 把 t18 文本拼进 anDiffOut/anRecOut，无 data-i18n，
+       applyI18n 管不着。切语言必须用缓存重渲，否则停在「做对比那一刻」的语言（260808）。
+       选中状态校验即缓存有效性：不再是这两条时拦住，不复活已失效的对比。 */
+    if(AN.sub === "diff"){
+      if(AN.selA && AN.selB && AN.selA !== AN.selB && AN.pDiff) renderDiff(AN.pDiff);
+    }else{
+      const c = anSel("c");
+      if(c[0] && c[1] && AN.rDiff) renderDiff(AN.rDiff, "anRecOut");
+    }
   }
   try{
     await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"},
@@ -4527,7 +4536,7 @@ async function snapCreate(kind, where){
 }
 
 const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
-            selA: null, selB: null, recA: null, recB: null,
+            selA: null, selB: null, recA: null, recB: null, pDiff: null, rDiff: null,
             pendingDel: null, stepView: "list", recSources: [],
             chat: [], chatBusy: false};
 
@@ -4874,6 +4883,10 @@ async function anDiffRun(){
 }
 
 function renderDiff(d, into){
+  /* 缓存本次对比结果，供切语言时用当前语言重渲：renderDiff 把 t18 文本拼进 DOM、无 data-i18n，
+     applyI18n 管不着，setLang 的 analyze 块靠这份缓存重渲（260808）。两个容器各自一份，不互相覆盖。 */
+  const _into = into || "anDiffOut";
+  if(_into === "anDiffOut") AN.pDiff = d; else if(_into === "anRecOut") AN.rDiff = d;
   let h = "";
   /* ① 结论先行：equal / 只差日期 / 有实质差异。**norm_equal 单独说**——
      CC 的提示词含当天日期，不点破的话每次对比都"有差异"，人会以为天天在变。 */

@@ -13,6 +13,12 @@
   2. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures supply statistical evidence (225 requests, all carrying the flag, no counterexample), but that is not the same as a session captured and checked against ground truth.
   3. The recording-blind-spot audit (protocol side and capability side) closed across v0.4.3–v0.4.6; method in `docs/reference/开发约定.md` §2.5 and unit 0 of `docs/methodology/同类工具构建手册.md`.
 
+## Unreleased
+
+### Fixed
+
+- **Switching the UI language now refreshes an already-rendered snapshot diff on the Analyse tab.** The comparison result — verdict line, tool buttons, hidden-difference table, body header — is built by `renderDiff`, which bakes `t18()` strings into the DOM as plain text (no `data-i18n`), so `applyI18n()` never reached it; switching language left it stuck in whatever language you ran the comparison in, until a page reload. The same gap the settings page hit on 260801 (`renderSettingsI18n`), only this time on the Analyse view that shipped in v0.4.10 — the 260801 lesson is written into the dev guide, but a text rule cannot stop a brand-new view from missing the rerender. `renderDiff` now caches its result per pane (`AN.pDiff` / `AN.rDiff`), and `setLang` re-renders from the cache when the pane still has two snapshots selected — selection state is the cache's validity guard, so a stale diff cannot be revived after the selection changes. No new API call, no flicker.
+
 ## v0.4.10 - 2026-08-08
 
 ### Added
