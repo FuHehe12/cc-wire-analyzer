@@ -70,6 +70,7 @@ Use effort 'high' or below, or enable thinking.
 - **崩溃保护** —— 原子写 + 每次启动备份 + atexit/signal/excepthook 三重恢复 + 孤儿备份恢复。
 - **时序 DAG** —— 泳道视图；每条主线会话在泳道头、轴线、节点边框、连线上都用各自颜色；子代理/辅助节点带关联主线颜色的点，一眼看出谁派生了谁。
 - **详情工具** —— 翻译、"问 AI 这是什么意思"（带提示词注入防护）、格式化/美化；界面支持**中文/英文/日文**切换（即时、持久化）。
+- **快照与对比（Analyse 标签页）** —— 把一条提示词或一整段录制备份成快照，再逐项比较。揭示肉眼看不见的差异（CC 针对中国用户的字符水印——日期里 `-`/`/` 互换、撇号同形异码字——显示成可见占位标记）。思考链分三层抽取、预算硬约束；与内置模型多轮分析对话。快照单位是一条请求、不是一个会话。
 - **清理录制** —— 清掉某天的捕获（直接删除 / 压缩存档后删除），内联二次确认。
 - **盲区雷达** —— `GET /api/unknowns` 主动标出工具还不认识的协议值（新块类型/字段、未解析请求字段、非标枚举、beta 特性长尾），每项带内容片段 + 它伴随的 beta 特性。CC 发新 beta 时它是预警；把分析器迁到别的 agent 框架时，它是协议发现工具——把"猜新协议"变成"扫一遍、逐个确认未知、建该框架的已知集合"。
 - **跨平台** —— Windows `.exe` 和 macOS `.app`，由 GitHub Actions 构建。**字体全打包**（Inter + JetBrains Mono + Noto Sans SC），每台机器上界面都长得一样。
@@ -118,7 +119,8 @@ uv run python src/desktop.py
 | 路径 | 内容 |
 |------|---------|
 | `~/.cc-wire-analyzer/captures/<YYYY-MM-DD>.jsonl` | 请求/响应录制（只追加） |
-| `~/.cc-wire-analyzer/archives/<date>.<HHMMSS>.jsonl.zip` | 归档录制（选"压缩存档后删除"时） |
+| `~/.cc-wire-analyzer/archives/<date>.<HHMMSS>.jsonl.zip` | 归档录制（选“压缩存档后删除”时） |
+| `~/.cc-wire-analyzer/snapshots/snap_*.json`（+ `.chat.jsonl`、`index.jsonl`） | 你在 Analyse 标签页保存的快照——永不自动删除（`retention_days` 不碰），标签页显示总占用 |
 | `~/.cc-wire-analyzer/backups/settings.json.<ts>` | settings.json 备份（留最近 5 份） |
 | `~/.cc-wire-analyzer/config.json` | 应用配置（ui_lang / translate / explain…） |
 | `~/.cc-wire-analyzer/run.log` | 运行日志 |

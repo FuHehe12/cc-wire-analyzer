@@ -115,6 +115,7 @@ points:
 - **Crash protection** — atomic writes + per-start backup + atexit/signal/excepthook triple restore + orphan-backup recovery.
 - **Timeline DAG** — swimlane view; each main session gets its own color across the lane header, axis, node border, and edges; subagent/auxiliary nodes carry a dot in their related session's color so you can see what spawned what at a glance.
 - **Detail tools** — translate, "ask AI what this does" (with prompt-injection guard), format/pretty-print; UI supports **Chinese / English / Japanese** switch (instant, persisted).
+- **Snapshots & diff (Analyse tab)** — back up a prompt or a whole recording as a snapshot, then diff them. Reveals differences you cannot see (CC's character watermark for Chinese users — `-`/`/` date swaps and apostrophe homoglyphs — shown as visible sentinels). Extracts the reasoning chain in three layers under an enforced budget; multi-turn analysis chat with the built-in model. A snapshot is one request, not a session.
 - **Clear recordings** — clear a day's captures (direct delete / archive-to-zip then delete), with inline two-step confirm.
 - **Blind-spot radar** — `GET /api/unknowns` flags every protocol value the tool doesn't yet recognize (new block types/fields, unhandled request fields, non-standard enums, the beta-feature tail), each with a content snippet and the beta features it appears alongside. It's the early warning when Claude Code ships a new beta — and, when porting the analyzer to another agent harness, the discovery tool that turns "guess the new protocol" into "scan once, confirm each unknown, build that harness's known set".
 - **Cross-platform** — Windows `.exe` and macOS `.app`, built via GitHub Actions. **Fonts are bundled** (Inter + JetBrains Mono + Noto Sans SC) so the UI looks identical on every machine.
@@ -169,7 +170,8 @@ or wrong `BASE_URL` left in `~/.claude/settings.json`. Fix it by endpoint type:
 | Path | Content |
 |------|---------|
 | `~/.cc-wire-analyzer/captures/<YYYY-MM-DD>.jsonl` | Request/response recordings (append-only) |
-| `~/.cc-wire-analyzer/archives/<date>.<HHMMSS>.jsonl.zip` | Archived recordings (when you "archive then clear") |
+| `~/.cc-wire-analyzer/archives/<date>.<HHMMSS>.jsonl.zip` | Archived recordings (when you “archive then clear”) |
+| `~/.cc-wire-analyzer/snapshots/snap_*.json` (+ `.chat.jsonl`, `index.jsonl`) | Snapshots you saved on the Analyse tab — never auto-deleted (`retention_days` skips them); the tab shows total disk usage |
 | `~/.cc-wire-analyzer/backups/settings.json.<ts>` | settings.json backups (keeps last 5) |
 | `~/.cc-wire-analyzer/config.json` | App config (ui_lang / translate / explain …) |
 | `~/.cc-wire-analyzer/run.log` | Run log |

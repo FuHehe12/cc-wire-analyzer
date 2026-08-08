@@ -56,7 +56,7 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 
 ## Before submitting a PR
 
-1. **Run all six self-tests.** The commands are listed in
+1. **Run all seven self-tests.** The commands are listed in
    [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §5 — copy them from there rather than from memory,
    since the set has grown over time.
 2. If you touched the frontend, exercise the affected UI in a browser (open the port from the
