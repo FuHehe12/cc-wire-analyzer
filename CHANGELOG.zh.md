@@ -108,6 +108,12 @@
   与此同时，`release.yml` 补上了 `verify` job 且 `build` 依赖它——**此前这个 workflow 从
   checkout 直接到 PyInstaller 再到发 release，中间没有任何验证，一次没跑过自测的 tag 可以
   直接产出 release**。现在十条（语法 + 四条静态对账 + 六条自测）在打包之前跑完。
+  **CI 首跑就抓出两个只在干净环境才暴露的问题**：Windows runner 默认 pwsh，`src/*.py` 这类
+  glob 不展开（本地 Git Bash 会，所以本地永远绿）；更要命的是 **Actions 在 pwsh 下只取多行
+  命令里最后一条的退出码**——前面几条对账全失败、只要最后一条成功，step 照样是绿的，
+  **闸门会在 CI 里静默失效**，正是它要防的病。`verify` job 因此固定用 bash。另外闸门自己
+  抓到 `src/_version.py` 的断链：它由 CI 从 tag 生成、不进仓库，开发机上却有——文档没写错，
+  是对账把所有提到的路径都当成了应存在的仓库文件，现在用 `git check-ignore` 排除生成物。
   闸门自身的 `--self-test` 加了 8 条分类断言，其中 3 条是**反向**的（软差异不该挡）——
   分类错了的闸门会一边放行一边打印「对账通过」，那正是本项目惯犯 bug ③ 的形状。
 
