@@ -20,6 +20,16 @@ jobs:
   verify:
     name: Verify (self-tests + doc gate)
     runs-on: windows-latest
+    # **必须显式指定 bash，两个理由，第二个才是致命的**（260808 首跑 CI 撞出来）：
+    #   1. Windows runner 默认 pwsh，`src/*.py` 这种 glob 不会展开传给外部命令 ——
+    #      `py_compile` 收到字面量 `src/*.py` 直接报错（本地 Git Bash 会展开，所以本地全绿）。
+    #   2. 更要命：Actions 在 pwsh 下只把**最后一条命令**的 `$LASTEXITCODE` 当作 step 结果。
+    #      下面两个 step 各有 4~6 行命令，那意味着前面几条全失败、只要最后一条成功，
+    #      step 就是绿的 —— **闸门会在 CI 里静默失效**，而这正是它要防的病。
+    #      bash 由 Actions 以 `-eo pipefail` 启动，第一条失败就停。
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
