@@ -157,6 +157,14 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少）。比直读 jsonl 安全 |
 | GET | `/api/stats?date=…` | **统计**：kind/model/status 分布、token 四项（含 cache_creation）、cache 命中率、耗时 p50/p95 |
 | GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、没见过的 beta。每项带 samples id + `hosts` 归属 + 特异 beta（提升度筛过）。另有 `degraded` 段＝本工具录制降级，性质不同。**判读先看 hosts**（见下）|
+| GET | `/api/snapshots` | **快照列表**：用户显式保存的提示词片段/整条录制备份。**不受 `retention_days` 自动清理**——录制会被清掉，快照不会 |
+| POST | `/api/snapshots` | 备份一条录制或其中一段提示词：`{kind:"capture"\|"prompt", record_id, date?, where?}` |
+| GET | `/api/snapshots/<id>/thinking?level=0` | **思考链骨架**：整条对话每一步的思考量/工具/机械信号。分析一段录制**从这里开始**，再按需要 `level=1`（摘要）/ `level=2&step=N`（某步原文）|
+| GET | `/api/snapshots/<id>/sources` | **多源指令清单**：这条请求里到底有几处在下指令（system 各块 + 注入的 CLAUDE.md + 会话中 system 消息 + 工具描述），重复注入已合并计数。上下文冲突分析的原料 |
+| GET | `/api/snapshots/diff?a=&b=&face=` | **精确对比**两个快照：先把零宽字符/NBSP/CRLF 换成可见记号再比，同形异码（撇号、连字符、全半角）单独打标 |
+| GET | `/api/snapshots/<id>/chat` | **软件内 AI 已经分析出什么**：该快照的分析对话历史。开工前读一眼，别从零重来 |
+| POST | `/api/snapshots/clear` | 批量清理快照：`{kind?, tags?, before?, sids?, preview?}`，条件是「与」。**先 `preview:true` 看命中谁**——删除不可撤销 |
+| GET | `/api/snapshots/<id>/brief` | 一段现成的分析指令（`text/plain`），含本机端口与端点清单 |
 | GET | `/api/config` / POST `/api/config` | 读 / 改配置（ui_lang、retention_days、translate…）|
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 | GET | `/api/captures/stream` | **LIVE SSE**：录制写入时的实时增量（用于实时监控）|
@@ -189,6 +197,55 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 工具入参 JSON 拼不出来），说明那条录制的正文是残的——要查的是代理侧，不是上游。
 
 `betas.new` 是没在基线里出现过的扩展，才是"CC 启用了新能力"的信号；`betas.known` 只是用量分布。
+
+### 分析一段对话：上下文腐烂与冲突（快照）
+
+**一条晚期请求就带着整条对话的完整思考链**——CC 把历史轮次的 assistant thinking 原样回传在
+`messages` 里（实测最大一条 66 个 thinking 块、314,286 字符）。所以要分析"这个 AI 在想什么、
+在哪儿犹豫、为什么这么选"，不需要拼多条请求，备份**最后那一条**就够了。
+
+```
+POST /api/snapshots  {"kind":"capture","record_id":"req_…","date":"2026-07-28"}
+GET  /api/snapshots/<sid>/thinking?level=0      ← 先读骨架，看形状
+GET  /api/snapshots/<sid>/thinking?level=1&budget=80000   ← 再读摘要
+GET  /api/snapshots/<sid>/thinking?level=2&step=17        ← 钻某一步的原文
+GET  /api/snapshots/<sid>/sources               ← 多源指令清单（冲突分析）
+```
+
+**别直接拉 `/api/snapshots/<sid>` 全文**——那是完整 record，可达数 MB，和直读录制没区别。
+分层接口存在的理由就是这个。
+
+用户可能已经在软件里用低成本模型问过几轮了（`POST /api/analyze/chat`，对话落盘跟着快照走）。
+**动手前先 `GET /api/snapshots/<sid>/chat` 看一眼**：那里有已经问过的问题和得到的回答，
+两条分析路径不互相隔绝，才不会各自从零开始，也免得你把用户已经否掉的结论再讲一遍。
+
+**没有思考链时不要编**。`availability.tier == "B"` 意味着这条录制里根本没有 thinking 块
+（实测 claude-sonnet-5 档 23/23 全部 `thinking=disabled`），此时只有行为链（工具序列 +
+反复证据）。行为链能回答"它做了什么、在哪儿反复"，回答不了"它当时在犹豫什么"——
+对着行为记录描述心理活动，就是 confabulation。
+
+三条判读纪律：
+
+1. **先看 `availability.tier`**。`B` 表示这条录制**没有思考链**，`reason` 会说清楚为什么
+   （模型档位显式关闭 / 本次未启用 / 自适应未思考）。实测 claude-sonnet-5 档 23/23 全部
+   `thinking=disabled`。这时接口给的是 `behavior` 行为链（工具序列 + 反复证据），
+   **它能回答"做了什么、在哪儿反复"，回答不了"当时在犹豫什么"**——没有思考链却描述心理活动，
+   那是编造，不是分析。`C` 档表示思考被上游加密（`redacted_thinking`），同样不可读。
+2. **`signals` 是候选不是结论**。骨架里每步的 `signals`（犹豫/分支/自我修正/不确定）
+   是关键词命中数，只说明"这步值得看"。要下判断得读 `level=2` 的原文。
+3. **看清被砍掉了什么**。产出按预算收缩，`steps_total` / `omitted_steps` /
+   `steps_without_excerpt` 都会给出来。"这步没摘录"**不等于**"这步没思考"——
+   把两者搞混会得出完全相反的结论。
+
+冲突分析从 `/sources` 开始而不是从"通读全文"开始：实测一条主线请求有**五处**在下指令
+（system 三块 + 注入的用户 CLAUDE.md + 会话中 `role=system` 消息），再加工具描述
+（实测 81,911 字，是 system 提示词的 13 倍）。内容相同的重复注入已合并成 `repeats` 计数——
+同一条规则被反复注入 9 次，本身就是值得报告的事实。
+
+对比两份提示词用 `/api/snapshots/diff`。它**先把不可见字符换成可见记号再比对**
+（`⟨ZWSP⟩` / `⟨NBSP⟩` / `⟨CR⟩` / `⟨SP⟩`），同形异码字符在行内差异上带 `hg` 标记。
+注意 `norm_equal`：为真表示"除了日期/时间/UUID 这类每次必变的部分，两段完全相同"——
+日常最该先看这个字段，否则 CC 提示词里的当天日期会让每次对比都显示有差异。
 
 ---
 

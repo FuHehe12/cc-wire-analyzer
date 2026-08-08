@@ -728,6 +728,192 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 
 ---
 
+## 3.9 快照：提示词/录制的备份、精确对比、思考链（260808）
+
+**与 `POST /api/captures/clear` 的「压缩存档」不是一回事**：那个打包后**删掉原文件**，属于清理；
+快照是用户显式保存的一份拷贝，**不删任何东西、不受 `retention_days` 自动清理**（同 `archives/`
+的原则）。存放在 `~/.cc-wire-analyzer/snapshots/`，`index.jsonl` 是**可重建的缓存**而非事实源。
+
+两类快照的元数据待遇不对称：
+
+| kind | 信封 | 为什么 |
+|---|---|---|
+| `capture` | 极薄，事实全在 `payload`（完整 record）里 | record 本就含 id/ts/model/upstream/计费头/session_id，再存副本必然分叉 |
+| `prompt` | 带四组元数据 `origin` / `src` / `ctx` / `fp` | 片段脱离上下文只是一坨文本，没有元数据就答不了"为什么这两段不一样" |
+
+### `GET /api/snapshots?kind=prompt|capture` — 列表
+
+返回信封（不含 payload）+ `usage`（占用总量，因为快照永不自动清理，堆积必须可见）+
+`write_errors`。
+
+### `POST /api/snapshots` — 备份
+
+```json
+{"kind": "capture", "record_id": "req_97f1e87", "date": "2026-07-28", "label": "", "tags": []}
+{"kind": "prompt",  "record_id": "req_97f1e87", "where": {"kind": "system", "index": 2}}
+```
+
+`where` 三形态（**提示词不只在 `system` 里**——实测一条主线请求的指令来源有五处，
+见 [同类工具构建手册.md](../methodology/同类工具构建手册.md)）：
+
+- `{"kind": "system", "index": i}`
+- `{"kind": "message", "index": i, "block": j}`
+- `{"kind": "selection", "text": "…"}` — 界面上自由选中，位置不可定位
+
+**响应** `200`：`{"ok": true, "snapshot": {…信封…}}`。
+
+`prompt` 信封的关键字段：
+
+```json
+{
+  "origin": {"where": "system[2]", "role": "system", "kind_hint": "cc_rules",
+             "cache_control": "ephemeral", "sys_blocks": 3, "block_shape": [70, 57, 7024]},
+  "src":    {"record_id": "req_…", "date": "2026-07-28", "ts_start": "…", "path": "/v1/messages"},
+  "ctx":    {"model": "glm-5.2", "upstream": "open.bigmodel.cn",
+             "harness": "claude-code/2.1.220.c26", "entrypoint": "cli", "wire_kind": "main",
+             "is_subagent": false, "agent_fp": "5771d7ae", "session_id": "…", "beta": ["…"],
+             "env": {"workspace": "D:\\Claude", "platform": "win32", "git_repo": false}},
+  "fp":     {"sha256": "…", "norm_sha256": "…", "norm_rules": ["date"], "chars": 7024, "lines": 63}
+}
+```
+
+`fp.norm_sha256` 是**抹掉日期/时间/UUID/长 hex 后**的哈希。没有它，CC 提示词里的当天日期会让
+每天的快照两两都"有差异"，真正的变化淹没在噪声里。
+
+### `GET /api/snapshots/<id>` — 完整快照（含 payload）
+
+录制快照可达数 MB，与 `/api/captures/<id>` 同一性质：先看列表再取单条。
+
+### `POST /api/snapshots/<id>/delete` — 删除（连同分析对话）
+
+### `POST /api/snapshots/<id>/meta` — 改 `label` / `note` / `tags`
+
+正文与元数据不可改——快照的价值就在于它不变。
+
+### `GET /api/snapshots/diff?a=&b=&face=&context=3` — 精确对比
+
+`face` 仅录制快照需要：`system` / `tools` / `messages`（默认 `system`）。
+`messages` 面是**上下文腐烂的观测口**——同一条对话的两个时刻，早期历史有没有被改写或丢弃。
+两个快照类型不同时返回 `kind_mismatch`。
+
+**先揭示、再比对**：零宽字符、NBSP、全角空格、CR、行尾空白在进入比对前换成可见记号
+（`⟨ZWSP⟩` 等），于是不可见的差异变成可见的字面差异。同形异码字符（撇号/连字符/全半角标点）
+不改写，而是在行内字符级差异上打 `hg` 标——**CC 的中国用户字符水印正是这个形状**。
+
+```json
+{"ok": true, "diff": {
+  "equal": false, "norm_equal": true,
+  "counts": {"same": 59, "added": 0, "removed": 0, "changed": 4},
+  "invisible": {"a": {}, "b": {"ZWSP": 1}},
+  "homoglyphs": {"撇号": {"a": {}, "b": {"U+2019": 3}}},
+  "hunks": [{"tag": "replace", "lines": [
+     {"side": "a", "na": 12, "text": "…", "inline": [{"op": "replace", "a": "'", "b": "’", "hg": "撇号"}]}]}],
+  "meta": {"ctx_diff": [], "origin_diff": [], "warnings": []},
+  "truncated": false}}
+```
+
+`meta.warnings` 是**可比性护栏**：两个快照的 `agent_fp` / `wire_kind` / `model` / `upstream` /
+`harness` 不同时提示"这两段本就不是同一类东西"，**提示但不阻止**——用户完全可能就是想比两类。
+
+### `GET /api/snapshots/<id>/thinking?level=0|1|2&step=N&budget=` — 思考链（仅录制快照）
+
+一条晚期请求的 `messages` 带着**整条对话到此刻的完整思考链**（实测最大 66 块 / 314,286 字），
+而 LLM 输入上限只有两万——所以分层：
+
+| level | 内容 | 默认预算 |
+|---|---|---|
+| `0` | 骨架：每步一行（触发者/思考量/工具/机械信号） | 20,000 |
+| `1` | 摘要：每步思考首尾 + 信号，**按信号加权分配**篇幅 | 80,000（agent 档，`?budget=` 可覆盖） |
+| `2` | 单步思考原文（需 `step=N`） | — |
+
+产出**实测序列化尺寸后收缩**，`size` / `budget` / `over_budget` 如实报告；砍掉的东西一律有计数
+（`omitted_steps` / `steps_without_excerpt` / `steps_total`）——"这步没摘录"不能被读成"这步没思考"。
+
+**`availability` 分三档，没有思考链时也要给得出东西**：
+
+```json
+{"tier": "B", "reason_code": "disabled",
+ "reason": "本次请求显式关闭了思考（thinking.type=disabled）",
+ "steps": 12, "steps_with_thinking": 0, "thinking_chars": 0,
+ "thinking_param": "disabled", "model": "claude-sonnet-5"}
+```
+
+- `A` 有思考链 → 三层全功能
+- `B` 无思考链 → 附 `behavior` **行为链**（工具序列 + 反复证据：连续同工具、反复读同一目标、
+  报错重试），并说出具体原因。实测 claude-sonnet-5 档 23/23 全部 `thinking=disabled`
+- `C` `redacted_thinking` → 标注"上游加密不可读"，不试图解析
+
+判档在**步**这一级做，不在模型级：`adaptive` 是主流形态，同一模型内部也会有的步不思考。
+
+### `GET /api/snapshots/<id>/sources` — 多源指令清单（仅录制快照）
+
+上下文冲突分析的原料。实测一条主线请求有五处在下指令（system 三块 + 用户 CLAUDE.md 注入 +
+会话中 `role=system` 消息），外加工具描述（实测 81,911 字，是 system 的 13 倍）。
+**内容相同的重复注入已合并计数**（`repeats` / `where_all`）——"同一条规则被重复注入 9 次"
+本身就是一条值得看的事实。
+
+### `POST /api/snapshots/diff/explain` — 让软件内的低成本模型对差异下结论（SSE 流式）
+
+body `{a, b, face?}`。与 `/api/explain` 的区别是**输入是差异报告而不是原文**：两段 7K 提示词
+加起来就顶到 `LLM_INPUT_MAX`，而"这些差异意味着什么"靠的是差异本身加元数据，不是把没变的
+那几十行再读一遍。报告由后端拼（元数据对照 + 隐蔽差异计数 + 变化的行，按 `DIFF_BRIEF_MAX`
+截断且**截断了会在报告里写明**）。两段完全相同时返回 `no_diff`，不浪费一次调用。
+防注入沿用 `EXPLAIN_GUARD`——报告里全是从录制里抠出来的文本，同样是不可信数据。
+
+### `GET /api/snapshots/<id>/chat` — 软件内 AI 的分析对话历史
+
+外部 agent 也读得到：两条分析路径不互相隔绝，才不会各自从零开始。
+
+### `POST /api/analyze/chat` — 软件内 AI 多轮分析（SSE 流式）
+
+body `{sid, question}`。SSE 协议与 `/api/explain` 完全一致（`delta` / `done` / `error_code` /
+`input_truncated` / `truncated`）。与它的三点不同，每点都是被"多轮"这件事逼出来的：
+
+| | 单轮 `/api/explain` | 多轮 `/api/analyze/chat` |
+|---|---|---|
+| 内容 | 前端把文本发上来 | **后端从快照现算**（录制 → L1 摘要 + 多源清单；提示词 → 元数据 + 正文）|
+| 防注入 | 一次性包 `<content>` | **每轮重拼 system guard**，内容只在第一条 user，用户提问包 `<question>` |
+| 历史 | 无 | 落盘 `snap_xxx.chat.jsonl`，超 `CHAT_HISTORY_MAX` 丢最旧**并告知模型丢过** |
+
+上下文**不落盘**：快照不可变，重算是确定的；落盘则每条 `chat.jsonl` 都被 20K 上下文撑爆，
+而外部 agent 读 `/chat` 时想看的是对话本身。B 档快照的 system 里**写死禁止推测思考内容**
+（附具体原因）——让模型自己判断有没有思考链不可靠，我们已经知道答案就该写死。
+
+落盘时机是**回答产出之后**：没配 Key 这类连上游都没到的失败，不该在对话记录里留下一串
+没人回答过的提问。中途出错时半截回答照样落盘，但会附上中断原因——半截存成完整，
+下一轮模型会把它当作已说完的话接着推。
+
+预算：`CHAT_CONTEXT_MAX=20000`（其中 `CHAT_SOURCES_MAX=4000` 给多源清单）/
+`CHAT_HISTORY_MAX=12000` / `CHAT_QUESTION_MAX=4000`。
+
+### `POST /api/snapshots/<id>/chat/clear` — 清空该快照的分析对话（快照本身不动）
+
+### `POST /api/snapshots/clear` — 批量清理
+
+body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**；什么都不给 = 全部。
+`preview: true` 只返回命中清单与可腾出的字节数，不删任何东西。
+
+```json
+{"ok": true, "preview": true, "count": 12, "bytes": 8421376,
+ "items": [{"sid": "snap_…", "kind": "capture", "created": "…", "label": "…", "tags": []}]}
+```
+
+**两步走是有意的**：快照永不自动清理（`enforce_retention` 不碰 `snapshots/`），
+所以手动出口必须存在；而按标签批量删不可撤销，一步到位的按钮迟早误伤。
+单条失败不中断，失败的 sid 原样返回（`failed`）——删一半停下来，用户既不知道删了哪些、
+也不知道还剩哪些。
+
+### `GET /api/snapshots/<id>/brief?lang=zh|en|ja` — 给外部 agent 的现成指令（`text/plain`）
+
+产出的**不是数据，是"让 agent 自己来取数据"的说明**：本机实际端口 + 端点清单 + 该快照的
+元数据摘要 + 分析任务。按档位切换任务措辞——B 档**显式禁止推测思考内容**，因为只给行为记录
+却让模型讲心理活动就是在诱导编造。
+
+> **自检**：新增快照字段要 bump `snapshot_store.SNAP_SCHEMA` 并同步此契约 + AI_USAGE +
+> 界面导览。快照文件本身永不因版本被丢弃，只有索引会重建。
+
+---
+
 ## 4. 约定
 
 - **headers_safe**：所有 headers 字段经脱敏，`authorization` / `x-api-key` / `anthropic-auth-token` 显示 `<redacted>`，列表/详情都不返回真实 token。**脱敏无条件生效，没有开关**（曾有个 `redact_headers` 配置项，但从未接线；260713 连开关一起删掉 —— 提供"明文存 key"的选项本身就是危险，何况录制现在可被 AI 经 CLI 读取）。
