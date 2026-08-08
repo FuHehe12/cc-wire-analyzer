@@ -63,6 +63,7 @@ jobs:
           uv run python src/cli_selftest.py
           uv run python src/doctor_selftest.py
           uv run python src/diagnose_selftest.py
+          uv run python src/snapshot_selftest.py
 
   build:
     name: Build (${{ matrix.os }})
