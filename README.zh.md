@@ -11,8 +11,8 @@
 > **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** Claude Code 到底发了什么出去 ·
 > **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** 用 AI agent 驱动本工具 ·
 > **[docs/reference/架构总览.md](docs/reference/架构总览.md)** 这个软件怎么搭起来的 ·
-> **[docs/reference/开发指南.md](docs/reference/开发指南.md)** 改代码前必读 ·
-> **[docs/methodology/问题域手册.md](docs/methodology/问题域手册.md)** 想给别的 agent 工具做同类分析器 ·
+> **[docs/reference/开发约定.md](docs/reference/开发约定.md)** 改代码前必读 ·
+> **[docs/methodology/同类工具构建手册.md](docs/methodology/同类工具构建手册.md)** 想给别的 agent 工具做同类分析器 ·
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** 这些文档怎么保持同步。
 
 ## 什么时候你会需要它

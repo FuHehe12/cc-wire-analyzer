@@ -11,8 +11,8 @@ Claude Code と上流エンドポイント間の全 HTTP トラフィックを�
 > **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** — Claude Code が実際に送っているもの ·
 > **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** — 本ツールを操作する AI エージェント向け ·
 > **[docs/reference/架构总览.md](docs/reference/架构总览.md)** — アプリの構成 ·
-> **[docs/reference/开发指南.md](docs/reference/开发指南.md)** — コードを変更する前に必読 ·
-> **[docs/methodology/问题域手册.md](docs/methodology/问题域手册.md)** — 別のエージェント基盤で同種のツールを作る場合 ·
+> **[docs/reference/开发约定.md](docs/reference/开发约定.md)** — コードを変更する前に必読 ·
+> **[docs/methodology/同类工具构建手册.md](docs/methodology/同类工具构建手册.md)** — 別のエージェント基盤で同種のツールを作る場合 ·
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** — これらの文書の同期を保つ方法。
 > *（詳細ドキュメントは中国語です。必要なら機械翻訳を。）*
 

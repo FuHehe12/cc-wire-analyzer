@@ -15,7 +15,7 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
   2. CLI 子命令：`sub.add_parser` 的全集 vs 文档提到的
   3. 文档里写到的仓库文件路径是否真实存在（防"指了个空"）
   4. 文档里引用的 `IDX_SCHEMA = N` 是否与代码一致
-  5. 开发指南「验证」节列的自测命令，对应文件是否存在
+  5. 开发约定「验证」节列的自测命令，对应文件是否存在
   6. 界面语义 token：深色块里的每个 token，`classic`/`light` 是否都给了取值；有没有无人引用的死 token
 
 最后一项是 v0.4.7 加的，来由与前面几项一样：三主题落地后，"新加的 token 要三套都定义"
@@ -48,7 +48,7 @@ SRC, DOCS = ROOT / "src", ROOT / "docs"
 # 新文档放进 reference/ 自动进对账，清单式的名单则会因为"忘了加"而漏。
 REFERENCE = DOCS / "reference"
 # 具名依赖的文档路径集中在此，配 `_read_required` 使用（见那个函数的 docstring）。
-GUIDE = REFERENCE / "开发指南.md"
+GUIDE = REFERENCE / "开发约定.md"
 # 文档面：仓库里会提到端点/命令/路径的公开文档（本地 CLAUDE.md 与 issues/ 不进对账——
 # 它们是过程记录，允许留下当时的说法）。
 DOC_FILES = sorted(DOCS.rglob("*.md")) + [ROOT / "README.md", ROOT / "README.zh.md",
@@ -72,7 +72,7 @@ def _read_required(p: pathlib.Path) -> str:
     东西，那条检查就静默变成「永远通过」，而脚本照样打印「对账干净」。**「文件不见了」与
     「文件里没问题」在返回值上无法区分**，于是审计工具自己成了惯犯 ③（静默吞异常）。
 
-    260808 把 `docs/` 拆成子目录时就差点踩中：自测清单检查硬编码读 `DOCS / "开发指南.md"`，
+    260808 把 `docs/` 拆成子目录时就差点踩中：自测清单检查硬编码读 `DOCS / "开发约定.md"`，
     而那份文档已经移进了 `reference/`。
     """
     if not p.exists():

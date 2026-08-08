@@ -11,8 +11,8 @@ Record and inspect every HTTP request **Claude Code** makes. A local MITM proxy 
 > **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** — what Claude Code actually sends ·
 > **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** — for AI agents driving the tool ·
 > **[docs/reference/架构总览.md](docs/reference/架构总览.md)** — how the app is built ·
-> **[docs/reference/开发指南.md](docs/reference/开发指南.md)** — read this before changing code ·
-> **[docs/methodology/问题域手册.md](docs/methodology/问题域手册.md)** — building the same tool for another agent harness ·
+> **[docs/reference/开发约定.md](docs/reference/开发约定.md)** — read this before changing code ·
+> **[docs/methodology/同类工具构建手册.md](docs/methodology/同类工具构建手册.md)** — building the same tool for another agent harness ·
 > **[docs/文档维护策略.md](docs/文档维护策略.md)** — how these docs stay in sync.
 > *(Deep-dive docs are in Chinese; machine-translate if needed.)*
 

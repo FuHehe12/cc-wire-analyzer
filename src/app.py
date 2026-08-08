@@ -29,7 +29,7 @@ import upstream_history
 log = logging.getLogger(__name__)
 
 # 版本号唯一真源是 git tag。CI 构建时由 release.yml 从 tag 生成 src/_version.py（见
-# docs/reference/开发指南.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
+# docs/reference/开发约定.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
 try:
     from _version import VERSION
 except ImportError:
@@ -282,7 +282,7 @@ def upstream_history_restore():
     """把 settings.json 的 ANTHROPIC_* 命名空间对齐到指定历史快照（其余字段一律不动）。
 
     只接受**本机采集过的**快照 id，不接受任意 URL/token —— 不给自己开一个写凭据的任意入口
-    （开发指南不变量 9）。写前自动备份，走 settings_guard 的原子写。代理运行中时拒绝
+    （开发约定不变量 9）。写前自动备份，走 settings_guard 的原子写。代理运行中时拒绝
     （409 proxy_running）：那时 BASE_URL 本就该是本地地址，"修复"没有意义。"""
     body = request.get_json(silent=True) or {}
     entry_id = (body.get("id") or request.args.get("id") or "").strip()
