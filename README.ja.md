@@ -6,16 +6,6 @@ Claude Code と上流エンドポイント間の全 HTTP トラフィックを�
 
 [リリース一覧](../../releases) · [変更履歴](CHANGELOG.md)
 
-> 初めての方へ（ドキュメントはすべて中国語）：
-> **[docs/reference/界面导览.md](docs/reference/界面导览.md)** — UI で人が見るもの ·
-> **[docs/methodology/报文解读.md](docs/methodology/报文解读.md)** — Claude Code が実際に送っているもの ·
-> **[docs/reference/AI_USAGE.md](docs/reference/AI_USAGE.md)** — 本ツールを操作する AI エージェント向け ·
-> **[docs/reference/架构总览.md](docs/reference/架构总览.md)** — アプリの構成 ·
-> **[docs/reference/开发约定.md](docs/reference/开发约定.md)** — コードを変更する前に必読 ·
-> **[docs/methodology/同类工具构建手册.md](docs/methodology/同类工具构建手册.md)** — 別のエージェント基盤で同種のツールを作る場合 ·
-> **[docs/文档维护策略.md](docs/文档维护策略.md)** — これらの文書の同期を保つ方法。
-> *（詳細ドキュメントは中国語です。必要なら機械翻訳を。）*
-
 ## こんなときに使う
 
 Claude Code が見せるのは CC 自身の視点でのセッションです。wire レイヤーが見せるのは、実際に何が送られ、実際に何が返ってきたか——この二つは同じものではありません。CC とモデルの間の本当のやり取りを理解したいとき、wire が必要です：
