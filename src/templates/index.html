@@ -202,7 +202,12 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .tab-btn.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);}
 
 /* ===== 通用 ===== */
-.main-content{padding:18px 32px 48px;max-width:1376px;margin:0 auto;min-width:0;}
+/* 宽度分级（260808）：阅读型视图 1760px 上限居中；DAG 是画布型视图（.dag-wrap 自带
+   overflow:auto），宽屏下放宽上限——每多一分宽度就多看到几条泳道。但不能铺满：
+   两侧留白是观感的一部分（260808 用户实测「太宽了，两边留白还是要的」），
+   故上限取 min(2560px, 100vw-240px)——任何屏都保底 120px 边距，3440 带鱼屏约 440px。 */
+.main-content{padding:18px 32px 48px;max-width:1760px;margin:0 auto;min-width:0;}
+.main-content.dag-wide{max-width:min(2560px, calc(100vw - 240px));}
 .card{background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);box-shadow:var(--apple-shadow),var(--apple-highlight);padding:16px 22px;}
 /* white-space:nowrap（260730）：设置页「打开」按钮被相邻的长路径挤成两行（实测 w=40 h=48，
    显示成「打／开」）。按钮文字任何情况下都不该折行。 */
@@ -720,7 +725,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   </div>
 </header>
 
-<main class="main-content">
+<main class="main-content" id="mainContent">
 
   <!-- ============ View A 捕获列表 ============ -->
   <section id="view-list" role="tabpanel" aria-labelledby="tabCaptures">
@@ -2210,6 +2215,8 @@ function showView(v){
   $("view-detail").hidden = v !== "detail";
   $("view-dag").hidden = v !== "dag";
   $("view-settings").hidden = v !== "settings";
+  /* 宽度分级（260808）：只有 DAG 画布放开主容器宽度上限；detail 即使来自 dag 也是阅读视图，保持收窄 */
+  $("mainContent").classList.toggle("dag-wide", v === "dag");
   const listOn = v === "list" || (v === "detail" && S.detailFrom === "list");
   const dagOn = v === "dag" || (v === "detail" && S.detailFrom === "dag");
   const settingsOn = v === "settings";
