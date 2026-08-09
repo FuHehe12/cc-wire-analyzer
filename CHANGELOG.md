@@ -13,6 +13,10 @@
   2. **Identity residual** (deferred): interactive-mode (`cc_entrypoint=cli`) subagents still lack a hand-verified capture. Historical captures supply statistical evidence (225 requests, all carrying the flag, no counterexample), but that is not the same as a session captured and checked against ground truth.
   3. The recording-blind-spot audit (protocol side and capability side) closed across v0.4.3–v0.4.6; method in `docs/reference/开发约定.md` §2.5 and unit 0 of `docs/methodology/同类工具构建手册.md`.
 
+## Unreleased
+
+- **Public presence launched.** Bilingual English/Chinese GitHub Pages site (canonical, hreflang, Open Graph, SoftwareApplication JSON-LD, sitemap), a 1280×640 social preview, and Google Search Console ownership verified. Three READMEs refreshed with the full product name, real `git clone` and `releases/latest` entry points, and platform/local-run trust signals (`c64dbe7`, `216b10d`). Community promotion deferred. The from-scratch reproducible tutorial lives in `promo/` (gitignored, local only).
+
 ## v0.4.13 - 2026-08-09
 
 ### Fixed

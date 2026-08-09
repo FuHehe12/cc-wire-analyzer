@@ -14,6 +14,10 @@
   2. **判别残余**（暂缓）：交互模式（`cc_entrypoint=cli`）的子代理仍缺一次人工核对过的采集。历史录制已有统计旁证（225 条全部带判别位、零反例），但那与「采一次会话逐条对照 ground truth」不是一回事。
   3. 录制盲区审计（协议面 + 能力面）已于 v0.4.3~v0.4.6 收口，方法见 `docs/reference/开发约定.md` 第二·五节与 `docs/methodology/同类工具构建手册.md` 单元 0。
 
+## 未发布
+
+- **公开落地页上线。** 中英双语 GitHub Pages 站（canonical / hreflang / Open Graph / SoftwareApplication JSON-LD / sitemap 齐全）、1280×640 社交分享图、Google Search Console 所有权验证完成。三语 README 补全产品全称、真实的 `git clone` 与 `releases/latest` 入口、平台与本地运行的信任信号（`c64dbe7`、`216b10d`）。社区发帖后置。从零可复现的中文教程在 `promo/`（gitignored，仅本地）。
+
 ## v0.4.13 - 2026-08-09
 
 ### 修复
