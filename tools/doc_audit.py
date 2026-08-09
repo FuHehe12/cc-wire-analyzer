@@ -68,6 +68,17 @@ DOC_FILES = sorted(DOCS.rglob("*.md")) + [ROOT / "README.md", ROOT / "README.zh.
 # 端点表也在代码里躺着一份（产物自带的说明书回落），一并当"文档面"对账。
 GUIDE_FALLBACK = SRC / "app.py"
 
+# **别的工具的端点**。文档里出现它们是正常的——`docs/methodology/同类工具构建手册.md` 的主题
+# 就是给其他 agent 工具做同类分析器，写到被测工具的端点是这份文档的本职内容。
+#
+# 形状照 `classifier.KNOWN_BETAS`：硬编码 + 可审计 + 一条一条加，每条注明属于谁。
+# **不按目录跳过 methodology/**——实测那个目录下 5 处端点引用有 4 处是本项目的真端点
+# （`/api/unknowns` ×3、`/api/ai-guide` ×1），整篇豁免等于为消一个误报放弃四处真覆盖：
+# 「主语是别的工具」是段落属性，不是文件属性，用文件粒度的规则去切它必然误伤。
+EXTERNAL_ENDPOINTS = {
+    "/api/anthropic/v1/messages",   # zcode：Electron 客户端 → 自家后端（TLS MITM 实测那节）
+}
+
 
 def _read(p: pathlib.Path) -> str:
     try:
@@ -302,12 +313,20 @@ def audit() -> dict:
     # 和上游地址片段（`…:5051/api/anthropic`）不是端点引用，按前缀命中真路由就放过。
     # (?<![:\w]) 挡掉完整 URL 里的路径片段（`http://127.0.0.1:5051/api/anthropic` 是上游地址
     # 举例，不是本服务的端点引用）。
+    #
+    # 「不是本服务的端点引用」有**两层**，别只修撞见的那层（惯犯 ⑦）：上面那个先行断言管的是
+    # 「长得像 URL 的」，EXTERNAL_ENDPOINTS 管的是「长得完全像本项目端点、只是主语不是本项目」
+    # ——同类工具构建手册的主题就是给别的 agent 工具做分析器，写到它们的端点是常态。
     mentioned = set(re.findall(r"(?<![:\w])`?(/api/[a-zA-Z0-9_/<>-]+)", joined))
     ghost_routes = sorted(
         m for m in mentioned
-        if re.sub(r"<[^>]+>", "<id>", m.rstrip("/?")) not in routes
+        if m not in EXTERNAL_ENDPOINTS
+        and re.sub(r"<[^>]+>", "<id>", m.rstrip("/?")) not in routes
         and not m.endswith("<id>")
         and not any(r.startswith(m.rstrip("/")) for r in routes))
+    # 白名单防腐：万一本项目将来真加了同名端点，这条豁免会让对账对它永远闭嘴。
+    # 命中即报硬差异，提示删掉该条——**检查本身也要被检查**，代价一行。
+    stale_external = sorted(EXTERNAL_ENDPOINTS & set(routes))
 
     # 2. CLI 子命令
     # 命中形式：`list --date …`（表格里的用法行）/ `list` / `cli.py list …`
@@ -388,6 +407,7 @@ def audit() -> dict:
         "spec_divergence": spec_divergence,
         "undocumented_routes": undocumented,
         "ghost_routes": ghost_routes,
+        "stale_external_endpoints": stale_external,
         "undocumented_cli": undocumented_cmds,
         "missing_paths": missing_paths,
         "idx_schema_drift": schema_drift,
@@ -424,7 +444,11 @@ def _rows(r: dict) -> tuple[list, list]:
                                                         for g in tk["theme_gaps"]]),
             ("共用块与深色块重复定义的 token", tk["shared_leaked"]),
             ("spec 要打包的文件不存在", r.get("spec_missing_datas", [])),
-            ("两份 spec 分叉了", r.get("spec_divergence", []))]
+            ("两份 spec 分叉了", r.get("spec_divergence", [])),
+            # 白名单过期：本项目真加了同名端点，那条外部豁免必须删，否则它会让对账对这个
+            # 端点永远闭嘴。归硬类是因为后果与幽灵端点同源——判据带着一条静默的例外在跑。
+            ("已成真路由、该从 EXTERNAL_ENDPOINTS 删掉的豁免",
+             r.get("stale_external_endpoints", []))]
     hard += [(f"文档列了但代码没有的 {e['enum']} 值", e["ghost"])
              for e in r.get("enums", [])]
     soft = [("文档里没提到的端点", r["undocumented_routes"]),
@@ -499,7 +523,17 @@ def _selftest() -> int:
     base = {"routes": 0, "cli_commands": 0, "idx_schema": 1,
             "undocumented_routes": [], "ghost_routes": [], "undocumented_cli": [],
             "missing_paths": [], "idx_schema_drift": [], "missing_selftest_files": [],
+            "stale_external_endpoints": [],
             "tokens": {"counts": {}, "theme_gaps": [], "shared_leaked": [], "dead_tokens": []}}
+
+    # 外部端点白名单的两种腐化，各查一次（260809）。豁免是判据上开的口子，开了就得看住：
+    #   ① 死条目——文档早就不提它了，白名单却还留着，下次有人看到会以为这个豁免仍有意义；
+    #   ② 过期条目——本项目真加了同名端点，豁免会让对账对它永远闭嘴（下面 n_hard 那条断言）。
+    _docs_joined = "\n".join(_read(p) for p in DOC_FILES)
+    dead_ext = sorted(e for e in EXTERNAL_ENDPOINTS if e not in _docs_joined)
+    print("[外部端点白名单]",
+          "PASS 每条都仍被文档引用" if not dead_ext else f"FAIL 死条目（该删）{dead_ext}")
+    ok = ok and not dead_ext
 
     def n_hard(**over):
         d = {**base, **over}
@@ -512,6 +546,7 @@ def _selftest() -> int:
         ("缺失自测文件挡", n_hard(missing_selftest_files=["src/nope.py"]) == 1),
         ("缺 token 取值挡",
          n_hard(tokens={**base["tokens"], "theme_gaps": [{"theme": "light", "missing": ["--x"]}]}) == 1),
+        ("外部端点豁免过期挡", n_hard(stale_external_endpoints=["/api/anthropic/v1/messages"]) == 1),
         # 反向：软差异**不该**挡，否则第一个内部端点就卡住发版
         ("未登记端点不挡", n_hard(undocumented_routes=["/api/internal"]) == 0),
         ("未登记子命令不挡", n_hard(undocumented_cli=["secret"]) == 0),
