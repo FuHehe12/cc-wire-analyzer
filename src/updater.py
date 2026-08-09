@@ -434,11 +434,12 @@ def preflight(is_recording: bool) -> tuple[bool, str]:
     return True, ""
 
 
-def apply(is_recording: bool, on_exit) -> dict:
+def apply(is_recording: bool, restore_fn) -> dict:
     """执行替换。Windows 就地换 + 重启；macOS 解压后指路，不动 `.app`。
 
-    `on_exit` 由调用方给（`app.py` 传一个"恢复 settings 然后退出"的回调）——
-    退出这件事的正确做法属于进程生命周期，不该在这个模块里各写一份。
+    `restore_fn` 由调用方给（`app.py` 传一个"恢复 settings.json"的回调）——
+    它只做恢复，不做退出；退出由 `_relaunch` 在恢复之后管，确保顺序是
+    恢复 → 拉新进程 → 退出（见 `_relaunch` 的注释为什么不能反过来）。
     """
     ok, why = preflight(is_recording)
     if not ok:
@@ -472,16 +473,30 @@ def apply(is_recording: bool, on_exit) -> dict:
         return {"ok": False, "reason": "not_writable", "error": str(e), "path": str(src)}
     log.info("已替换产物：%s（旧版留在 %s，下次启动清理）", cur, old.name)
     _set(phase="idle", has_update=False, path=None, latest=None, asset=None)
-    threading.Timer(1.0, _relaunch, args=(cur, on_exit)).start()
+    threading.Timer(1.0, _relaunch, args=(cur, restore_fn)).start()
     return {"ok": True, "in_place": True, "restart": True, "path": str(cur)}
 
 
-def _relaunch(exe: Path, on_exit) -> None:
-    """拉起新版本，然后让本进程走**正常退出路径**（先恢复 settings.json 再退）。
+def _relaunch(exe: Path, restore_fn) -> None:
+    """**先恢复 settings.json → 再拉新进程 → 再退出**。顺序确定性保证。
 
-    延迟 1 秒是为了让 `/api/update/apply` 的响应先回到界面——否则用户只看到窗口消失，
-    分不清是"更新中"还是"崩了"。
+    为什么不能反过来（先 Popen 再恢复）：serve 模式的新进程启动时会自动
+    `begin_recording()` patch settings.json。如果旧进程的 restore 跑在新进程的
+    patch 之后，会**撤销新进程刚做的 patch**——新进程以为自己在录，实际没在录。
+    实际上几乎撞不到（新进程冷启动 1~2 秒、restore 微秒级），但"会动用户 exe"
+    的路径不能靠时序假设，要靠顺序保证（不变量 10「替换可回滚」的同一条思路）。
+
+    `restore_fn` 只做恢复（+ logging.shutdown），**不做 os._exit**——退出由本函数管，
+    确保顺序是：恢复完 → Popen → exit，三步在同一线程内顺序执行。
+
+    延迟 1 秒启动（Timer）是为了让 `/api/update/apply` 的响应先回到界面——否则
+    用户只看到窗口消失，分不清是"更新中"还是"崩了"。
+
+    onefile 的 `_MEIPASS` 临时目录会因 `os._exit` 残留（bootloader 的清理跑在
+    atexit 里，os._exit 跳过它）。这不是 apply 引入的问题——desktop.py 正常退出
+    也走 os._exit。PyInstaller bootloader 下次启动时会扫描并清掉这些残留目录。
     """
+    restore_fn()
     argv = [str(exe)] + [a for a in sys.argv[1:] if a not in ("--update-applied",)]
     try:
         kwargs = {}
@@ -492,7 +507,7 @@ def _relaunch(exe: Path, on_exit) -> None:
         subprocess.Popen(argv, close_fds=True, **kwargs)
     except Exception as e:                        # noqa: BLE001
         log.error("新版本拉起失败（旧版已被改名，用户需手动启动 %s）：%s", exe, e)
-    on_exit()
+    os._exit(0)
 
 
 def self_check() -> list[tuple[str, bool]]:

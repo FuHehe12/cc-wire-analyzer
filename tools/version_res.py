@@ -110,3 +110,34 @@ if __name__ == "__main__":   # 手查：uv run python tools/version_res.py
     v = read_version()
     print(f"version={v!r}  tuple={version_tuple(v)}")
     print(f"mac plist={mac_info_plist(v)}")
+
+
+# 以下不是版本资源——放在这里因为它是"两份 spec 共用的构建辅助"，
+# 和版本资源是同一类东西（别在两份 spec 里各写一份）。如果这个模块膨胀到不止
+# 版本+metadata 两件事，再拆一个 tools/build_hooks.py 出来。
+
+def runtime_metadata() -> list:
+    """收集运行时调 `importlib.metadata` 的包的 dist-info。
+
+    本地 ``uv run pyinstaller`` 打的 exe 会丢这些 metadata——uv 的 venv 管理方式
+    （用 hardlink/copy 而非标准 site-packages 布局）导致 PyInstaller 的自动
+    metadata hook 找不到 ``.dist-info`` 目录。CI 不受影响（CI 环境是标准 pip install）。
+
+    已知触发点：Werkzeug 3.x 的 ``BaseWSGIServer.__init__`` 调
+    ``importlib.metadata.version("werkzeug")``，找不到就 ``PackageNotFoundError``——
+    serve 模式启动到 ``app.run()`` 直接崩。Flask 及其依赖同理可能查自己的版本。
+
+    两份 spec 共用这个列表——包清单分叉过一次（mac spec 漏 brotli）就不再各写一份。
+    """
+    try:
+        from PyInstaller.utils.hooks import copy_metadata
+    except ImportError:
+        return []                  # 非 PyInstaller 环境跑这个模块（手查）不崩
+    pkgs = ("werkzeug", "flask", "click", "jinja2", "itsdangerous", "markupsafe")
+    out: list = []
+    for pkg in pkgs:
+        try:
+            out += copy_metadata(pkg)
+        except Exception:          # noqa: BLE001 —— 包没装就跳过（macOS 构建机可能不同）
+            pass
+    return out

@@ -895,16 +895,20 @@ def update_apply():
     录制中一律拒绝（409）——**不代劳停止**：停代理要写用户的 settings.json，
     那是有副作用的动作，不该由"我想升级"这个意图顺带触发。
     """
-    r = updater.apply(settings_guard.is_patched(), _exit_for_update)
+    r = updater.apply(settings_guard.is_patched(), _restore_before_relaunch)
     return jsonify(r), (200 if r.get("ok") else 409)
 
 
-def _exit_for_update() -> None:
-    """更新替换完成后退出本进程。**走与正常关闭同一条恢复路径**。
+def _restore_before_relaunch() -> None:
+    """更新重启前恢复 settings.json。**只恢复，不退出**——退出由 `updater._relaunch` 管。
 
-    这里理论上已经不需要恢复（apply 在录制中直接拒绝），但仍然调一次：
-    `_safe_restore` 幂等，而"退出前必恢复"是不变量 2，多一条退出路径就多一处要守住它——
-    在这里省掉它，就等于把一条新的、绕过恢复的退出通道加进了进程。
+    为什么必须在这里做、且必须在拉新进程之前做（见 _relaunch 注释）：
+    新进程（serve 模式）启动时自动 `begin_recording()` patch settings.json，
+    如果旧进程的 restore 跑在新进程的 patch 之后，会撤销新进程的 patch。
+
+    apply 的 preflight 已保证不在录制态，这里通常是空操作（幂等），但
+    "退出前必恢复"是不变量 2，多一条退出路径就多一处要守住它——在这里省掉它，
+    就等于把一条新的、绕过恢复的退出通道加进了进程。
     """
     try:
         settings_guard._safe_restore()
@@ -912,7 +916,6 @@ def _exit_for_update() -> None:
         logging.shutdown()
     except Exception:
         pass
-    os._exit(0)
 
 
 # ===== 自描述：产物自己带着给 AI 的说明书（260801，issue 260801_异机AI自描述入口）=====

@@ -24,13 +24,13 @@ sys.path.insert(0, os.path.join(SPECPATH, 'tools'))
 # 只取 mac 那半边：`windows_version_info` 会 import `PyInstaller.utils.win32.versioninfo`，
 # 而它在非 Windows 上 import 就炸（compat 里 win32api 只在 is_win 下定义）。
 # version_res 把这个 import 放在函数体内，所以模块本身在 macOS 上是安全的。
-from version_res import mac_info_plist  # noqa: E402
+from version_res import mac_info_plist, runtime_metadata  # noqa: E402
 
 datas = [
     ('src/templates', 'templates'),   # Flask 模板
     ('src/static', 'static'),         # vendored marked/DOMPurify + 打包字体（Inter/JetBrains Mono/Noto Sans SC）
     ('docs/reference/AI_USAGE.md', 'docs'),     # /api/ai-guide 的正文，必须随产物走（issue 260801）
-]
+] + runtime_metadata()  # Flask/Werkzeug 的 dist-info（与 build.spec 同源，见 version_res.runtime_metadata）
 
 # pywebview 在 macOS 用 WebKit（pyobjc）后端。
 # brotli / zstandard 与 build.spec 对齐（260801 发现两个 spec 分叉）：CC 声明
