@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
 import os
@@ -58,8 +59,12 @@ _MAX_ASSET_BYTES = 400 * 1024 * 1024   # 资产体积上限，防"下载到天�
 _lock = threading.Lock()
 _cancel = threading.Event()
 _thread: threading.Thread | None = None
+_part_seq = itertools.count()          # staging 文件名序号（见 _staging_path）
 
-# 单一状态机。phase: idle / checking / downloading / verifying / ready / applying / error
+# 单一状态机。phase: idle / checking / starting / downloading / verifying / ready / applying / error
+# starting = 下载任务已占位、线程还没连上 GitHub（拉校验和 + connect 都在这个窗口里）。
+# 260809 事故前没有这个态，phase 从点击到连上 GitHub 一直是 idle——
+# 单 flight 查重与用户可见的"没反应"两个 bug 都长在那个窗口上。
 _state: dict = {
     "phase": "idle",
     "latest": None,
@@ -166,13 +171,22 @@ def _pick_asset(assets: list[dict]) -> dict | None:
     return None
 
 
+_ACTIVE_PHASES = ("starting", "downloading", "verifying", "applying")
+
+
 def check(version: str) -> dict:
     """查 GitHub 最新 release。**只读**，不写盘、不下载。
 
     失败不抛给调用方——网络不通是这个功能最常见的结局（GitHub 在很多网络下要走代理），
     返回结构化的 `error` + 手动下载地址，比一个 500 有用。
+
+    下载/安装进行中不碰 phase：旧版无条件 `_set(phase="checking"→"idle")`，
+    用户在下载中点一次「检查更新」，进行中的任务状态就被盖回 idle，
+    前端轮询把 idle 当终态当场停表（260809 事故链上的一环）。
     """
-    _set(phase="checking", error=None)
+    active = _snapshot()["phase"] in _ACTIVE_PHASES
+    if not active:
+        _set(phase="checking", error=None)
     try:
         data = json.loads(_get_bytes(API_LATEST, version).decode("utf-8", "replace"))
         latest = (data.get("tag_name") or "").lstrip("vV")
@@ -180,15 +194,21 @@ def check(version: str) -> dict:
             raise ValueError("release 没有 tag_name")
         asset = _pick_asset(data.get("assets") or [])
         has = cmp_version(latest, version) > 0
-        _set(phase="idle", latest=latest, has_update=has, asset=asset, error=None)
+        if active:
+            _set(latest=latest, has_update=has, asset=asset)
+        else:
+            _set(phase="idle", latest=latest, has_update=has, asset=asset, error=None)
         return {"ok": True, "current": version, "latest": latest, "has_update": has,
-                "asset": asset, "releases_url": RELEASES_PAGE,
+                "asset": asset, "phase": _snapshot()["phase"],
+                "releases_url": RELEASES_PAGE,
                 "notes_url": data.get("html_url") or RELEASES_PAGE,
                 "updates_dir": str(UPDATES_DIR), **_capability(asset)}
     except Exception as e:                      # noqa: BLE001 —— 网络异常形态太多，一律降级
         log.warning("检查更新失败：%s", e)
-        _set(phase="idle", error=str(e))
+        if not active:
+            _set(phase="idle", error=str(e))
         return {"ok": False, "current": version, "error": str(e),
+                "phase": _snapshot()["phase"],
                 "releases_url": RELEASES_PAGE, "updates_dir": str(UPDATES_DIR),
                 **_capability(None)}
 
@@ -235,17 +255,38 @@ def _fetch_sums(version: str, tag_assets: list[dict], name: str) -> str | None:
     return None
 
 
-def _download(version: str, asset: dict, expect_sha: str | None) -> None:
-    """后台线程：下载 → 校验 → 改名。任何一步失败都把半成品删掉。"""
+def _staging_path(dest: Path) -> Path:
+    """本次下载独有的临时文件名。**每次调用都不同**。
+
+    260809 事故的另一半：并发守卫被绕过时，N 个线程写**同一个** `.part`，
+    第一个下完的线程改名时别的线程还持有句柄 → WinError 32「另一个程序正在使用
+    此文件」直接糊到用户脸上。单 flight（start_download 的锁内占位）让并发写者
+    在正常情况下不存在；文件名唯一是纵深防御——万一守卫未来再被绕过，
+    两个写者各写各的文件，rename 不再撞句柄，最坏结果是重复下载浪费带宽，
+    而不是一个看不懂的报错。
+    """
+    return dest.with_name(f"{dest.name}.{os.getpid()}.{next(_part_seq)}.part")
+
+
+def _download(version: str, asset: dict) -> None:
+    """后台线程：拉校验和 → 下载 → 校验 → 改名。任何一步失败都把半成品删掉。"""
     UPDATES_DIR.mkdir(parents=True, exist_ok=True)
     dest = UPDATES_DIR / asset["name"]
-    part = dest.with_name(dest.name + ".part")
+    part = _staging_path(dest)
     try:
-        # 开工前把更新目录清空（**包括同名的那一份**）。只留一份、不攒是次要的；
+        # 校验和清单在线程内拉（旧版在请求 handler 里同步拉，走代理要数秒——
+        # 那几秒既是前端"点了没反应"的窗口，也是单 flight 查重失效的窗口）。
+        expect = None
+        try:
+            data = json.loads(_get_bytes(API_LATEST, version).decode("utf-8", "replace"))
+            expect = _fetch_sums(version, data.get("assets") or [], asset["name"])
+        except Exception as e:                   # noqa: BLE001
+            log.warning("取校验和清单失败（继续下载，届时标注未校验）：%s", e)
+        # 开工前把更新目录清空（**包括同名的那一份与历史遗留的 .part**）。只留一份、不攒是次要的；
         # 要紧的是：留着同名旧文件时，这一轮下载失败**不会**留下"空目录"，而是留下一个
         # 看起来完好、实际来路不明的 exe 躺在更新目录里等人双击（自测抓到，260808）。
         for stale in UPDATES_DIR.glob("*"):
-            if stale.is_file():
+            if stale.is_file() and stale != part:
                 try:
                     stale.unlink()
                 except OSError:
@@ -283,13 +324,13 @@ def _download(version: str, asset: dict, expect_sha: str | None) -> None:
         if head != want_magic:
             raise ValueError(f"文件头不对（{head!r}）——多半下到了错误页而不是产物")
         digest = h.hexdigest()
-        if expect_sha and digest != expect_sha:
-            raise ValueError(f"SHA-256 不符：release 声明 {expect_sha[:16]}…，实得 {digest[:16]}…")
+        if expect and digest != expect:
+            raise ValueError(f"SHA-256 不符：release 声明 {expect[:16]}…，实得 {digest[:16]}…")
         part.replace(dest)                       # 校验通过才改名成正式文件
         _set(phase="ready", path=str(dest), sha256=digest,
-             sha256_verified=bool(expect_sha), error=None)
+             sha256_verified=bool(expect), error=None)
         log.info("更新包就绪：%s（sha256=%s，校验和比对=%s）",
-                 dest, digest[:16], bool(expect_sha))
+                 dest, digest[:16], bool(expect))
     except Exception as e:                       # noqa: BLE001
         try:
             part.unlink(missing_ok=True)
@@ -303,26 +344,30 @@ def _download(version: str, asset: dict, expect_sha: str | None) -> None:
 
 
 def start_download(version: str) -> dict:
-    """启动下载（立即返回，进度走 `/api/update/status`）。"""
+    """启动下载（立即返回，进度走 `/api/update/status`）。
+
+    **单 flight，在锁内占位。** 260809 事故的根子：旧版先查 phase 再放线程，
+    而 phase 要等线程连上 GitHub 才变 downloading——从点击到那一步隔着
+    校验和拉取 + connect（走代理数秒），窗口内每次重复点击都通过查重再放一个
+    线程（用户一次会话放出 13 个）。现在 phase 在锁内先变 `starting`，
+    重复调用拿到 `already_running: true`——那不是错误，前端据此把进度条
+    接回正在跑的那个任务。
+    """
     global _thread
-    st = _snapshot()
-    asset = st.get("asset")
-    if not asset:
-        return {"ok": False, "error": "还没有可下载的资产，先调 /api/update/check"}
-    if st["phase"] in ("downloading", "verifying", "applying"):
-        return {"ok": False, "error": f"已有任务在跑（{st['phase']}）"}
-    # 校验和在主线程取：它很小，且失败与否要立刻反映到状态里（"有没有校验和"是要展示给用户的事实）
-    expect = None
-    try:
-        data = json.loads(_get_bytes(API_LATEST, version).decode("utf-8", "replace"))
-        expect = _fetch_sums(version, data.get("assets") or [], asset["name"])
-    except Exception as e:                       # noqa: BLE001
-        log.warning("取校验和清单失败（继续下载，届时标注未校验）：%s", e)
+    with _lock:
+        asset = _state.get("asset")
+        if not asset:
+            return {"ok": False, "error": "还没有可下载的资产，先调 /api/update/check"}
+        if _state["phase"] in _ACTIVE_PHASES:
+            return {"ok": False, "already_running": True, "phase": _state["phase"],
+                    "error": f"已有任务在跑（{_state['phase']}）"}
+        _state.update(phase="starting", error=None, downloaded=0, total=0,
+                      path=None, sha256=None, sha256_verified=False)
     _cancel.clear()
-    _thread = threading.Thread(target=_download, args=(version, asset, expect),
+    _thread = threading.Thread(target=_download, args=(version, asset),
                                daemon=True, name="ccwa-update-download")
     _thread.start()
-    return {"ok": True, "sha256_expected": bool(expect)}
+    return {"ok": True}
 
 
 def cancel() -> dict:

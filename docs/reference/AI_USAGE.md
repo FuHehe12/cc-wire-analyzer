@@ -169,8 +169,8 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 | POST | `/api/captures/clear` | `{date, mode: purge\|archive}` |
 | GET | `/api/captures/stream` | **LIVE SSE**：录制写入时的实时增量（用于实时监控）|
 | GET | `/api/update/check` | 有没有新版本 + 本平台资产 + `can_apply`/`in_place`（能不能就地替换）。连不上 GitHub 时 `ok:false` + 手动下载地址，不是 500 |
-| GET | `/api/update/status` | 下载进度与阶段：`idle`/`downloading`/`verifying`/`ready`/`applying`/`error`，含 `sha256_verified`（是否与 release 的 SHA256SUMS 比对过）|
-| POST | `/api/update/download` | 开始下载（立即返回，进度走 status）。校验不过会删文件并转 `error` |
+| GET | `/api/update/status` | 下载进度与阶段：`idle`/`starting`/`downloading`/`verifying`/`ready`/`applying`/`error`，含 `sha256_verified`（是否与 release 的 SHA256SUMS 比对过）|
+| POST | `/api/update/download` | 开始下载（立即返回，进度走 status）。单 flight：在跑时返回 `already_running:true`，接着轮询 status 即可，不是错误。校验不过会删文件并转 `error` |
 | POST | `/api/update/apply` | 替换产物并重启（Windows）。**录制中返回 409 `recording`——本工具不会代你停代理**，因为那要写你的 settings.json |
 
 人类向端点（GUI 用，agent 一般用不到）：`/api/translate`（SSE 翻译）、`/api/explain`（SSE AI

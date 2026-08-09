@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import sys
 import tempfile
@@ -68,17 +69,42 @@ class _FakeResp(io.BytesIO):
         return False
 
 
-class _FakeOpener:
-    def __init__(self, data: bytes, length: int | None = None):
-        self.data, self.length = data, length
+class _Router:
+    """按 URL 路由的假 opener：API / 校验和清单 / 资产可以各给各的字节。
+
+    校验和拉取挪进下载线程后（260809），`_download` 自己会先打 api.github.com——
+    假传输必须能区分"哪个地址回什么"，否则 API 请求吃到 exe 字节、json.loads 炸成
+    一堆看不懂的失败。"""
+
+    def __init__(self, routes: dict, gate=None):
+        self.routes, self.gate = routes, gate
 
     def open(self, req, timeout=None):
-        U._assert_allowed(req.full_url if hasattr(req, "full_url") else str(req))
-        return _FakeResp(self.data, self.length)
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        U._assert_allowed(url)                            # 守卫是真跑的
+        for key, val in self.routes.items():
+            if key in url:
+                data, length = val if isinstance(val, tuple) else (val, None)
+                if self.gate is not None and key == "fake/asset":
+                    ok(self.gate.wait(timeout=10), "阻塞假传输：10 秒内放行（防死等）")
+                return _FakeResp(data, length)
+        raise OSError("假传输没有这个地址：" + url[:100])
 
 
-def with_bytes(data: bytes, length: int | None = None):
-    U._opener = lambda: _FakeOpener(data, length)      # noqa: SLF001 —— 自测替传输层
+def with_bytes(data: bytes, length: int | None = None, gate=None):
+    """只给资产字节：API 请求得到一个不带校验和资产的空 release。"""
+    with_route({"fake/asset": (data, length)}, sums_text=None, gate=gate)
+
+
+def with_route(asset: dict, sums_text: str | None, gate=None):
+    """API JSON 里只有校验和资产会被 _download 真的去读（主资产走的是 state 里的那份）。"""
+    assets = []
+    if sums_text is not None:
+        assets.append({"name": "SHA256SUMS.txt", "size": len(sums_text),
+                       "browser_download_url": "https://github.com/fake/SHA256SUMS.txt"})
+    api = json.dumps({"tag_name": "v9.9.9", "assets": assets}).encode()
+    routes = {"api.github.com": api, "SHA256SUMS.txt": (sums_text or "").encode(), **asset}
+    U._opener = lambda: _Router(routes, gate=gate)       # noqa: SLF001 —— 自测替传输层
 
 
 EXE_BYTES = b"MZ" + b"\x00" * 4094                     # 像个 PE：魔数 + 4KB
@@ -86,6 +112,8 @@ import hashlib                                         # noqa: E402
 EXE_SHA = hashlib.sha256(EXE_BYTES).hexdigest()
 ASSET = {"name": "cc-wire-analyzer-v9.9.9-windows.exe", "size": len(EXE_BYTES),
          "url": "https://objects.githubusercontent.com/fake/asset"}
+SUMS_OK = f"{EXE_SHA}  {ASSET['name']}\n"
+SUMS_BAD = f"{'a' * 64}  {ASSET['name']}\n"
 
 
 print("\n[1] 版本比较")
@@ -130,45 +158,90 @@ ok(sums.get("cc-wire-analyzer-v9.9.9-windows.exe") == EXE_SHA
    and sums.get("cc-wire-analyzer-v9.9.9-macos.zip") == "b" * 64,
    "SHA256SUMS 解析（含二进制模式的 * 前缀）")
 
-print("\n[4] 下载与校验")
-with_bytes(EXE_BYTES)
-U._download("test", ASSET, EXE_SHA)
+print("\n[4] 下载与校验（校验和拉取在线程内，260809）")
+with_route({"fake/asset": EXE_BYTES}, sums_text=SUMS_OK)
+U._download("test", ASSET)
 st = U.status("test")
 dest = U.UPDATES_DIR / ASSET["name"]
 ok(st["phase"] == "ready" and dest.exists(), "校验通过 → ready 且文件落地")
 ok(st["sha256"] == EXE_SHA and st["sha256_verified"], "校验和比对通过并如实标注")
-ok(not (U.UPDATES_DIR / (ASSET["name"] + ".part")).exists(),
+ok(not list(U.UPDATES_DIR.glob("*.part")),
    "临时 .part 已改名（半成品不会被当成可安装的包）")
 
-U._download("test", ASSET, "a" * 64)                   # 声明的校验和对不上
+with_route({"fake/asset": EXE_BYTES}, sums_text=SUMS_BAD)
+U._download("test", ASSET)                             # 声明的校验和对不上
 st = U.status("test")
 ok(st["phase"] == "error" and not dest.exists(),
    "校验和不符 → 报错并删文件（留着就会在下次点安装时被装上）")
 
 with_bytes(b"<html>rate limited</html>", length=len(EXE_BYTES))
-U._download("test", ASSET, None)
+U._download("test", ASSET)
 ok(U.status("test")["phase"] == "error" and not dest.exists(),
    "下到 HTML 错误页（无 MZ 魔数）→ 报错")
 
 with_bytes(EXE_BYTES[:100], length=len(EXE_BYTES))
-U._download("test", ASSET, None)
+U._download("test", ASSET)
 ok(U.status("test")["phase"] == "error", "体积与 release 声明不符 → 报错")
 
 with_bytes(EXE_BYTES)
-U._download("test", ASSET, None)                       # release 没给校验和清单
+U._download("test", ASSET)                             # release 没给校验和清单
 st = U.status("test")
 ok(st["phase"] == "ready" and st["sha256"] and not st["sha256_verified"],
    "没有校验和清单时**如实标注未校验**，不假装验过（惯犯 ③ 的形状）")
 
 U._cancel.set()
-U._download("test", ASSET, None)
+U._download("test", ASSET)
 U._cancel.clear()
 ok(U.status("test")["phase"] == "idle" and not U.status("test")["error"],
    "取消 → 回到 idle 且不算错误")
 
+print("\n[4.5] 单 flight 与 staging 唯一名（260809 事故根因）")
+ok(U._staging_path(Path("x.exe")) != U._staging_path(Path("x.exe")),
+   "staging 文件名每次唯一（并发写者不再共享同一文件，rename 不撞句柄）")
+
+import threading                                        # noqa: E402
+gate = threading.Event()
+with_bytes(EXE_BYTES, gate=gate)                       # 资产 open 阻塞 = 线程停在 starting
+U._set(phase="idle", asset=ASSET, error=None)
+r1 = U.start_download("test")
+r2 = U.start_download("test")                          # 线程还在 connect 窗口内的重复点击
+ok(r1.get("ok") is True, "第一次启动成功")
+ok(r2.get("ok") is False and r2.get("already_running") is True
+   and r2.get("phase") == "starting",
+   "connect 窗口内的重复点击被拒（旧版在此放出了 13 个并发下载线程）",
+   str(r2))
+ok(U.status("test")["phase"] == "starting",
+   "starting 是独立 phase：连上 GitHub 之前不再是 idle（前端停表 bug 的那扇窗）")
+gate.set()
+U._thread.join(timeout=10)
+ok(U.status("test")["phase"] == "ready", "放行后下载完成 → ready")
+
+# starting 期间的取消也要能停
+gate.clear()
+with_bytes(EXE_BYTES, gate=gate)
+U._set(phase="idle", asset=ASSET)
+U.start_download("test")
+U.cancel()
+gate.set()
+U._thread.join(timeout=10)
+U._cancel.clear()                                      # cancel() 只置旗，清旗是下一轮的义务
+ok(U.status("test")["phase"] == "idle" and not U.status("test")["error"],
+   "starting 期间取消 → 停回 idle")
+
+# check 不盖活动任务的 phase（260809：下载中点"检查更新"把 phase 打回 idle，轮询停表）
+U._set(phase="downloading")
+rc = U.check("test")
+ok(rc.get("phase") == "downloading" and U.status("test")["phase"] == "downloading",
+   "下载进行中 check 只更新版本信息，不碰 phase")
+U._set(phase="idle")
+rc = U.check("test")
+ok(rc.get("ok") is True and rc.get("phase") == "idle",
+   "空闲时 check 照常回落 idle，返回值带 phase 供前端渲染")
+
 print("\n[5] 前置门（三道，各自给原因码）")
-with_bytes(EXE_BYTES)
-U._download("test", ASSET, EXE_SHA)
+with_route({"fake/asset": EXE_BYTES}, sums_text=SUMS_OK)
+U._set(phase="idle", asset=ASSET)
+U._download("test", ASSET)
 ok(U.preflight(False) == (False, "source"),
    "源码模式拒绝替换（该 git pull，不该覆盖文件）")
 

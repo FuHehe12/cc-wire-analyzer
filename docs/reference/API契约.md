@@ -565,12 +565,15 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
   "releases_url": "https://github.com/FuHehe12/cc-wire-analyzer/releases",
   "notes_url": "https://github.com/…/releases/tag/v0.4.11",
   "updates_dir": "~/.cc-wire-analyzer/updates",
+  "phase": "idle",
   "can_apply": true, "apply_reason": "", "in_place": true
 }
 ```
 
 - 连不上 GitHub 时返回 `ok:false` + `error` + `releases_url`（**不是 500**）——网络不通是这个
   功能最常见的结局，一个手动下载地址比一个错误页有用。
+- `phase` 是当前更新任务阶段（见 status）；下载/安装进行中 check **不会**把它盖回
+  `idle`（260809 前会，前端轮询因此停表）。
 - `asset` **按模式匹配**（`*windows.exe` / `*macos.zip`），不按固定文件名：资产名从 260808 起
   带版本号。没有本平台资产时为 `null`。
 - `can_apply` / `apply_reason` / `in_place` 是**能力自陈**：源码运行 → `apply_reason:"source"`；
@@ -578,14 +581,19 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 
 ### `GET /api/update/status` — 进度与阶段
 
-`phase`：`idle` / `downloading` / `verifying` / `ready` / `applying` / `error`。
+`phase`：`idle` / `starting` / `downloading` / `verifying` / `ready` / `applying` / `error`。
+`starting` = 下载任务已占位、线程尚未连上 GitHub（拉校验和清单 + connect 都在这个窗口，
+走代理可达数秒）——260809 起独立于 `idle`，否则前端轮询把这个窗口当终态停表。
 另有 `downloaded` / `total` 字节数、`path`（就绪后的本地文件）、`sha256`、
 `sha256_verified`（是否与 release 的 `SHA256SUMS.txt` 比对过）、`error`。
 
 ### `POST /api/update/download` — 开始下载
 
-立即返回 `{"ok": true, "sha256_expected": true}`，进度走 `status`。已有任务在跑时
-`{"ok": false, "error": "…"}`。校验不通过会删除文件并转入 `phase:"error"`。
+立即返回 `{"ok": true}`，进度走 `status`。**单 flight**：任务在跑（`starting` /
+`downloading` / `verifying` / `applying`）时重复调用返回
+`{"ok": false, "already_running": true, "phase": "…"}`——这不是错误，
+调用方应接着轮询 `status` 把进度接回去。校验和清单在下载线程内拉取；
+校验不通过会删除文件并转入 `phase:"error"`。
 
 ### `POST /api/update/cancel` — 中止下载
 

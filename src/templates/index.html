@@ -1868,7 +1868,7 @@ zh: {
   "set.upd.download": "下载", "set.upd.cancel": "取消", "set.upd.apply": "安装并重启",
   "set.upd.confirm": "确认安装？", "set.upd.folder": "打开所在文件夹", "set.upd.page": "打开发布页",
   "set.upd.available": "新版本 {v}（当前 {cur}）", "set.upd.upToDate": "已是最新版本 {v}",
-  "set.upd.verifying": "校验中…", "set.upd.ready": "{v} 已下载完毕，可以安装",
+  "set.upd.starting": "正在连接下载服务器…", "set.upd.verifying": "校验中…", "set.upd.ready": "{v} 已下载完毕，可以安装",
   "set.upd.applying": "正在安装…", "set.upd.restarting": "已替换，正在重启新版本…",
   "set.upd.checkFailed": "检查更新失败", "set.upd.err": "出错：{msg}",
   "set.upd.shaOk": "已按发布页的 SHA-256 清单校验通过。",
@@ -2202,7 +2202,7 @@ en: {
   "set.upd.download": "Download", "set.upd.cancel": "Cancel", "set.upd.apply": "Install and restart",
   "set.upd.confirm": "Confirm install?", "set.upd.folder": "Open containing folder", "set.upd.page": "Open releases page",
   "set.upd.available": "Version {v} available (you have {cur})", "set.upd.upToDate": "You are on the latest version {v}",
-  "set.upd.verifying": "Verifying…", "set.upd.ready": "{v} downloaded and ready to install",
+  "set.upd.starting": "Contacting the download server…", "set.upd.verifying": "Verifying…", "set.upd.ready": "{v} downloaded and ready to install",
   "set.upd.applying": "Installing…", "set.upd.restarting": "Replaced — restarting into the new version…",
   "set.upd.checkFailed": "Update check failed", "set.upd.err": "Error: {msg}",
   "set.upd.shaOk": "Verified against the SHA-256 manifest published with the release.",
@@ -2535,7 +2535,7 @@ ja: {
   "set.upd.download": "ダウンロード", "set.upd.cancel": "キャンセル", "set.upd.apply": "インストールして再起動",
   "set.upd.confirm": "インストールしますか？", "set.upd.folder": "保存先を開く", "set.upd.page": "リリースページを開く",
   "set.upd.available": "新バージョン {v}（現在 {cur}）", "set.upd.upToDate": "最新バージョン {v} です",
-  "set.upd.verifying": "検証中…", "set.upd.ready": "{v} のダウンロードが完了しました",
+  "set.upd.starting": "ダウンロードサーバーに接続しています…", "set.upd.verifying": "検証中…", "set.upd.ready": "{v} のダウンロードが完了しました",
   "set.upd.applying": "インストール中…", "set.upd.restarting": "置き換えました。新バージョンを起動しています…",
   "set.upd.checkFailed": "更新の確認に失敗しました", "set.upd.err": "エラー：{msg}",
   "set.upd.shaOk": "リリースの SHA-256 一覧と照合済みです。",
@@ -6110,11 +6110,15 @@ function updRender(st){
   title = t18("set.upd.available", {v: "v" + (st.latest || ""), cur: "v" + (st.current || "")});
   if(a.size) sub = fmtBytes(a.size) + " · " + (a.name || "");
 
-  if(phase === "downloading" || phase === "verifying"){
+  if(phase === "starting" || phase === "downloading" || phase === "verifying"){
     barWrap.hidden = false;
     const pct = st.total ? Math.min(100, Math.round(st.downloaded * 100 / st.total)) : 0;
     $("updFill").style.width = pct + "%";
-    sub = phase === "verifying" ? t18("set.upd.verifying")
+    /* starting = 线程已起、还没连上 GitHub（校验和 + connect，走代理要数秒）。
+       260809：这个窗口以前渲染成 idle——进度条不出现、轮询 500ms 后停表，
+       用户看到的就是一个"点了没反应"的下载按钮。 */
+    sub = phase === "starting" ? t18("set.upd.starting")
+        : phase === "verifying" ? t18("set.upd.verifying")
         : fmtBytes(st.downloaded || 0) + " / " + fmtBytes(st.total || 0) + "  " + pct + "%";
     cancel.hidden = false;
   }else if(phase === "ready"){
@@ -6138,7 +6142,7 @@ function updRender(st){
   }
 
   /* 能不能就地安装，原因要说清楚——一句笼统的"不支持"会被当成坏了。 */
-  if(st.can_apply === false && phase !== "downloading" && phase !== "verifying"){
+  if(st.can_apply === false && phase !== "starting" && phase !== "downloading" && phase !== "verifying"){
     const k = {source: "set.upd.noteSource", no_asset: "set.upd.noteNoAsset"}[st.apply_reason];
     if(k){ noteText = t18(k) + (noteText ? "\n" + noteText : ""); note.className = "upd-note warn"; }
   }
@@ -6148,11 +6152,28 @@ function updRender(st){
 }
 
 async function updDownload(){
+  const btn = $("updDlBtn");
+  if(btn.disabled) return;                 /* 重入守卫：旧版没有它，8ms 内 4 个并发 POST（260809）*/
+  btn.disabled = true;
+  /* 点击即反馈，不等 POST 返回：拉校验和 + 连 GitHub 要走代理数秒，
+     那几秒里"像没点上"正是旧版引人反复点击的窗口。乐观渲染 starting 态。 */
+  if(UPD.st) updRender(Object.assign({}, UPD.st, {ok: true, phase: "starting",
+                                                downloaded: 0, total: 0, error: null}));
   try{
     const j = await (await fetch("/api/update/download", {method: "POST"})).json();
-    if(!j.ok){ toast(j.error || "", true); return; }
+    if(!j.ok && !j.already_running){
+      toast(j.error || "", true);
+      updRender(UPD.st);                   /* 乐观渲染收回，恢复真实状态 */
+      btn.disabled = false;
+      return;
+    }
+    /* already_running 不是错误——任务已经在跑，把它的进度接回来就是。 */
     updPoll();
-  }catch(e){ toast(e.message, true); }
+  }catch(e){
+    toast(e.message, true);
+    updRender(UPD.st);
+  }
+  btn.disabled = false;
 }
 
 async function updCancel(){
