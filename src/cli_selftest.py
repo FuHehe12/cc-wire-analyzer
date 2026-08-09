@@ -133,6 +133,14 @@ def main() -> None:
             {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
         ]
         f.write(json.dumps(mid, ensure_ascii=False) + "\n")
+        # CC 合成的伪 user 消息（建议补全）→ turn_start=true 但 origin 应判 synthetic，
+        # 不能跟真人消息画成同一种卡（260809 A，前缀白名单经 jsonl 真值验证）
+        synth = _fake_record("req_eee5555", "main")
+        synth["ts_start"] = "2026-07-12T22:05:00.000"
+        synth["request"]["body"]["messages"] = [
+            {"role": "user", "content": "[SUGGESTION MODE: Suggest what the user might naturally type next]"},
+        ]
+        f.write(json.dumps(synth, ensure_ascii=False) + "\n")
 
     env = {**os.environ, "CCWA_HOME": str(tmp), "CCWA_CLAUDE_SETTINGS": str(settings)}
 
@@ -148,11 +156,11 @@ def main() -> None:
         o = run(env, "paths")
         check("paths 走 CCWA_HOME", str(tmp) in o.get("captures_dir", ""))
         o = run(env, "stats", "--date", "2026-07-12")
-        check("stats 记录数", o.get("records") == 4, str(o.get("kinds")))
-        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 4,
-              f"input={o.get('tokens', {}).get('input')}（4 条 × 24001；SSE 给的是 input_tokens 全名）")
+        check("stats 记录数", o.get("records") == 5, str(o.get("kinds")))
+        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 5,
+              f"input={o.get('tokens', {}).get('input')}（5 条 × 24001；SSE 给的是 input_tokens 全名）")
         o = run(env, "list", "--date", "2026-07-12", "--kind", "main")
-        check("list --kind 过滤", len(o.get("items", [])) == 3)
+        check("list --kind 过滤", len(o.get("items", [])) == 4)
         o = run(env, "get", "req_aaa1111", "--date", "2026-07-12", "--part", "system", "--max-chars", "200")
         check("get --part system 截断", o.get("truncated") is True)
         check("get 输出不炸上下文", len(json.dumps(o)) < 4000, f"{len(json.dumps(o))} bytes")
@@ -164,8 +172,9 @@ def main() -> None:
         check("dag 出泳道", len(o.get("lanes", [])) >= 1)
         # 轮聚合（260802）：DAG 按轮折叠的全部依据。三条 main（其中一条是工具循环中间步）
         # + 一条 security → 主线两轮，中间步并进前一轮，security 归到它所属的那一轮。
+        # 260809 再加一条 SUGGESTION MODE 伪 user → 独立第三轮，origin 应判 synthetic。
         turns = o.get("turns") or []
-        check("dag 出轮", len(turns) == 2, f"turns={len(turns)}")
+        check("dag 出轮", len(turns) == 3, f"turns={len(turns)}")
         t0 = turns[0] if turns else {}
         check("轮卡带用户那轮说的话（不是模型回答）",
               t0.get("user_text") == "帮我查一下泳道判别的问题", repr(t0.get("user_text")))
@@ -174,6 +183,16 @@ def main() -> None:
         check("辅助调用归到所属轮",
               any((t.get("aux") or {}).get("security") for t in turns),
               str([t.get("aux") for t in turns]))
+        check("轮带起源分类且合法（user/synthetic/command/partial）",
+              all(t.get("origin") in ("user", "synthetic", "command", "partial") for t in turns),
+              str([t.get("origin") for t in turns]))
+        check("真人消息轮判 user",
+              any(t.get("origin") == "user" and t.get("user_text") == "帮我查一下泳道判别的问题"
+                  for t in turns),
+              str([(t.get("origin"), (t.get("user_text") or "")[:12]) for t in turns]))
+        check("CC 合成的伪 user 消息判 synthetic，不混进真人轮",
+              any(t.get("origin") == "synthetic" for t in turns),
+              str([(t.get("origin"), (t.get("user_text") or "")[:24]) for t in turns]))
         check("每个主线/子代理节点都有归属轮",
               all(n.get("turn") for n in o.get("nodes", []) if n["kind"] in ("main", "subagent")))
 

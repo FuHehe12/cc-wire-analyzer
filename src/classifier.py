@@ -449,6 +449,40 @@ def _is_turn_start(body: dict) -> bool:
     return False
 
 
+# ===== 轮起源分类（260809，经 jsonl 真值验证）=====
+# 「这轮是谁发起的」：CC 会自己合成伪 user 消息触发一轮（建议补全/后台任务/离开回顾），
+# 它们与真人消息在 wire 层结构判据上完全重叠（tools_n/max_tokens/计费头版本哈希实测无一能
+# 分），只有措辞是稳定指纹。jsonl 侧有权威标记（origin.kind / promptSource），但不过 wire——
+# 那 11 条「wire 有 jsonl 没有」的 main 请求里 10 条正是白名单命中者，另 1 条是被打断的真人消息，
+# 所以这份前缀清单是启发式而非真值；命中不了的新形态一律落回 user（宁可把伪轮当真轮，不能把
+# 真人消息弱化）。真值层在 ROADMAP 0.6.x：jsonl 在场时用 request-id join 取 origin.kind 覆盖。
+TURN_ORIGIN_SYNTHETIC = (
+    "[SUGGESTION MODE",           # CC 建议补全（实测六会话 24 次，全判带外）
+    "The user stepped away",      # CC 离开回顾
+    "Perform a web search for the query:",   # CC 内部检索
+    "[SYSTEM NOTIFICATION",       # 后台任务通知（会带出真工作，故只弱化不隐藏）
+)
+TURN_ORIGIN_COMMAND = (
+    "<local-command-caveat>",     # 斜杠命令注入前缀（轮是真人轮，前缀非用户原话）
+    "<command-name>",
+    "<command-message>",
+)
+
+
+def _turn_origin(turn_start: bool, user_text: str) -> str:
+    """轮起源分类：user / synthetic / command / partial。判据只看轮首文本前缀——
+    不是"噪声过滤"（伪轮会带出真流量、有真实 token 成本，藏了就是惯犯③静默丢数据），
+    是给前端一个"降档显示但留入口"的依据。partial 优先于一切（只录到中间段，起源不明）。"""
+    if not turn_start:
+        return "partial"
+    t = (user_text or "").strip()
+    if t.startswith(TURN_ORIGIN_SYNTHETIC):
+        return "synthetic"
+    if t.startswith(TURN_ORIGIN_COMMAND):
+        return "command"
+    return "user"
+
+
 def _tool_use_count(record: dict) -> int:
     """响应里的 tool_use 块数（纯对话轮判据的原料）。"""
     return sum(1 for b in (record.get("response") or {}).get("content_blocks") or []
@@ -960,6 +994,10 @@ def build_dag(records: list[dict]) -> dict:
             # 轮首是真起点才有用户消息；残轮（只录到中间段）留空并标 partial
             "user_text": turn[0].get("user_text") or "",
             "partial": not turn[0]["turn_start"],
+            # 起源分类（260809）：user/synthetic/command/partial，前端据此降档伪轮、
+            # 不把它们与真人轮画成同一种卡。判据单份在这里，前端不重算。
+            "origin": _turn_origin(bool(turn[0]["turn_start"]),
+                                   turn[0].get("user_text") or ""),
             "steps": len(turn),
             "tool_uses": sum(n["tool_uses"] for n in turn),
             "total_ms": sum(n["total_ms"] or 0 for n in turn),

@@ -590,6 +590,13 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .dag-node.turn .dn-you-k{color:var(--gold-text);font-weight:700;}
 .dag-node.turn .dn-turn-dim{color:var(--apple-secondary);font-style:italic;}
+/* 伪轮（synthetic，260809 A）：CC 自己发起的一轮（建议补全/后台任务等）。不是噪声——
+   会带出真工作，所以只弱化不隐藏：卡片淡一档、用户原话改次级色，与真人轮一眼可辨，
+   又不至于像 .chat 那样降成纯对话的虚线。 */
+.dag-node.turn.synth{opacity:.62;border-left-style:dashed;}
+.dag-node.turn.synth:hover{opacity:.92;}
+.dag-node.turn.synth .dn-you{color:var(--apple-text-secondary);}
+.dag-node.turn.synth .dn-you-k{color:var(--apple-secondary);}
 .dag-node .dn-badges{display:flex;flex-wrap:wrap;gap:4px;align-items:center;overflow:hidden;max-height:18px;}
 .turn-badge{font-size:9.5px;padding:1px 5px;border-radius:9px;line-height:1.5;white-space:nowrap;
   max-width:110px;overflow:hidden;text-overflow:ellipsis;}
@@ -597,6 +604,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .turn-badge.sub:hover{filter:brightness(1.08);}
 .turn-badge.aux{background:var(--bg-softer);color:var(--apple-text-secondary);
   border:1px solid var(--border);font-family:var(--font-mono);}
+.turn-badge.aux.clickable{cursor:pointer;}
+.turn-badge.aux.clickable:hover{filter:brightness(1.15);}
+.turn-badge.aux.clickable.open{background:var(--bg-warm-3);color:var(--apple-text);
+  border-color:var(--apple-secondary);}
 
 /* ===== View C 设置 ===== */
 .settings-col{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;}
@@ -1754,8 +1765,10 @@ zh: {
   "dag.foldTurns": "按轮折叠", "dag.unfoldTurns": "展开所有轮",
   "dag.foldTurnsTitle": "按对话轮折叠：一轮一张卡，卡上是你那轮说的话、派生的子代理与辅助调用；点卡片展开该轮逐条请求",
   "dag.turnNo": "轮 {n}", "dag.turnSteps": "{n} 步", "dag.turnYou": "你：", "dag.turnSpawn": "派生：",
+  "dag.turnSynth": "CC 自动：", "dag.turnCmd": "命令：",
   "dag.turnPartial": "（残轮：只录到中间段）", "dag.turnEmptyUser": "（这轮的用户消息未录到）",
   "dag.turnCollapse": "折叠本轮", "dag.legTurnCard": "轮卡 = 一次用户消息及其引发的全部请求",
+  "dag.legSynth": "半透明虚线轮 = CC 自动发起（建议补全/后台任务等，会带出真工作）",
   "dag.hideMid": "隐藏工具循环步", "dag.showMid": "显示工具循环步",
   "dag.hideMidTitle": "隐藏工具循环中间步，只看用户消息轮——大流量天图立刻可读",
   "dag.showMidTitle": "显示工具循环中间步，恢复完整调用链",
@@ -1767,6 +1780,7 @@ zh: {
   "dag.errRun": "连续错误", "dag.errRunTitle": "{n} 条连续错误，点击展开逐条查看",
   "dag.collapseRun": "折叠",
   "dag.auxAgg": "辅助调用", "dag.auxAggTitle": "{lane}的 {n} 条辅助调用（标题/安全/计数等），点击展开逐条查看",
+  "dag.auxAggTurn": "轮 {n} · 辅助", "dag.auxFold": "点击展开本轮辅助", "dag.auxOpen": "已展开，点击收起本轮辅助",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
   "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.title": "标题指令",
@@ -2085,8 +2099,10 @@ en: {
   "dag.foldTurns": "Fold by turn", "dag.unfoldTurns": "Expand all turns",
   "dag.foldTurnsTitle": "Fold by conversation turn: one card per turn showing what you said, the subagents it spawned and the auxiliary calls; click a card to expand that turn's requests",
   "dag.turnNo": "turn {n}", "dag.turnSteps": "{n} steps", "dag.turnYou": "you: ", "dag.turnSpawn": "spawned with: ",
+  "dag.turnSynth": "CC auto: ", "dag.turnCmd": "command: ",
   "dag.turnPartial": "(partial turn: only the middle was captured)", "dag.turnEmptyUser": "(the user message for this turn was not captured)",
   "dag.turnCollapse": "fold this turn", "dag.legTurnCard": "turn card = one user message and everything it triggered",
+  "dag.legSynth": "faded dashed turn = started by CC itself (suggestion / background task — still does real work)",
   "dag.hideMid": "Hide tool-loop steps", "dag.showMid": "Show tool-loop steps",
   "dag.hideMidTitle": "Hide tool-loop middle steps, keep user turns only — makes busy days readable",
   "dag.showMidTitle": "Show tool-loop middle steps and restore the complete call chain",
@@ -2098,6 +2114,7 @@ en: {
   "dag.errRun": "consecutive errors", "dag.errRunTitle": "{n} consecutive errors, click to expand",
   "dag.collapseRun": "Collapse",
   "dag.auxAgg": "auxiliary calls", "dag.auxAggTitle": "{n} auxiliary calls of {lane} (title/security/count etc.), click to expand",
+  "dag.auxAggTurn": "turn {n} · aux", "dag.auxFold": "click to expand this turn's aux", "dag.auxOpen": "expanded — click to fold this turn's aux",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
   "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.title": "Title",
@@ -2415,8 +2432,10 @@ ja: {
   "dag.foldTurns": "ターンで折りたたむ", "dag.unfoldTurns": "全ターンを展開",
   "dag.foldTurnsTitle": "会話ターン単位で折りたたみ：1 ターン 1 カードに、あなたの発言・派生したサブエージェント・補助呼び出しをまとめます。カードをクリックするとそのターンの各リクエストが開きます",
   "dag.turnNo": "ターン {n}", "dag.turnSteps": "{n} ステップ", "dag.turnYou": "あなた：", "dag.turnSpawn": "派生指示：",
+  "dag.turnSynth": "CC 自動：", "dag.turnCmd": "コマンド：",
   "dag.turnPartial": "（部分ターン：途中からの記録）", "dag.turnEmptyUser": "（このターンのユーザーメッセージは未記録）",
   "dag.turnCollapse": "このターンを折りたたむ", "dag.legTurnCard": "ターンカード = 1 回のユーザー発言とそれが引き起こした全リクエスト",
+  "dag.legSynth": "半透明破線ターン = CC が自動で開始（補完/バックグラウンドタスク等、実際の処理も伴う）",
   "dag.hideMid": "ツールループを隠す", "dag.showMid": "ツールループを表示",
   "dag.hideMidTitle": "ツールループの中間ステップを隠してユーザーターンだけ表示——大量の日でも読みやすく",
   "dag.showMidTitle": "ツールループの中間ステップを表示し、完全な呼び出しチェーンに戻します",
@@ -2428,6 +2447,7 @@ ja: {
   "dag.errRun": "連続エラー", "dag.errRunTitle": "{n} 件の連続エラー、クリックで展開",
   "dag.collapseRun": "折りたたむ",
   "dag.auxAgg": "補助呼出", "dag.auxAggTitle": "{lane} の補助呼出 {n} 件（タイトル/安全/カウント等）、クリックで展開",
+  "dag.auxAggTurn": "ターン {n} · 補助", "dag.auxFold": "このターンの補助を展開", "dag.auxOpen": "展開中 — クリックでこのターンの補助を折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
   "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.title": "タイトル指示",
@@ -4068,7 +4088,8 @@ function renderDagLegend(lanes, laneColor, laneNum){
     ? '<span class="leg">' + t18("dag.legTurnCard") + '</span>'
     : '<span class="leg">' + t18("dag.legTurn") + '</span>' +
       '<span class="leg">' + t18("dag.legMid") + '</span>' +
-      '<span class="leg">' + t18("dag.legChat") + '</span>') + '</span>';
+      '<span class="leg">' + t18("dag.legChat") + '</span>') +
+    '<span class="leg">' + t18("dag.legSynth") + '</span></span>';
   el.innerHTML = h;
 }
 /* ---- DAG 增量渲染（260719）----
@@ -4082,21 +4103,21 @@ const DG = {
   date: null, rendered: false, hideMid: false, hideAux: false,
   /* 按轮折叠（260802，默认开）：一轮一张卡，卡上是「你那轮说了什么」+ 派生的子代理 + 辅助计数。
      hideMid 解决的是"太多"，这个解决的是"看不出对话流程"——两者并存，展开某轮后 hideMid 仍生效。
-     aux 泳道在折叠态**不消失**：各主线的辅助聚成「一条主线一张聚合卡」（260802 二次迭代——
-     全藏让 aux 列整列蒸发、归属线全成自环，用户报 bug；全常驻图又高 25%）。
-     孤儿辅助（near 边没挂上的）不进卡，照常单条。 */
+     aux 泳道在折叠态**不消失**：每轮的辅助聚成「一轮一张聚合卡」（260809 B2 从泳道收紧到轮——
+     按泳道一天只有 2-4 张卡、点开一次展开全天 90+ 条没有中间档；260802 二次迭代先确立
+     「不全藏」（全藏让 aux 列整列蒸发、归属线全成自环，用户报 bug），这次把粒度改对）。
+     孤儿辅助（near 边没挂上、归不到轮）不进卡，照常单条。 */
   foldTurns: true, expandedTurns: new Set(),
   turnById: {}, turnOfNode: {}, turnPos: {},
   ids: new Set(), tier: {}, pos: {}, nodeById: {},
   laneX: {}, laneLast: {}, laneKind: {}, laneColor: {}, laneNum: {},
   parentLane: {}, auxAssoc: {}, laneCount: 0, yCur: DGX.Y0, lanes: [],
-  /* 辅助聚合卡：key = 关联主线 lane id；auxAggOf = 成员节点 → 卡（dagPosOf 解析 near 边用）；
-     auxAggFirst/auxAggMembers/auxAggIn = renderDagFull 预分的组（auxAggIn 只记「在组里的」
-     成员——轮被展开/卡被点开的成员不在组，dagPlace 靠它区分谁归组谁单条）；
-     auxFirstOfLane = 各主线首个 aux（聚合卡展开后首条的「收回」徽章靠它定位）。
-     expandedAuxAgg = 被点开的聚合卡。 */
-  auxAgg: {}, auxAggOf: {}, auxAggFirst: {}, auxAggMembers: {}, auxFirstOfLane: {},
-  auxAggIn: {}, expandedAuxAgg: new Set(),
+  /* 辅助聚合卡（260809 B2，粒度收紧到轮）：key = 所属轮 turn_id；auxAggOf = 成员节点 → 卡
+     （dagPosOf 解析 near 边用）；auxAggFirst/auxAggMembers/auxAggIn = renderDagFull 预分的组
+     （auxAggIn 只记「在组里的」成员——轮被展开/卡被点开的成员不在组，dagPlace 靠它区分）；
+     auxAggLane = 该组所属关联主线（着色/级联隐藏用）。expandedAuxAgg = 被点开的组。 */
+  auxAgg: {}, auxAggOf: {}, auxAggFirst: {}, auxAggMembers: {}, auxAggLane: {},
+  auxAggIn: {}, auxFirstVisible: {}, expandedAuxAgg: new Set(),
   hiddenLanes: new Set(),     /* 泳道选择：用户显式藏掉的 lane（不占列，260719） */
   shownLanes: new Set(),      /* 用户显式勾回的 lane：父被（级联）关闭也照显（260801 级联关闭） */
   runs: {}, openRun: {}, runOf: {},   /* 连续错误折叠：key=lane:firstId；openRun=各 lane 未闭合的 run */
@@ -4220,16 +4241,22 @@ function dagNodeHtml(n){
     ? '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
       'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleRun(\'' +
       expKey + '\')">▴ ' + t18("dag.collapseRun") + '</span>' : "";
-  /* 展开的辅助聚合卡的首条成员：同样带「折叠」徽章可收回（key = 关联主线 lane id） */
-  const aal = DG.auxAssoc[n.id];
-  if(aal && !collapse && DG.expandedAuxAgg.has(aal) && DG.auxFirstOfLane[aal] === n.id){
+  /* 展开的辅助聚合组的首个**可见**成员：带「折叠」徽章可收回（key = 所属轮 turn_id，
+     260809 B2）。组首按预排的 auxAggFirst，但组首可能被 hideMid 滤掉（tier 判定只看
+     main/subagent 只是历史巧合，hideMid 的过滤是通用的）——所以挂第一个**实际渲染**
+     的成员，由 renderDagFull 的 auxFirstVisible 预排给出，保证徽章落在 DOM 里。 */
+  const atid = n.turn;
+  if(atid && !collapse && DG.expandedAuxAgg.has(atid) && (DG.auxFirstVisible||{})[atid] === n.id){
     collapse = '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
       'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleAuxAgg(\'' +
-      aal + '\')">▴ ' + t18("dag.collapseRun") + '</span>';
+      atid + '\')">▴ ' + t18("dag.collapseRun") + '</span>';
   }
-  /* 展开的轮的首条请求：带「折叠本轮」可收回（否则展开后只能靠全局按钮收，找不回来） */
+  /* 展开的轮：徽章挂到该轮第一个可见成员——不一定还是轮首。残轮轮首判 mid（turn_start=False）、
+     hideMid 又可能把轮首整颗滤掉，两种情况下「折叠本轮」都得有地方可点，否则只能靠全局按钮
+     连带清空其它轮（260809 B1：08-08 实测 137 步残轮展开后收不回）。turnFirstVisible 由
+     renderDagFull 预排，与下方 dagTierOf/hideMid 过滤同序，保证指的一定是实际渲染的那颗。 */
   if(DG.foldTurns && n.turn && DG.expandedTurns.has(n.turn) &&
-     (DG.turnById[n.turn] || {}).head === n.id){
+     (DG.turnFirstVisible || {})[n.turn] === n.id){
     collapse += '<span class="chip outline" role="button" tabindex="0" style="cursor:pointer" ' +
       'onkeydown="event.stopPropagation();activateClick(event)" onclick="event.stopPropagation();dagToggleTurn(\'' +
       esc(n.turn) + '\')">▴ ' + t18("dag.turnCollapse") + '</span>';
@@ -4237,11 +4264,13 @@ function dagNodeHtml(n){
   const ur = n.usage || {};
   const u = { input: ur.input_tokens ?? ur.input, output: ur.output_tokens ?? ur.output };
   if(tier === "mid"){
-    /* 工具循环中间步：单行紧凑条（时间+耗时+token），无 chip 无 summary，点击照常进详情 */
+    /* 工具循环中间步：单行紧凑条（时间+耗时+token），无 chip 无 summary，点击照常进详情。
+       **collapse 徽章要带上**：残轮轮首也走这个分支（260809 B1），不带就是丢收回入口。 */
     return '<div class="dag-node mid" role="button" tabindex="0" onkeydown="activateClick(event)" data-nid="' +
       esc(n.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;border-left-color:' +
       border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
       '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
+      (collapse ? '<span class="dn-tags">' + collapse + '</span>' : "") +
       '<span class="dn-meta">' + fmtMs(n.total_ms) +
       (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") + '</span></div></div>';
   }
@@ -4263,8 +4292,14 @@ function dagNodeHtml(n){
    模型回答的摘要是请求视角，而人回溯时找的是自己说过的话。下面两行放这轮派生的子代理
    （点徽章直接跳到那条泳道）与辅助调用计数。点卡片展开本轮逐条请求。 */
 function dagTurnCardHtml(t, pos, laneColor){
-  /* 子代理泳道的"用户消息"其实是派生方给它的 prompt，不是人说的话——标签要说实话 */
-  const speaker = DG.laneKind[t.lane] === "subagent" ? "dag.turnSpawn" : "dag.turnYou";
+  /* 起源分类（260809 A）：origin 由后端按轮首文本前缀白名单判（classifier._turn_origin，
+     经 jsonl 真值验证）。伪轮（synthetic）不是噪声——会带出真工作、有真实成本，藏了就是
+     惯犯③——所以只降档显示、标签改「CC 自动：」，不隐藏不合并。子代理泳道的"用户消息"
+     是派生方给的 prompt，标签同样要说实话。 */
+  const origin = t.origin || (t.partial ? "partial" : "user");
+  const speaker = DG.laneKind[t.lane] === "subagent" ? "dag.turnSpawn"
+    : origin === "synthetic" ? "dag.turnSynth"
+    : origin === "command" ? "dag.turnCmd" : "dag.turnYou";
   const you = t.user_text
     ? '<span class="dn-you-k">' + t18(speaker) + '</span>' + esc(t.user_text)
     : '<span class="dn-turn-dim">' + t18(t.partial ? "dag.turnPartial" : "dag.turnEmptyUser") + '</span>';
@@ -4276,15 +4311,24 @@ function dagTurnCardHtml(t, pos, laneColor){
     ' onclick="event.stopPropagation();dagFocusLane(\'' + esc(s.lane_id) + '\')">🤖 ' +
     esc((s.label || s.lane_id).slice(0, 14)) + '</span>';
   }).join("");
-  const aux = AUX_ORDER.filter(k => (t.aux || {})[k]).map(k =>
-    '<span class="turn-badge aux" title="' + esc(kindLabel(k)) + ' ×' + t.aux[k] + '">' +
-    AUX_ICON[k] + (t.aux[k]) + '</span>').join("");
+  const aux = AUX_ORDER.filter(k => (t.aux || {})[k]).map(k => {
+    /* 可点（260809 B4）：就地展开/收起该轮的辅助，不去 aux 列找卡。展开态给「已展开」提示，
+       折叠态给「展开」提示；stopPropagation 防止冒泡触发 dagToggleTurn 把整轮也展开。 */
+    const open = DG.expandedAuxAgg.has(t.turn_id);
+    return '<span class="turn-badge aux clickable' + (open ? " open" : "") +
+      '" role="button" tabindex="0" title="' + esc(kindLabel(k)) + ' ×' + t.aux[k] +
+      ' · ' + t18(open ? "dag.auxOpen" : "dag.auxFold") +
+      '" onkeydown="event.stopPropagation();activateClick(event)"' +
+      ' onclick="event.stopPropagation();dagToggleAuxAgg(\'' + esc(t.turn_id) + '\')">' +
+      AUX_ICON[k] + (t.aux[k]) + '</span>';
+  }).join("");
   const badges = (subs || aux) ? '<div class="dn-badges">' + subs + aux + '</div>' : "";
   /* 整卡染红只留给「整轮全挂」；轮里有几次失败（重试/瞬时 429）给 ⚠N 徽章。
      实测一天 68 轮有 29 轮含至少一次失败——一律染红等于把红色用废。 */
   const allFailed = t.errors > 0 && t.errors === t.steps;
   const errTag = t.errors ? ' · <b style="color:var(--err)">⚠' + t.errors + '</b>' : "";
   return '<div class="dag-node turn' + (allFailed ? " err" : "") + (t.pure_chat ? " chat" : "") +
+    (origin === "synthetic" ? " synth" : "") +
     '" role="button" tabindex="0" onkeydown="activateClick(event)" data-turn="' + esc(t.turn_id) +
     '" style="left:' + pos.x + 'px;top:' + pos.y + 'px;height:' +
     pos.h + 'px;border-left-color:' + laneColor + '" onclick="dagToggleTurn(\'' + esc(t.turn_id) + '\')">' +
@@ -4334,9 +4378,9 @@ function dagToggleRun(key){
   DG.rendered = false;   /* 折叠态变了：全量重排 */
   loadDag();
 }
-/* 辅助聚合卡（260802）：折叠态下一条主线的全部辅助收成一张，立在 aux 列组首的时间槽；
-   边线/计数章用主线色——多会话并发时各主线一张卡，不会在 aux 列里互相穿插。
-   点击展开该主线全部辅助（展开后首条带「▴ 折叠」徽章可收回）。 */
+/* 辅助聚合卡（260809 B2，粒度收紧到轮）：折叠态下**一轮**的辅助收成一张，立在 aux 列该轮
+   组首的时间槽；边线/计数章仍用关联主线色（多会话并发时各主线各一套色，不会穿插）。
+   点击只展开这一轮的几条辅助（不再是一次展开全天 90+），展开后该组首条带「▴ 折叠」徽章收回。 */
 function dagAuxAggHtml(agg){
   const counts = {};
   agg.ids.forEach(id => { const m = DG.nodeById[id] || {}; counts[m.kind] = (counts[m.kind] || 0) + 1; });
@@ -4345,6 +4389,8 @@ function dagAuxAggHtml(agg){
     AUX_ICON[k] + counts[k] + '</span>').join("");
   const color = dagLaneStroke(agg.lane);
   const first = DG.nodeById[agg.ids[0]] || {};
+  const turn = DG.turnById[agg.turn];
+  const turnNo = turn ? turn.index : "?";
   const p = agg.pos;
   return '<div class="dag-node aux-agg" role="button" tabindex="0" onkeydown="activateClick(event)" data-auxagg="' +
     esc(agg.key) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;height:' + p.h +
@@ -4352,7 +4398,7 @@ function dagAuxAggHtml(agg){
     '" onclick="dagToggleAuxAgg(\'' + esc(agg.key) + '\')">' +
     '<div class="dn-r1"><span class="dn-time">' + timePart(first.ts_start) + '</span>' +
     '<span class="chip" style="background:' + color + ';color:' + fgOnHex(color) + '">×' + agg.ids.length + '</span></div>' +
-    '<div class="dn-meta">' + esc(laneShortName(agg.lane)) + ' · ' + t18("dag.auxAgg") + '</div>' +
+    '<div class="dn-meta">' + t18("dag.auxAggTurn", {n: turnNo}) + ' · ' + esc(laneShortName(agg.lane)) + '</div>' +
     '<div class="dn-badges">' + badges + '</div></div>';
 }
 function dagToggleAuxAgg(key){
@@ -4397,17 +4443,18 @@ function dagPlace(n){
      **没有归属主线的辅助不进组、照常单条**：那是 near 边没挂上的（主线没录到/跨天截断），
      藏了就是静默丢数据（与惯犯 ③ 同一条纪律）。 */
   if(DG.foldTurns && DG.laneKind[n.lane] === "aux"){
-    const al = DG.auxAggIn[n.id];   /* 只查「在组里」——轮被展开/卡被点开的成员不在组，落单条 */
-    if(al){
-      if(DG.auxAggFirst[al] !== n.id) return null;   /* 非组首：并进聚合卡，不占位 */
+    const tid = DG.auxAggIn[n.id];   /* 只查「在组里」——轮被展开/卡被点开的成员不在组，落单条 */
+    if(tid){
+      if(DG.auxAggFirst[tid] !== n.id) return null;   /* 非组首：并进聚合卡，不占位 */
       const x = DG.laneX[n.lane];
       if(x == null) return "UNKNOWN_LANE";
       /* NH_AGG=76（260803）：聚合卡是三行结构（r1/meta/badges≈72px），复用普通卡 NH=62
          会把 badges 行裁到只剩一条缝（overflow:hidden）——per-kind 数量徽章视觉不可读，
          用户报「看不到具体的数量」。轮卡同构但有自己的 NH_TURN=96，没踩到。 */
       const pos = { x, y: DG.yCur, h: DGX.NH_AGG };
-      DG.auxAgg[al] = { key: al, lane: al, ids: DG.auxAggMembers[al], pos, chunkIdx: null };
-      DG.auxAggMembers[al].forEach(id => { DG.auxAggOf[id] = al; });
+      DG.auxAgg[tid] = { key: tid, turn: tid, lane: DG.auxAggLane[tid],
+                         ids: DG.auxAggMembers[tid], pos, chunkIdx: null };
+      DG.auxAggMembers[tid].forEach(id => { DG.auxAggOf[id] = tid; });
       DG.yCur += pos.h + DGX.VG;
       let svgA = "";
       const prevA = DG.laneLast[n.lane];
@@ -4416,7 +4463,7 @@ function dagPlace(n){
         if(paA) svgA += dagSeqSvg(paA, pos, n.lane);
       }
       DG.laneLast[n.lane] = n.id;
-      return { type: "node", svg: svgA, html: dagAuxAggHtml(DG.auxAgg[al]) };
+      return { type: "node", svg: svgA, html: dagAuxAggHtml(DG.auxAgg[tid]) };
     }
   }
   /* 260729：辅助调用跟随其关联主线一起隐藏——关掉一条主线，挂在它上面的 title/security/
@@ -4568,22 +4615,58 @@ function renderDagFull(d){
   DG.runs = {}; DG.openRun = {}; DG.runOf = {}; DG.suppressRun = {};
   DG.auxAgg = {}; DG.auxAggOf = {};
   const sorted = nodes.slice().sort((a, b) => (a.ts_start || "").localeCompare(b.ts_start || ""));
-  /* 辅助聚合预分组（260802）：折叠态下，有归属主线、未被级联隐藏、轮未展开、聚合卡未点开的
-     aux → 按关联主线分组，组首占位画聚合卡（部分成员被单独展开时，卡上计数自然减少）。
-     各主线首个 aux（不论进不进组）记 auxFirstOfLane：聚合卡展开后首条的「折叠」徽章靠它定位。 */
-  DG.auxAggFirst = {}; DG.auxAggMembers = {}; DG.auxFirstOfLane = {}; DG.auxAggIn = {};
+  /* 辅助聚合预分组（260809 B2，粒度从泳道收紧到轮）：key = 该轮 turn_id（后端 build_dag
+     已把每条 aux 归到所属轮，classifier.py:1053）。此前按关联主线 lane 分——一天只有
+     泳道数张卡，点开一次展开全天 90+ 条、没有中间档。改成轮后：每轮一张「轮 N · 辅助 ×k」，
+     点开只展开这一轮的辅助；归不到轮的 aux（near 边没挂上）不进组、单条显示，不藏。
+     各组首个 aux 记 auxAggFirst，展开后该组首条的「收回」徽章靠它定位（挂组内，不再挂全泳道第一条）。
+     组只在折叠态成立：foldTurns / hideAux / 主线被级联隐藏 / 轮被展开 / 该组卡被点开 → 落单条。 */
+  DG.auxAggFirst = {}; DG.auxAggMembers = {}; DG.auxAggIn = {}; DG.auxAggLane = {};
   for(const n of sorted){
     if(DG.laneKind[n.lane] !== "aux") continue;
-    const al = DG.auxAssoc[n.id];
-    if(!al) continue;
-    if(!DG.auxFirstOfLane[al]) DG.auxFirstOfLane[al] = n.id;
-    if(!DG.foldTurns || DG.hideAux || laneHidden(al)) continue;
-    if(n.turn && DG.expandedTurns.has(n.turn)) continue;
-    if(DG.expandedAuxAgg.has(al)) continue;
-    (DG.auxAggMembers[al] = DG.auxAggMembers[al] || []).push(n.id);
-    DG.auxAggIn[n.id] = al;
+    const lane = DG.auxAssoc[n.id];          /* 关联主线 lane（着色/级联隐藏用），不再是分组键 */
+    if(!lane) continue;                       /* 无 near 边：保持单条，不进组 */
+    const tid = n.turn;                       /* 分组键 = 所属轮（没有就挂不上轮，保持单条） */
+    if(!tid) continue;
+    if(!DG.foldTurns || DG.hideAux || laneHidden(lane)) continue;
+    if(DG.expandedTurns.has(tid)) continue;   /* 轮被展开：该轮 aux 全部单条（B4 有单独入口收回） */
+    if(DG.expandedAuxAgg.has(tid)) continue;  /* 该组聚合卡被点开 */
+    (DG.auxAggMembers[tid] = DG.auxAggMembers[tid] || []).push(n.id);
+    DG.auxAggIn[n.id] = tid;
+    DG.auxAggLane[tid] = lane;
   }
-  for(const al in DG.auxAggMembers) DG.auxAggFirst[al] = DG.auxAggMembers[al][0];
+  for(const tid in DG.auxAggMembers) DG.auxAggFirst[tid] = DG.auxAggMembers[tid][0];
+  /* 轮首可见成员预排（260809 B1）：dagNodeHtml 的「折叠本轮」徽章不再写死挂 t.head——
+     残轮轮首判 mid、hideMid 会滤掉轮首，两种都让它落不到 DOM。这里按与 dagTierOf/hideMid
+     同样的顺序算出每个展开轮第一个**实际会渲染**的成员，徽章挂它。只对展开的轮算。 */
+  DG.turnFirstVisible = {};
+  if(DG.foldTurns && DG.expandedTurns.size){
+    for(const n of sorted){
+      const tid = n.turn;
+      if(!tid || !DG.expandedTurns.has(tid) || DG.turnFirstVisible[tid]) continue;
+      if(DG.laneKind[n.lane] === "aux") continue;        /* aux 不挂「折叠本轮」（B4 另有入口） */
+      if(DG.hideMid && dagTierOf(n) === "mid") continue;
+      if(laneHidden(n.lane)) continue;
+      if(DG.hideAux && DG.laneKind[n.lane] === "aux") continue;
+      DG.turnFirstVisible[tid] = n.id;
+    }
+  }
+  /* 辅助组首个可见成员预排（260809 B4 补充）：auxAggFirst 记的是组首，但组首可能被
+     hideMid 滤掉——那样「折叠该组辅助」徽章就落不到 DOM（实测 24 条组点开收不回）。
+     与上面 turnFirstVisible 同序，算出每个被点开的 aux 组第一个**实际渲染**的成员挂徽章。 */
+  DG.auxFirstVisible = {};
+  if(DG.foldTurns && DG.expandedAuxAgg.size){
+    for(const n of sorted){
+      if(DG.laneKind[n.lane] !== "aux") continue;
+      const tid = n.turn;
+      if(!tid || !DG.expandedAuxAgg.has(tid) || DG.auxFirstVisible[tid]) continue;
+      if(DG.hideMid && dagTierOf(n) === "mid") continue;
+      const lane = DG.auxAssoc[n.id];
+      if(lane && laneHidden(lane)) continue;
+      if(DG.hideAux) continue;
+      DG.auxFirstVisible[tid] = n.id;
+    }
+  }
   const chunks = [];          /* 节点 HTML 按块收集：run 开始时回头把「单张错误卡」替换成 ×N 卡 */
   const chunkIdxOf = {};
   let svg = "";
