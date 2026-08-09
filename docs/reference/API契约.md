@@ -407,6 +407,120 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - `ai_guide`：自描述入口的路径（260801）。恒为 `"/api/ai-guide"`——它存在的意义是让只调过
   `about` 的 agent 不必先知道端点清单就能找到说明书。
 
+### `GET|POST /api/snapshots/<sid>/analysis` — 骨架的 AI 语义层（260809）
+
+`GET` 读已有结果（**不调模型**）：`{ok, exists, data}`。
+`POST` 跑一次并覆盖落盘（"重新分析"就是再 POST 一次）：`{ok, data}`。
+
+```json
+{
+  "sid": "snap_…", "created": "2026-08-09T19:20:00", "model": "deepseek-chat",
+  "steps_total": 66,
+  "turns": [{"turn": 1, "steps": [1,2,3], "title": "…", "intent": "…", "risk": ""}],
+  "summary": "…",
+  "dropped_steps": []
+}
+```
+
+**这是分层设计，不是"AI 生成骨架"**：
+
+| 层 | 谁产出 | 回答什么 |
+|---|---|---|
+| 事实层 | `snapshot_extract.level0()` 规则 | 有哪些步、谁触发、调了什么工具、轮次边界——可从录制原文复算 |
+| 语义层（本端点）| AI | 这一轮在做什么、想达到什么、哪里值得注意 |
+
+⚠️ **`turns[].steps` 里的步号在落盘前被强制校验**，不在程序骨架里的一律剔除并记入
+`dropped_steps`。prompt 里要求"只引用真实步号"是要求，不是保证——**没有这道校验，
+"AI 归纳挂在程序事实上"就只是一句说辞**：模型可以归纳出一轮根本不存在的步骤，
+而界面照样渲染得像模像样。
+
+其他边界：
+
+- 只对 `kind=capture` 的快照有效（提示词快照没有轮次骨架），否则 400 `not_capture`。
+- 抽不出步骤时 400 `no_steps`，不返回一份空归纳。
+- 模型没给出可解析 JSON → `ok:false` + `bad_json`（HTTP 200），**如实说**而不是留空面板。
+- 防注入照不变量 6：`SKELETON_GUARD_HEAD/TAIL` 硬编码不可配置，骨架经 `_wrap_content` 转义
+  字面 `</skeleton>`。骨架里含用户原话与工具入参，是不可信内容。
+- 结果存 `<sid>.analysis.json`，**不进快照信封**（信封不可改，这是可重算的派生物）；
+  随快照删除一并清理，并计入 `size_of`。
+
+### `GET /api/storage` — 数据目录占用（260809）
+
+```json
+{
+  "data_dir": "~/.cc-wire-analyzer",
+  "captures": {"bytes": 5088371174, "files": 15, "index_bytes": 68254423, "index_files": 15, "exists": true},
+  "archives": {"bytes": 0, "files": 0, "exists": true},
+  "snapshots": {"bytes": 2058509, "files": 10, "exists": true},
+  "log_bytes": 5990734,
+  "capture_days": 15,
+  "largest_day": {"date": "2026-07-29", "bytes": 1183484730},
+  "total_bytes": 5164674840
+}
+```
+
+**只读**，不做任何清理动作（清理/归档是 `/api/captures/*` 那边的事）。
+
+⚠️ **只 `stat`，绝不读文件内容**——这是这个端点的性能契约，不是实现细节：
+
+| | 成本 | 随什么增长 |
+|---|---|---|
+| 本端点（scandir 取 `st_size`）| 稳态 **1.12 ms**（15 天 / 4.8 GB）| 文件数 |
+| 数索引行数拿"条数" | 4.4 ms/天 | **数据量** |
+| `config.list_capture_dates()` | 逐行读主文件 = 读 4.8 GB | 数据量，灾难级 |
+
+所以**本端点不返回条数**：条数只能靠数行拿到，是唯一会让它随数据量变慢的字段。要按天的
+条数请用 `/api/captures`（那里的分页本来就是为此设计的）。同理**不要**在这里调
+`config.list_capture_dates()`。
+
+`index_bytes` / `index_files` 只在 `captures` 里出现（其余目录没有索引文件，给它们带上两个
+恒为 0 的字段就是死字段）。`{date}.idx.jsonl` 单列而不并入 `bytes`，因为它占 1.3%，
+混进去会让"录制本身有多大"这个数失真。
+
+### `GET /api/instance` — 本实例是谁（260809）
+
+```json
+{
+  "port": 5051, "pid": 26924, "mode": "gui", "version": "0.4.11",
+  "exe": "C:\\...\\cc-wire-analyzer-v0.4.11-windows.exe",
+  "started_at": 1786000000.0, "recording": true,
+  "data_dir": "~/.cc-wire-analyzer", "legacy": false
+}
+```
+
+- `mode`：`gui` / `serve` / `dev`（源码 `uv run` 直跑）。由 `desktop.py` 在两个入口注入
+  （`app.set_run_mode()`，形状同 `set_listen_port`）。
+- `recording`：等价于 `proxy/status.running`（本实例是否正在 patch settings.json）。
+- 这个端点必须**轻、无副作用、不依赖磁盘状态**——`/api/instances` 扫描时对每个候选端口调它。
+
+### `GET /api/instances` — 本机在跑的所有实例（260809）
+
+```json
+{
+  "instances": [ { "…同 /api/instance…": null, "is_self": true } ],
+  "unknown_ports": [5055],
+  "self_port": 5051,
+  "scanned": {"start": 5051, "end": 5100}
+}
+```
+
+扫 `5051-5100`（`find_free_port` 同一段）：TCP 探活 → `GET /api/instance` → 旧版本回退
+`GET /api/about`（标 `legacy:true` / `mode:"unknown"` / `recording:null`）。端口开着但两个端点
+都不应答 → 进 `unknown_ports`，**不猜它是什么程序**（同不变量 8「宁可漏报不可误报」）。
+
+**四条边界，别放宽**：
+
+1. **端口段硬编码，不接受任何入参**——可传就等于给出一个无认证的本机任意端口扫描器
+   （同不变量 10 第 1 条：本机接口的入参就是攻击面）。
+2. 只连 `127.0.0.1`，不解析主机名。
+3. 纯只读：不写文件、不碰 settings.json、不动 marker。
+4. 探测**必须绕过系统代理**（`ProxyHandler({})`）——本工具的用户十有八九开着本机代理，
+   让探测走代理去连 127.0.0.1 轻则超时、重则把探测请求送出机器。
+
+> **为什么不读 `port.txt` / `serve.pid`**：那两个文件单份、后写覆盖、无实例归属、退出不清理
+> （260809 实测 `serve.pid` 停在六天前一个已退出的 PID）。本端点因此**不依赖任何持久化状态**，
+> 也就不可能显示过期信息。写入侧的契约要不要改属 0.5.x，与本端点无关。
+
 ### `GET /api/ai-guide` — 自描述说明书（260801）
 
 **不返回 JSON**：`Content-Type: text/markdown; charset=utf-8`，body 是 Markdown 原文。

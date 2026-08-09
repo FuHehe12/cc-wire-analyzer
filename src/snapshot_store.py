@@ -666,12 +666,15 @@ def delete_snapshot(sid: str) -> dict:
             f.unlink()
         except OSError as e:
             raise SnapshotError("delete_failed", f"删除失败：{e}")
-        chat = chat_file(sid)
-        if chat.exists():
-            try:
-                chat.unlink()
-            except OSError:
-                pass        # 对话记录删不掉不致命（快照已没，它成了孤儿文件，重建索引看不到它）
+        # 派生物跟着快照走：对话记录 + 语义分析（260809）。删不掉不致命——快照已没，
+        # 它们成了孤儿文件，重建索引看不到；但**新增派生文件时必须回来加进这个清单**，
+        # 否则每删一个快照就留一份垃圾。
+        for side in (chat_file(sid), analysis_file(sid)):
+            if side.exists():
+                try:
+                    side.unlink()
+                except OSError:
+                    pass
     rebuild_index()
     return {"sid": sid, "deleted": True}
 
@@ -704,7 +707,7 @@ def size_of(sid: str) -> int:
     否则"删 12 条"这句话不构成决策依据。"""
     _validate_sid(sid)
     n = 0
-    for f in (_snap_file(sid), chat_file(sid)):
+    for f in (_snap_file(sid), chat_file(sid), analysis_file(sid)):
         try:
             n += f.stat().st_size
         except OSError:
@@ -735,17 +738,61 @@ def delete_many(sids) -> dict:
                     pass
                 f.unlink()
                 ok.append(sid)
-                chat = chat_file(sid)
-                if chat.exists():
-                    try:
-                        freed += chat.stat().st_size
-                        chat.unlink()
-                    except OSError:
-                        pass
+                # 派生物与单条删除走同一份清单（对话 + 语义分析），新增派生文件时两处都要加
+                for side in (chat_file(sid), analysis_file(sid)):
+                    if side.exists():
+                        try:
+                            freed += side.stat().st_size
+                            side.unlink()
+                        except OSError:
+                            pass
             except (SnapshotError, OSError) as e:
                 failed.append({"sid": sid, "error": str(e)})
     rebuild_index()
     return {"deleted": len(ok), "sids": ok, "failed": failed, "freed": freed}
+
+
+# ===== 骨架的 AI 语义分析（落盘，跟着快照走；产出由 app 侧调用 LLM 得到）=====
+#
+# **单独一个文件，不进快照信封**（260809）。信封里的正文与元数据是不可改的——快照的价值
+# 就在于它不变（见 update_meta 的 docstring）。而这份东西是**可重算的派生物**，"重新分析"
+# 要覆盖写；混进信封就意味着每次重新分析都在改快照本体，直接破坏那条不变量。
+# 独立文件另外白得三件事，且都照 chat_file 的现成先例：删快照时一并删、size_of 统计得到、
+# 重新分析是原子替换独立文件（失败不损坏快照本体）。
+
+def analysis_file(sid: str) -> Path:
+    _validate_sid(sid)
+    return SNAPSHOTS_DIR / f"{sid}.analysis.json"
+
+
+def read_analysis(sid: str) -> dict | None:
+    """已有的语义分析；没有则 None。**外部 agent 也读得到**（同 chat_history 的理由）。"""
+    f = analysis_file(sid)
+    if not f.exists():
+        return None
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        # 读不出来当作没有，但要留痕：静默返回 None 会让"文件坏了"和"没分析过"
+        # 在界面上完全一样（惯犯 ③）。
+        log.warning("analysis unreadable %s: %s", sid, e)
+        return None
+
+
+def write_analysis(sid: str, data: dict) -> dict:
+    """落盘（原子替换）。重新分析走同一条路径，直接覆盖。"""
+    _validate_sid(sid)
+    if not _snap_file(sid).exists():
+        raise SnapshotError("not_found", f"快照不存在：{sid}")
+    SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    with _LOCK:
+        try:
+            tmp = SNAPSHOTS_DIR / f".{sid}.analysis.writing"
+            tmp.write_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+            tmp.replace(analysis_file(sid))
+        except OSError as e:
+            raise SnapshotError("write_failed", f"分析结果写入失败：{e}")
+    return data
 
 
 # ===== 分析对话（落盘，跟着快照走；写入由 app 侧调用） =====

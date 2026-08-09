@@ -628,6 +628,28 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .srow input[type=number]{min-width:90px;text-align:right;}
 .srow select{min-width:140px;font-family:var(--font-body);cursor:pointer;}
 .srow textarea{font-family:var(--font-body);line-height:1.6;resize:vertical;min-height:72px;width:340px;}
+/* 运行中的实例（260809，issue 260809_设置页实例总览）。等宽字体不是装饰：这张卡是拿来
+   「扫一眼比对端口」的，端口/PID 数字左对齐等宽才能一眼看出哪个是哪个。
+   颜色全部走语义 token；`--text-faint`(2.37) 刻意没用在任何一行正文上——这卡全是 11px 小字，
+   而「哪个实例在空转」恰恰是用户最需要看清的一行，虚掉就白做了。 */
+.inst-list{display:flex;flex-direction:column;gap:6px;margin:2px 0 8px;}
+.inst-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:8px 11px;
+  background:var(--bg-soft);border:1px solid var(--border-soft);border-radius:8px;
+  font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);}
+.inst-row.self{border-color:var(--accent);background:var(--bg-softer);}
+.inst-row.unknown{border-style:dashed;}
+.inst-port{font-size:12.5px;font-weight:700;color:var(--apple-text-strong);letter-spacing:0.2px;}
+.inst-tag{font-family:var(--font-body);font-size:10px;font-weight:600;padding:1px 8px;
+  border-radius:999px;border:1px solid var(--border);color:var(--apple-text-secondary);}
+.inst-tag.gui{border-color:var(--accent);color:var(--gold-text);}
+.inst-tag.serve{border-color:var(--info);color:var(--info);}
+.inst-tag.legacy{border-color:var(--warn);color:var(--warn);}
+.inst-rec{color:var(--ok);font-weight:600;}
+.inst-idle{color:var(--apple-secondary);}
+.inst-meta{color:var(--apple-secondary);}
+.inst-self-mark{font-family:var(--font-body);font-size:10px;color:var(--gold-text);}
+.inst-note{font-size:10.5px;color:var(--apple-secondary);line-height:1.55;}
+.inst-note.warn{color:var(--warn);}
 .in-group{display:flex;gap:8px;align-items:center;}
 .toggle{position:relative;width:36px;height:20px;border-radius:10px;background:var(--border);cursor:pointer;
   transition:var(--apple-transition);flex-shrink:0;border:none;}
@@ -734,6 +756,25 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   justify-content:center;gap:8px;font-size:12px;color:var(--text);}
 .sticky-confirm .btn{padding:3px 12px;font-size:12px;}
 .btn.danger{background:var(--err,#c04b4b);border-color:var(--err,#c04b4b);color:#fff;}
+/* 骨架的 AI 语义层（260809）。**视觉上必须与程序骨架分得开**——底色偏移 + 「AI 归纳」角标，
+   让人一眼看出哪行是模型说的、哪行是从录制里抽出来的事实。分层如果只存在于后端，
+   用户读到的仍是一份分不清来源的文本。 */
+.an-aibadge{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.04em;
+  padding:1px 6px;border-radius:999px;border:1px solid var(--accent);color:var(--gold-text);
+  background:var(--bg-warm);flex-shrink:0;}
+.an-aibadge.sm{font-size:9px;padding:0 5px;}
+.an-ana-sum{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0 4px;
+  padding:9px 12px;border-radius:var(--radius-md);background:var(--bg-warm);
+  border:1px solid var(--border-warm);}
+.an-ana-text{font-size:11.5px;color:var(--apple-text);line-height:1.6;flex:1 1 260px;min-width:0;}
+.an-ana-meta{flex:1 1 100%;font-size:10px;color:var(--apple-secondary);}
+.an-ana-drop{color:var(--warn);}
+.an-ana-empty{margin:8px 0 4px;}
+.an-turnhead{margin:10px 0 4px;padding:7px 11px;border-radius:var(--radius-sm);
+  background:var(--bg-soft);border-left:3px solid var(--accent);}
+.an-turnhead b{font-size:11.5px;color:var(--apple-text);margin-left:7px;}
+.an-turnline{font-size:10.5px;color:var(--apple-text-secondary);margin-top:3px;line-height:1.55;}
+.an-turnline.risk{color:var(--warn);}
 /* 对比工具条 */
 .an-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;
   margin-bottom:12px;}
@@ -830,10 +871,14 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .sticky.sel-a,.sticky.sel-b{transform:rotate(0deg);}
 .sticky.sel-a{outline:2px solid var(--brand);outline-offset:2px;}
 .sticky.sel-b{outline:2px solid var(--ok,#3fa46a);outline-offset:2px;}
-.sticky-role{position:absolute;right:-9px;top:-9px;min-width:22px;height:22px;
+/* 角色徽章（左/右/析）。**在左上角，因为右上角是删除按钮**（260809 用户报）：
+   两者原先都在右上且矩形相交，徽章有 z-index:2 而 .sticky-x 没有 —— 徽章赢得命中测试，
+   于是「一选中就删不掉」。`pointer-events:none` 是第二道保险：它是纯展示物，
+   任何情况下都不该参与命中测试，将来谁再把它挪回右上也不会重现这个 bug。 */
+.sticky-role{position:absolute;left:-9px;top:-9px;min-width:22px;height:22px;
   border-radius:11px;display:flex;align-items:center;justify-content:center;
   font-size:11px;font-weight:700;padding:0 7px;color:#15130f;z-index:2;
-  box-shadow:0 2px 6px rgba(0,0,0,.5);}
+  pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.5);}
 .sticky.sel-a .sticky-role{background:var(--brand);}
 .sticky.sel-b .sticky-role{background:var(--ok,#3fa46a);}
 .sticky-kind{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
@@ -1207,6 +1252,51 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
              而录制现在可被 AI 经 CLI 读取（docs/reference/AI_USAGE.md），等于给 key 修一条直通 AI 上下文的路。 -->
       </div>
 
+      <!-- 运行中的实例（260809）。修的病：serve 是双重无窗的（console=False + 不建 pywebview 窗），
+           一个实例可以跑一整天而用户完全无从察觉——起因就是用户删不掉一个 exe，查出来是它自己
+           以 serve 模式跑了 7 小时占着端口空转，而真正在录的是另一个端口上的 GUI。 -->
+      <div class="scard">
+        <h3 data-i18n="set.inst.title">运行中的实例</h3>
+        <div class="card-sub" data-i18n="set.inst.sub">serve 模式没有窗口，只能在这里看见 · 实时探测端口，不读可能过期的状态文件</div>
+        <div class="inst-list" id="instList"></div>
+        <div class="inst-note" id="instNote"></div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.inst.scanLbl">扫描范围</div><div class="sub" id="instScanRange">—</div></div>
+          <button class="btn" id="instRefreshBtn" onclick="loadInstances()" data-i18n="set.inst.refresh">刷新</button>
+        </div>
+      </div>
+
+      <!-- 录制体积（260809）。纯展示：不放清理/归档入口——捕获页已经有了，这里再放一个
+           就是第二个入口，两处行为迟早分叉。数字只来自 stat，不读文件内容（见 /api/storage）。 -->
+      <div class="scard">
+        <h3 data-i18n="set.stor.title">录制体积</h3>
+        <div class="card-sub" data-i18n="set.stor.sub">数据目录占用情况 · 只读展示，不在这里做清理</div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.captures">录制正文</div><div class="sub" id="storCapSub">—</div></div>
+          <div class="val" id="storCap">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.index">写时索引</div><div class="sub" data-i18n="set.stor.indexSub">列表与时序图读它，不必碰正文</div></div>
+          <div class="val" id="storIdx">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.archives">存档</div><div class="sub" data-i18n="set.stor.archivesSub">手动压缩存档，保留天数不会自动删它</div></div>
+          <div class="val" id="storArch">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.snapshots">快照</div><div class="sub" data-i18n="set.stor.snapshotsSub">提示词快照与对话</div></div>
+          <div class="val" id="storSnap">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.log">运行日志</div><div class="sub" data-i18n="set.stor.logSub">run.log</div></div>
+          <div class="val" id="storLog">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.total">合计</div><div class="sub" id="storLargest">—</div></div>
+          <div class="val" id="storTotal">—</div>
+        </div>
+      </div>
+
       <div class="scard">
         <h3 data-i18n="set.llm.title">LLM 模型</h3>
         <div class="card-sub" data-i18n="set.llm.sub">供详情页 翻译与 AI 解读共用 · OpenAI 兼容 /chat/completions · 配好后点「测试连通」验证</div>
@@ -1467,6 +1557,12 @@ zh: {
   "an.clearSel": "取消选择", "an.tidy": "整理贴纸",
   "an.del": "删除这张贴纸", "an.delConfirm": "删除这张贴纸？", "an.delYes": "删除", "an.delNo": "取消",
   "an.deleted": "已删除", "an.delFailed": "删除失败：{msg}", "an.tidied": "已按时间整理 {n} 张贴纸",
+  "an.ai.analyze": "AI 归纳轮次", "an.ai.redo": "重新归纳", "an.ai.running": "分析中…",
+  "an.ai.badge": "AI 归纳", "an.ai.intent": "意图：", "an.ai.risk": "注意：",
+  "an.ai.none": "骨架由程序抽取（步骤与轮次来自录制原文，可复算）。点「AI 归纳轮次」让模型在此之上补一层语义：每轮在做什么、想达到什么、哪里值得注意。",
+  "an.ai.meta": "{model} · {time}",
+  "an.ai.dropped": "模型引用了 {n} 个不存在的步号，已剔除",
+  "an.ai.done": "已归纳并保存", "an.ai.failed": "归纳失败：{msg}",
   "an.transA": "翻译左侧", "an.transB": "翻译右侧", "an.aiCompare": "AI 对比分析",
   "an.aiCompareHint": "把差异与元数据交给软件内的低成本模型，让它给结论（不发两段全文）",
   "an.aiVerdict": "AI 结论", "an.aiRedo": "重新分析", "an.transOnlyPrompt": "只有提示词快照能整段翻译",
@@ -1736,6 +1832,23 @@ zh: {
   "set.explainPh": "请用通俗的语言解释这段内容在做什么：它是谁发给谁的、想达到什么目的、关键动作有哪些。遇到代码或工具调用，说明它的作用即可，不要逐行复述。最后用一两句话总结。",
   "set.test": "测试连通", "set.testing": "测试中…",
   "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
+  "set.inst.title": "运行中的实例", "set.inst.scanLbl": "扫描范围", "set.inst.refresh": "刷新", "set.inst.scanning": "扫描中…",
+  "set.inst.sub": "serve 模式没有窗口，只能在这里看见 · 实时探测端口，不读可能过期的状态文件",
+  "set.inst.mode.gui": "窗口", "set.inst.mode.serve": "服务", "set.inst.mode.dev": "开发", "set.inst.mode.unknown": "未知",
+  "set.inst.rec": "● 录制中", "set.inst.idle": "○ 未录制", "set.inst.self": "← 当前窗口",
+  "set.inst.legacy": "旧版本", "set.inst.age": "已运行 {d}",
+  "set.inst.range": "{start}–{end} · 共 {n} 个端口",
+  "set.inst.hintOnly": "只有当前这一个实例在跑。",
+  "set.inst.hintIdle": "有 {n} 个实例没在录制——它们占着端口空转。serve 模式没有窗口，最容易被忘在后台。",
+  "set.inst.hintUnknown": "另有 {n} 个端口被占用，但不应答本工具的接口（可能是别的程序，或版本太旧）：{ports}",
+  "set.inst.failed": "扫描失败：{msg}",
+  "set.stor.title": "录制体积", "set.stor.sub": "数据目录占用情况 · 只读展示，不在这里做清理",
+  "set.stor.captures": "录制正文", "set.stor.index": "写时索引", "set.stor.indexSub": "列表与时序图读它，不必碰正文",
+  "set.stor.archives": "存档", "set.stor.archivesSub": "手动压缩存档，保留天数不会自动删它",
+  "set.stor.snapshots": "快照", "set.stor.snapshotsSub": "提示词快照与对话",
+  "set.stor.log": "运行日志", "set.stor.logSub": "run.log",
+  "set.stor.total": "合计", "set.stor.days": "{n} 天", "set.stor.largest": "最大的一天 {date} · {size}",
+  "set.stor.failed": "读取失败：{msg}",
   "set.about.title": "关于", "set.about.version": "版本", "set.about.dataDir": "数据目录", "set.about.log": "运行日志",
   "set.about.checkBtn": "检查更新", "set.about.checking": "检查中…", "set.about.upToDate": "已是最新版本", "set.about.newVersion": "发现新版本 {v}", "set.about.checkFailed": "检查失败（网络不通？）",
   "set.upd.download": "下载", "set.upd.cancel": "取消", "set.upd.apply": "安装并重启",
@@ -1773,6 +1886,12 @@ en: {
   "an.clearSel": "Clear selection", "an.tidy": "Tidy up",
   "an.del": "Delete this sticker", "an.delConfirm": "Delete this sticker?", "an.delYes": "Delete", "an.delNo": "Cancel",
   "an.deleted": "Deleted", "an.delFailed": "Delete failed: {msg}", "an.tidied": "Tidied {n} stickers by time",
+  "an.ai.analyze": "AI turn summary", "an.ai.redo": "Summarise again", "an.ai.running": "Analysing…",
+  "an.ai.badge": "AI", "an.ai.intent": "Intent: ", "an.ai.risk": "Watch: ",
+  "an.ai.none": "The skeleton is extracted by code — steps and turns come from the recording itself and can be recomputed. Click \"AI turn summary\" to add a semantic layer on top: what each turn is doing, what it wants, and what is worth noticing.",
+  "an.ai.meta": "{model} · {time}",
+  "an.ai.dropped": "{n} step number(s) the model invented were dropped",
+  "an.ai.done": "Summarised and saved", "an.ai.failed": "Summary failed: {msg}",
   "an.transA": "Translate left", "an.transB": "Translate right", "an.aiCompare": "AI comparison",
   "an.aiCompareHint": "Sends the differences and metadata to the built-in low-cost model for a verdict (not both full texts)",
   "an.aiVerdict": "AI verdict", "an.aiRedo": "Analyse again", "an.transOnlyPrompt": "Only prompt snapshots can be translated whole",
@@ -2044,6 +2163,23 @@ en: {
   "set.explainPh": "Explain in plain language what this content is doing: who is sending it to whom, what it is trying to achieve, and what the key actions are. For code or tool calls, describe their purpose instead of going line by line. End with a one- or two-sentence summary.",
   "set.test": "Test connection", "set.testing": "Testing…",
   "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
+  "set.inst.title": "Running instances", "set.inst.scanLbl": "Scan range", "set.inst.refresh": "Refresh", "set.inst.scanning": "Scanning…",
+  "set.inst.sub": "serve mode has no window — this is the only place it shows up · probes ports live instead of reading state files that go stale",
+  "set.inst.mode.gui": "Window", "set.inst.mode.serve": "Service", "set.inst.mode.dev": "Dev", "set.inst.mode.unknown": "Unknown",
+  "set.inst.rec": "● recording", "set.inst.idle": "○ idle", "set.inst.self": "← this window",
+  "set.inst.legacy": "legacy", "set.inst.age": "up {d}",
+  "set.inst.range": "{start}–{end} · {n} ports",
+  "set.inst.hintOnly": "This is the only instance running.",
+  "set.inst.hintIdle": "{n} instance(s) are not recording — they hold a port and do nothing. serve mode has no window, so it is the easiest one to forget.",
+  "set.inst.hintUnknown": "{n} more port(s) are in use but do not answer this tool's API (another program, or a much older version): {ports}",
+  "set.inst.failed": "Scan failed: {msg}",
+  "set.stor.title": "Recording size", "set.stor.sub": "Disk used by the data directory · read-only, no cleanup here",
+  "set.stor.captures": "Recordings", "set.stor.index": "Write-time index", "set.stor.indexSub": "Lists and the timeline read this, never the bodies",
+  "set.stor.archives": "Archives", "set.stor.archivesSub": "Manually compressed; retention never deletes these",
+  "set.stor.snapshots": "Snapshots", "set.stor.snapshotsSub": "Prompt snapshots and chats",
+  "set.stor.log": "Run log", "set.stor.logSub": "run.log",
+  "set.stor.total": "Total", "set.stor.days": "{n} days", "set.stor.largest": "Largest day {date} · {size}",
+  "set.stor.failed": "Failed to read: {msg}",
   "set.about.title": "About", "set.about.version": "Version", "set.about.dataDir": "Data dir", "set.about.log": "Log file",
   "set.about.checkBtn": "Check for updates", "set.about.checking": "Checking…", "set.about.upToDate": "Up to date", "set.about.newVersion": "New version {v} available", "set.about.checkFailed": "Check failed (network blocked?)",
   "set.upd.download": "Download", "set.upd.cancel": "Cancel", "set.upd.apply": "Install and restart",
@@ -2081,6 +2217,12 @@ ja: {
   "an.clearSel": "選択解除", "an.tidy": "付箋を整列",
   "an.del": "この付箋を削除", "an.delConfirm": "この付箋を削除しますか？", "an.delYes": "削除", "an.delNo": "キャンセル",
   "an.deleted": "削除しました", "an.delFailed": "削除に失敗：{msg}", "an.tidied": "{n} 枚を時刻順に整列しました",
+  "an.ai.analyze": "AI でターンを要約", "an.ai.redo": "再度要約", "an.ai.running": "分析中…",
+  "an.ai.badge": "AI 要約", "an.ai.intent": "意図：", "an.ai.risk": "注意：",
+  "an.ai.none": "スケルトンはプログラムが抽出したものです（ステップとターンは記録原文由来で再計算可能）。「AI でターンを要約」を押すと、その上に意味の層を重ねます：各ターンが何をしていて、何を達成しようとし、どこに注意すべきか。",
+  "an.ai.meta": "{model} · {time}",
+  "an.ai.dropped": "モデルが挙げた存在しないステップ番号 {n} 件を除外しました",
+  "an.ai.done": "要約して保存しました", "an.ai.failed": "要約に失敗：{msg}",
   "an.transA": "左を翻訳", "an.transB": "右を翻訳", "an.aiCompare": "AI 比較分析",
   "an.aiCompareHint": "差分とメタデータを内蔵の低コストモデルに渡して結論を出させます（全文は送りません）",
   "an.aiVerdict": "AI の結論", "an.aiRedo": "再分析", "an.transOnlyPrompt": "全文翻訳はプロンプトのスナップショットのみです",
@@ -2351,6 +2493,23 @@ ja: {
   "set.explainPh": "この内容が何をしているのか、わかりやすい言葉で説明してください：誰が誰に送ったものか、何を達成しようとしているのか、主要なアクションは何か。コードやツール呼び出しは逐行ではなく役割を説明してください。最後に1〜2文でまとめてください。",
   "set.test": "接続テスト", "set.testing": "テスト中…",
   "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
+  "set.inst.title": "実行中のインスタンス", "set.inst.scanLbl": "スキャン範囲", "set.inst.refresh": "更新", "set.inst.scanning": "スキャン中…",
+  "set.inst.sub": "serve モードはウィンドウを持たないため、ここでしか見えません · 古くなりうる状態ファイルではなくポートを実測します",
+  "set.inst.mode.gui": "ウィンドウ", "set.inst.mode.serve": "サービス", "set.inst.mode.dev": "開発", "set.inst.mode.unknown": "不明",
+  "set.inst.rec": "● 記録中", "set.inst.idle": "○ 停止中", "set.inst.self": "← このウィンドウ",
+  "set.inst.legacy": "旧バージョン", "set.inst.age": "稼働 {d}",
+  "set.inst.range": "{start}–{end} · 計 {n} ポート",
+  "set.inst.hintOnly": "実行中のインスタンスはこの 1 つだけです。",
+  "set.inst.hintIdle": "{n} 個のインスタンスが記録していません——ポートを占有したまま空転しています。serve モードはウィンドウがないため最も忘れられやすい状態です。",
+  "set.inst.hintUnknown": "他に {n} 個のポートが使用中ですが、本ツールの API に応答しません（別のプログラム、または非常に古いバージョン）：{ports}",
+  "set.inst.failed": "スキャン失敗：{msg}",
+  "set.stor.title": "記録容量", "set.stor.sub": "データディレクトリの使用量 · 表示のみ、ここでは削除しません",
+  "set.stor.captures": "記録本体", "set.stor.index": "書き込み時インデックス", "set.stor.indexSub": "一覧とタイムラインはこれを読み、本体には触れません",
+  "set.stor.archives": "アーカイブ", "set.stor.archivesSub": "手動で圧縮したもの · 保持日数では削除されません",
+  "set.stor.snapshots": "スナップショット", "set.stor.snapshotsSub": "プロンプトのスナップショットと対話",
+  "set.stor.log": "実行ログ", "set.stor.logSub": "run.log",
+  "set.stor.total": "合計", "set.stor.days": "{n} 日分", "set.stor.largest": "最大の日 {date} · {size}",
+  "set.stor.failed": "読み込み失敗：{msg}",
   "set.about.title": "情報", "set.about.version": "バージョン", "set.about.dataDir": "データ保存先", "set.about.log": "ログ",
   "set.about.checkBtn": "更新を確認", "set.about.checking": "確認中…", "set.about.upToDate": "最新です", "set.about.newVersion": "新バージョン {v} があります", "set.about.checkFailed": "確認失敗（ネットワーク不通？）",
   "set.upd.download": "ダウンロード", "set.upd.cancel": "キャンセル", "set.upd.apply": "インストールして再起動",
@@ -2526,6 +2685,11 @@ function renderSettingsI18n(){
   /* 上游历史的下拉项与病态提示也是 JS 拼的（含「（当前）」「（同一供应商·推荐）」等后缀），
      切语言必须重算。重取一次而不是缓存重排：这条数据很小，且顺带刷新 needs_fix 判定。 */
   if($("cfgFixPick")) loadUpstreamHistory();
+  /* 实例卡整张是 JS 拼的（模式徽章 / 录制态 / 空转提示）。这里**用缓存重渲、不重新扫描**——
+     与上游历史相反，因为扫 50 个端口有真实开销，而切语言这个动作跟实例状态变没变毫无关系。 */
+  if(S.instances) renderInstances();
+  /* 体积卡的「15 天」「最大的一天 …」也是 JS 拼的，同样用缓存重渲 */
+  if(S.storage) renderStorage();
 }
 
 async function setLang(lang){
@@ -2681,7 +2845,7 @@ function blockTextOf(el){
      `sel` 与 `blk` 双空 → ctxInit 直接不劫持 → 右键什么都不弹，那块文字彻底拿不走；
      .dag-node 有意不可选，右键复制整块是它唯一的复制入口。 */
   const blk = el.closest("pre, .md-body, .msg, .err-card, .dcard, .node-card, .lane,"
-                       + " .crumb-bar, .srow, .about-row, .dag-node");
+                       + " .crumb-bar, .srow, .about-row, .dag-node, .inst-row");
   if(!blk) return "";
   /* 这些块里混着按钮（详情页的「← 返回」、设置页的「打开」「检查更新」），拷进去纯是噪音。
      临时 display:none 再读 innerText——比 cloneNode 可靠：脱离文档的节点没有布局，
@@ -2944,7 +3108,7 @@ function showView(v){
   $("tabDag").setAttribute("aria-selected", dagOn ? "true" : "false");
   $("tabSettings").setAttribute("aria-selected", settingsOn ? "true" : "false");
   $("tabAnalyze").setAttribute("aria-selected", analyzeOn ? "true" : "false");
-  if(v === "settings"){ loadConfig(); refreshHealth(); }   /* 打开设置页顺手体检一次 */
+  if(v === "settings"){ loadConfig(); refreshHealth(); loadInstances(); loadStorage(); }   /* 打开设置页：体检 + 扫实例 + 算体积 */
   if(v === "dag") loadDag();
   if(v === "analyze") anLoad();
 }
@@ -4635,6 +4799,7 @@ async function snapCreate(kind, where){
 const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
             selA: null, selB: null, recA: null, recB: null, pDiff: null, rDiff: null,
             pendingDel: null, stepView: "list", recSources: [],
+            recAnalysis: null, anaBusy: false,   /* 骨架的 AI 语义层（260809） */
             chat: [], chatBusy: false};
 
 async function anLoad(force){
@@ -4656,10 +4821,14 @@ async function anLoad(force){
   }
 }
 
+/* 260809 加 GB 档：此前封顶 MB，而录制目录实测能到 4.8 GB——"4852.8 MB" 要在脑子里
+   除一次才知道是多少，一个给人看的数字不该这样。扩这里而不是给体积卡另写一个格式化函数：
+   同一个量在两处用两套写法，迟早对不上（惯犯 ② 的形状）。 */
 function fmtBytes(n){
   if(n < 1024) return n + " B";
   if(n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
-  return (n / 1024 / 1024).toFixed(1) + " MB";
+  if(n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+  return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
 }
 
 /* 快照的显示名。**故意在前端现渲染而不是存进快照**：存一个中文标题，
@@ -4718,10 +4887,22 @@ function anRenderBoard(which){
   const cols = Math.max(1, Math.floor((usable - BOARD.padX * 2 + BOARD.gapX)
                                       / (BOARD.w + BOARD.gapX)));
   let maxY = 0, h = "", auto = 0;
+  /* 已占位置（先收手动摆过的，再随渲染累加自动落位的）。260809 修：此前自动落位**只数没摆过
+     的纸**，却不看那个格位有没有被手动摆放的纸占着——用户把旧纸都拖动摆过之后，新保存的那张
+     auto=0 必然落在 (padX,padY)，**被压在旧纸底下**，看起来就是"白板没更新"（点「整理贴纸」
+     重排才露出来，这正是用户描述的现象）。
+     原注释的意图（挪走一张纸后，新纸该落进空出来的坑，而不是排到队尾）依然成立，而且这个
+     实现更强地满足它：坑空出来了就不再被占，下一张自然落进去。 */
+  const placed = items.filter(x => x.board).map(x => x.board);
+  const hit = p => placed.some(q => Math.abs(q.x - p.x) < BOARD.w && Math.abs(q.y - p.y) < BOARD.h);
   items.forEach(it => {
-    /* 自动落位的序号**只数没摆过的贴纸**：把已摆放的也算进去，会让新贴纸跳过前面空出来的
-       位置，凭空留一片空白（用户把一张纸挪走后，下一张新纸就落在它原来的坑位后面）。 */
-    const pos = it.board || anAutoPos(auto++, cols);
+    let pos = it.board;
+    if(!pos){
+      pos = anAutoPos(auto++, cols);
+      /* 上限兜底：格位理论上总能找到空的，但绝不能让渲染卡在死循环里 */
+      while(hit(pos) && auto < 400) pos = anAutoPos(auto++, cols);
+    }
+    placed.push(pos);
     maxY = Math.max(maxY, pos.y + BOARD.h);
     const role = selA === it.sid ? "a" : (selB === it.sid ? "b" : "");
     const o = it.origin || {}, c = it.ctx || {}, s = it.summary || {};
@@ -4771,6 +4952,14 @@ function anBindStickies(board){
   board.querySelectorAll(".sticky").forEach(el => {
     el.addEventListener("mousedown", ev => {
       if(ev.button !== 0) return;
+      /* 删除入口不参与拖动/点选（260809 用户报「× 点不动」的真正原因）：
+         mousedown 绑在整张贴纸上，点 × 也会命中它 → mouseup 走 anPick() → **重渲染整块板** →
+         承载这次点击的那个 × 元素当场被 innerHTML 换掉 → click 再也派发不到它身上，
+         于是 anAskDelete 从来没被执行过。**按钮没坏，是它在 click 之前就被从文档里换走了。**
+         注意这跟"徽章盖住 ×"是两层不同的病：视觉那层修好了，这层照样让删除全线失效——
+         惯犯 ⑦，修一层时要问"还有没有别的层"。
+         .sticky-confirm 一并排除：二次确认的「删除 / 取消」也在贴纸内，否则同样被吃掉。 */
+      if(ev.target.closest(".sticky-x, .sticky-confirm")) return;
       ev.preventDefault();
       const startX = ev.clientX, startY = ev.clientY;
       const x0 = parseFloat(el.style.left) || 0, y0 = parseFloat(el.style.top) || 0;
@@ -5177,7 +5366,8 @@ async function anRecLoad(){
     const [tr, sr, br] = await Promise.all([
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/thinking?level=0"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/sources"),
-      fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief")]);
+      fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief"),
+      anAnalysisLoad(sid)]);   /* 已有的 AI 归纳一并取回：分析过的不该再花一次钱（260809）*/
     const tj = await tr.json(), sj = await sr.json();
     AN.brief = await br.text();
     if(!tj.ok) throw new Error(tj.error || "failed");
@@ -5235,14 +5425,49 @@ function renderRec(d, sources){
         '" onclick="anStepView(\'list\')">' + t18("an.viewList") + '</button>' +
       '<button class="an-vbtn' + (AN.stepView === "tree" ? " active" : "") +
         '" onclick="anStepView(\'tree\')">' + t18("an.viewTree") + '</button>' +
-    '</span></div>';
-  if(AN.stepView === "tree"){
-    h += anTreeHtml(d.steps || []);
-    h += '</div><div id="anStepBody"></div>';
-    $("anRecOut").innerHTML = h;
-    return;
-  }
-  (d.steps || []).forEach(s => {
+    '</span>' +
+    '<button class="btn" id="anAnaBtn" onclick="anAnalyze()"' + (AN.anaBusy ? " disabled" : "") + '>' +
+      t18(AN.anaBusy ? "an.ai.running" : (AN.recAnalysis ? "an.ai.redo" : "an.ai.analyze")) +
+    '</button></div>' + anAnalysisHead();
+  h += AN.stepView === "tree" ? anTreeHtml(d.steps || []) : anListHtml(d.steps || []);
+  h += '</div><div id="anStepBody"></div>';
+  $("anRecOut").innerHTML = h;
+}
+
+/* ---- 骨架的 AI 语义层（260809）----
+   **骨干永远是程序骨架**（上面那些 step 行），AI 只在轮次边界上贴一层归纳，且带「AI 归纳」
+   角标。这样一旦模型说错，用户当场能对照它下面那几行程序事实——事实层与语义层的分工
+   在界面上必须看得出来，否则分层只是后端的自我安慰。 */
+function anAnalysisHead(){
+  const a = AN.recAnalysis;
+  if(!a) return '<div class="an-hint an-ana-empty">' + t18("an.ai.none") + '</div>';
+  return '<div class="an-ana-sum">' +
+    '<span class="an-aibadge">' + t18("an.ai.badge") + '</span>' +
+    '<span class="an-ana-text">' + esc(a.summary || "") + '</span>' +
+    '<div class="an-ana-meta">' + esc(t18("an.ai.meta", {
+        model: a.model || "?", time: (a.created || "").slice(5, 16).replace("T", " ")})) +
+      ((a.dropped_steps || []).length
+        ? ' · <span class="an-ana-drop">' + t18("an.ai.dropped", {n: a.dropped_steps.length}) + '</span>'
+        : "") +
+    '</div></div>';
+}
+/* 轮次分组头：列表与树共用一份，别各写一份（两种视图的 AI 文案分叉过就再也对不上） */
+function anTurnHead(turn){
+  const a = AN.recAnalysis;
+  if(!a) return "";
+  const t = (a.turns || []).find(x => x.turn === turn);
+  if(!t) return "";
+  return '<div class="an-turnhead">' +
+    '<span class="an-aibadge sm">' + t18("an.ai.badge") + '</span>' +
+    '<b>' + esc(t.title || "") + '</b>' +
+    (t.intent ? '<div class="an-turnline">' + esc(t18("an.ai.intent")) + esc(t.intent) + '</div>' : "") +
+    (t.risk ? '<div class="an-turnline risk">' + esc(t18("an.ai.risk")) + esc(t.risk) + '</div>' : "") +
+    '</div>';
+}
+function anListHtml(steps){
+  let h = "", lastTurn = null;
+  steps.forEach(s => {
+    if(s.turn !== lastTurn){ lastTurn = s.turn; h += anTurnHead(s.turn); }
     const sig = Object.keys(s.signals || {});
     h += '<div class="an-step" onclick="anStepOpen(' + s.step + ')">' +
       '<span class="an-sn">#' + s.step + '</span>' +
@@ -5253,8 +5478,35 @@ function renderRec(d, sources){
       sig.map(k => '<span class="chip sig ' + sigCls(k) + '">' + esc(k) + " " + s.signals[k] + '</span>').join("") +
       '</div>';
   });
-  h += '</div><div id="anStepBody"></div>';
-  $("anRecOut").innerHTML = h;
+  return h;
+}
+
+/* 取已有分析（不调模型）。选中一条录制时跟着走一次——**已经分析过的不该再花一次钱**。 */
+async function anAnalysisLoad(sid){
+  AN.recAnalysis = null;
+  if(!sid) return;
+  try{
+    const j = await (await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/analysis")).json();
+    if(j.ok && j.exists) AN.recAnalysis = j.data;
+  }catch(e){ /* 取不到就是没有，正常渲染成"还没分析过"；失败详情留给点按钮时报 */ }
+}
+async function anAnalyze(){
+  const sid = anSel("c")[0];
+  if(!sid || AN.anaBusy) return;
+  AN.anaBusy = true;
+  if(AN.recData) renderRec(AN.recData, AN.recSources || []);   /* 按钮进入"分析中…" */
+  try{
+    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/analysis", {method: "POST"});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || "failed");
+    AN.recAnalysis = j.data;
+    toast(t18("an.ai.done"));
+  }catch(e){
+    toast(t18("an.ai.failed", {msg: e.message}), true);   /* 失败要说出来，不留空面板 */
+  }finally{
+    AN.anaBusy = false;
+    if(AN.recData) renderRec(AN.recData, AN.recSources || []);
+  }
 }
 
 function sigCls(k){
@@ -5269,7 +5521,9 @@ function anStepView(v){ AN.stepView = v; if(AN.recData) renderRec(AN.recData, AN
    所以节点上的候选一律标着类别，判断留给读的人（这条边界写在界面上，见 an.treeHint）。 */
 function anTreeHtml(steps){
   let h = '<div class="an-hint">' + t18("an.treeHint") + '</div><div class="an-tree">';
+  let lastTurn = null;
   steps.forEach(s => {
+    if(s.turn !== lastTurn){ lastTurn = s.turn; h += anTurnHead(s.turn); }
     const sig = Object.keys(s.signals || {});
     const forked = (s.signals || {})["分支"] || (s.signals || {})["自我修正"];
     h += '<div class="tnode' + (forked ? " forked" : "") + '" onclick="anStepOpen(' + s.step + ')">' +
@@ -5612,6 +5866,98 @@ async function loadConfig(){
   }catch(e){
     toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
   }
+}
+
+/* ===== 运行中的实例（260809，issue 260809_设置页实例总览）=====
+   为什么这张卡值得存在：`serve` 双重无窗（打包 console=False + serve 分支不建 pywebview 窗），
+   一个实例能占着端口跑一整天而用户毫无察觉——起因就是用户删不掉一个 exe，查出来是它自己
+   跑了 7 小时在空转。任务管理器看得到进程名，但看不到**端口**，而端口才是这软件里最要紧的
+   那个数：BASE_URL 指向谁，谁才在录。
+   数据全部来自后端实时端口探测，**前端不读也不缓存任何状态文件**（那些文件会过期，见 ROADMAP 0.5.x）。*/
+function instAge(startedAt){
+  if(!startedAt) return "";
+  const sec = Math.max(0, Date.now() / 1000 - startedAt);
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  /* 中性写法（7h05m）三语通用，省掉三份时长语法；等宽字体下也对得齐 */
+  return h ? (h + "h" + String(m).padStart(2, "0") + "m") : (m + "m");
+}
+async function loadInstances(){
+  const box = $("instList"), btn = $("instRefreshBtn");
+  if(!box) return;
+  if(btn){ btn.disabled = true; btn.textContent = t18("set.inst.scanning"); }
+  try{
+    S.instances = await (await fetch("/api/instances")).json();
+    renderInstances();
+  }catch(e){
+    /* 扫描失败必须说出来：显示成"0 个实例"与"真的没有实例"在界面上无法区分（惯犯 ③）*/
+    S.instances = null;
+    box.innerHTML = "";
+    const note = $("instNote");
+    if(note){ note.className = "inst-note warn"; note.textContent = t18("set.inst.failed", {msg: e.message}); }
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = t18("set.inst.refresh"); }
+  }
+}
+function renderInstances(){
+  const j = S.instances, box = $("instList"), note = $("instNote"), range = $("instScanRange");
+  if(!box || !j) return;
+  const list = j.instances || [], unknown = j.unknown_ports || [];
+  box.innerHTML = list.map(it => {
+    const raw = it.legacy ? "unknown" : (it.mode || "unknown");
+    const mode = ["gui", "serve", "dev"].includes(raw) ? raw : "unknown";
+    const bits = ['<span class="inst-port">' + esc(it.port) + '</span>',
+      '<span class="inst-tag ' + mode + '">' + esc(t18("set.inst.mode." + mode)) + '</span>'];
+    if(it.legacy) bits.push('<span class="inst-tag legacy">' + esc(t18("set.inst.legacy")) + '</span>');
+    if(it.version) bits.push('<span class="inst-meta">v' + esc(it.version) + '</span>');
+    if(it.pid) bits.push('<span class="inst-meta">PID ' + esc(it.pid) + '</span>');
+    const age = instAge(it.started_at);
+    if(age) bits.push('<span class="inst-meta">' + esc(t18("set.inst.age", {d: age})) + '</span>');
+    /* recording 三态：true 在录 / false 空转 / null 旧版本答不出来——null 不许假装成 false */
+    if(it.recording === true) bits.push('<span class="inst-rec">' + esc(t18("set.inst.rec")) + '</span>');
+    else if(it.recording === false) bits.push('<span class="inst-idle">' + esc(t18("set.inst.idle")) + '</span>');
+    if(it.is_self) bits.push('<span class="inst-self-mark">' + esc(t18("set.inst.self")) + '</span>');
+    return '<div class="inst-row' + (it.is_self ? " self" : "") + '">' + bits.join("") + '</div>';
+  }).join("");
+  const idle = list.filter(it => it.recording === false).length;
+  const msgs = [];
+  if(idle > 0) msgs.push(t18("set.inst.hintIdle", {n: idle}));
+  if(unknown.length) msgs.push(t18("set.inst.hintUnknown", {n: unknown.length, ports: unknown.join(", ")}));
+  if(!msgs.length && list.length <= 1) msgs.push(t18("set.inst.hintOnly"));
+  if(note){ note.className = "inst-note" + (idle > 0 ? " warn" : ""); note.textContent = msgs.join(" "); }
+  const sc = j.scanned || {};
+  if(range && sc.start) range.textContent = t18("set.inst.range",
+    {start: sc.start, end: sc.end, n: sc.end - sc.start + 1});
+}
+/* ===== 录制体积（260809，issue 260809_设置页录制体积展示）=====
+   纯展示。后端只 stat 不读内容（稳态 1.12ms / 4.8GB），所以这里也不必缓存、不必轮询——
+   打开设置页取一次即可。**别在这张卡上加清理/归档按钮**：捕获页已经有了，第二个入口意味着
+   两处行为迟早分叉，而这两个动作都是删用户数据的。 */
+async function loadStorage(){
+  if(!$("storTotal")) return;
+  try{
+    S.storage = await (await fetch("/api/storage")).json();
+    renderStorage();
+  }catch(e){
+    /* 失败要说出来：全 "—" 与"真的是 0 字节"在界面上无法区分（惯犯 ③）*/
+    S.storage = null;
+    const sub = $("storLargest");
+    if(sub) sub.textContent = t18("set.stor.failed", {msg: e.message});
+  }
+}
+function renderStorage(){
+  const j = S.storage;
+  if(!j || !$("storTotal")) return;
+  const cap = j.captures || {}, arch = j.archives || {}, snap = j.snapshots || {};
+  $("storCap").textContent = fmtBytes(cap.bytes || 0);
+  $("storCapSub").textContent = t18("set.stor.days", {n: j.capture_days || 0});
+  $("storIdx").textContent = fmtBytes(cap.index_bytes || 0);
+  $("storArch").textContent = fmtBytes(arch.bytes || 0);
+  $("storSnap").textContent = fmtBytes(snap.bytes || 0);
+  $("storLog").textContent = fmtBytes(j.log_bytes || 0);
+  $("storTotal").textContent = fmtBytes(j.total_bytes || 0);
+  const lg = j.largest_day;
+  $("storLargest").textContent = lg
+    ? t18("set.stor.largest", {date: lg.date, size: fmtBytes(lg.bytes)}) : "";
 }
 /* ===== 更新：检查 → 下载 → 校验 → 安装（260808，issue 260808）=====
    260729 这里是前端直连 api.github.com、比完 tag 打印一行地址就结束——通知做完了，

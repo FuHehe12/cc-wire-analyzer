@@ -365,6 +365,33 @@ res2 = SS.delete_many([victim["sid"]])
 ok(res2["deleted"] == 0 and len(res2["failed"]) == 1,
    "删不掉的原样报回来（删一半停下来，用户既不知道删了谁也不知道剩下谁）")
 
+# ===== 骨架 AI 语义层：步号校验是分层能否成立的分界线（260809）=====
+# prompt 里要求「只引用真实步号」是要求，不是保证。没有这道校验，"AI 归纳挂在程序事实上"
+# 就只是一句说辞——模型可以归纳出一轮根本不存在的步骤，而界面照样渲染得像模像样。
+import app as APP  # noqa: E402
+
+_sk = {"steps": [{"step": 1}, {"step": 2}]}
+_raw = {"turns": [{"turn": 1, "steps": [1, 2, 99, "x", None], "title": "t",
+                   "intent": "i", "risk": ""}], "summary": "s"}
+_clean = APP._sanitize_analysis(_raw, _sk)
+ok(_clean["turns"][0]["steps"] == [1, 2], "越界/非整数步号被剔除，只留骨架里真实存在的")
+ok(_clean["dropped_steps"] == [99, "x", None], "剔除的步号如实记下来（不静默丢弃）")
+ok(len(APP._sanitize_analysis({"turns": "not-a-list"}, _sk)["turns"]) == 0,
+   "turns 不是数组时不炸，按空处理")
+ok(len(APP._sanitize_analysis({"turns": [{"turn": 1, "steps": [1],
+                                          "title": "x" * 9999}]}, _sk)["turns"][0]["title"])
+   == APP.ANALYSIS_TEXT_MAX, "超长文本被截断（模型跑飞不该灌满磁盘与界面）")
+ok(APP._json_from_llm('```json\n{"a":1}\n```')["a"] == 1, "带 markdown 围栏的 JSON 能解析")
+ok(APP._json_from_llm('这是结果：{"a":2} 完毕')["a"] == 2, "前后有闲话的 JSON 能解析")
+
+# 分析文件跟着快照走（与对话记录同一条清单）
+_av = SS.create_capture(make_record(rid="req_test010"))
+SS.write_analysis(_av["sid"], {"turns": [], "summary": "x"})
+ok(SS.read_analysis(_av["sid"])["summary"] == "x", "语义分析可落盘可读回")
+ok(SS.size_of(_av["sid"]) > 0, "size_of 把分析文件算进去")
+SS.delete_snapshot(_av["sid"])
+ok(not SS.analysis_file(_av["sid"]).exists(), "分析文件跟着快照一起删（不留孤儿文件）")
+
 # ===== 结果 =====
 print()
 if FAILED:

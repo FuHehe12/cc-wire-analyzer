@@ -94,6 +94,7 @@ def _serve() -> None:
         sys.exit(1)
     CFG.write_port(port)
     flask_app.set_listen_port(port)
+    flask_app.set_run_mode("serve")   # 无窗模式尤其需要被看见——设置页实例总览的主要对象（260809）
     logging.getLogger(__name__).info(
         "=== started mode=serve pid=%s version=%s port=%s ===",
         os.getpid(), flask_app.VERSION, port)
@@ -183,6 +184,7 @@ def main() -> None:
         sys.exit(1)
     CFG.write_port(port)
     flask_app.set_listen_port(port)   # proxy_start 需要 _LISTEN_PORT，否则 no_listen_port（260712 实测发现）
+    flask_app.set_run_mode("gui")     # 设置页「运行中的实例」据此区分 GUI / serve（260809）
     import logging
     logging.getLogger(__name__).info(
         "=== started mode=gui pid=%s version=%s port=%s ===",
