@@ -1,0 +1,24 @@
+CC Wire Analyzer documentation license
+=======================================
+
+Documentation and prose in this repository are licensed under the Creative
+Commons Attribution 4.0 International license (CC BY 4.0).
+
+This includes README files, CONTRIBUTING.md, files under docs/, and the prose
+content of the project website and in-app interface. Source code embedded in
+those files remains available under the MIT License in LICENSE.
+
+You are free to share and adapt this material for any purpose, including
+commercially, provided that you give appropriate credit, link to the license,
+and indicate whether changes were made.
+
+Suggested attribution:
+
+    Based on CC Wire Analyzer: https://github.com/FuHehe12/cc-wire-analyzer
+    Licensed under CC BY 4.0.
+
+License summary:
+https://creativecommons.org/licenses/by/4.0/
+
+Full legal text:
+https://creativecommons.org/licenses/by/4.0/legalcode

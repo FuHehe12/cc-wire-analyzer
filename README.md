@@ -1,10 +1,12 @@
-# CC Wire Analyzer
+# CC Wire Analyzer — Claude Code HTTP Traffic Inspector
 
 Record and inspect every HTTP request **Claude Code** makes. A local MITM proxy that captures the full request and response between CC and its upstream endpoint — filling the wire-level gap that `~/.claude/projects/*.jsonl` (CC's post-processed view) and OTLP telemetry can't show.
 
 [中文](README.zh.md) · [日本語](README.ja.md)
 
-[Releases](../../releases) · [Changelog](CHANGELOG.md)
+[Website](https://fuhehe12.github.io/cc-wire-analyzer/) · [Download latest release](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
+
+**Windows & macOS · no Python required · recordings stay local · no telemetry**
 
 ## When you'd reach for this
 
@@ -134,7 +136,7 @@ them. `SHA256SUMS.txt` next to them is what the in-app updater verifies a downlo
 ### Option B — run from source
 
 ```bash
-git clone <this-repo> && cd cc-wire-analyzer
+git clone https://github.com/FuHehe12/cc-wire-analyzer.git && cd cc-wire-analyzer
 uv sync                 # Windows
 uv sync --extra mac     # macOS (installs pyobjc)
 uv run python src/desktop.py
@@ -228,4 +230,4 @@ This tool covers the **wire level** (raw HTTP). It pairs well with jsonl-based c
 - Bundled fonts (Inter / JetBrains Mono / Noto Sans SC): **SIL OFL 1.1**.
 - Bundled JS (marked.js: MIT; DOMPurify: Apache-2.0/MPL-2.0).
 
-Full text in [LICENSE](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
+See [LICENSE](LICENSE) for code, [LICENSE-DOCS](LICENSE-DOCS) for documentation and prose, and [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) for bundled dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.

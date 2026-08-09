@@ -1,0 +1,18 @@
+{
+  "name": "CC Wire Analyzer",
+  "short_name": "CCWA",
+  "description": "Local Claude Code HTTP traffic inspector",
+  "start_url": "/cc-wire-analyzer/",
+  "scope": "/cc-wire-analyzer/",
+  "display": "standalone",
+  "background_color": "#111116",
+  "theme_color": "#111116",
+  "icons": [
+    {
+      "src": "assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fuhehe12.github.io/cc-wire-analyzer/sitemap.xml

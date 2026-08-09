@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CC Wire Analyzer — Inspect Claude Code HTTP Requests, Prompts, SSE and Tokens</title>
+  <meta name="description" content="A local open-source Claude Code HTTP traffic inspector for Windows and macOS. Capture prompts, tools, SSE events, upstream errors and token usage.">
+  <meta name="theme-color" content="#111116">
+  <link rel="canonical" href="https://fuhehe12.github.io/cc-wire-analyzer/">
+  <link rel="alternate" hreflang="en" href="https://fuhehe12.github.io/cc-wire-analyzer/">
+  <link rel="alternate" hreflang="zh-CN" href="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
+  <link rel="alternate" hreflang="x-default" href="https://fuhehe12.github.io/cc-wire-analyzer/">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="assets/site.css">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="CC Wire Analyzer">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="See what Claude Code actually sends">
+  <meta property="og:description" content="Inspect full HTTP requests, system prompts, tools, SSE timing, upstream errors and exact token usage — locally.">
+  <meta property="og:url" content="https://fuhehe12.github.io/cc-wire-analyzer/">
+  <meta property="og:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="CC Wire Analyzer showing a Claude Code request moving through a local wire-level inspector">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CC Wire Analyzer — Claude Code HTTP Traffic Inspector">
+  <meta name="twitter:description" content="See the prompts, tools, SSE events, errors and tokens that cross the wire.">
+  <meta name="twitter:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "CC Wire Analyzer",
+    "description": "A local open-source HTTP traffic inspector for Claude Code that captures full requests, responses, system prompts, tool declarations, SSE events, upstream errors and token usage.",
+    "url": "https://fuhehe12.github.io/cc-wire-analyzer/",
+    "downloadUrl": "https://github.com/FuHehe12/cc-wire-analyzer/releases/latest",
+    "softwareHelp": "https://github.com/FuHehe12/cc-wire-analyzer/tree/main/docs",
+    "codeRepository": "https://github.com/FuHehe12/cc-wire-analyzer",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Windows, macOS",
+    "image": "https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png",
+    "screenshot": "https://fuhehe12.github.io/cc-wire-analyzer/assets/screenshots/captures-en.png",
+    "license": "https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE",
+    "author": {
+      "@type": "Person",
+      "name": "FuHehe12",
+      "url": "https://github.com/FuHehe12"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="shell nav">
+      <a class="brand" href="./" aria-label="CC Wire Analyzer home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>CC Wire Analyzer</span>
+      </a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="#signals">What it sees</a>
+        <a href="#layers">Three layers</a>
+        <a href="#safety">Safety</a>
+        <a class="nav-github" href="https://github.com/FuHehe12/cc-wire-analyzer">GitHub</a>
+        <a class="lang-link" href="zh/" lang="zh-CN">中文</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="shell hero-grid">
+        <div>
+          <p class="eyebrow">Local wire-level observability</p>
+          <h1>See what Claude Code actually sends <span class="wire-word">over the wire.</span></h1>
+          <p class="hero-copy">Claude Code shows its view of a session. CC Wire Analyzer records the <strong>full HTTP request and response before that view is post-processed</strong>: system prompts, tool schemas, hidden calls, SSE timing, upstream errors and exact token usage.</p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Download latest release <span class="arrow" aria-hidden="true">↓</span></a>
+            <a class="button" href="https://github.com/FuHehe12/cc-wire-analyzer">View source <span class="arrow" aria-hidden="true">↗</span></a>
+          </div>
+          <ul class="trust-line" aria-label="Product facts">
+            <li>Windows + macOS</li>
+            <li>No Python required</li>
+            <li>No telemetry</li>
+            <li>MIT code</li>
+          </ul>
+        </div>
+
+        <div class="wire-stage" aria-label="A request moving from Claude Code through the local inspector to its upstream endpoint">
+          <div class="stage-bar">
+            <div class="stage-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+            <span class="stage-title">live request · wire view</span>
+          </div>
+          <div class="route" aria-hidden="true">
+            <div class="route-line"></div>
+            <span class="endpoint left">Claude Code</span>
+            <span class="endpoint middle">127.0.0.1</span>
+            <span class="endpoint right">upstream</span>
+          </div>
+          <div class="packet-card">
+            <div class="packet-head">
+              <span class="packet-method">POST /v1/messages</span>
+              <span class="packet-meta">req_7f3a · 4.5s</span>
+            </div>
+            <ul class="packet-rows">
+              <li><strong>system</strong><span>prompt blocks · watermark intact</span></li>
+              <li><strong>tools[77]</strong><span>names · descriptions · JSON schemas</span></li>
+              <li><strong>messages[24]</strong><span>main turn · subagent · tool results</span></li>
+              <li><strong>usage</strong><span>45k input · 800 output · 44k cache</span></li>
+            </ul>
+            <div class="stream-line"><span>SSE</span> message_start → content_block_delta → message_delta → message_stop</div>
+          </div>
+          <span class="stage-note">headers redacted · body recorded verbatim</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="proof-strip" aria-label="Product screenshot">
+      <div class="shell">
+        <div class="product-frame">
+          <img src="assets/screenshots/captures-en.png" alt="CC Wire Analyzer capture list showing Claude Code requests, models, latency, token counts and failed calls" width="2166" height="1307" fetchpriority="high">
+        </div>
+        <div class="proof-caption">
+          <strong>A real capture list — requests, hidden classifiers, latency, failures and tokens in one place.</strong>
+          <span>dark professional theme · recordings remain local</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="signals">
+      <div class="shell">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">The missing layer</p>
+            <h2>Everything that crosses the boundary, not a reconstruction after the fact.</h2>
+          </div>
+          <p class="section-intro">The wire is where Claude Code's real conversation with the model exists. Record it once, inspect it in the GUI, or let another agent query the same data over HTTP.</p>
+        </div>
+
+        <div class="signal-grid">
+          <article class="signal-card">
+            <span class="signal-code">system[]</span>
+            <h3>Prompts as transmitted</h3>
+            <p>See the complete system prompt, injected reminders, title generation, compaction and security-review prompts.</p>
+          </article>
+          <article class="signal-card">
+            <span class="signal-code">tools[77]</span>
+            <h3>Tools and subagents</h3>
+            <p>Inspect every tool schema, the prompt that spawned a subagent and the request chain that followed.</p>
+          </article>
+          <article class="signal-card">
+            <span class="signal-code">event: delta</span>
+            <h3>SSE and upstream errors</h3>
+            <p>Follow the streaming timeline and read failures that never surface in Claude Code's own session view.</p>
+          </article>
+          <article class="signal-card">
+            <span class="signal-code">GET /api/*</span>
+            <h3>Agent-readable evidence</h3>
+            <p>The GUI and the open local HTTP API share one source, so an agent can search and diagnose a recording itself.</p>
+          </article>
+        </div>
+
+        <div class="case-study">
+          <article class="case-copy">
+            <div>
+              <p class="eyebrow">A failure CC did not show</p>
+              <h3>Session titles quietly stopped generating.</h3>
+              <p>The UI showed no error. The failed auxiliary requests were still present on the wire, already carrying the upstream's diagnosis.</p>
+            </div>
+            <div class="case-result">one recording → one agent query → root cause found</div>
+          </article>
+          <div class="terminal" aria-label="Example diagnosis">
+            <div class="terminal-bar">wire diagnosis</div>
+            <pre><span class="key">GET</span> /api/diagnose/errors
+
+<span class="error">output_config.effort 'max' is not supported</span>
+<span class="error">when thinking is disabled on this model.</span>
+
+settings.json      effortLevel: low
+environment        CLAUDE_CODE_EFFORT_LEVEL: max
+
+<span class="answer">root cause: environment wins → contradictory request</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="layers">
+      <div class="shell">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Three complementary views</p>
+            <h2>Wire, JSONL and OTLP answer different questions.</h2>
+          </div>
+          <p class="section-intro">CC Wire Analyzer does not replace Claude Code logs or telemetry. It fills the one layer neither of them can represent: the raw exchange with the upstream endpoint.</p>
+        </div>
+
+        <div class="layer-table" role="table" aria-label="Comparison of wire capture, JSONL logs and OTLP telemetry">
+          <div class="layer-row is-wire" role="row">
+            <div class="layer-name" role="cell">WIRE</div>
+            <div class="layer-source" role="cell">Raw HTTP</div>
+            <p role="cell">Exact transmitted prompts, headers, bodies, SSE chunks, upstream errors and reported usage.</p>
+          </div>
+          <div class="layer-row" role="row">
+            <div class="layer-name" role="cell">JSONL</div>
+            <div class="layer-source" role="cell">Claude Code's view</div>
+            <p role="cell">Conversation structure, local metadata and the session after Claude Code has processed it.</p>
+          </div>
+          <div class="layer-row" role="row">
+            <div class="layer-name" role="cell">OTLP</div>
+            <div class="layer-source" role="cell">Metrics</div>
+            <p role="cell">Aggregated latency, cost, token and operational telemetry across sessions.</p>
+          </div>
+        </div>
+
+        <div class="gallery">
+          <figure class="gallery-card tall">
+            <img src="assets/screenshots/timeline-en.png" alt="Timeline DAG connecting Claude Code sessions, turns and spawned agents" width="2166" height="1307" loading="lazy">
+          </figure>
+          <figure class="gallery-card">
+            <img src="assets/screenshots/analyse-en.png" alt="Prompt snapshot comparison board in CC Wire Analyzer" width="2405" height="1401" loading="lazy">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="safety">
+      <div class="shell">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Local by design</p>
+            <h2>A traffic inspector should be explicit about what it touches.</h2>
+          </div>
+          <p class="section-intro">Requests still go to the upstream Claude Code was already using. The app records locally, redacts credential headers and changes one setting to route traffic through itself.</p>
+        </div>
+
+        <div class="safety-grid">
+          <article class="safety-item">
+            <span class="safety-icon" aria-hidden="true">⌂</span>
+            <div><h3>Recordings stay on your machine</h3><p>Plain JSONL under <code>~/.cc-wire-analyzer/</code>. No account, cloud storage or telemetry.</p></div>
+          </article>
+          <article class="safety-item">
+            <span class="safety-icon" aria-hidden="true">1</span>
+            <div><h3>One routing field</h3><p>Only <code>ANTHROPIC_BASE_URL</code> is patched; it is backed up and restored on stop or exit.</p></div>
+          </article>
+          <article class="safety-item">
+            <span class="safety-icon" aria-hidden="true">×</span>
+            <div><h3>Credentials are redacted</h3><p>Authorization headers are not stored. Message bodies remain verbatim because that evidence is the product.</p></div>
+          </article>
+          <article class="safety-item">
+            <span class="safety-icon" aria-hidden="true">→</span>
+            <div><h3>No silent network activity</h3><p>Optional AI analysis and update checks only run when you click them, against endpoints made visible to you.</p></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="shell">
+        <div class="cta-panel">
+          <p class="eyebrow">Open source · local · inspectable</p>
+          <h2>Record one session. Ask the wire what happened.</h2>
+          <p>Download the Windows executable or macOS app, start the local proxy, then use Claude Code normally. No Python is required for release builds.</p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Download latest release <span class="arrow" aria-hidden="true">↓</span></a>
+            <a class="button" href="https://github.com/FuHehe12/cc-wire-analyzer/tree/main/docs">Read the documentation <span class="arrow" aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-row">
+      <span>CC Wire Analyzer · built for evidence, not guesswork.</span>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="https://github.com/FuHehe12/cc-wire-analyzer">GitHub</a>
+        <a href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Releases</a>
+        <a href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE">MIT code</a>
+        <a href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE-DOCS">CC BY docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

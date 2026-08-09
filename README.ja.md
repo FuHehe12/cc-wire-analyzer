@@ -1,10 +1,12 @@
-# CC Wire Analyzer
+# CC Wire Analyzer — Claude Code HTTP トラフィックインスペクター
 
 Claude Code と上流エンドポイント間の全 HTTP トラフィックを透過的に**完全録画**するローカル MITM プロキシのデスクトップアプリ——`~/.claude/projects/*.jsonl`（CC の後処理済みビュー）や OTLP テレメトリでは見えないリンクレベルの次元を補います。
 
 [English](README.md) · [中文](README.zh.md)
 
-[リリース一覧](../../releases) · [変更履歴](CHANGELOG.md)
+[ウェブサイト](https://fuhehe12.github.io/cc-wire-analyzer/) · [最新版をダウンロード](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [ドキュメント](docs/README.md) · [変更履歴](CHANGELOG.md)
+
+**Windows / macOS 対応 · Python 不要 · 録画はローカル保存 · テレメトリなし**
 
 ## こんなときに使う
 
@@ -86,7 +88,7 @@ MITM プロキシを名乗るものに対して、当然聞くべき問いです
 ### 方法 B —— ソースから実行
 
 ```bash
-git clone <this-repo> && cd cc-wire-analyzer
+git clone https://github.com/FuHehe12/cc-wire-analyzer.git && cd cc-wire-analyzer
 uv sync                 # Windows
 uv sync --extra mac     # macOS（pyobjc をインストール）
 uv run python src/desktop.py
@@ -173,4 +175,4 @@ macOS も同じバイナリ 1 つ —— `cc-wire-analyzer.app/Contents/MacOS/cc
 - 同梱フォント（Inter / JetBrains Mono / Noto Sans SC）：**SIL OFL 1.1**。
 - 同梱 JS（marked.js：MIT、DOMPurify：Apache-2.0/MPL-2.0）。
 
-全文は [LICENSE](LICENSE)（英語）を参照。技術ドキュメントは [docs/reference/API契约.md](docs/reference/API契约.md)、開発設定は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。
+コードは [LICENSE](LICENSE)、文書と文章は [LICENSE-DOCS](LICENSE-DOCS)、同梱依存関係は [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) を参照。技術ドキュメントは [docs/reference/API契约.md](docs/reference/API契约.md)、開発設定は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。

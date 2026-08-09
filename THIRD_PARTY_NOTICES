@@ -1,0 +1,16 @@
+CC Wire Analyzer third-party notices
+====================================
+
+The following bundled assets retain their original licenses and are not
+covered by the project's MIT or CC BY 4.0 grants:
+
+- Inter (src/static/fonts/Inter.ttf) — Copyright Rasmus Andersson,
+  SIL Open Font License 1.1.
+- JetBrains Mono (src/static/fonts/JetBrainsMono.ttf) — Copyright JetBrains,
+  SIL Open Font License 1.1.
+- Noto Sans SC (src/static/fonts/NotoSansSC.ttf) — Copyright Google Inc.,
+  SIL Open Font License 1.1.
+  The full OFL 1.1 text is in src/static/fonts/OFL.txt.
+- marked.js (src/static/marked.min.js) — Copyright Christopher Jeffrey, MIT.
+- DOMPurify (src/static/purify.min.js) — Copyright Mario Heiderich and other
+  contributors, Apache-2.0 OR MPL-2.0 (dual-licensed).

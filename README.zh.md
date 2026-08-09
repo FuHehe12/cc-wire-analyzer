@@ -1,10 +1,12 @@
-# CC Wire Analyzer
+# CC Wire Analyzer — Claude Code 抓包与 HTTP 请求分析工具
 
 录制并查看 **Claude Code** 发出的每一个 HTTP 请求。本地 MITM 代理透明转发并**完整录制** CC ↔ 上游端点的请求与响应——填补 `~/.claude/projects/*.jsonl`（CC 的已加工视图）和 OTLP 遥测都看不到的链路级维度。
 
 [English](README.md) · [日本語](README.ja.md)
 
-[发版列表](../../releases) · [更新日志](CHANGELOG.zh.md)
+[官网](https://fuhehe12.github.io/cc-wire-analyzer/zh/) · [下载最新版](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [使用文档](docs/README.md) · [更新日志](CHANGELOG.zh.md)
+
+**支持 Windows 与 macOS · 无需 Python · 录制只留在本机 · 无遥测**
 
 ## 什么时候你会需要它
 
@@ -85,7 +87,7 @@ Use effort 'high' or below, or enable thinking.
 ### 方式 B —— 源码运行
 
 ```bash
-git clone <this-repo> && cd cc-wire-analyzer
+git clone https://github.com/FuHehe12/cc-wire-analyzer.git && cd cc-wire-analyzer
 uv sync                 # Windows
 uv sync --extra mac     # macOS（装 pyobjc）
 uv run python src/desktop.py
@@ -170,4 +172,4 @@ macOS 同样是一个二进制 —— `cc-wire-analyzer.app/Contents/MacOS/cc-wi
 - 打包字体（Inter / JetBrains Mono / Noto Sans SC）：**SIL OFL 1.1**。
 - 打包 JS（marked.js：MIT；DOMPurify：Apache-2.0/MPL-2.0）。
 
-全文见 [LICENSE](LICENSE)（英文）。API 契约等技术文档见 [docs/reference/API契约.md](docs/reference/API契约.md)（中文）。开发设置见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+代码协议见 [LICENSE](LICENSE)，文档与文字协议见 [LICENSE-DOCS](LICENSE-DOCS)，打包依赖见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)。API 契约等技术文档见 [docs/reference/API契约.md](docs/reference/API契约.md)，开发设置见 [CONTRIBUTING.md](CONTRIBUTING.md)。
