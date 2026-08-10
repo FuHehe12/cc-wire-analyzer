@@ -8,6 +8,16 @@
 > Why the split: CHANGELOG.md serves two readers at once — the overview at its top is read
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
+## v0.4.13 - 2026-08-09
+
+### Fixed
+
+- **The in-app updater's Download button is no longer a leap of faith: locked single-flight + immediate feedback.** On v0.4.11, clicking Download looked dead for several seconds — the checksum-manifest fetch and the GitHub connect (both seconds through a proxy) all happened before any progress phase existed; worse, the progress poller treated that pre-connect window as a terminal state 500ms in and stopped, reverting the UI to an untouched-looking Download button that invited re-clicks — and every re-click passed the hollow duplicate-check and spawned another download thread. One real session fired **13 concurrent download threads writing the same `.part`**; the first finisher's rename then tripped over its own siblings' file handles, surfacing "the file is in use by another process" (WinError 32) — the file was held not by some other program but by our own threads.
+
+  The fix gives each layer its own job: the backend registers the task under a lock as a `starting` phase *before* touching the network (repeat calls get `already_running`, and the UI reattaches the progress bar to the running task instead of erroring); the staging file name is unique per attempt (defence in depth — should the guard ever be bypassed again, two writers never share a file, so rename can never hit a sibling's handle); the frontend disables the button and optimistically renders the `starting` progress bar on click. Two adjacent bugs fixed along the way: checking for updates mid-download no longer clobbers the running task's phase back to `idle` (which used to stop the poller), and the checksum-manifest fetch moved from the request handler into the download thread (it was part of the silent seconds). Verified end-to-end with real clicks: five rapid clicks spawn zero extra threads, a mid-download update check leaves the progress bar alone, and the install entry appears once SHA-256 verification passes.
+
+  **Upgrade guidance for v0.4.11 users**: the old version's updater UI carries this bug (the fix ships in the new version), so the reliable path is "Open releases page" and swap the file manually; or click Download **once** and wait patiently (the download is genuinely running — the UI just won't tell you), and do not re-click.
+
 ## v0.4.12 - 2026-08-09
 
 ### Added
