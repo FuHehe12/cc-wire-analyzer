@@ -467,12 +467,26 @@ TURN_ORIGIN_COMMAND = (
     "<command-name>",
     "<command-message>",
 )
+# 程序驱动的会话：`cc_entrypoint` 以 sdk 开头（实测取值 `sdk-cli`；留前缀匹配是给
+# sdk-py/sdk-ts 之类的未来取值）。**这是 L2 唯一的官方位**——260810 用 jsonl 对账时，
+# 4 条「白名单判 user、jsonl 说是机器发起」的候选全部命中 `promptSource=sdk`，而它们在
+# wire 侧的共同点不是措辞（脚本发什么都行、无指纹可提），是这个计费头字段：4/4 entrypoint
+# 都是 sdk-cli，反过来 2180 条 cli 真人轮无一误伤。按 §二·五「官方标识符优先」，这类轮不该
+# 靠猜——它本来就在头里写着。
+TURN_ORIGIN_SDK_ENTRYPOINT_PREFIX = "sdk"
 
 
-def _turn_origin(turn_start: bool, user_text: str) -> str:
-    """轮起源分类：user / synthetic / command / partial。判据只看轮首文本前缀——
-    不是"噪声过滤"（伪轮会带出真流量、有真实 token 成本，藏了就是惯犯③静默丢数据），
-    是给前端一个"降档显示但留入口"的依据。partial 优先于一切（只录到中间段，起源不明）。"""
+def _turn_origin(turn_start: bool, user_text: str, entrypoint: str = "") -> str:
+    """轮起源分类：user / synthetic / command / sdk / partial。
+
+    优先级（partial > 措辞 > entrypoint > user）与「官方标识符优先」不冲突，因为两类信号
+    回答的**不是同一个问题**：措辞白名单说「这一轮是 CC 自己合成的」（轮级），entrypoint 说
+    「这整个会话是程序驱动的」（会话级）。同一轮两者都命中时，轮级的更具体、信息量更大。
+    实测本机全量录制里两者零重叠。
+
+    这不是"噪声过滤"——伪轮会带出真流量、有真实 token 成本，藏了就是惯犯③静默丢数据；
+    它是给前端一个"降档显示但留入口"的依据。partial 优先于一切（只录到中间段，起源不明）。
+    """
     if not turn_start:
         return "partial"
     t = (user_text or "").strip()
@@ -480,6 +494,8 @@ def _turn_origin(turn_start: bool, user_text: str) -> str:
         return "synthetic"
     if t.startswith(TURN_ORIGIN_COMMAND):
         return "command"
+    if (entrypoint or "").startswith(TURN_ORIGIN_SDK_ENTRYPOINT_PREFIX):
+        return "sdk"
     return "user"
 
 
@@ -842,6 +858,9 @@ def _node_summary(idx: dict, kind: str, lane: str) -> dict:
     # 每个都背一份 160 字不划算，中间步也没有新的 user 消息可言。
     if node["turn_start"]:
         node["user_text"] = idx.get("turn_user") or ""
+        # 轮起源要用的官方位（260810）：只给轮首带，理由同上——它只在分轮那一刻被读一次。
+        # 不透给前端（`build_dag` 出口会剥掉），前端消费的是算好的 `turns[].origin`。
+        node["entrypoint"] = idx.get("entrypoint") or ""
     # 安全审查节点带上待判定动作（260730）：security 的响应正文是 `<severity>8` 这种残片，
     # 拿它当摘要等于什么都没说（列表行 v0.4.1 已改，DAG 当时漏了）。只给 security 带，
     # 其余 kind 不背这个恒 null 的字段——一天几千个节点，每个都带一次不划算。
@@ -997,7 +1016,8 @@ def build_dag(records: list[dict]) -> dict:
             # 起源分类（260809）：user/synthetic/command/partial，前端据此降档伪轮、
             # 不把它们与真人轮画成同一种卡。判据单份在这里，前端不重算。
             "origin": _turn_origin(bool(turn[0]["turn_start"]),
-                                   turn[0].get("user_text") or ""),
+                                   turn[0].get("user_text") or "",
+                                   turn[0].get("entrypoint") or ""),
             "steps": len(turn),
             "tool_uses": sum(n["tool_uses"] for n in turn),
             "total_ms": sum(n["total_ms"] or 0 for n in turn),
@@ -1090,6 +1110,11 @@ def build_dag(records: list[dict]) -> dict:
                 turn_of[n["id"]] = t["turn_id"]
                 n["turn"] = t["turn_id"]
                 t["node_ids"].append(n["id"])
+
+    # entrypoint 是**算 origin 用的中间原料**，算完就摘掉：它已经浓缩进 turns[].origin，
+    # 留在节点上等于让前端多一个可以自己重算判据的入口（判据必须单份，见 §二·五）。
+    for n in nodes:
+        n.pop("entrypoint", None)
 
     # lanes 排序：main 按首见时间，subagent 次之，aux 最后
     lanes = sorted(lane_of.values(),

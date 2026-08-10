@@ -251,7 +251,7 @@ data: {...}
   "turns": [{"turn_id":"s-<hash>#3","lane":"s-<hash>","head":"req_…","index":4,
              "first_ts":"…","last_ts":"…","node_ids":["req_…"],
              "user_text":"帮我把雷达的 betas 改成提升度…","partial":false,
-             "origin":"user",
+             "origin":"user|synthetic|command|sdk|partial",
              "steps":12,"tool_uses":26,"total_ms":138000,"errors":1,"has_error":true,"pure_chat":false,
              "subagents":[{"lane_id":"agent-…","label":"你是视觉设计评审…"}],
              "aux":{"security":3,"title":1}}]
@@ -266,7 +266,7 @@ data: {...}
 |---|---|
 | `user_text` | **这轮用户说了什么**。真源是索引的 `turn_user`（写时从完整 body 剥 `<system-reminder>` 后取 160 字）——不能读时拿 `last_user` 现剥：那字段只存前 2000 字，而 CC 注入的 reminder 可达 9960 字，剥出来常常是空的 |
 | `partial` | 轮首不是真起点（代理中途启动，只录到某轮的中间段） |
-| `origin`（260809） | **这轮是谁发起的**：`user`（真人消息）/ `synthetic`（CC 自己合成的伪 user 消息，如建议补全/后台任务/离开回顾/内部检索）/ `command`（斜杠命令注入）/ `partial`。判据是轮首文本前缀白名单（`classifier._turn_origin`，单份，前端不重算）——wire 层**没有结构性判据**（`tools_n`/`max_tokens`/计费头版本哈希在真人与伪轮间全重叠），措辞是唯一稳定指纹，故这是启发式而非真值；命中不了的一律落回 `user`（宁可把伪轮当真轮，不能把真人消息弱化）。真值层在 0.6.x：jsonl 在场时用 `request-id` join 取 `origin.kind` 覆盖。⚠️ `synthetic` **不是噪声**——伪轮会带出真工作、有真实 token 成本，前端只能降档显示，不能隐藏（藏了就是惯犯③静默丢数据） |
+| `origin`（260809，260810 加 `sdk`） | **这轮是谁发起的**：`user`（真人消息）/ `synthetic`（CC 自己合成的伪 user 消息，如建议补全/后台任务/离开回顾/内部检索）/ `command`（斜杠命令注入）/ `sdk`（程序驱动的会话）/ `partial`。判据单份在 `classifier._turn_origin`，前端不重算。**两类信号，优先级 partial > 措辞 > entrypoint**：`synthetic`/`command` 靠轮首文本前缀白名单——wire 层**没有结构性判据**（`tools_n`/`max_tokens`/计费头版本哈希在真人与伪轮间全重叠），措辞是唯一稳定指纹，故这一档是启发式；`sdk` 则读计费头的 `cc_entrypoint`，是**官方标识符**。命中不了的一律落回 `user`（宁可把伪轮当真轮，不能把真人消息弱化）。260810 用 CC 本地 jsonl 的 `promptSource` 做过 2,339 轮离线对账：一致率 99.8%，「把真人轮判成 synthetic」0 例。⚠️ `synthetic` **不是噪声**——伪轮会带出真工作、有真实 token 成本，前端只能降档显示，不能隐藏（藏了就是惯犯③静默丢数据） |
 | `index` | 泳道内第几轮（从 1 起） |
 | `errors` / `has_error` | 失败**条数**与布尔。给数量是因为「31 步里 1 次瞬时 429」和「整轮全挂」是两件事——前端据此决定标 ⚠N 还是整卡染红（一律染红会把红色用废：实测一天 68 轮有 29 轮含至少一次失败） |
 | `subagents` | 这轮派生了哪些子代理（trigger 边起点落在本轮内）。嵌套派生天然成立：子代理派生的子代理归到父子代理的那一轮。`label` 取被派生泳道首条的用户文本＝派生 prompt |
