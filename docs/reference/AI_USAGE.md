@@ -316,8 +316,28 @@ truth 实测，2026-07）：
 *之后*。要把子代理匹配到派生者，先剥掉 `<system-reminder>…</system-reminder>`，再把派生 prompt
 当**子串**搜。
 
-残余缺口：交互式入口（`cc_entrypoint=cli`）下的子代理还没观测到，只观测过 `sdk-cli` 的。如果
-那里 `cc_is_subagent` 缺席，工具回落到派生 prompt 匹配，所以 `/api/dag` 在那种情况下仍可能漏一条泳道。
+交互式入口（`cc_entrypoint=cli`）已补测，不再是缺口：9 天 4,629 条真录制里的 225 条子代理请求
+**全部**是 `cc_entrypoint=cli` 且全部带计费头判别位，零反例；单会话现场派生也复现了同一结果
+（立刻正确分进 `subagent` 泳道，走计费头主路径而非 prompt 回退）。顺带一条别当常量的事实：
+`cc_entrypoint` 的**取值分布随 CC 版本和使用方式在变**（同一批 4,629 条里 `sdk-cli` 只剩 2 条，
+且都不是子代理）——判别位本身稳定，分布不稳定。
+
+### 真人轮 vs CC 自己跟自己说话（读 `/api/dag` 前必看）
+
+**别把 `turns` 全当成用户提的问题。** CC 会自己合成 user 消息触发一整轮：建议补全
+（`[SUGGESTION MODE`）、离开回顾（`The user stepped away`）、内部检索派发
+（`Perform a web search for the query:`）、后台任务通知（`[SYSTEM NOTIFICATION`）。实测有整天
+**约 37% 的「轮」是 CC 在跟自己说话**——统计"用户今天问了多少次"时不去掉它们，结论直接偏掉。
+
+判据在 `turns[].origin`：`user` / `synthetic` / `command`（斜杠命令注入的前缀，轮本身是真人轮）/
+`partial`（只录到中间段，起源不明）。两条使用须知：
+
+- **`origin` 是启发式，不是真值。** wire 层没有任何结构判据能分真人与伪轮（`tools_n`、
+  `max_tokens`、计费头版本哈希实测全重叠），只有措辞是稳定指纹，所以判据是前缀白名单。
+  命中不了的新形态一律落回 `user`——**宁可把伪轮当真轮，不能把真人消息弱化**。你要是发现
+  `origin=user` 但正文明显是模板化的机器措辞，那就是白名单还没收录的新形态，值得报出来。
+- **`synthetic` 不等于噪声。** 伪轮会带出真实工作和真实 token 成本，做成本归因时**要算进去**，
+  只是别把它算成"用户的提问"。
 
 ### 配置体检（`/api/health/config`）
 
