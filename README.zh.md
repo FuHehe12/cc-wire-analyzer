@@ -22,13 +22,15 @@
 
 ## 截图
 
-| 录制列表（中文界面） | 时序 DAG |
-|---|---|
-| ![CCWA 中文录制列表](docs/screenshots/zh/view-a-captures.png) | ![CCWA 时序 DAG](docs/screenshots/zh/view-d-dag.png) |
+录制视图分两层：先在列表里看到整天的请求，再点开任意一条进入详情；详情里可以展开 `System`、`thinking`、工具和消息，并对选中的原文翻译。下面两张图是同一条示例录制。
 
-| 请求详情：展开 System 并翻译 | 设置 |
+| 录制列表（中文界面） | 录制详情：展开 System / thinking 并翻译 |
 |---|---|
-| ![CCWA System 提示词与翻译](docs/screenshots/zh/view-b-detail.png) | ![CCWA 设置](docs/screenshots/zh/view-c-settings.png) |
+| ![CCWA 中文录制列表](docs/screenshots/zh/view-a-captures-zh.png) | ![CCWA 录制详情：System、thinking 与翻译](docs/screenshots/zh/view-b-capture-detail-zh.png) |
+
+| 时序 DAG | 设置 |
+|---|---|
+| ![CCWA 时序 DAG](docs/screenshots/zh/view-d-dag.png) | ![CCWA 设置](docs/screenshots/zh/view-c-settings.png) |
 
 | 分析 —— 快照与对比 |
 |---|
