@@ -607,6 +607,25 @@ a {
   height: auto;
 }
 
+.capture-proof-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr;
+}
+
+.capture-proof-grid figure {
+  margin: 0;
+}
+
+.capture-proof-label {
+  display: block;
+  padding: 11px 14px 13px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
 .proof-caption {
   display: flex;
   align-items: center;
@@ -1067,6 +1086,10 @@ a {
 
   .proof-strip {
     padding-bottom: 66px;
+  }
+
+  .capture-proof-grid {
+    grid-template-columns: 1fr;
   }
 
   .proof-caption {
