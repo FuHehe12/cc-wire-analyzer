@@ -22,13 +22,13 @@
 
 ## 截图
 
-| 捕获列表 | 时序 DAG |
+| 录制列表（中文界面） | 时序 DAG |
 |---|---|
-| ![Captures](docs/screenshots/zh/view-a-captures.png) | ![Timeline](docs/screenshots/zh/view-d-dag.png) |
+| ![CCWA 中文录制列表](docs/screenshots/zh/view-a-captures.png) | ![CCWA 时序 DAG](docs/screenshots/zh/view-d-dag.png) |
 
-| 请求详情 | 设置 |
+| 请求详情：展开 System 并翻译 | 设置 |
 |---|---|
-| ![Detail](docs/screenshots/zh/view-b-detail.png) | ![Settings](docs/screenshots/zh/view-c-settings.png) |
+| ![CCWA System 提示词与翻译](docs/screenshots/zh/view-b-detail.png) | ![CCWA 设置](docs/screenshots/zh/view-c-settings.png) |
 
 | 分析 —— 快照与对比 |
 |---|
@@ -36,6 +36,8 @@
 
 截图用的是 v0.4.7 起的默认外观「深色专业」。设置页还有「经典暖灰」（v0.4.7 之前的界面）与
 「实验室日光」；外观只属于界面本地，不会碰你的代理配置。
+
+录制列表和详情页使用同一条中文录制：详情中展开 `System` 后，每个提示词块都可以复制、格式化、翻译或交给 AI 解读；原文始终保留，译文显示在原文旁边，方便核对模型到底收到了什么。
 
 ## 一个真实例子：自动模式为什么变慢？
 
