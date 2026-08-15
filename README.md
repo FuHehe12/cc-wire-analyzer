@@ -43,64 +43,44 @@ Shown in Dark Professional, the default since v0.4.7. Settings also offers Class
 pre-v0.4.7 interface) and Lab Daylight; the choice is local to the interface and never touches
 your proxy configuration.
 
-## A real example: why did auto mode slow down?
+## How to use it: from capture to diagnosis
 
-Claude Code looked as if it was still working, but automatic mode had become noticeably slower.
-Instead of guessing, you point an agent at the local API:
+The shortest path is: **launch → start recording → reproduce the problem → scan the capture list → open the detail and timeline views**. You do not need to understand HTTP first; start with one real request.
 
-> Read `http://127.0.0.1:<port>/api/ai-guide`, then find out why automatic mode slowed down and
-> whether a hidden safety-classifier call is failing.
+### 1. Record one session
 
-The agent walks the endpoints itself — `GET /api/diagnose/errors` to see the day's failures
-grouped by upstream message, then `GET /api/captures/<id>` on a sample — and comes back with
-the upstream's actual answer:
+1. Download a Windows or macOS build from [Releases](../../releases) and launch it.
+2. Click **Start proxy** on the Captures tab, then use Claude Code normally and reproduce the behavior you want to inspect.
+3. Stop the proxy or close CCWA. The session is now in that day’s capture list.
 
-```
-output_config.effort 'max' is not supported when thinking is disabled on this model.
-Use effort 'high' or below, or enable thinking.
-```
+### 2. Read the capture list first
 
-The cause was a config contradiction: `settings.json` had `effortLevel: low` at the top level,
-while the environment set `CLAUDE_CODE_EFFORT_LEVEL: max` — and the environment wins. Nothing in
-CC's own view showed this; the failing auxiliary requests were the clue. One agent call, one
-answer — no eyeballing the timeline, no reproducing the moment.
+Each row is one upstream request. Start with:
 
-The same finding can be turned into a check (the built-in config health-check does this). The
-wider point: the recording is machine-readable, and the failures in it have already been
-diagnosed by the upstream — an agent can extract that diagnosis directly.
+- **Type**: main, title, safety review, subagent, compaction and other auxiliary calls; hidden calls are separate rows too.
+- **Duration and TTFT**: tell whether the model is thinking, retrying or waiting on an auxiliary call.
+- **Tokens and cache**: show which turn suddenly grew, or whether context was repeatedly read from cache.
+- **Status and summary**: red failures, upstream errors, review results and response summaries are usually the first clue.
 
-## Is it safe to point your traffic at it?
+If automatic mode slows down, find the outlier by duration first. If a safety classifier is involved, start with the safety or failed rows instead of guessing from the whole session.
 
-Reasonable question to ask of anything calling itself a MITM proxy. The honest answer, in four
-points:
+### 3. Open the detail to see what the model actually received
 
-- **No recording leaves your machine.** Recordings are written to `~/.cc-wire-analyzer/` as plain
-  JSONL, and traffic is forwarded to the same upstream CC was already using. There is no
-  telemetry, no account, no upload. The app makes exactly three outbound calls of its own, all
-  only when you click them: the optional translate / ask-AI feature in the detail view (sends the
-  selected content to an endpoint **you** configure), "check for updates" in the About panel
-  (asks api.github.com for the latest release tag, sends nothing about you), and — if you then
-  press download — fetching that release asset from GitHub. There is no background update check
-  and no silent install: every step is a click.
-- **One config field, restored on exit.** The proxy edits `ANTHROPIC_BASE_URL` in
-  `~/.claude/settings.json` and nothing else — token, model mapping and OTLP config are left
-  alone. The file is backed up before the edit, and restoration is hooked to the window-close
-  event, `atexit`, signals, and a startup orphan check; a `restore` command exists as a last
-  resort. Restoration only ever undoes the exact change it can still prove it made — if you or
-  cc-switch changed `BASE_URL` in the meantime, it leaves your file alone.
-- **Credentials are redacted, message content is not.** `Authorization` and similar headers are
-  stored redacted. Request and response bodies are stored **verbatim** — which is the point, but
-  it means a recording contains your prompts, your files' contents as quoted into the session,
-  and the full system prompt. Treat capture files as sensitive: don't paste them into a chat or
-  attach them to a bug report without reading them first.
-- **It coexists with your existing setup.** Official endpoint direct, a third-party gateway, or
-  cc-switch — all supported. While the proxy is running, don't switch endpoints with cc-switch:
-  that rewrites `BASE_URL` and CC would bypass the proxy. The app watches for exactly this and
-  tells you when it happens. Also avoid cc-switch's "save current as profile" while recording —
-  it would read the patched settings and store the local-proxy address into that profile, so
-  switching to it later points CC at a dead port (the app can't prevent this; settings.json is
-  only read, not changed). And if `BASE_URL` is already a local address when recording starts
-  (leftover from a previous run, or a contaminated profile), the app warns you to check it.
+Click any row and expand the parts relevant to your question:
+
+- Expand **System** to inspect the complete system prompt, identity block and context reminders; translate selected English text while keeping the original beside it.
+- Expand **thinking**, **Messages** and **Tools** to compare reasoning fragments, user messages, tool definitions and tool calls.
+- For unfamiliar fields, use **Format**, then copy one block or ask your configured AI endpoint to explain it.
+
+This answers “why did it do that?”, “what prompt did the subagent receive?” and “why did the safety review fail?” instead of leaving you with only Claude Code’s final summary.
+
+### 4. Use the timeline and Analyse views for cross-request problems
+
+- **Timeline** connects main sessions, subagents and auxiliary calls in lanes; follow the derivation edge to see who spawned whom, then look for waits, retries and red error nodes.
+- **Analyse** saves a request or prompt segment as a snapshot and compares turns, useful for prompt drift, context changes and invisible character differences.
+- For batch searches, use the local API or [AI usage guide](docs/reference/AI_USAGE.md) and let an agent read the recordings and return a diagnosis.
+
+Network forwarding, data locations, the full API and security boundaries are documented in [docs](docs/README.md) for readers who need them.
 
 ## Features
 
