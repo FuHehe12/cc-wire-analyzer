@@ -1,32 +1,29 @@
-# CC Wire Analyzer — Claude Code HTTP Traffic Inspector
+# CC Wire Analyzer — Understand Claude Code's Thinking, Prompts & Subagents
 
-Record and inspect every HTTP request **Claude Code** makes. A local MITM proxy that captures the full request and response between CC and its upstream endpoint — filling the wire-level gap that `~/.claude/projects/*.jsonl` (CC's post-processed view) and OTLP telemetry can't show.
+Wondering why a hidden safety classifier failed, why auto mode suddenly slowed down, what prompt a subagent received, or what a thinking block written in mixed languages means? CC Wire Analyzer records a local session and turns those hidden steps into something you can read, translate, and compare: thinking blocks, system prompts, tool calls, subagent prompts, upstream errors, and token usage.
+
+It is for the moment when Claude Code's own session view tells you that something happened, but not why. Select captured content to translate it or ask an AI endpoint you configure to explain it; the original stays beside the explanation.
 
 [中文](README.zh.md) · [日本語](README.ja.md)
 
 [Website](https://fuhehe12.github.io/cc-wire-analyzer/) · [Download latest release](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
-**Windows & macOS · no Python required · recordings stay local · no telemetry**
+**Windows & macOS · optional translation / AI explanation · recordings stay local · no telemetry**
 
-## When you'd reach for this
+## Why you'd use it
 
-Claude Code shows you its own version of a session. The wire shows what was actually sent and
-what actually came back — and the two are not the same thing. You'd reach for the wire when you
-want to understand the real conversation between CC and the model:
+Use it when Claude Code's surface-level session view leaves the important question unanswered:
 
-- **See exactly what CC sends to the model.** The full system prompt as transmitted (watermark
-  fields and all), which tools were declared on which request, when a subagent was spawned and
-  with what prompt, the background security-classifier calls you never see, SSE chunk timing,
-  and token counts as the upstream reported them — not as they were later summarized.
-- **Read the prompts behind every stage.** CC isn't one conversation — it's main chat plus
-  title generation, security review, and context compaction, each with its own system prompt and
-  tool list. The wire lays them out side by side: what the main system prompt actually says, how
-  tool descriptions are worded, how a user message gets wrapped and injected, how a subagent's
-  prompt differs from the one that spawned it. The prompt engineering is right there on the page.
-- **Hand it to an agent to analyze.** Everything is written to plain JSONL on your machine, and
-  the same endpoints the GUI uses are open over HTTP — so you (or another agent) can walk back
-  through a session afterwards, search it, cross-analyze it, instead of trying to reproduce the
-  moment.
+- **A safety-classifier error.** Find the hidden request that failed, read the upstream message,
+  and see which prompt, model setting, or tool call was involved.
+- **A slow automatic mode.** Follow the timeline instead of guessing whether Claude Code is
+  thinking, retrying, counting tokens, or waiting on an auxiliary call.
+- **A sudden burst of subagents.** See who spawned whom, the exact Task/Agent prompt, and the
+  context each subagent received.
+- **Thinking in English or several languages.** Translate the selected thinking or prompt while
+  keeping the original visible for comparison.
+- **A question worth handing to another agent.** The recording is machine-readable, so you (or
+  another agent) can search, cross-check, and diagnose it without reproducing the moment.
 
 ## Screenshots
 
@@ -46,13 +43,13 @@ Shown in Dark Professional, the default since v0.4.7. Settings also offers Class
 pre-v0.4.7 interface) and Lab Daylight; the choice is local to the interface and never touches
 your proxy configuration.
 
-## A real example: hand the recording to an agent
+## A real example: why did auto mode slow down?
 
-Session titles had stopped generating. Claude Code showed no error — titles simply never
-appeared. Instead of hunting for it by eye, you point an agent at the tool:
+Claude Code looked as if it was still working, but automatic mode had become noticeably slower.
+Instead of guessing, you point an agent at the local API:
 
-> Read `http://127.0.0.1:<port>/api/ai-guide`, then find out why session titles aren't being
-> generated.
+> Read `http://127.0.0.1:<port>/api/ai-guide`, then find out why automatic mode slowed down and
+> whether a hidden safety-classifier call is failing.
 
 The agent walks the endpoints itself — `GET /api/diagnose/errors` to see the day's failures
 grouped by upstream message, then `GET /api/captures/<id>` on a sample — and comes back with
@@ -65,8 +62,8 @@ Use effort 'high' or below, or enable thinking.
 
 The cause was a config contradiction: `settings.json` had `effortLevel: low` at the top level,
 while the environment set `CLAUDE_CODE_EFFORT_LEVEL: max` — and the environment wins. Nothing in
-CC's own view showed this; the failing requests were only visible at the wire layer. One agent
-call, one answer — no eyeballing the timeline, no reproducing the moment.
+CC's own view showed this; the failing auxiliary requests were the clue. One agent call, one
+answer — no eyeballing the timeline, no reproducing the moment.
 
 The same finding can be turned into a check (the built-in config health-check does this). The
 wider point: the recording is machine-readable, and the failures in it have already been
