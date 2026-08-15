@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CC Wire Analyzer：Claude Code 抓包、HTTP 请求与系统提示词分析工具</title>
-  <meta name="description" content="本地开源的 Claude Code HTTP 流量分析工具，支持 Windows 与 macOS；录制系统提示词、工具、SSE 事件、上游错误和 Token 用量。">
+  <title>CC Wire Analyzer：翻译 Claude Code 思考过程、查看提示词与子代理</title>
+  <meta name="description" content="在本机把 Claude Code 的 thinking、system prompt 与子代理内容翻译成中文，查看它为什么这样做。支持 Windows 与 macOS，可选 AI 解读，内容默认只留在本机。">
   <meta name="theme-color" content="#111116">
   <link rel="canonical" href="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
   <link rel="alternate" hreflang="en" href="https://fuhehe12.github.io/cc-wire-analyzer/">
@@ -17,16 +17,16 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CC Wire Analyzer">
   <meta property="og:locale" content="zh_CN">
-  <meta property="og:title" content="看清 Claude Code 实际发出了什么">
-  <meta property="og:description" content="在本机查看完整 HTTP 请求、系统提示词、工具、SSE 时序、上游错误和精确 Token 用量。">
+  <meta property="og:title" content="把 Claude Code 的思考过程和提示词翻译给自己看">
+  <meta property="og:description" content="详情页直接翻译 thinking、system prompt 与子代理 prompt，追踪工具调用和派生关系。">
   <meta property="og:url" content="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
   <meta property="og:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
-  <meta property="og:image:alt" content="CC Wire Analyzer 展示 Claude Code 请求经本地 wire 分析器发送到上游">
+  <meta property="og:image:alt" content="CC Wire Analyzer 展示 Claude Code 思考过程、提示词与子代理的中文分析界面">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="CC Wire Analyzer — Claude Code 抓包与 HTTP 请求分析工具">
-  <meta name="twitter:description" content="看清穿过 wire 的提示词、工具、SSE 事件、错误和 Token。">
+  <meta name="twitter:title" content="CC Wire Analyzer — 翻译 Claude Code 思考过程与提示词">
+  <meta name="twitter:description" content="翻译 thinking，查看 system prompt 和子代理 prompt；中文/英文/日文界面，本地可检查。">
   <meta name="twitter:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
 
   <script type="application/ld+json">
@@ -34,7 +34,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "CC Wire Analyzer",
-    "description": "本地开源的 Claude Code HTTP 抓包与流量分析工具，录制完整请求、响应、系统提示词、工具声明、SSE 事件、上游错误和 Token 用量。",
+    "description": "本地开源的 Claude Code 提示词与思考过程分析工具，可选翻译和 AI 解读；查看 system prompt、工具、子代理行为与完整上下文。",
     "url": "https://fuhehe12.github.io/cc-wire-analyzer/zh/",
     "downloadUrl": "https://github.com/FuHehe12/cc-wire-analyzer/releases/latest",
     "softwareHelp": "https://github.com/FuHehe12/cc-wire-analyzer/tree/main/docs",
@@ -80,31 +80,31 @@
     <section class="hero">
       <div class="shell hero-grid">
         <div>
-          <p class="eyebrow">本地 wire 级可观测性</p>
-          <h1>看清 Claude Code<br>实际发送的<br><span class="wire-word">wire 内容。</span></h1>
-          <p class="hero-copy">Claude Code 展示的是它自己的会话视图。CC Wire Analyzer 录制<strong>尚未被它事后加工的完整 HTTP 请求与响应</strong>：系统提示词、工具定义、隐藏调用、SSE 时序、上游错误和精确 Token 用量。</p>
+          <p class="eyebrow">翻译 · 提示词 · 子代理</p>
+          <h1>看懂 Claude Code<br>在想什么、<br><span class="wire-word">又告诉了模型什么。</span></h1>
+          <p class="hero-copy">很多人都会问：“能不能把 thinking 过程从英语翻成中文？为什么这次突然派了一个子 agent？”打开一条记录，在详情页直接翻译 thinking、system prompt 和子代理 prompt，再对照工具调用与上下文——不用猜。</p>
           <div class="actions">
-            <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">下载最新版 <span class="arrow" aria-hidden="true">↓</span></a>
-            <a class="button" href="https://github.com/FuHehe12/cc-wire-analyzer">查看源码 <span class="arrow" aria-hidden="true">↗</span></a>
+            <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">下载并开始翻译 <span class="arrow" aria-hidden="true">↓</span></a>
+            <a class="button" href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/README.zh.md">查看中文说明 <span class="arrow" aria-hidden="true">↗</span></a>
           </div>
           <ul class="trust-line" aria-label="产品信息">
             <li>Windows + macOS</li>
-            <li>无需 Python</li>
-            <li>无遥测</li>
-            <li>代码 MIT</li>
+            <li>中文 / English / 日本語</li>
+            <li>可选翻译 / AI 解读</li>
+            <li>内容默认只留本机</li>
           </ul>
         </div>
 
-        <div class="wire-stage" aria-label="一条请求从 Claude Code 经本地分析器发送到上游">
+        <div class="wire-stage" aria-label="一条 Claude Code 记录从原文到翻译与分析">
           <div class="stage-bar">
             <div class="stage-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-            <span class="stage-title">实时请求 · wire 视图</span>
+            <span class="stage-title">提示词与思考 · 可翻译视图</span>
           </div>
           <div class="route" aria-hidden="true">
             <div class="route-line"></div>
             <span class="endpoint left">Claude Code</span>
-            <span class="endpoint middle">127.0.0.1</span>
-            <span class="endpoint right">上游</span>
+            <span class="endpoint middle">本地记录</span>
+            <span class="endpoint right">详情页</span>
           </div>
           <div class="packet-card">
             <div class="packet-head">
@@ -112,14 +112,14 @@
               <span class="packet-meta">req_7f3a · 4.5s</span>
             </div>
             <ul class="packet-rows">
-              <li><strong>system</strong><span>提示词分块 · 水印原样保留</span></li>
-              <li><strong>tools[77]</strong><span>名称 · 描述 · JSON Schema</span></li>
-              <li><strong>messages[24]</strong><span>主线 · 子代理 · 工具结果</span></li>
-              <li><strong>usage</strong><span>45k 输入 · 800 输出 · 44k 缓存</span></li>
+              <li><strong>thinking</strong><span>英文原文 → 中文翻译</span></li>
+              <li><strong>system</strong><span>完整提示词 · reminder</span></li>
+              <li><strong>subagent</strong><span>谁被派出 · 使用了什么 prompt</span></li>
+              <li><strong>explain</strong><span>对照 · 解释 · 追踪</span></li>
             </ul>
-            <div class="stream-line"><span>SSE</span> message_start → content_block_delta → message_delta → message_stop</div>
+            <div class="stream-line"><span>中英日</span> thinking · prompt · tool_use · result</div>
           </div>
-          <span class="stage-note">凭据头脱敏 · 正文原样录制</span>
+          <span class="stage-note">翻译按需进行 · 记录默认只留本机</span>
         </div>
       </div>
     </section>
@@ -130,8 +130,8 @@
           <img src="../assets/screenshots/captures-zh.png" alt="CC Wire Analyzer 捕获列表，显示 Claude Code 请求、模型、延迟、Token 与失败调用" width="2166" height="1307" fetchpriority="high">
         </div>
         <div class="proof-caption">
-          <strong>真实捕获列表——请求、隐藏分类器、延迟、失败和 Token 都在同一处。</strong>
-          <span>深色专业主题 · 录制只留在本机</span>
+          <strong>从列表进入详情：把 thinking 和提示词翻译成看得懂的内容。</strong>
+          <span>原文可回看 · 深色专业主题 · 默认只留本机</span>
         </div>
       </div>
     </section>
@@ -140,55 +140,52 @@
       <div class="shell">
         <div class="section-head">
           <div>
-            <p class="eyebrow">缺失的那一层</p>
-            <h2>记录穿过边界的事实，不在事后重建一个近似版本。</h2>
+            <p class="eyebrow">从“看不懂”到“看明白”</p>
+            <h2>先翻译 Claude Code 的幕后内容，再理解它为什么这样做。</h2>
           </div>
-          <p class="section-intro">wire 是 Claude Code 与模型真实对话存在的地方。录一次后，你可以在 GUI 里看，也可以让另一个 agent 通过同一套 HTTP API 自己查询。</p>
+          <p class="section-intro">选择一段 thinking、system prompt 或子代理上下文，在详情页直接翻译，或让你自己配置的 AI 解释；同一条记录还保留原文、工具和调用链，方便对照。</p>
         </div>
 
         <div class="signal-grid">
           <article class="signal-card">
+            <span class="signal-code">thinking</span>
+            <h3>翻译思考过程</h3>
+            <p>把英文 thinking、分析片段和工具前后的解释翻成中文，原文与译文并排保留。</p>
+          </article>
+          <article class="signal-card">
             <span class="signal-code">system[]</span>
-            <h3>实际发送的提示词</h3>
-            <p>查看完整 system prompt、注入的 reminder，以及标题生成、上下文压缩和安全审查提示词。</p>
+            <h3>看完整提示词</h3>
+            <p>查看主线、标题生成、安全审查和上下文压缩各自的 system prompt，不再只看 CC 事后整理的摘要。</p>
           </article>
           <article class="signal-card">
-            <span class="signal-code">tools[77]</span>
-            <h3>工具与子代理</h3>
-            <p>检查每份工具 Schema、派生子代理的 prompt，以及随后发生的整条请求链。</p>
+            <span class="signal-code">subagent</span>
+            <h3>看子代理为何被派出</h3>
+            <p>找到 Task/Agent 的派生 prompt，沿时序看是谁派了谁、每个子代理拿到了什么上下文。</p>
           </article>
           <article class="signal-card">
-            <span class="signal-code">event: delta</span>
-            <h3>SSE 与上游错误</h3>
-            <p>沿流式时序查看每个事件，并读到 Claude Code 自己的会话视图没有展示的失败。</p>
-          </article>
-          <article class="signal-card">
-            <span class="signal-code">GET /api/*</span>
-            <h3>agent 可读的证据</h3>
-            <p>GUI 与开放的本地 HTTP API 共享同一真源，agent 可以自行搜索、交叉分析和诊断。</p>
+            <span class="signal-code">analyse</span>
+            <h3>对照并问 AI</h3>
+            <p>把一条请求保存成快照，比较不同轮次；需要时把选中内容交给你配置的兼容端点解释。</p>
           </article>
         </div>
 
         <div class="case-study">
           <article class="case-copy">
             <div>
-              <p class="eyebrow">CC 没展示的一次失败</p>
-              <h3>会话标题悄无声息地停止生成。</h3>
-              <p>界面没有任何错误，但失败的辅助请求仍然存在于 wire 上，而且已经带着上游给出的诊断。</p>
+              <p class="eyebrow">一个常见问题</p>
+              <h3>“能不能把 thinking 改成中文？为什么这次派了子 agent？”</h3>
+              <p>不必猜。打开对应记录，先翻译 thinking，再对照 system prompt、Task prompt、工具和子代理序列，就能知道它看到了什么、为什么这样调度。</p>
             </div>
-            <div class="case-result">一次录制 → 一次 agent 查询 → 找到根因</div>
+            <div class="case-result">翻译 thinking → 对照提示词 → 看清派生链</div>
           </article>
-          <div class="terminal" aria-label="诊断示例">
-            <div class="terminal-bar">wire 诊断</div>
-            <pre><span class="key">GET</span> /api/diagnose/errors
+          <div class="terminal" aria-label="翻译与子代理示例">
+            <div class="terminal-bar">翻译与派生</div>
+            <pre><span class="key">thinking</span>  "I’ll inspect the relevant files first..."
+<span class="answer">中文</span>      "我先检查相关文件……"
 
-<span class="error">output_config.effort 'max' is not supported</span>
-<span class="error">when thinking is disabled on this model.</span>
-
-settings.json      effortLevel: low
-environment        CLAUDE_CODE_EFFORT_LEVEL: max
-
-<span class="answer">根因：环境变量胜出 → 请求参数互相矛盾</span></pre>
+<span class="key">Task</span>      Explore
+prompt     "调研主题切换的内存泄漏注意事项"
+origin     主线 → 子代理</pre>
           </div>
         </div>
       </div>
@@ -198,27 +195,27 @@ environment        CLAUDE_CODE_EFFORT_LEVEL: max
       <div class="shell">
         <div class="section-head">
           <div>
-            <p class="eyebrow">三种互补视图</p>
-            <h2>Wire、JSONL 与 OTLP 回答的是不同问题。</h2>
+            <p class="eyebrow">你真正想看的三层内容</p>
+            <h2>思考过程、提示词和子代理行为，放在同一条时间线上。</h2>
           </div>
-          <p class="section-intro">CC Wire Analyzer 不取代 Claude Code 日志或遥测。它补上两者都无法表达的一层：与上游端点之间未经加工的原始交互。</p>
+          <p class="section-intro">不需要先理解 HTTP 术语：从一条记录开始，先看译文，再按需展开原文、工具和调用关系。</p>
         </div>
 
-        <div class="layer-table" role="table" aria-label="wire 抓包、JSONL 日志与 OTLP 遥测对照">
+        <div class="layer-table" role="table" aria-label="思考过程、提示词与子代理行为对照">
           <div class="layer-row is-wire" role="row">
-            <div class="layer-name" role="cell">WIRE</div>
-            <div class="layer-source" role="cell">原始 HTTP</div>
-            <p role="cell">实际发送的提示词、Header、Body、SSE 分块、上游错误与原始用量。</p>
+            <div class="layer-name" role="cell">THINKING</div>
+            <div class="layer-source" role="cell">思考过程</div>
+            <p role="cell">英文原文、中文翻译、thinking 类型与 Token；原文始终可回看。</p>
           </div>
           <div class="layer-row" role="row">
-            <div class="layer-name" role="cell">JSONL</div>
-            <div class="layer-source" role="cell">Claude Code 视图</div>
-            <p role="cell">会话结构、本地元数据，以及被 Claude Code 处理后的对话。</p>
+            <div class="layer-name" role="cell">PROMPT</div>
+            <div class="layer-source" role="cell">提示词</div>
+            <p role="cell">system prompt、reminder、工具说明和子代理 prompt。</p>
           </div>
           <div class="layer-row" role="row">
-            <div class="layer-name" role="cell">OTLP</div>
-            <div class="layer-source" role="cell">聚合指标</div>
-            <p role="cell">跨会话的延迟、成本、Token 与运行指标。</p>
+            <div class="layer-name" role="cell">AGENTS</div>
+            <div class="layer-source" role="cell">行为链</div>
+            <p role="cell">主线、子代理、工具调用、错误和用量的时序关系。</p>
           </div>
         </div>
 
@@ -237,28 +234,28 @@ environment        CLAUDE_CODE_EFFORT_LEVEL: max
       <div class="shell">
         <div class="section-head">
           <div>
-            <p class="eyebrow">从设计上保持本地</p>
-            <h2>一个流量分析器应该把自己碰了什么说清楚。</h2>
+            <p class="eyebrow">翻译按需，内容默认留本机</p>
+            <h2>把敏感的提示词看清楚，也把它去了哪里说清楚。</h2>
           </div>
-          <p class="section-intro">请求仍然发往 Claude Code 原本就在使用的上游。应用只在本机录制、脱敏凭据 Header，并只改一个设置字段把流量导向自己。</p>
+          <p class="section-intro">记录、原文和快照默认写在本机；只有你点击翻译或 AI 解读时，选中的内容才会发往你自己配置的端点。</p>
         </div>
 
         <div class="safety-grid">
           <article class="safety-item">
             <span class="safety-icon" aria-hidden="true">⌂</span>
-            <div><h3>录制只留在你的机器</h3><p>纯 JSONL 写入 <code>~/.cc-wire-analyzer/</code>，没有账号、云存储和遥测。</p></div>
+            <div><h3>记录只留在你的机器</h3><p>纯 JSONL 写入 <code>~/.cc-wire-analyzer/</code>，没有账号、云存储和遥测。</p></div>
           </article>
           <article class="safety-item">
             <span class="safety-icon" aria-hidden="true">1</span>
-            <div><h3>只改一个路由字段</h3><p>只 patch <code>ANTHROPIC_BASE_URL</code>，停止或退出时从备份恢复。</p></div>
+            <div><h3>翻译由你选择端点</h3><p>详情页的翻译 / AI 解读使用你在设置中配置的 OpenAI 兼容端点，默认不会自动发送。</p></div>
           </article>
           <article class="safety-item">
             <span class="safety-icon" aria-hidden="true">×</span>
-            <div><h3>凭据会脱敏</h3><p>Authorization 等 Header 不会原样保存；消息 Body 则保持原文，因为那正是需要检查的证据。</p></div>
+            <div><h3>原文可含敏感信息</h3><p>system prompt、文件片段和用户消息会原样留在本机；分享前先确认内容。</p></div>
           </article>
           <article class="safety-item">
             <span class="safety-icon" aria-hidden="true">→</span>
-            <div><h3>没有静默网络活动</h3><p>可选 AI 分析与更新检查都只在你点击时运行，使用的端点也明确展示给你。</p></div>
+            <div><h3>没有静默网络活动</h3><p>更新检查、下载与 AI 分析都由你点击触发，使用的端点也明确展示给你。</p></div>
           </article>
         </div>
       </div>
@@ -267,12 +264,12 @@ environment        CLAUDE_CODE_EFFORT_LEVEL: max
     <section class="final-cta">
       <div class="shell">
         <div class="cta-panel">
-          <p class="eyebrow">开源 · 本地 · 可检查</p>
-          <h2>录一次会话，再问 wire 到底发生了什么。</h2>
-          <p>下载 Windows 可执行文件或 macOS 应用，启动本地代理，之后照常使用 Claude Code。Release 构建无需 Python。</p>
+          <p class="eyebrow">翻译 · 提示词 · 子代理</p>
+          <h2>让 Claude Code 的幕后过程变成你看得懂的中文。</h2>
+          <p>下载 Windows 可执行文件或 macOS 应用，启动本地代理，照常使用 Claude Code。录下一条会话后，选择 thinking、提示词或子代理内容，直接翻译、解释和对照。</p>
           <div class="actions">
             <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">下载最新版 <span class="arrow" aria-hidden="true">↓</span></a>
-            <a class="button" href="https://github.com/FuHehe12/cc-wire-analyzer/tree/main/docs">阅读文档 <span class="arrow" aria-hidden="true">↗</span></a>
+            <a class="button" href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/README.zh.md">阅读中文说明 <span class="arrow" aria-hidden="true">↗</span></a>
           </div>
         </div>
       </div>
@@ -281,7 +278,7 @@ environment        CLAUDE_CODE_EFFORT_LEVEL: max
 
   <footer class="site-footer">
     <div class="shell footer-row">
-      <span>CC Wire Analyzer · 用证据代替猜测。</span>
+      <span>CC Wire Analyzer · 把幕后过程看懂再行动。</span>
       <nav class="footer-links" aria-label="页脚导航">
         <a href="https://github.com/FuHehe12/cc-wire-analyzer">GitHub</a>
         <a href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Releases</a>

@@ -1,19 +1,20 @@
-# CC Wire Analyzer — Claude Code 抓包与 HTTP 请求分析工具
+# CC Wire Analyzer — 翻译 Claude Code 思考过程、提示词与子代理
 
-录制并查看 **Claude Code** 发出的每一个 HTTP 请求。本地 MITM 代理透明转发并**完整录制** CC ↔ 上游端点的请求与响应——填补 `~/.claude/projects/*.jsonl`（CC 的已加工视图）和 OTLP 遥测都看不到的链路级维度。
+很多人都会问：“能不能把 Claude Code 的 thinking 过程从英语翻成中文？为什么这次突然派了一个子 agent？”CC Wire Analyzer 让你在本机打开一条记录，直接翻译 thinking、system prompt 和子代理 prompt，再对照工具调用与上下文。翻译和 AI 解读按需进行，原文、快照与录制默认只留在本机。
 
 [English](README.md) · [日本語](README.ja.md)
 
 [官网](https://fuhehe12.github.io/cc-wire-analyzer/zh/) · [下载最新版](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [使用文档](docs/README.md) · [更新日志](CHANGELOG.zh.md)
 
-**支持 Windows 与 macOS · 无需 Python · 录制只留在本机 · 无遥测**
+**支持 Windows 与 macOS · 中文/英文/日文 · 可选翻译与 AI 解读 · 内容默认只留在本机**
 
-## 什么时候你会需要它
+## 你可以用它看懂什么
 
-Claude Code 展示的是它自己视角下的会话；wire 层展示的是实际发出去了什么、实际收回来了什么——这两件事并不相同。当你想看清 CC 和模型之间真实的交互，你会需要 wire 层：
+打开一条记录后，不必先理解 HTTP 术语。先看译文，再按需展开原文、工具和调用关系：
 
-- **看清 CC 到底给模型发了什么。** 完整的 system prompt 原文（连同水印字段）、每条请求声明了哪些工具、子代理在何时以何种 prompt 被派生、你从未见过的后台安全分类器调用、SSE 分块时序，以及上游报告的原始 token 数——而非事后被归纳过的版本。
-- **读懂每个环节的提示词怎么写。** CC 不是一个对话——它是主线对话，加上标题生成、安全审查、上下文压缩，每个环节都有自己的 system prompt 和工具列表。wire 层把它们并排摊开：主线的 system prompt 到底说了什么、工具描述是怎么措辞的、user 消息怎么被包裹注入、子代理的 prompt 和派生它的主线有什么不同。提示词工程一目了然。
+- **把 thinking 翻译成中文。** 详情页可以翻译英文 thinking、分析片段和工具前后的解释，原文与译文并排保留；想看原文时随时切回。
+- **看完整提示词。** 主线、标题生成、安全审查和上下文压缩各自有自己的 system prompt 和工具列表，提示词如何影响行为一目了然。
+- **弄清楚子代理为什么出现。** 找到 Task/Agent 的派生 prompt，沿时序看是谁派了谁、每个子代理拿到了什么上下文，以及它后来调用了哪些工具。
 - **交给 agent 去分析。** 一切以纯 JSONL 写在本机，GUI 用的那套端点也对外开放 HTTP——你（或另一个 agent）可以事后逐条翻查、搜索、交叉分析，而不必尝试复现那一刻。
 
 ## 截图
