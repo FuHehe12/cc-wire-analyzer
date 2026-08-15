@@ -1,6 +1,6 @@
 # CC Wire Analyzer — 翻译 Claude Code 思考过程、提示词与子代理
 
-很多人都会问：“能不能把 Claude Code 的 thinking 过程从英语翻成中文？为什么这次突然派了一个子 agent？”CC Wire Analyzer 让你在本机打开一条记录，直接翻译 thinking、system prompt 和子代理 prompt，再对照工具调用与上下文。翻译和 AI 解读按需进行，原文、快照与录制默认只留在本机。
+很多人想看 Claude Code 中间到底发生了什么：安全分类器为什么报错、自动模式为什么变慢、某次请求为什么派出了子 agent，或者 thinking 为什么混杂了英文和其他语言。CC Wire Analyzer 让你在本机打开一条记录，直接翻译 thinking、system prompt 和子代理 prompt，再对照工具调用与上下文。翻译和 AI 解读按需进行，原文、快照与录制默认只留在本机。
 
 [English](README.md) · [日本語](README.ja.md)
 
