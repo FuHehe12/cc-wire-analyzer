@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API 浏览面 · CC Wire Analyzer</title>
+<!--
+  API 浏览面（issue 260825）。本工具是双模式的：人看 `/`，AI 走 `/api/*`。
+  这个页面是**给人看 AI 那一侧**的——把 JSON / Markdown 渲染成能读的东西。
+
+  两条铁律写在这份模板里，改的时候别破：
+    ① 数据一律 textContent，**零 innerHTML**。渲染的是录制下来的上游/模型输出，
+       是攻击者可控文本。唯一的例外是 `/api/ai-guide`（自家文档），走 marked+DOMPurify。
+    ② 折叠可以，**静默截断不行**。任何一处省略都必须带上"总共多少、点这里看全"。
+       这个项目的惯犯 bug ③ 就是静默留空，在一个专门用来看清楚的页面上重犯它最讽刺。
+-->
+<script>
+/* 跟随主界面的外观选择，避免从 `/` 点过来时深浅闪切。cookie 跨动态端口，localStorage 兜底。
+   这里只分深/浅两套（主界面的 classic 与 light 在此都走浅色）——浏览面是审计工具，
+   不承担三套外观的对照职责，多养一套 token 就是多一处会分叉的地方。 */
+(function(){
+  let t = "";
+  try{
+    const m = document.cookie.match(/(?:^|;\s*)ccwa_ui_theme=([^;]+)/);
+    t = m ? decodeURIComponent(m[1]) : localStorage.getItem("ccwa_ui_theme") || "";
+  }catch(e){}
+  const dark = (t !== "classic" && t !== "light");
+  document.documentElement.dataset.mode = dark ? "dark" : "light";
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+})();
+</script>
+<style>
+@font-face{font-family:'Inter';src:url('/static/fonts/Inter.ttf') format('truetype');font-weight:100 900;font-display:swap;}
+@font-face{font-family:'JetBrains Mono';src:url('/static/fonts/JetBrainsMono.ttf') format('truetype');font-weight:100 800;font-display:swap;}
+@font-face{font-family:'Noto Sans SC';src:url('/static/fonts/NotoSansSC.ttf') format('truetype');font-weight:100 900;font-display:swap;}
+
+:root{
+  --font-body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono","SF Mono","Menlo","Courier New",monospace;
+  /* 深色：与主界面 260802 改版同源（深炭 + 驼金发光） */
+  --accent:#E8B855; --accent-deep:#C2882B; --accent-contrast:#211706;
+  --bg:#131318; --card:#1E1E26; --soft:#25252F; --softer:#2A2A35;
+  --text:#F5F5F7; --text-2:#C8C8D0; --dim:#9898A2; --faint:#74747F;
+  --border:#2E2E38; --border-soft:#262630;
+  --ok:#4ADE80; --err:#F87171; --warn:#FBBF24; --info:#60A5FA;
+  --str:#9BD1A0; --num:#F0B86E; --bool:#7FB2F0; --null:#8A8A96; --key:#E8B855;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.40),0 2px 6px rgba(0,0,0,.30);
+  --shadow:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.30);
+  --highlight:inset 0 1px 0 rgba(255,255,255,.08);
+  --code-bg:rgba(0,0,0,.30);
+}
+html[data-mode="light"]{
+  --accent:#C98A25; --accent-deep:#A66B13; --accent-contrast:#FFFFFF;
+  --bg:#DED8CC; --card:#FFFFFF; --soft:#F4F2EF; --softer:#FBFAF8;
+  --text:#1A1A1A; --text-2:#5C564C; --dim:#6E665C; --faint:#8A8176;
+  --border:#E1DBD0; --border-soft:#EDE7DC;
+  --ok:#356A2B; --err:#A83C2A; --warn:#7B5B1D; --info:#315F9D;
+  --str:#2E6B3A; --num:#8A5A12; --bool:#2A5C99; --null:#8A8176; --key:#8A5F14;
+  --shadow-sm:0 1px 3px rgba(45,35,20,.07);
+  --shadow:0 3px 12px rgba(45,35,20,.10);
+  --highlight:inset 0 1px 0 rgba(255,255,255,.78);
+  --code-bg:rgba(0,0,0,.05);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);
+  font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+a{color:var(--accent);text-decoration:none;}
+a:hover{text-decoration:underline;}
+code,pre,.mono{font-family:var(--font-mono);}
+
+/* ---- 顶栏 ---- */
+header{position:sticky;top:0;z-index:10;background:var(--card);
+  border-bottom:1px solid var(--border);box-shadow:var(--shadow-sm);}
+.bar{max-width:1180px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;
+  gap:14px;flex-wrap:wrap;}
+.brand{font-weight:700;font-size:15px;letter-spacing:.2px;white-space:nowrap;}
+.brand .dot{color:var(--accent);}
+.bar .sp{flex:1;}
+.rt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+/* ---- 通用件 ---- */
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;
+  font-size:11.5px;font-weight:600;border:1px solid var(--border);background:var(--soft);
+  color:var(--text-2);white-space:nowrap;}
+.chip.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent);}
+.chip.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,transparent);}
+.chip.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent);}
+.chip.gold{color:var(--accent);border-color:var(--accent-deep);
+  background:color-mix(in srgb,var(--accent) 12%,transparent);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;
+  border:1px solid var(--border);background:var(--soft);color:var(--text-2);
+  font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  transition:all .16s ease;box-shadow:var(--shadow-sm),var(--highlight);}
+.btn:hover{background:var(--softer);color:var(--text);border-color:var(--faint);}
+.btn.primary{background:var(--accent);border-color:var(--accent-deep);color:var(--accent-contrast);}
+.btn.primary:hover{background:var(--accent-deep);color:var(--accent-contrast);}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+main{max-width:1180px;margin:0 auto;padding:22px 20px 80px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;
+  box-shadow:var(--shadow),var(--highlight);margin-bottom:18px;overflow:hidden;}
+.card > h2{margin:0;padding:13px 18px;font-size:13px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border-soft);
+  background:var(--soft);}
+.card-body{padding:14px 18px;}
+.lead{color:var(--text-2);margin:0 0 16px;max-width:70ch;}
+.lead b{color:var(--text);}
+
+/* ---- 首页：端点清单 ---- */
+.ep{display:grid;grid-template-columns:minmax(220px,auto) 1fr auto;gap:10px 16px;
+  align-items:center;padding:9px 18px;border-bottom:1px solid var(--border-soft);}
+.ep:last-child{border-bottom:none;}
+.ep:hover{background:var(--soft);}
+.ep-rule{font-family:var(--font-mono);font-size:12.5px;color:var(--text);word-break:break-all;}
+.ep-note{color:var(--dim);font-size:12.5px;}
+.ep-act{display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;}
+.ep.muted .ep-rule{color:var(--faint);}
+.ep-why{font-size:11.5px;color:var(--faint);font-style:italic;white-space:nowrap;}
+@media(max-width:720px){
+  .ep{grid-template-columns:1fr;gap:4px;}
+  .ep-act{justify-content:flex-start;}
+}
+
+/* ---- payload 顶部工具条 ---- */
+.tool{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 18px;
+  background:var(--soft);border-bottom:1px solid var(--border-soft);}
+.tool .url{font-family:var(--font-mono);font-size:12.5px;color:var(--text);
+  word-break:break-all;flex:1;min-width:240px;}
+
+/* ---- JSON 树 ---- */
+.tree{padding:14px 18px;}
+details.node{margin:1px 0;}
+details.node > summary{cursor:pointer;padding:3px 6px;border-radius:6px;list-style:none;
+  display:flex;align-items:center;gap:8px;user-select:none;}
+details.node > summary::-webkit-details-marker{display:none;}
+details.node > summary:before{content:"▸";color:var(--faint);font-size:11px;
+  transition:transform .14s ease;display:inline-block;width:10px;}
+details.node[open] > summary:before{transform:rotate(90deg);}
+details.node > summary:hover{background:var(--soft);}
+.k{color:var(--key);font-family:var(--font-mono);font-size:12.5px;font-weight:600;}
+.hint{color:var(--faint);font-size:11.5px;}
+.body{padding-left:16px;border-left:1px solid var(--border-soft);margin-left:5px;}
+.kv{display:flex;gap:10px;align-items:flex-start;padding:2px 6px 2px 22px;flex-wrap:wrap;}
+.kv > .k{flex:0 0 auto;}
+.v-null{color:var(--null);font-style:italic;font-family:var(--font-mono);font-size:12.5px;}
+.v-bool{color:var(--bool);font-family:var(--font-mono);font-size:12.5px;}
+.v-num{color:var(--num);font-family:var(--font-mono);font-size:12.5px;}
+.v-str{flex:1;min-width:0;}
+.str-pre{margin:0;font-family:var(--font-mono);font-size:12.5px;color:var(--str);
+  white-space:pre-wrap;word-break:break-word;background:var(--code-bg);
+  padding:5px 9px;border-radius:7px;max-width:100%;}
+.str-1{background:none;padding:1px 0;}
+.fold-row{display:flex;gap:7px;margin-top:5px;flex-wrap:wrap;}
+.fold-btn{padding:2px 9px;font-size:11.5px;border-radius:6px;border:1px solid var(--border);
+  background:var(--soft);color:var(--dim);font-family:inherit;cursor:pointer;font-weight:600;}
+.fold-btn:hover{color:var(--text);border-color:var(--faint);}
+.empty{color:var(--faint);font-family:var(--font-mono);font-size:12.5px;}
+
+/* ---- 数组转表 ---- */
+.tbl-wrap{overflow-x:auto;margin:4px 0 4px 22px;border:1px solid var(--border-soft);
+  border-radius:9px;}
+table.tbl{border-collapse:collapse;width:100%;font-size:12px;}
+table.tbl th{position:sticky;top:0;background:var(--softer);color:var(--dim);
+  text-align:left;padding:7px 10px;font-family:var(--font-mono);font-weight:700;
+  border-bottom:1px solid var(--border);white-space:nowrap;}
+table.tbl td{padding:6px 10px;border-bottom:1px solid var(--border-soft);
+  vertical-align:top;max-width:420px;}
+table.tbl tr:last-child td{border-bottom:none;}
+table.tbl tr:hover td{background:var(--soft);}
+.cell-str{font-family:var(--font-mono);color:var(--str);white-space:pre-wrap;
+  word-break:break-word;}
+
+/* ---- 提示卡 ---- */
+.notice{margin:0;padding:14px 18px;background:color-mix(in srgb,var(--warn) 10%,transparent);
+  border-left:3px solid var(--warn);}
+.notice b{color:var(--warn);}
+.notice p{margin:6px 0 0;color:var(--text-2);}
+
+/* ---- markdown ---- */
+.md{padding:8px 26px 30px;max-width:82ch;}
+.md h1{font-size:24px;margin:22px 0 12px;padding-bottom:9px;border-bottom:2px solid var(--accent-deep);}
+.md h2{font-size:19px;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.md h3{font-size:16px;margin:22px 0 8px;color:var(--accent);}
+.md h4{font-size:14px;margin:18px 0 6px;color:var(--text-2);}
+.md p,.md li{color:var(--text-2);}
+.md code{background:var(--code-bg);padding:1.5px 5px;border-radius:5px;font-size:12.5px;color:var(--accent);}
+.md pre{background:var(--code-bg);padding:12px 14px;border-radius:9px;overflow-x:auto;
+  border:1px solid var(--border-soft);}
+.md pre code{background:none;padding:0;color:var(--text-2);}
+.md table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;display:block;overflow-x:auto;}
+.md th,.md td{border:1px solid var(--border);padding:6px 10px;text-align:left;}
+.md th{background:var(--soft);color:var(--text);}
+.md blockquote{margin:12px 0;padding:6px 14px;border-left:3px solid var(--accent-deep);
+  background:var(--soft);border-radius:0 8px 8px 0;color:var(--text-2);}
+.md hr{border:none;border-top:1px solid var(--border);margin:24px 0;}
+.md a{word-break:break-all;}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(12px);
+  background:var(--text);color:var(--bg);padding:9px 18px;border-radius:10px;font-size:13px;
+  font-weight:600;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:all .2s ease;}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="brand">CC Wire Analyzer <span class="dot">·</span> <span id="hTitle"></span></span>
+    <span class="sp"></span>
+    <span class="rt" id="rt"></span>
+    <a class="btn" href="/view" id="bHome"></a>
+    <a class="btn" href="/" id="bApp"></a>
+  </div>
+</header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+
+<script id="meta" type="application/json">{{ meta|safe }}</script>
+<script id="payload" type="application/json">{{ payload|safe }}</script>
+<script id="runtime" type="application/json">{{ runtime|safe }}</script>
+<script id="endpoints" type="application/json">{{ endpoints|safe }}</script>
+<script src="/static/marked.min.js"></script>
+<script src="/static/purify.min.js"></script>
+<script>
+"use strict";
+/* 服务端事实。四份都走 `<script type="application/json">` + 服务端 `<` 转义，
+   形式统一 —— 也让自测能把它们直接 json.loads 出来核对（view_selftest [2][7]）。 */
+const META = JSON.parse(document.getElementById("meta").textContent);
+const PAYLOAD = JSON.parse(document.getElementById("payload").textContent);
+const RUNTIME = JSON.parse(document.getElementById("runtime").textContent);
+const ENDPOINTS = JSON.parse(document.getElementById("endpoints").textContent);
+
+/* ===== 三语。文案很少，页面自带字典，不并进 index.html 的 i18n 体系——
+   tools/check_i18n_js.py 只扫 index.html，把两套键混在一起反而会让那道闸门看漏。 ===== */
+const I18N = {
+zh:{
+  titleIndex:"API 浏览面", titleView:"API 响应",
+  home:"浏览面", app:"主界面", recOn:"正在录制", recOff:"未录制",
+  lead:"本工具是双模式的：<b>人看主界面，AI 走 HTTP API</b>。这一页把 AI 那一侧能拿到的东西原样渲染出来，"+
+       "让你能亲眼核对——你复制给 agent 的那句话背后，它究竟读到了什么。"+
+       "<br>页面只做呈现，<b>不改变 API 本身</b>：不带 <code>?format=html</code> 时，响应逐字节不变。",
+  gRender:"渲染", gRaw:"原始 JSON", gNeedArg:"需路径参数", copy:"复制", copied:"已复制",
+  copyFail:"复制失败", expandAll:"全部展开", collapseAll:"全部折叠",
+  expand:"展开全文（{n} 字符）", collapse:"收起", chars:"{n} 字符",
+  bytes:"{n}", keys:"{n} 键", items:"{n} 项", emptyObj:"空对象 {}", emptyArr:"空数组 []",
+  tooManyCols:"{n} 列，超过表格上限 {m}，改用列表呈现（没有砍掉任何字段）",
+  oversizeT:"响应过大，未在页面上渲染", oversizeB:"这一份有 {n}，超过浏览面的渲染上限 {m}。"+
+       "整份塞进 DOM 会把浏览器拖垮，所以这里<b>不渲染，也不截一半给你看</b>——"+
+       "截一半而不说，正是这个工具存在要消灭的毛病。点右上角「原始 JSON」拿完整字节，"+
+       "或者给请求加上更窄的参数（比如 <code>limit</code>、<code>date</code>）。",
+  status:"HTTP {n}", loading:"渲染中…",
+  whySse:"SSE 长连接，不自动打开", whyNetwork:"会联网，不自动触发",
+  grp:{guide:"给 AI 的说明书", captures:"录制查询", analysis:"分析与诊断",
+       snapshots:"快照", proxy:"代理与配置", instance:"实例与更新", other:"其他"},
+  ep:{aiGuide:"AI 用法说明书全文（本页已排版）", capturesList:"捕获列表（信封，不含请求体）",
+      captureDetail:"单条捕获详情（含完整请求体与响应块）", capturesStream:"新捕获实时推送（SSE）",
+      dag:"时序图数据：轮、泳道、父子边", grep:"跨捕获全文检索",
+      stats:"当天用量统计（条数 / token / 错误）", sources:"已导入的外部来源与归档清单",
+      unknowns:"判读盲区雷达：没见过的 host / beta / 模型",
+      diagErrors:"失败聚合：按类型与上游归并", diagTrends:"跨天趋势",
+      healthConfig:"配置体检：接管是否生效、有没有被别的工具绕开",
+      storage:"磁盘占用与可压实空间",
+      snapList:"快照列表（信封）", snapDiff:"两份快照的精确差异", snapOne:"单份快照全文",
+      snapThinking:"从快照里抽出的思考链", snapSources:"快照的来源构成",
+      snapAnalysis:"对快照的分析结果", snapChat:"围绕快照的问答记录", snapBrief:"给 agent 的快照简报",
+      proxyStatus:"代理状态：是否接管、上游是谁、有无外部改动",
+      config:"当前配置", upstreamHistory:"上游 BASE_URL 变更历史",
+      about:"版本与构建信息", instance:"本实例", instances:"本机全部实例",
+      updateCheck:"检查新版本（联网）", updateStatus:"下载/更新进度"}
+},
+en:{
+  titleIndex:"API browser", titleView:"API response",
+  home:"Browser", app:"Main UI", recOn:"recording", recOff:"not recording",
+  lead:"This tool is dual-mode: <b>humans use the main UI, AI uses the HTTP API</b>. This page renders "+
+       "what the AI side receives, so you can check with your own eyes what an agent actually reads "+
+       "behind that one line you copied to it."+
+       "<br>It only presents; it <b>does not change the API</b>: without <code>?format=html</code> the response is byte-identical.",
+  gRender:"Render", gRaw:"Raw JSON", gNeedArg:"needs a path arg", copy:"Copy", copied:"Copied",
+  copyFail:"Copy failed", expandAll:"Expand all", collapseAll:"Collapse all",
+  expand:"Show all ({n} chars)", collapse:"Collapse", chars:"{n} chars",
+  bytes:"{n}", keys:"{n} keys", items:"{n} items", emptyObj:"empty object {}", emptyArr:"empty array []",
+  tooManyCols:"{n} columns, over the table limit of {m} — shown as a list instead (no field dropped)",
+  oversizeT:"Response too large — not rendered", oversizeB:"This one is {n}, over the browser page limit of {m}. "+
+       "Putting it all in the DOM would choke the browser, so it is <b>not rendered — and not silently "+
+       "half-shown either</b>: showing half without saying so is exactly the failure this tool exists to catch. "+
+       "Use “Raw JSON” for the complete bytes, or narrow the request (<code>limit</code>, <code>date</code>).",
+  status:"HTTP {n}", loading:"rendering…",
+  whySse:"long-lived SSE, not auto-opened", whyNetwork:"hits the network, not auto-triggered",
+  grp:{guide:"Guide for AI", captures:"Recordings", analysis:"Analysis & diagnostics",
+       snapshots:"Snapshots", proxy:"Proxy & config", instance:"Instance & updates", other:"Other"},
+  ep:{aiGuide:"Full usage guide for AI (typeset on this page)", capturesList:"Capture list (envelopes, no bodies)",
+      captureDetail:"One capture in full (request body + response blocks)", capturesStream:"Live push of new captures (SSE)",
+      dag:"Timeline data: turns, lanes, parent edges", grep:"Full-text search across captures",
+      stats:"Per-day usage (count / tokens / errors)", sources:"Imported sources and archive list",
+      unknowns:"Blind-spot radar: unseen hosts / betas / models",
+      diagErrors:"Failure rollup by kind and upstream", diagTrends:"Cross-day trends",
+      healthConfig:"Config check: is the takeover live, did another tool bypass it",
+      storage:"Disk usage and compactable space",
+      snapList:"Snapshot list (envelopes)", snapDiff:"Exact diff of two snapshots", snapOne:"One snapshot in full",
+      snapThinking:"Thinking chain extracted from a snapshot", snapSources:"What a snapshot is made of",
+      snapAnalysis:"Analysis results for a snapshot", snapChat:"Q&A around a snapshot", snapBrief:"Agent brief for a snapshot",
+      proxyStatus:"Proxy state: taken over, which upstream, any external change",
+      config:"Current config", upstreamHistory:"Upstream BASE_URL history",
+      about:"Version and build info", instance:"This instance", instances:"All local instances",
+      updateCheck:"Check for updates (network)", updateStatus:"Download / update progress"}
+},
+ja:{
+  titleIndex:"API ブラウザ", titleView:"API レスポンス",
+  home:"ブラウザ", app:"メイン画面", recOn:"記録中", recOff:"未記録",
+  lead:"本ツールは二重モードです：<b>人はメイン画面、AI は HTTP API</b>。このページは AI 側が受け取る"+
+       "内容をそのまま描画します。agent に渡したあの一文の裏で、実際に何を読んでいるのかを自分の目で確認できます。"+
+       "<br>表示するだけで <b>API 自体は変えません</b>：<code>?format=html</code> を付けなければ応答はバイト単位で不変です。",
+  gRender:"描画", gRaw:"生 JSON", gNeedArg:"パス引数が必要", copy:"コピー", copied:"コピーしました",
+  copyFail:"コピー失敗", expandAll:"すべて展開", collapseAll:"すべて折りたたむ",
+  expand:"全文を表示（{n} 文字）", collapse:"折りたたむ", chars:"{n} 文字",
+  bytes:"{n}", keys:"{n} キー", items:"{n} 件", emptyObj:"空オブジェクト {}", emptyArr:"空配列 []",
+  tooManyCols:"{n} 列で表の上限 {m} を超えるためリスト表示（項目は一つも省いていません）",
+  oversizeT:"応答が大きすぎるため描画していません", oversizeB:"これは {n} で、描画上限 {m} を超えています。"+
+       "丸ごと DOM に入れるとブラウザが固まるため、<b>描画せず、黙って半分だけ見せることもしません</b>——"+
+       "黙って半分だけ見せるのは、まさに本ツールが潰そうとしている失敗です。"+
+       "完全なバイト列は「生 JSON」から、または <code>limit</code> / <code>date</code> で絞ってください。",
+  status:"HTTP {n}", loading:"描画中…",
+  whySse:"常時接続の SSE のため自動で開きません", whyNetwork:"通信するため自動実行しません",
+  grp:{guide:"AI 向け説明書", captures:"記録の照会", analysis:"分析と診断",
+       snapshots:"スナップショット", proxy:"プロキシと設定", instance:"インスタンスと更新", other:"その他"},
+  ep:{aiGuide:"AI 向け利用ガイド全文（本ページで整形済み）", capturesList:"キャプチャ一覧（封筒のみ、本文なし）",
+      captureDetail:"単一キャプチャの全文（リクエスト本文＋応答ブロック）", capturesStream:"新規キャプチャの実時間配信（SSE）",
+      dag:"タイムラインデータ：ターン・レーン・親子辺", grep:"キャプチャ横断の全文検索",
+      stats:"日次の使用量（件数 / トークン / エラー）", sources:"取り込み済みの外部ソースとアーカイブ一覧",
+      unknowns:"判読の死角レーダー：未知の host / beta / モデル",
+      diagErrors:"失敗の集約（種別・上流ごと）", diagTrends:"日をまたぐ傾向",
+      healthConfig:"設定の健診：乗っ取りが有効か、他ツールに迂回されていないか",
+      storage:"ディスク使用量と圧縮可能な容量",
+      snapList:"スナップショット一覧（封筒）", snapDiff:"2 つのスナップショットの厳密な差分", snapOne:"スナップショット全文",
+      snapThinking:"スナップショットから抽出した思考連鎖", snapSources:"スナップショットの構成要素",
+      snapAnalysis:"スナップショットの分析結果", snapChat:"スナップショットに関する問答", snapBrief:"agent 向け要約",
+      proxyStatus:"プロキシ状態：乗っ取り中か、上流はどこか、外部変更の有無",
+      config:"現在の設定", upstreamHistory:"上流 BASE_URL の変更履歴",
+      about:"バージョンとビルド情報", instance:"このインスタンス", instances:"ローカルの全インスタンス",
+      updateCheck:"更新確認（通信）", updateStatus:"ダウンロード / 更新の進捗"}
+}
+};
+const L = I18N[META.lang] || I18N.zh;
+const T = (k, o) => {
+  let s = L[k] != null ? L[k] : k;
+  if(o) for(const kk in o) s = s.split("{" + kk + "}").join(o[kk]);
+  return s;
+};
+
+/* ===== DOM 小工具。**data 一律走 textContent** —— 渲染的是录制下来的上游输出，
+   是攻击者可控文本。这份文件里唯一允许 innerHTML 的地方是自家文案（L.lead）与
+   经 DOMPurify 消毒的 ai-guide markdown，两处都有注释标注。 ===== */
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text != null) e.textContent = text;
+  return e;
+}
+function fmtN(n){ return n.toLocaleString("en-US"); }
+function fmtBytes(n){
+  if(n < 1024) return n + " B";
+  if(n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(2) + " MB";
+}
+let toastT = null;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 1800);
+}
+function copyText(s){
+  /* 与主界面同策：不依赖 navigator.clipboard（WebView2/WebKit 下不一定给），
+     失败就退回 execCommand，再失败如实说失败——不假装成功。 */
+  const done = () => toast(T("copied"));
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(s).then(done, () => fallback(s, done));
+  }else fallback(s, done);
+}
+function fallback(s, done){
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = s; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    ok ? done() : toast(T("copyFail"));
+  }catch(e){ toast(T("copyFail")); }
+}
+
+/* ===== JSON 渲染 ===== */
+const STR_FOLD = 400;      /* 超过就折叠——但**必须**给出「展开全文（N 字符）」 */
+const CELL_FOLD = 140;     /* 表格单元格更窄，同样必须可展开 */
+/* 列太多就退回列表。**绝不砍列**——砍列就是静默丢字段。上限定得高（表格容器本来就
+   横向滚动，35 列的 /api/captures 照样能读），只挡住真正病态的形状；一旦退回，
+   页面上要写明"为什么不是表格"，否则这个退化本身就成了没人看得见的行为变化。 */
+const TABLE_MAX_COLS = 40;
+
+function isPlainObj(v){ return v !== null && typeof v === "object" && !Array.isArray(v); }
+
+function foldable(s, limit, cls){
+  /* 长文本折叠件。短版 + 全文各一份 DOM，切换 hidden——不做字符串拼接，
+     避免在任何一处不小心走到 innerHTML。 */
+  const wrap = el("div", "v-str");
+  if(s.length <= limit){
+    wrap.appendChild(el("pre", "str-pre " + (cls || "") + (s.indexOf("\n") < 0 ? " str-1" : ""), s));
+    return wrap;
+  }
+  const short = el("pre", "str-pre " + (cls || ""), s.slice(0, limit) + "…");
+  const full = el("pre", "str-pre " + (cls || ""), s);
+  full.hidden = true;
+  const btn = el("button", "fold-btn", T("expand", {n: fmtN(s.length)}));
+  btn.onclick = () => {
+    const open = !full.hidden;
+    full.hidden = open; short.hidden = !open;
+    btn.textContent = open ? T("expand", {n: fmtN(s.length)}) : T("collapse");
+  };
+  const cp = el("button", "fold-btn", T("copy"));
+  cp.onclick = () => copyText(s);
+  const row = el("div", "fold-row");
+  row.appendChild(btn); row.appendChild(cp);
+  wrap.appendChild(short); wrap.appendChild(full); wrap.appendChild(row);
+  return wrap;
+}
+
+function renderScalar(v){
+  if(v === null) return el("span", "v-null", "null");
+  const t = typeof v;
+  if(t === "boolean") return el("span", "v-bool", String(v));
+  if(t === "number") return el("span", "v-num", String(v));
+  return null;
+}
+
+function renderValue(v, depth){
+  const s = renderScalar(v);
+  if(s) return s;
+  if(typeof v === "string") return foldable(v, STR_FOLD);
+  if(Array.isArray(v)) return renderArray(v, depth);
+  return renderObject(v, depth);
+}
+
+function summaryFor(key, v){
+  const sum = el("summary");
+  sum.appendChild(el("span", "k", key));
+  if(Array.isArray(v)) sum.appendChild(el("span", "hint", T("items", {n: fmtN(v.length)})));
+  else sum.appendChild(el("span", "hint", T("keys", {n: Object.keys(v).length})));
+  return sum;
+}
+
+function renderObject(o, depth){
+  const keys = Object.keys(o);
+  if(!keys.length) return el("span", "empty", T("emptyObj"));
+  const box = el("div", "body");
+  for(const k of keys){
+    const v = o[k];
+    const isBox = (v !== null && typeof v === "object" &&
+                   (Array.isArray(v) ? v.length : Object.keys(v).length) > 0);
+    if(isBox){
+      const d = el("details", "node");
+      d.open = depth < 1;                       /* 顶两层默认展开，再深就得自己点 */
+      d.appendChild(summaryFor(k, v));
+      d.appendChild(renderValue(v, depth + 1));
+      box.appendChild(d);
+    }else{
+      const row = el("div", "kv");
+      row.appendChild(el("span", "k", k));
+      row.appendChild(renderValue(v, depth + 1));
+      box.appendChild(row);
+    }
+  }
+  return box;
+}
+
+function tableKeys(arr){
+  /* 能转表的条件：至少两个元素、全是普通对象、并集列数不超过上限。
+     取**并集**而不是第一个元素的键——按第一个取会把后面元素独有的字段整列吃掉，
+     那就是静默丢数据。返回 {cols} 或 {tooMany:N}，让调用方能把退回原因说出来。 */
+  if(arr.length < 2 || !arr.every(isPlainObj)) return {};
+  const seen = [], has = new Set();
+  for(const o of arr) for(const k of Object.keys(o)) if(!has.has(k)){ has.add(k); seen.push(k); }
+  if(!seen.length) return {};
+  if(seen.length > TABLE_MAX_COLS) return {tooMany: seen.length};
+  return {cols: seen};
+}
+
+function renderCell(v){
+  const s = renderScalar(v);
+  if(s) return s;
+  if(v === undefined) return el("span", "empty", "—");     /* 该行没有这一列 */
+  if(typeof v === "string") return foldable(v, CELL_FOLD, "cell-str");
+  const n = Array.isArray(v) ? v.length : Object.keys(v).length;
+  if(!n) return el("span", "empty", Array.isArray(v) ? T("emptyArr") : T("emptyObj"));
+  const d = el("details", "node");
+  const sum = el("summary");
+  sum.appendChild(el("span", "hint",
+    Array.isArray(v) ? T("items", {n: fmtN(n)}) : T("keys", {n: n})));
+  d.appendChild(sum);
+  d.appendChild(renderValue(v, 2));
+  return d;
+}
+
+function renderArray(arr, depth){
+  if(!arr.length) return el("span", "empty", T("emptyArr"));
+  const tk = tableKeys(arr);
+  const cols = tk.cols;
+  if(cols){
+    const wrap = el("div", "tbl-wrap");
+    const tb = el("table", "tbl");
+    const thead = el("thead"), htr = el("tr");
+    htr.appendChild(el("th", null, "#"));
+    for(const c of cols) htr.appendChild(el("th", null, c));
+    thead.appendChild(htr); tb.appendChild(thead);
+    const body = el("tbody");
+    arr.forEach((o, i) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", null, String(i)));
+      for(const c of cols){
+        const td = el("td");
+        td.appendChild(renderCell(o[c]));
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    });
+    tb.appendChild(body); wrap.appendChild(tb);
+    return wrap;
+  }
+  const box = el("div", "body");
+  if(tk.tooMany)   /* 退回列表是有原因的，写出来 */
+    box.appendChild(el("div", "hint", T("tooManyCols", {n: tk.tooMany, m: TABLE_MAX_COLS})));
+  arr.forEach((v, i) => {
+    const isBox = (v !== null && typeof v === "object" &&
+                   (Array.isArray(v) ? v.length : Object.keys(v).length) > 0);
+    if(isBox){
+      const d = el("details", "node");
+      d.open = depth < 1 && arr.length <= 20;
+      d.appendChild(summaryFor("[" + i + "]", v));
+      d.appendChild(renderValue(v, depth + 1));
+      box.appendChild(d);
+    }else{
+      const row = el("div", "kv");
+      row.appendChild(el("span", "k", "[" + i + "]"));
+      row.appendChild(renderValue(v, depth + 1));
+      box.appendChild(row);
+    }
+  });
+  return box;
+}
+
+/* ===== 顶栏 ===== */
+function renderHeader(){
+  document.getElementById("hTitle").textContent =
+    META.mode === "index" ? T("titleIndex") : T("titleView");
+  document.title = (META.mode === "index" ? T("titleIndex") : T("titleView")) +
+                   " · CC Wire Analyzer";
+  document.getElementById("bHome").textContent = T("home");
+  document.getElementById("bApp").textContent = T("app");
+  const rt = document.getElementById("rt");
+  rt.appendChild(el("span", "chip", "v" + RUNTIME.version));
+  rt.appendChild(el("span", "chip " + (RUNTIME.recording ? "ok" : ""),
+                    RUNTIME.recording ? "● " + T("recOn") : "○ " + T("recOff")));
+  rt.appendChild(el("span", "chip", RUNTIME.listen));
+}
+
+/* ===== 首页 ===== */
+function renderIndex(){
+  const main = document.getElementById("main");
+  const lead = el("p", "lead");
+  lead.innerHTML = L.lead;      /* 自家文案，非用户数据 —— 这里的 innerHTML 是有意的 */
+  main.appendChild(lead);
+
+  const groups = {};
+  for(const e of ENDPOINTS){ (groups[e.group] = groups[e.group] || []).push(e); }
+  const order = ["guide", "captures", "analysis", "snapshots", "proxy", "instance", "other"];
+  for(const g of order){
+    if(!groups[g]) continue;
+    const card = el("div", "card");
+    card.appendChild(el("h2", null, (L.grp[g] || g)));
+    for(const e of groups[g]){
+      const row = el("div", "ep" + (e.href ? "" : " muted"));
+      row.appendChild(el("code", "ep-rule", e.rule));
+      row.appendChild(el("span", "ep-note", (L.ep[e.note] || "")));
+      const act = el("div", "ep-act");
+      if(e.href){
+        const a = el("a", "btn primary", T("gRender"));
+        a.href = e.href; act.appendChild(a);
+      }else if(e.needs_arg){
+        act.appendChild(el("span", "ep-why", T("gNeedArg")));
+      }else if(e.no_link){
+        act.appendChild(el("span", "ep-why", T(e.no_link)));
+      }
+      if(e.raw){
+        const r = el("a", "btn", T("gRaw"));
+        r.href = e.raw; act.appendChild(r);
+      }
+      row.appendChild(act);
+      card.appendChild(row);
+    }
+    main.appendChild(card);
+  }
+}
+
+/* ===== payload 页 ===== */
+function renderPayload(){
+  const main = document.getElementById("main");
+  const card = el("div", "card");
+
+  const tool = el("div", "tool");
+  const st = META.status >= 500 ? "err" : (META.status >= 400 ? "warn" : "ok");
+  tool.appendChild(el("span", "chip " + st, T("status", {n: META.status})));
+  tool.appendChild(el("code", "url", META.url));
+  tool.appendChild(el("span", "chip", fmtBytes(META.nbytes)));
+  if(META.kind === "json" && !META.oversize){
+    const ea = el("button", "btn", T("expandAll"));
+    ea.onclick = () => document.querySelectorAll("details.node").forEach(d => d.open = true);
+    const ca = el("button", "btn", T("collapseAll"));
+    ca.onclick = () => document.querySelectorAll("details.node").forEach(d => d.open = false);
+    tool.appendChild(ea); tool.appendChild(ca);
+  }
+  if(!META.oversize){
+    const cp = el("button", "btn", T("copy"));
+    cp.onclick = () => copyText(META.kind === "json"
+      ? JSON.stringify(PAYLOAD, null, 2) : String(PAYLOAD));
+    tool.appendChild(cp);
+  }
+  const raw = el("a", "btn", T("gRaw"));
+  raw.href = META.raw;
+  tool.appendChild(raw);
+  card.appendChild(tool);
+
+  if(META.oversize){
+    /* 超限：**说清楚**并给出完整字节的入口。静默截断是这个项目的惯犯 bug ③，
+       在一个专门用来看清楚的页面上重犯它，比不做这个页面还糟。 */
+    const n = el("div", "notice");
+    n.appendChild(el("b", null, T("oversizeT")));
+    const p = el("p");
+    p.innerHTML = T("oversizeB", {n: fmtBytes(META.oversize), m: fmtBytes(META.maxBytes)});
+    n.appendChild(p);
+    card.appendChild(n);
+  }else if(META.kind === "markdown"){
+    /* 说明书是**自家文档**（docs/reference/AI_USAGE.md），所以允许走 markdown。
+       即便如此仍过 DOMPurify——产物里这份文件理论上可被替换，而"理论上"在
+       一个安全工具里不是放行的理由。 */
+    const md = el("div", "md");
+    const html = window.marked ? marked.parse(String(PAYLOAD), {mangle: false, headerIds: false})
+                               : null;
+    if(html && window.DOMPurify) md.innerHTML = DOMPurify.sanitize(html);
+    else md.appendChild(el("pre", "str-pre", String(PAYLOAD)));   /* 库没加载就退回纯文本，不裸插 */
+    card.appendChild(md);
+  }else{
+    const tree = el("div", "tree");
+    tree.appendChild(renderValue(PAYLOAD, 0));
+    card.appendChild(tree);
+  }
+  main.appendChild(card);
+}
+
+renderHeader();
+if(META.mode === "index") renderIndex(); else renderPayload();
+</script>
+</body>
+</html>

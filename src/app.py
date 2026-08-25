@@ -152,6 +152,224 @@ def favicon():
     return Response(status=204)
 
 
+# ===== API 浏览面（issue 260825）=====
+#
+# 本工具从一开始就是双模式的：人看 GUI（`/`），AI 走 HTTP API。但两条通道之间原本隔着
+# 一堵墙——返回 HTML 的只有 `/`，`/api/*` 一律 JSON、`/api/ai-guide` 是 markdown 原文。
+# 于是「我把『复制给 AI 的一句话』发出去之后，agent 究竟读到了什么」对用户全黑。
+# 一个以「不静默丢字、如实呈现」立身的审计工具，不审计自己的输出面是说不过去的。
+#
+# **铁律：不带 `?format=html` 时，响应逐字节不变。** AI 通道是本工具的另一半产品，
+# 不能因为给人加了视图而漂移一个字节（view_selftest 拿基线逐字节比对守这条）。
+
+_VIEW_MAX_BYTES = 4 * 1024 * 1024   # 超过就不渲染——但必须**明说**，不静默截断（不变量⑥）
+
+# 端点说明表：只管「分组 / 一句话 / 默认参数」三件事。
+# **端点清单本身不在这里**——它从 `app.url_map` 现取，新端点自动出现在浏览面上。
+# 理由同 tools/doc_audit.py 的立论：需要人工定期同步的清单，自己就是下一处腐化。
+# 值 = (分组 key, 一句话说明 key)；两者都在 view.html 的三语字典里取值。
+_VIEW_NOTES: dict[str, tuple[str, str]] = {
+    "/api/ai-guide":                ("guide",    "aiGuide"),
+    "/api/captures":                ("captures", "capturesList"),
+    "/api/captures/<rid>":          ("captures", "captureDetail"),
+    "/api/captures/stream":         ("captures", "capturesStream"),
+    "/api/dag":                     ("captures", "dag"),
+    "/api/grep":                    ("captures", "grep"),
+    "/api/stats":                   ("captures", "stats"),
+    "/api/sources":                 ("captures", "sources"),
+    "/api/unknowns":                ("analysis", "unknowns"),
+    "/api/diagnose/errors":         ("analysis", "diagErrors"),
+    "/api/diagnose/trends":         ("analysis", "diagTrends"),
+    "/api/health/config":           ("analysis", "healthConfig"),
+    "/api/storage":                 ("analysis", "storage"),
+    "/api/snapshots":               ("snapshots", "snapList"),
+    "/api/snapshots/diff":          ("snapshots", "snapDiff"),
+    "/api/snapshots/<sid>":         ("snapshots", "snapOne"),
+    "/api/snapshots/<sid>/thinking": ("snapshots", "snapThinking"),
+    "/api/snapshots/<sid>/sources": ("snapshots", "snapSources"),
+    "/api/snapshots/<sid>/analysis": ("snapshots", "snapAnalysis"),
+    "/api/snapshots/<sid>/chat":    ("snapshots", "snapChat"),
+    "/api/snapshots/<sid>/brief":   ("snapshots", "snapBrief"),
+    "/api/proxy/status":            ("proxy", "proxyStatus"),
+    "/api/config":                  ("proxy", "config"),
+    "/api/settings/upstream-history": ("proxy", "upstreamHistory"),
+    "/api/about":                   ("instance", "about"),
+    "/api/instance":                ("instance", "instance"),
+    "/api/instances":               ("instance", "instances"),
+    "/api/update/check":            ("instance", "updateCheck"),
+    "/api/update/status":           ("instance", "updateStatus"),
+}
+_VIEW_GROUP_ORDER = ("guide", "captures", "analysis", "snapshots", "proxy", "instance")
+
+# 这些端点即使 GET 也不该在浏览面上被"点一下就跑"，但**照样列出来并说明原因**——
+# 藏起来就等于浏览面自己有盲区，而盲区正是本 issue 要消灭的东西。
+_VIEW_NO_AUTOLINK = {
+    "/api/captures/stream": "whySse",      # 永不结束的 SSE，点开就是转圈空白页 + 占一条连接
+    "/api/update/check": "whyNetwork",     # 会去 GitHub 发网络请求；浏览面是只读审计面，不该有副作用
+}
+
+
+def _view_default_query(rule: str) -> str:
+    """给需要参数的端点填一个**能真的跑出东西**的默认 query。
+
+    用「最新有数据的那天」而不是 today：浏览面是拿来审计的，点开一片空白会被读成
+    "这个端点坏了"，而它只是今天还没录到东西。取不到日期就不填（端点自己有默认行为）。
+    """
+    if rule not in ("/api/captures", "/api/dag", "/api/stats", "/api/unknowns", "/api/grep"):
+        return ""
+    try:
+        dates = capture_store.list_dates()
+    except Exception as e:                       # 列日期失败不该让整个浏览面 500
+        log.warning("view: list_dates failed: %s", e)
+        return ""
+    if not dates:
+        return ""
+    q = f"date={dates[0]}"
+    if rule == "/api/grep":
+        q += "&pattern=Claude&limit=5"
+    elif rule == "/api/captures":
+        q += "&limit=20"
+    return q
+
+
+def _view_endpoints() -> list[dict]:
+    """从 `app.url_map` 现取全部可 GET 的 `/api/*` 端点，附上说明与默认参数。
+
+    没登记在 `_VIEW_NOTES` 里的端点**照样列出来**（说明留空），不藏——藏起来就等于
+    浏览面自己有了盲区，而这正是本 issue 要消灭的东西。
+    """
+    out = []
+    for r in app.url_map.iter_rules():
+        rule = str(r.rule)
+        if not rule.startswith("/api/") or "GET" not in (r.methods or set()):
+            continue
+        group, note = _VIEW_NOTES.get(rule, ("", ""))
+        needs_arg = "<" in rule
+        q = _view_default_query(rule)
+        no_link = _VIEW_NO_AUTOLINK.get(rule, "")
+        out.append({
+            "rule": rule,
+            "group": group or "other",
+            "note": note,
+            "needs_arg": needs_arg,
+            "no_link": no_link,
+            # 可点 = 不需要路径参数、且不在"点了有副作用/永不结束"名单里
+            "href": ("" if (needs_arg or no_link)
+                     else rule + "?" + (q + "&" if q else "") + "format=html"),
+            # 「原始 JSON」同样受 no_link 约束：点它一样会开 SSE / 一样会联网，
+            # 只是少了一层渲染。给一个会挂住浏览器的链接不算"提供入口"。
+            "raw": ("" if (needs_arg or no_link) else rule + ("?" + q if q else "")),
+        })
+    order = {g: i for i, g in enumerate(_VIEW_GROUP_ORDER)}
+    out.sort(key=lambda e: (order.get(e["group"], 99), e["rule"]))
+    return out
+
+
+def _view_embed(text: str) -> str:
+    """内嵌进 `<script type="application/json">` 之前的转义。
+
+    `<` 在一份 JSON 文档里只可能出现在字符串内部（结构字符里没有它），换成 `\\u003c`
+    是等价变换——`JSON.parse` 出来一模一样——而它同时堵死了 `</script>` 这个唯一的
+    逃逸口。这不是理论风险：录制正文里本来就有网页、有 HTML、有别人的注入样本。
+    """
+    return text.replace("<", "\\u003c")
+
+
+def _view_lang() -> str:
+    """浏览面跟随主界面的语言设置（后端 config 的 ui_lang），取不到就中文。"""
+    try:
+        return (CFG.get_config().get("ui_lang") or "zh")
+    except Exception:
+        return "zh"
+
+
+def _view_runtime() -> dict:
+    """页首的运行期事实。与 `/api/ai-guide` 的 head 同源同义：读的人需要的是
+    **这台机器上此刻的实情**，不是文档里的相对表述。"""
+    return {
+        "version": VERSION,
+        "listen": (f"http://127.0.0.1:{_LISTEN_PORT}" if _LISTEN_PORT else "?"),
+        "recording": bool(settings_guard.is_patched()),
+        "home": str(CFG.CONFIG_DIR),
+        "captures": str(capture_store.CAPTURES_DIR),
+    }
+
+
+@app.route("/view")
+def api_view():
+    """API 浏览面首页：把 AI 那一侧能拿到的全部 GET 端点摆出来，逐条可点。"""
+    # 端点清单里**真的含 `<`**（`/api/captures/<rid>` 这类），不转义就是现成的注入口
+    meta = {"mode": "index", "lang": _view_lang(), "kind": "", "url": "", "status": 0,
+            "nbytes": 0, "oversize": 0, "raw": "", "maxBytes": _VIEW_MAX_BYTES}
+    return render_template("view.html",
+                           meta=_view_embed(json.dumps(meta)),
+                           runtime=_view_embed(json.dumps(_view_runtime())),
+                           endpoints=_view_embed(json.dumps(_view_endpoints())),
+                           payload="null")
+
+
+def _view_raw_url() -> str:
+    """当前 URL 去掉 `format=html` —— 页面上「原始 JSON」那个链接指向它。
+    审计面自己必须可被审计：你得能一键看到它渲染的到底是哪一份字节。"""
+    rest = [(k, v) for k, v in request.args.items(multi=True) if k != "format"]
+    if not rest:
+        return request.path
+    from urllib.parse import urlencode
+    return request.path + "?" + urlencode(rest)
+
+
+@app.after_request
+def _view_html(resp: Response) -> Response:
+    """`?format=html`：把 `/api/*` 的 GET 返回包成人类可读页面。
+
+    前四句判断是**结构性**的护栏，不是优化：
+      ① 没带 format=html → 原样返回（不变量①：AI 通道逐字节不变）
+      ② 非 GET / 非 `/api/` 前缀 → 原样（不变量②：同端口跑着 MITM 代理兜底路由，
+         代理透明性高于一切；把前缀判断写死在这里，代理路径结构上就够不着渲染分支）
+      ③ 流式响应 → 原样（不变量③：`/api/captures/stream` 是 SSE，`get_data()` 会
+         把生成器抽干，SSE 当场变成一坨一次性 body）
+      ④ 只认 json / markdown 两种 content-type → 其余原样（图标、204 之类）
+    """
+    if request.args.get("format") != "html":
+        return resp
+    if request.method != "GET" or not request.path.startswith("/api/"):
+        return resp
+    if resp.direct_passthrough or resp.is_streamed:
+        return resp
+    ctype = (resp.content_type or "").split(";")[0].strip().lower()
+    if ctype not in ("application/json", "text/markdown"):
+        return resp
+
+    raw = resp.get_data()
+    nbytes = len(raw)
+    kind = "markdown" if ctype == "text/markdown" else "json"
+    oversize = 0
+    if nbytes > _VIEW_MAX_BYTES:
+        # 不渲染，但**说清楚为什么**并给出原始链接。静默截断是本项目的惯犯 bug ③，
+        # 在一个专门用来"看清楚"的页面上重犯它，比不做这个页面还糟。
+        oversize, payload = nbytes, "null"
+    else:
+        text = raw.decode("utf-8", errors="replace")
+        payload = _view_embed(text if kind == "json" else json.dumps(text))
+
+    meta = {"mode": "payload", "lang": _view_lang(), "kind": kind,
+            "url": request.full_path.rstrip("?"), "status": resp.status_code,
+            "nbytes": nbytes, "oversize": oversize, "raw": _view_raw_url(),
+            "maxBytes": _VIEW_MAX_BYTES}
+    try:
+        html = render_template(
+            "view.html", meta=_view_embed(json.dumps(meta)),
+            runtime=_view_embed(json.dumps(_view_runtime())),
+            endpoints="[]", payload=payload)
+    except Exception as e:                       # 渲染失败绝不能吃掉数据本身
+        log.error("view: render failed, falling back to raw: %s", e)
+        return resp
+    # 新建 Response 而不是改 resp：原响应的 Content-Length / Content-Type 全是按
+    # JSON 算的，就地改会留下一份自相矛盾的头。状态码沿用——404 也值得被渲染出来看。
+    return Response(html, status=resp.status_code,
+                    content_type="text/html; charset=utf-8")
+
+
 # ===== 代理控制 =====
 def _proxy_state() -> dict:
     return {
@@ -910,9 +1128,18 @@ def _stream_msgs_response(msgs_fn, *, notices=(), on_text=None):
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-# 输入侧硬上限：CC 的 system prompt 动辄上万字符，不设限一次翻译就能烧掉一大笔钱。
+# 输入侧上限：CC 的 system prompt 动辄上万字符，不设限一次翻译就能烧掉一大笔钱。
 # 但**砍了必须说**——它砍的是原文，调大 max_tokens 救不回来（260801 用户反馈 #2）。
+# 260825 起砍在哪儿由用户定（translate.input_max_chars，单位字符）——自陈做得再好，
+# 也不如让人自己选刀口：实测单条 system prompt 40K+ 常见，20K 一刀砍掉的分析结论
+# 本身就是失真的。LLM_INPUT_MAX 降级为**默认值**，真值每次现读 config
+# （config 读取本就发生在每次请求路径上，无新增代价）。
 LLM_INPUT_MAX = 20000
+
+
+def _llm_input_max() -> int:
+    """单轮（翻译/AI 解读/差异解读）的输入上限（字符）。clamp 在 config 侧，这里只兜底。"""
+    return (CFG.get_config().get("translate") or {}).get("input_max_chars") or LLM_INPUT_MAX
 
 
 @app.route("/api/translate", methods=["POST"])
@@ -921,12 +1148,12 @@ def api_translate():
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"ok": False, "error_code": "empty_text", "error": "空文本"}), 400
+    m = _llm_input_max()
     orig = len(text)
-    cut = orig > LLM_INPUT_MAX
+    cut = orig > m
     if cut:
-        text = text[:LLM_INPUT_MAX] + "\n…（已截断）"
-    return _stream_response(_translate_parts, text,
-                            LLM_INPUT_MAX if cut else None, orig)
+        text = text[:m] + "\n…（已截断）"
+    return _stream_response(_translate_parts, text, m if cut else None, orig)
 
 
 @app.route("/api/explain", methods=["POST"])
@@ -936,12 +1163,12 @@ def api_explain():
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"ok": False, "error_code": "empty_text", "error": "空文本"}), 400
+    m = _llm_input_max()
     orig = len(text)
-    cut = orig > LLM_INPUT_MAX
+    cut = orig > m
     if cut:
-        text = text[:LLM_INPUT_MAX] + "\n…（已截断）"
-    return _stream_response(_explain_parts, text,
-                            LLM_INPUT_MAX if cut else None, orig)
+        text = text[:m] + "\n…（已截断）"
+    return _stream_response(_explain_parts, text, m if cut else None, orig)
 
 
 @app.route("/api/translate/test", methods=["POST"])
@@ -1677,7 +1904,8 @@ DIFF_EXPLAIN_TASK = {
           "④ 一文で：この変更は重要ですか？",
 }
 
-# 差异报告的字符预算。留出余量给 guard 与任务描述（LLM_INPUT_MAX 是整段上限）。
+# 差异报告的字符预算。留出余量给 guard 与任务描述（整段上限 = _llm_input_max()，默认 20K；
+# 用户调小输入上限到 14K 以下时差异报告会被二次截断——有自陈，260825 随输入上限开放而注明）。
 DIFF_BRIEF_MAX = 14000
 
 
@@ -1752,12 +1980,12 @@ def snapshots_diff_explain():
         return jsonify({"ok": False, "error_code": "no_diff",
                         "error": "两段完全相同，没有可分析的差异"})
     brief = _diff_brief(d)
+    m = _llm_input_max()
     orig = len(brief)
-    cut = orig > LLM_INPUT_MAX
+    cut = orig > m
     if cut:
-        brief = brief[:LLM_INPUT_MAX] + "\n…（已截断）"
-    return _stream_response(_diff_explain_parts, brief,
-                            LLM_INPUT_MAX if cut else None, orig)
+        brief = brief[:m] + "\n…（已截断）"
+    return _stream_response(_diff_explain_parts, brief, m if cut else None, orig)
 
 
 @app.route("/api/snapshots/<sid>/chat")
@@ -1791,10 +2019,19 @@ def snapshots_chat_clear(sid):
 #   ② 每轮**重拼 system guard**：历史里一直躺着不可信内容，模型到第 5 轮完全可能已经入戏。
 #   ③ 历史超预算丢最旧，**并且明说丢过**——否则模型会以为自己看到了完整对话，
 #      转头说"我们前面已经确认过 X"。这与 _diff_brief 截断必须自陈是同一条原则。
-CHAT_CONTEXT_MAX = 20000     # 快照上下文块（L1 摘要 / 提示词全文）
+CHAT_CONTEXT_MAX = 20000     # 快照上下文块（L1 摘要 / 提示词全文）——默认值；真值 =
+                             # translate.chat_context_max_chars（260825 开放，用户撞的就是这堵墙）
 CHAT_SOURCES_MAX = 4000      # 其中留给多源指令清单的份额
 CHAT_HISTORY_MAX = 12000     # 历史问答
 CHAT_QUESTION_MAX = 4000     # 单条提问
+# 后三个有意不开放：sources 是 context 的内部分配、question 是单条输入、history 丢最旧
+# 有自陈——把它们也做成旋钮就是旋钮汤，用户实际撞的是 20K 那两堵墙（input_max_chars
+# 与 chat_context_max_chars），只开那两个。
+
+
+def _chat_ctx_max() -> int:
+    """分析对话的上下文上限（字符）。clamp 在 config 侧，这里只兜底。"""
+    return (CFG.get_config().get("translate") or {}).get("chat_context_max_chars") or CHAT_CONTEXT_MAX
 
 CHAT_TASK = {
     "zh": "你在帮用户分析一段被录制下来的 AI 对话（或一段提示词）。<content> 内是这份录制的"
@@ -1844,16 +2081,19 @@ CHAT_TRIMMED = {
 }
 
 
-def _chat_context(snap: dict) -> tuple[str, dict | None, int]:
+def _chat_context(snap: dict, ctx_max: int | None = None) -> tuple[str, dict | None, int]:
     """快照 → 喂给对话的上下文块。返回 (文本, availability或None, 原始长度)。
 
     录制快照给 L1 摘要 + 多源指令清单（清单单独限额，否则 71 个工具的描述能把摘要挤没）；
-    提示词快照给元数据 + 正文。
+    提示词快照给元数据 + 正文。`ctx_max` 不传则现读 config——**调用方截断判断与这里的
+    level1 预算必须用同一个值**，所以 analyze_chat 算好一次传进来，而不是两处各读各的
+    （同轮内各读一次理论上可漂移，虽然现在 config 不在请求中变更，这个口子也不留）。
     """
+    m = ctx_max or _chat_ctx_max()
     if snap.get("kind") == "capture":
         rec = snap.get("payload") or {}
         av = snapshot_extract.availability(rec)
-        data = snapshot_extract.level1(rec, budget=CHAT_CONTEXT_MAX - CHAT_SOURCES_MAX)
+        data = snapshot_extract.level1(rec, budget=m - CHAT_SOURCES_MAX)
         parts = [json.dumps(data, ensure_ascii=False, indent=1)]
         rows, used = [], 0
         for s in snapshot_extract.instruction_sources(rec):
@@ -1943,13 +2183,14 @@ def analyze_chat():
         q = q[:CHAT_QUESTION_MAX] + "\n…（提问已截断）"
     try:
         snap = snapshot_store.get_snapshot(sid)
-        ctx_text, av, orig = _chat_context(snap)
+        m = _chat_ctx_max()
+        ctx_text, av, orig = _chat_context(snap, ctx_max=m)
         history = snapshot_store.chat_history(sid)
     except Exception as e:
         return _snap_err(e)
-    cut = len(ctx_text) > CHAT_CONTEXT_MAX
+    cut = len(ctx_text) > m
     if cut:
-        ctx_text = ctx_text[:CHAT_CONTEXT_MAX] + "\n…（上下文已截断，上面不是全部）"
+        ctx_text = ctx_text[:m] + "\n…（上下文已截断，上面不是全部）"
     system, lang = _chat_system(av)
 
     def build():
@@ -1959,7 +2200,7 @@ def analyze_chat():
         snapshot_store.chat_append(sid, "user", q)
         snapshot_store.chat_append(sid, "assistant", reply)
 
-    notices = [{"input_truncated": CHAT_CONTEXT_MAX, "orig": orig}] if cut else []
+    notices = [{"input_truncated": m, "orig": orig}] if cut else []
     return _stream_msgs_response(build, notices=notices, on_text=save)
 
 

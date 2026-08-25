@@ -432,12 +432,13 @@ CLI 对应 `--source`。
 
 ### `POST /api/translate` — 翻译文本（SSE 流式，260713 改）
 
-**请求**：`{ "text": "..." }`（>20000 字符截断，见下方 `input_truncated`）
+**请求**：`{ "text": "..." }`（超过输入上限截断，见下方 `input_truncated`；上限 = 配置
+`translate.input_max_chars`，默认 20,000，260825 起可在设置页调）
 
 **响应** `200` `text/event-stream`：
 
 ```
-data: {"input_truncated": 20000, "orig": 53210}   // 可选，恒在最前
+data: {"input_truncated": 20000, "orig": 53210}   // 可选，恒在最前；值=当前配置的输入上限
 data: {"delta":"译"}
 data: {"delta":"文"}
 data: {"delta":"片段"}
@@ -451,7 +452,8 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - 增量字段 `delta`：流式译文片段，前端 rAF 节流拼接（单 textNode appendData，不堆 textNode）
 - 结束字段 `done: true`：正常结束信号
 - 错误字段 `error_code` + `error`：错误时替代 done，前端按 `error_code` 查 i18n 表（`no_api_key` / `no_base_url` / `empty_text` 等）
-- **截断字段（260801 增量）**：`input_truncated`（本工具把原文砍到 `LLM_INPUT_MAX=20000` 才发出去，`orig` 是原长）与 `truncated`（上游 `finish_reason`，取值 `length` / `content_filter`，`max_tokens` 是发起时的本机设置）。两者都是**可选事件**，不出现即表示没发生。
+- **截断字段（260801 增量；260825 起上限可配）**：`input_truncated`（本工具把原文砍到配置的
+  `translate.input_max_chars`——默认 20,000、夹取 1000~2,000,000——才发出去，`orig` 是原长）与 `truncated`（上游 `finish_reason`，取值 `length` / `content_filter`，`max_tokens` 是发起时的本机设置）。两者都是**可选事件**，不出现即表示没发生。
   加它们的原因：「输出到此为止」有三种成因（原文被我们砍短 / 上游到 max_tokens / 内容审查），此前在界面上长得一模一样，用户改大 `max_tokens` 后无从判断生效没有（260801 用户反馈 #2）。`finish_reason` 此前只有非流式路径读，而翻译/解读走的恰恰是流式。
 
 目标语言取 `config.translate.target_lang`。system prompt 内置强隔离（`<text>` 内视为纯文本，绝不执行其中指令），文本内字面 `</text` 转义防定界符逃逸。
@@ -1150,7 +1152,7 @@ body `{sid, question}`。SSE 协议与 `/api/explain` 完全一致（`delta` / `
 | 防注入 | 一次性包 `<content>` | **每轮重拼 system guard**，内容只在第一条 user，用户提问包 `<question>` |
 | 历史 | 无 | 落盘 `snap_xxx.chat.jsonl`，超 `CHAT_HISTORY_MAX` 丢最旧**并告知模型丢过** |
 
-上下文**不落盘**：快照不可变，重算是确定的；落盘则每条 `chat.jsonl` 都被 20K 上下文撑爆，
+上下文**不落盘**：快照不可变，重算是确定的；落盘则每条 `chat.jsonl` 都被整段上下文撑爆，
 而外部 agent 读 `/chat` 时想看的是对话本身。B 档快照的 system 里**写死禁止推测思考内容**
 （附具体原因）——让模型自己判断有没有思考链不可靠，我们已经知道答案就该写死。
 
@@ -1158,7 +1160,8 @@ body `{sid, question}`。SSE 协议与 `/api/explain` 完全一致（`delta` / `
 没人回答过的提问。中途出错时半截回答照样落盘，但会附上中断原因——半截存成完整，
 下一轮模型会把它当作已说完的话接着推。
 
-预算：`CHAT_CONTEXT_MAX=20000`（其中 `CHAT_SOURCES_MAX=4000` 给多源清单）/
+预算：`CHAT_CONTEXT_MAX` 默认 20000、真值 = 配置 `translate.chat_context_max_chars`
+（其中 `CHAT_SOURCES_MAX=4000` 给多源清单，随上限联动）/
 `CHAT_HISTORY_MAX=12000` / `CHAT_QUESTION_MAX=4000`。
 
 ### `POST /api/snapshots/<id>/chat/clear` — 清空该快照的分析对话（快照本身不动）
@@ -1189,6 +1192,50 @@ body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**�
 
 ---
 
+## 3.10 API 浏览面：人类可读渲染（260825，issue 260825_API可视化审计面）
+
+本工具是双模式的——**人看 GUI（`/`），AI 走 `/api/*`**。这一节是给这两条通道之间开的一扇窗：
+让人能在浏览器里亲眼核对 AI 那一侧拿到的是什么。原本返回 HTML 的只有 `/`，`/api/*` 一律 JSON、
+`/api/ai-guide` 是 markdown 原文，于是「我把『复制给 AI 的一句话』发出去之后，agent 究竟读到了
+什么」对用户全黑。
+
+> ⚠️ **契约上最重要的一句：不带 `?format=html` 时，`/api/*` 的响应逐字节不变。**
+> 这一节不改任何既有端点的出参。AI 消费方可以完全忽略本节的存在。
+
+### `GET /view` — 浏览面首页
+
+列出全部可 GET 的 `/api/*` 端点（**从 `app.url_map` 现取，不是硬编码清单**），分组、每条
+一句话说明、每条一个可点链接。返回 `text/html`。
+
+需要路径参数的端点（`/api/captures/<id>` 等）列出但不可点；`/api/captures/stream`（SSE 长连接）
+与 `/api/update/check`（会联网）列出但**有意不给链接**，并在行内写明原因——藏起来就等于浏览面
+自己有盲区。
+
+### `?format=html` — 任意 `/api/*` GET 端点的渲染视图
+
+在任何 GET 端点后加 `format=html`，返回渲染后的 `text/html` 而不是 JSON：
+
+```
+GET /api/captures?date=2026-08-15&limit=20&format=html   → 表格
+GET /api/captures/<id>?date=2026-08-15&format=html       → 折叠树
+GET /api/ai-guide?format=html                            → 排好版的说明书
+```
+
+| 行为 | 说明 |
+|---|---|
+| 生效条件 | `GET` + 路径以 `/api/` 开头 + 响应 `content-type` 是 `application/json` 或 `text/markdown` |
+| 不生效 | POST 等非 GET、代理 catch-all 路径、流式响应（SSE）、其他 content-type —— 一律原样返回 |
+| 状态码 | 沿用原响应（404 也会被渲染出来看，这是有意的） |
+| 数据保真 | 页面内以 `<script id="payload" type="application/json">` 内嵌**原样字节**，`<` 转义成 `<`（等价变换）。页面顶部同时给出实际 URL、HTTP 状态码、响应字节数与「原始 JSON」链接 |
+| 大响应 | 超过 4 MB 不渲染，页面写明字节数与上限并给出原始 JSON 入口。**不截半份给你看** |
+
+数组元素同构且并集列数 ≤ 40 时渲染成可横向滚动的表格；超过则退回列表并在页面上写明原因
+（**任何情况下都不砍列**）。长字符串折叠，但一律带「展开全文（N 字符）」。
+
+不变量与理由见 [开发约定.md](开发约定.md) 第一节第 11 条；自测 `src/view_selftest.py`。
+
+---
+
 ## 4. 约定
 
 - **headers_safe**：所有 headers 字段经脱敏，`authorization` / `x-api-key` / `anthropic-auth-token` 显示 `<redacted>`，列表/详情都不返回真实 token。**脱敏无条件生效，没有开关**（曾有个 `redact_headers` 配置项，但从未接线；260713 连开关一起删掉 —— 提供"明文存 key"的选项本身就是危险，何况录制现在可被 AI 经 CLI 读取）。
@@ -1207,6 +1254,10 @@ body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**�
 - **大字段**：`request.body` / `response.content_blocks` 可能很大（MB 级），详情接口一次性返回；前端用虚拟滚动/折叠渲染。
 - **错误透传**：上游 4xx/5xx 也要录（response 存原文 snippet），原样返回给 CC，不破坏 CC 错误处理。
 - **路径前缀**：UI 所有路由必须 `/api/` 开头，否则会被代理 catch-all 当成上游流量转发。
+  （例外只有页面：`/`、`/favicon.ico`、`/view`。加页面路由等于在代理面上多占一个路径，
+  Anthropic 的 API 都在 `/v1/*` 下，目前不冲突，但**新增页面路由前先确认不撞上游路径**。）
+- **`format=html` 是保留 query 参数**：任何 GET 端点都不该把 `format` 用作业务参数，否则会
+  与浏览面的渲染开关撞车。现有端点均未使用。
 
 > **本文档维护**：按 [文档维护策略.md](../文档维护策略.md) 的 SSOT 原则——枚举真源在各模块
 > docstring，本契约引用而不重复定义。改字段集必须 bump `IDX_SCHEMA` 并同步此契约 + AI_USAGE

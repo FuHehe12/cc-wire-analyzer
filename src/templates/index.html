@@ -1398,6 +1398,14 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
           <input type="number" id="cfgTransMaxTokens" min="256" max="65536" step="256" value="8192">
         </div>
         <div class="srow">
+          <div><label class="lbl" for="cfgTransInputMax" data-i18n="set.inputMax">最大输入字符</label><div class="sub" data-i18n="set.inputMaxSub">翻译 / AI 解读单次发送的原文上限。超了会被截断并有提示；录制里单条 system prompt 40K+ 常见，20K 会砍掉一半</div></div>
+          <input type="number" id="cfgTransInputMax" min="1000" max="2000000" step="1000" value="20000">
+        </div>
+        <div class="srow">
+          <div><label class="lbl" for="cfgChatCtxMax" data-i18n="set.chatCtxMax">分析对话上下文上限</label><div class="sub" data-i18n="set.chatCtxSub">分析页多轮对话每轮注入的快照摘要上限（字符）。调大能问得更细，代价是每轮的花费</div></div>
+          <input type="number" id="cfgChatCtxMax" min="1000" max="2000000" step="1000" value="20000">
+        </div>
+        <div class="srow">
           <div><label class="lbl" for="cfgTransLang" data-i18n="set.translang">翻译目标语言</label><div class="sub" data-i18n="set.translangSub">点 翻译后译成的语言</div></div>
           <select id="cfgTransLang">
             <option value="zh">中文</option>
@@ -1829,7 +1837,7 @@ zh: {
   "llm.translated": "↓ 翻译",
   "llm.explaining": "解读中…", "llm.reexplain": "再问一次", "llm.explainFail": "解读失败",
   "llm.explained": "AI 解读", "llm.chars": "{n} 字符",
-  "llm.cutInput": "原文过长，只发送了前 {n} 字符（原文共 {orig}）——这一刀是本工具砍的，调大「最大输出 tokens」救不回来。",
+  "llm.cutInput": "原文过长，只发送了前 {n} 字符（原文共 {orig}）——这一刀是本工具按「最大输入字符」设置砍的，去 设置 → 翻译/AI 调大后重试。",
   "llm.cutOutput": "输出到达上限被截断（当前设置 {n}）。上游模型自身也有输出上限，调大本机设置未必能突破。",
   "llm.cutFilter": "上游内容审查中断了输出，结果不完整。",
   "dag.meta": "{n} 请求 · {m} 泳道", "dag.live": " · LIVE 自动重绘",
@@ -1913,6 +1921,8 @@ zh: {
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
   "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）。上游模型自身也有输出上限，填得再大也不会超过它",
+  "set.inputMax": "最大输入字符", "set.inputMaxSub": "翻译 / AI 解读单次发送的原文上限（字符）。超了会截断并有提示——录制里单条 system prompt 40K+ 常见，默认 20K 会砍掉一半",
+  "set.chatCtxMax": "分析对话上下文上限", "set.chatCtxSub": "分析页多轮对话每轮注入的快照摘要上限（字符）。调大能问得更细，代价是每轮花费",
   "detail.respHeaders": "响应 Headers",
   "detail.wireOnlyHint": "ⓘ 含 ratelimit / request-id 等只在 wire 层看得到的字段（CC jsonl 不记录）",
   "status.writeFail": "⚠ 录制写盘失败 {n} 次 —— 这些流量没有存下来！{msg}",
@@ -2180,7 +2190,7 @@ en: {
   "llm.translated": "↓ Translation",
   "llm.explaining": "Asking…", "llm.reexplain": "Ask again", "llm.explainFail": "Ask AI failed",
   "llm.explained": "AI explanation", "llm.chars": "{n} chars",
-  "llm.cutInput": "Source too long — only the first {n} characters were sent (of {orig}). This tool made that cut; raising “Max output tokens” will not undo it.",
+  "llm.cutInput": "Source too long — only the first {n} characters were sent (of {orig}). This cut follows the “Max input characters” setting: raise it under Settings → Translate/AI and retry.",
   "llm.cutOutput": "Output hit the limit and was truncated (current setting {n}). The upstream model has its own output ceiling, so raising this setting may not lift it.",
   "llm.cutFilter": "Upstream content filtering cut the output short — the result is incomplete.",
   "dag.meta": "{n} requests · {m} lanes", "dag.live": " · LIVE redraw",
@@ -2264,6 +2274,8 @@ en: {
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
   "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default). The upstream model has its own ceiling — a larger value here cannot exceed it",
+  "set.inputMax": "Max input characters", "set.inputMaxSub": "Cap on the source text sent per translate / AI-explain call (characters). Longer text is cut with a notice — single system prompts of 40K+ are common in recordings, so the 20K default cuts them in half",
+  "set.chatCtxMax": "Analysis chat context cap", "set.chatCtxSub": "Snapshot digest injected each analysis-chat turn (characters). Raising it buys finer questions at the cost of each turn",
   "detail.respHeaders": "Response headers",
   "detail.wireOnlyHint": "ⓘ Includes ratelimit / request-id — only visible at wire layer (not in CC's jsonl)",
   "status.writeFail": "⚠ {n} capture(s) failed to write to disk — that traffic was NOT saved! {msg}",
@@ -2530,7 +2542,7 @@ ja: {
   "llm.translated": "↓ 翻訳",
   "llm.explaining": "解析中…", "llm.reexplain": "もう一度", "llm.explainFail": "AI 解説に失敗",
   "llm.explained": "AI 解説", "llm.chars": "{n} 文字",
-  "llm.cutInput": "原文が長すぎるため、先頭 {n} 文字のみ送信しました（原文は全 {orig}）。これは本ツール側の切り詰めで、「最大出力トークン」を上げても戻りません。",
+  "llm.cutInput": "原文が長すぎるため、先頭 {n} 文字のみ送信しました（原文は全 {orig}）。この切り詰めは「最大入力文字数」設定に従うものです。設定 → 翻訳/AI で上げてから再試行してください。",
   "llm.cutOutput": "出力が上限に達して切り詰められました（現在の設定 {n}）。上流モデル自体にも出力上限があり、本機の設定を上げても超えられない場合があります。",
   "llm.cutFilter": "上流のコンテンツ審査により出力が途中で打ち切られました。結果は不完全です。",
   "dag.meta": "{n} リクエスト · {m} レーン", "dag.live": " · LIVE 再描画",
@@ -2614,6 +2626,8 @@ ja: {
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
   "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上流のデフォルト）。上流モデル自体にも出力上限があり、これを超えることはできません",
+  "set.inputMax": "最大入力文字数", "set.inputMaxSub": "翻訳・AI 解釈で 1 回に送る原文の上限（文字）。超えると切り詰めとその旨の表示が出ます——録画内の単一 system prompt は 40K+ も珍しくなく、既定 20K では半分落ちます",
+  "set.chatCtxMax": "分析対話のコンテキスト上限", "set.chatCtxSub": "分析タブの対話で毎ターン注入するスナップショット要約の上限（文字）。大きくすれば細かく聞けますが、ターンごとの費用が増えます",
   "detail.respHeaders": "レスポンス Headers",
   "detail.wireOnlyHint": "ⓘ ratelimit / request-id など wire 層でのみ見えるフィールド（CC の jsonl には記録されない）",
   "status.writeFail": "⚠ 録画の書き込みに {n} 回失敗 —— そのトラフィックは保存されていません！{msg}",
@@ -2962,6 +2976,10 @@ function bigText(text, limit, cls){
     '<pre class="bt-short ' + c + '">' + esc(t.slice(0, limit)) + '…</pre>' +
     '<pre class="bt-full ' + c + '" hidden>' + esc(t) + '</pre>' + tools + '</div>';
 }
+/* 可见省略：切了就必须留下 …，读者至少知道这里被切过（260825）。
+   **不可达的省略一律不许有**——切掉之后没有任何入口能看到全文，那是静默丢字，
+   是这个项目的惯犯 bug ③。需要藏长文本时用 bigText（它给展开按钮 + 总字符数）。 */
+function cut(s, n){ return s.length > n ? s.slice(0, n) + "…" : s; }
 function _excerptRaw(ex){
   const full = ex.querySelector(".bt-full");
   if(full) return full.textContent;
@@ -4122,27 +4140,38 @@ function renderMsg(m, mi){
       inner += '<div class="snapable" data-snap-where=\'{"kind":"message","index":' +
         (mi == null ? -1 : mi) + ',"block":' + bi + '}\'>' + bigText(b.text || "", 4000) + '</div>';
       if(Array.isArray(b.citations) && b.citations.length){
-        const cl = b.citations.slice(0, 8).map((c, i) =>
-          "[" + (i + 1) + "] " + esc((c.cited_text || "").replace(/\n/g, " ").slice(0, 120)) +
-          (c.url ? ' <span class="blk-meta">' + esc(c.url) + '</span>' : ""));
-        inner += '<div class="tooluse-box"><span class="blk-meta">citations:</span>\n' + bigText(cl.join("\n"), 1500) + '</div>';
+        /* 260825：原先只列前 8 条且不说还有多少（也双重转义了）。全列，bigText 负责折叠。
+           行内不能再插 HTML —— 整段要进 bigText，标签会被当字面量显示出来。 */
+        const cl = b.citations.map((c, i) =>
+          "[" + (i + 1) + "] " + cut((c.cited_text || "").replace(/\n/g, " "), 120) +
+          (c.url ? "  " + c.url : ""));
+        inner += '<div class="tooluse-box"><span class="blk-meta">citations (' + b.citations.length + '):</span>' +
+          bigText(cl.join("\n"), 1500) + '</div>';
       }
     }else if(b.type === "thinking"){
       inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:#4A5568">thinking</span></div>' +
         bigText(b.thinking || b.text || "", 3000) + '</div>';
     }else if(b.type === "tool_use"){
+      /* 260825：原先是 `JSON.stringify(...).slice(0,1500)` —— 硬切、没有展开按钮、
+         也不说被切了。实测 6 天真实录制，10.6% 的 tool_use 超过 1500 字符，最长一个
+         Write 有 37,257 字符（界面上只看得到 4%）。改走 bigText：折叠可以，静默不行。 */
       inner += '<div class="tooluse-box">→ ' + esc(b.name || "tool") + " " +
-        esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
+        bigText(JSON.stringify(b.input || {}, null, 1), 1500) + '</div>';
     }else if(b.type === "server_tool_use"){
       inner += '<div class="tooluse-box">⟐ <span class="chip" style="background:var(--node-system)">server</span> ' +
         esc(b.name || "tool") + " " +
-        esc(JSON.stringify(b.input || {}, null, 1).slice(0, 1500)) + '</div>';
+        bigText(JSON.stringify(b.input || {}, null, 1), 1500) + '</div>';
     }else if(b.type === "web_search_tool_result"){
       const items = Array.isArray(b.content) ? b.content : (b.content ? [b.content] : []);
-      const lines = items.slice(0, 6).map(c => typeof c === "string" ? "• " + c
-        : "• " + esc(String(c.title || c.text || c.snippet || "").slice(0, 160)) + (c.url ? "  " + esc(String(c.url).slice(0, 90)) : ""));
+      /* 260825 两处修：① 原先 `items.slice(0,6)` 把第 7 条起整条丢掉且不吭声 —— 列表
+         不再截断，交给 bigText 按字符数折叠（它会报出总量）；② 这些行随后要进 bigText，
+         而 bigText 自己 esc 一遍，原先在这里再 esc 一次是**双重转义**，含 & < 的标题
+         会显示成 `&amp;lt;`。每行的字符截断保留，但补上 … 让它看得见。 */
+      const lines = items.map(c => typeof c === "string" ? "• " + c
+        : "• " + cut(String(c.title || c.text || c.snippet || ""), 160) + (c.url ? "  " + cut(String(c.url), 90) : ""));
       inner += '<div class="tooluse-box">⟐ <span class="chip" style="background:var(--node-system)">web_search</span> ' +
-        bigText(lines.length ? lines.join("\n") : JSON.stringify(b.content ?? {}).slice(0, 1200), 2000) + '</div>';
+        '<span class="blk-meta">' + items.length + ' result' + (items.length === 1 ? '' : 's') + '</span>' +
+        bigText(lines.length ? lines.join("\n") : JSON.stringify(b.content ?? {}, null, 1), 2000) + '</div>';
     }else if(b.type === "tool_result"){
       const txt = typeof b.content === "string" ? b.content
         : (Array.isArray(b.content) ? b.content.map(c => c.text || "").join("\n") : JSON.stringify(b.content));
@@ -4163,9 +4192,11 @@ function renderRespBlock(b){
        cited_text 片段 + url，让带搜索的回答可追溯。 */
     let cit = "";
     if(Array.isArray(b.citations) && b.citations.length){
-      const cl = b.citations.slice(0, 10).map((c, i) => {
+      /* 260825：不再只列前 10 条（原先也没说被截了），且去掉这里的 esc —— 整段随后
+         进 bigText，那里会 esc 一次，两次就是双重转义。行内 HTML 同理去掉。 */
+      const cl = b.citations.map((c, i) => {
         const u = c.url || "", t = (c.cited_text || "").replace(/\n/g, " ");
-        return "[" + (i + 1) + "] " + esc(t.slice(0, 140)) + (u ? ' <span class="blk-meta">' + esc(u) + '</span>' : "");
+        return "[" + (i + 1) + "] " + cut(t, 140) + (u ? "  " + u : "");
       });
       cit = '<div class="tooluse-box"><span class="blk-meta">citations (' + b.citations.length + "):</span>\n" +
         bigText(cl.join("\n"), 1800) + '</div>';
@@ -4180,7 +4211,7 @@ function renderRespBlock(b){
     return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--info);color:var(--accent-contrast)">tool_use</span>' +
       (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
       '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
-      esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';
+      bigText(JSON.stringify(b.input || {}, null, 1), 3000) + '</div></div>';
   }
   /* server_tool_use：上游/服务端代执行的工具（web_search、webReader 等），形态同 tool_use
      （都有 name + input）但发起方是服务端。260802 前走 default 的 JSON dump，看不出调了什么；
@@ -4189,24 +4220,25 @@ function renderRespBlock(b){
     return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--node-system)">server_tool_use</span>' +
       (b.id ? '<span class="blk-meta">' + esc(b.id) + '</span>' : "") + '</div>' +
       '<div class="tooluse-box">' + esc(b.name || "tool") + " " +
-      esc(JSON.stringify(b.input || {}, null, 1).slice(0, 3000)) + '</div></div>';
+      bigText(JSON.stringify(b.input || {}, null, 1), 3000) + '</div></div>';
   }
   /* web_search_tool_result：服务端 web_search 返回的搜索结果（content = 结果列表）。
      260802 前走 default JSON dump；现提取每条 title/url 摘要，标结果数。 */
   if(b.type === "web_search_tool_result"){
     const items = Array.isArray(b.content) ? b.content : (b.content ? [b.content] : []);
-    const lines = items.slice(0, 8).map(c => {
+    /* 260825：① 全列，不再 slice(0,8)（bigText 按字符数折叠并报出总量，比"前 8 条"诚实）；
+       ② 去掉 esc —— 整段进 bigText，那里 esc 一次就够，两次是双重转义。 */
+    const lines = items.map(c => {
       if(typeof c === "string") return "• " + c;
       const t = c.title || c.text || c.snippet || "";
       const u = c.url || "";
-      return "• " + esc(String(t).slice(0, 180)) + (u ? "  " + esc(String(u).slice(0, 100)) : "");
+      return "• " + cut(String(t), 180) + (u ? "  " + cut(String(u), 100) : "");
     });
-    const body = lines.length ? lines.join("\n") : esc(JSON.stringify(b.content ?? {}, null, 1).slice(0, 1500));
-    const more = items.length > 8 ? "\n… (+" + (items.length - 8) + " more)" : "";
+    const body = lines.length ? lines.join("\n") : JSON.stringify(b.content ?? {}, null, 1);
     return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--node-system)">web_search_tool_result</span>' +
       (b.tool_use_id ? '<span class="blk-meta">' + esc(b.tool_use_id) + '</span>' : "") +
       ' <span class="blk-meta">' + items.length + " result" + (items.length === 1 ? "" : "s") + '</span></div>' +
-      '<div class="tooluse-box">' + bigText(body + more, 2500) + '</div></div>';
+      '<div class="tooluse-box">' + bigText(body, 2500) + '</div></div>';
   }
   /* compaction：上下文自动压缩产出的块（beta context-management-2025-06-27）。
      proxy 的 SSE 累积器把 compaction_delta 累成 {type, content}。压缩何时发生、压出了什么
@@ -6166,6 +6198,8 @@ async function loadConfig(){
     $("cfgTransModel").value = tr.model || "";
     $("cfgTransTemp").value = tr.temperature ?? 0.3;
     $("cfgTransMaxTokens").value = tr.max_tokens ?? 8192;
+    $("cfgTransInputMax").value = tr.input_max_chars ?? 20000;
+    $("cfgChatCtxMax").value = tr.chat_context_max_chars ?? 20000;
     $("cfgTransLang").value = tr.target_lang || "zh";
     $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
     $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
@@ -6488,6 +6522,8 @@ async function saveConfig(){
       model: $("cfgTransModel").value.trim(),
       temperature: parseFloat($("cfgTransTemp").value) || 0.3,
       max_tokens: parseInt($("cfgTransMaxTokens").value, 10) || 8192,
+      input_max_chars: parseInt($("cfgTransInputMax").value, 10) || 20000,
+      chat_context_max_chars: parseInt($("cfgChatCtxMax").value, 10) || 20000,
       target_lang: $("cfgTransLang").value,
     },
     explain: { prompt: $("cfgExplainPrompt").value.trim() },

@@ -45,6 +45,16 @@ _DEFAULTS = {
         "temperature": 0.3,
         "max_tokens": 8192,   # 长文本翻译/解读输出上限；不足会被上游截断（260713 开放到设置页）
         "target_lang": "zh",
+        # 输入侧上限，单位**字符**（不是 token——客户端算不出 token 数，提示里报的也是
+        # 字符，配置项必须与提示同一单位，所见即所得）。260825 从 app.py 的写死 20000
+        # 开放成配置：截断有自陈（260801），但砍在哪一刀该由用户定——实测单条 system
+        # prompt 40K+ 常见，20K 一刀砍掉的分析结论本身就是失真的。
+        # input_max_chars：单轮（翻译/AI 解读/差异解读）发送原文的上限
+        # chat_context_max_chars：分析对话每轮注入的快照上下文上限
+        # 两个都读写两侧夹取（1000~2,000,000，见 _clamp_chars）：下限防"填 0 截成空串
+        # 还挂已截断提示"，上限防手滑天文数字一次烧穿。
+        "input_max_chars": 20000,
+        "chat_context_max_chars": 20000,
     },
     "explain": {
         "prompt": "",
@@ -74,6 +84,9 @@ def get_config() -> dict:
                 else:
                     merged[k] = v
     merged["ui_scale"] = _clamp_scale(merged.get("ui_scale"))   # 手改坏的 config.json 也不许把界面缩没
+    tr = merged.get("translate") or {}
+    tr["input_max_chars"] = _clamp_chars(tr.get("input_max_chars"))
+    tr["chat_context_max_chars"] = _clamp_chars(tr.get("chat_context_max_chars"))
     return merged
 
 
@@ -84,6 +97,16 @@ def _clamp_scale(v) -> int:
         return max(80, min(200, int(v)))
     except (TypeError, ValueError):
         return 100
+
+
+def _clamp_chars(v, default: int = 20000) -> int:
+    """LLM 输入上限（字符）夹到 1000~2,000,000。与 _clamp_scale 同一条纪律：
+    0/负数会把文本截成空串还挂「已截断」提示；天文数字一次请求就烧穿上游。
+    这是花钱的旋钮，防呆必须在工具侧，不能指望用户自己小心。"""
+    try:
+        return max(1000, min(2_000_000, int(v)))
+    except (TypeError, ValueError):
+        return default
 
 
 def set_config(updates: dict) -> dict:
@@ -97,6 +120,9 @@ def set_config(updates: dict) -> dict:
             else:
                 current[k] = v
     current["ui_scale"] = _clamp_scale(current.get("ui_scale"))
+    tr = current.get("translate") or {}
+    tr["input_max_chars"] = _clamp_chars(tr.get("input_max_chars"))
+    tr["chat_context_max_chars"] = _clamp_chars(tr.get("chat_context_max_chars"))
     CONFIG_FILE.write_text(
         json.dumps(current, ensure_ascii=False, indent=2),
         encoding="utf-8",
