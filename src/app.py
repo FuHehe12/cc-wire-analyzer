@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
@@ -113,6 +114,15 @@ try:
         log.info("retention: purged %d day(s): %s", len(_RETENTION_REMOVED), _RETENTION_REMOVED)
 except Exception as e:
     log.error("retention sweep failed: %s", e)
+
+# 压实/归档被打断留下的残留（260825）：临时目录 `.{date}.packing.*`、以及"pack 已就位
+# 但原 jsonl 还没删掉"的那一瞬被切断的情形。清理只认能证明是残留的东西——临时目录带
+# 我们自己的前缀，残留 jsonl 旁边一定有个校验通过的 pack——所以不可能误伤真录制。
+# 放在启动而不是压实失败时清：断电/强杀根本轮不到 except 分支跑。
+try:
+    _partials = capture_store.cleanup_partials()
+except Exception as e:
+    log.error("partial cleanup failed: %s", e)
 
 # 上一次就地更新留下的 `<exe>.old` / `.new`：那时它们还被占用着删不掉（正在跑的就是旧文件），
 # 只能等下一次启动。删不掉也不报错——残留一个 30MB 的旧 exe 是小事，
@@ -332,7 +342,7 @@ def proxy_stop():
 # ===== 捕获列表 =====
 @app.route("/api/captures")
 def captures_list():
-    date = request.args.get("date")
+    date = request.args.get("date") or None      # 空串 = 没给 = 今天（见 capture_store 里那条注释）
     def _to_int(v, default):
         try:
             return int(v)
@@ -342,7 +352,8 @@ def captures_list():
     offset = max(_to_int(request.args.get("offset", 0), 0), 0)
     return jsonify(capture_store.list_captures(
         date, limit, offset,
-        request.args.get("exclude_session", ""), request.args.get("session", "")))
+        request.args.get("exclude_session", ""), request.args.get("session", ""),
+        request.args.get("source", "")))
 
 
 @app.route("/api/grep")
@@ -366,7 +377,8 @@ def api_grep():
                            in_=request.args.get("in", "all"),
                            limit=limit, case=case, fixed=fixed,
                            exclude_session=request.args.get("exclude_session", ""),
-                           session=request.args.get("session", ""))
+                           session=request.args.get("session", ""),
+                           source=request.args.get("source", ""))
     r["date"] = date
     code = 400 if (not r.get("ok") and r.get("error") == "bad_pattern") else 200
     return jsonify(r), code
@@ -381,7 +393,8 @@ def api_stats():
     参数另有 session / exclude_session（双 CC 审计时排除审计者自身）。"""
     return jsonify(capture_store.stats(request.args.get("date"),
                                        request.args.get("exclude_session", ""),
-                                       request.args.get("session", "")))
+                                       request.args.get("session", ""),
+                                       request.args.get("source", "")))
 
 
 @app.route("/api/unknowns")
@@ -394,13 +407,14 @@ def api_unknowns():
     **判读先看 hosts**：单一第三方 host 独占 = 网关差异，不是 CC 协议演进。"""
     return jsonify(capture_store.unknowns(request.args.get("date"),
                                           request.args.get("exclude_session", ""),
-                                          request.args.get("session", "")))
+                                          request.args.get("session", ""),
+                                          request.args.get("source", "")))
 
 
 @app.route("/api/captures/<rid>")
 def capture_detail(rid):
-    date = request.args.get("date")  # 历史日期详情要带 date（审计 260712 #4）
-    rec = capture_store.get_capture(rid, date)
+    date = request.args.get("date") or None  # 历史日期详情要带 date（审计 260712 #4）；空串=没给
+    rec = capture_store.get_capture(rid, date, request.args.get("source", ""))
     if rec is None:
         return jsonify({"error": "not_found", "id": rid}), 404
     # 安全审查请求：附上解析好的「待判定动作 / 判定结果 / 本次发送量」（260729）。
@@ -429,40 +443,142 @@ def dag_view():
     date = request.args.get("date") or time.strftime("%Y-%m-%d", time.localtime())
     excl = request.args.get("exclude_session", "")
     sess = request.args.get("session", "")
+    src = request.args.get("source", "")
     cacheable = not (excl or sess)
     if cacheable:
-        f = capture_store.CAPTURES_DIR / f"{date}.jsonl"
-        size = f.stat().st_size if f.exists() else 0
-        cached = _DAG_CACHE.get(date)
+        # 缓存键用**锚点文件大小**而不是主文件大小：压实后主文件不存在，写死 .jsonl 会
+        # 恒为 0 —— 那样缓存永不失效，压实当天的图会一直停在压实前那一版。
+        # 键带 source：外来录制的日期与本机撞车（两台机器同一天都在录）。
+        size = capture_store.day_anchor_size(date, src)
+        cached = _DAG_CACHE.get((src, date))
         if cached and cached[0] == size:
             return jsonify(cached[1])
-    result = classifier.build_dag(capture_store.list_index(date, excl, sess))
+    result = classifier.build_dag(capture_store.list_index(date, excl, sess, src))
     if cacheable:
-        _DAG_CACHE[date] = (size, result)
+        _DAG_CACHE[(src, date)] = (size, result)
     return jsonify(result)
+
+
+def _store_call(fn, *args, **kw):
+    """存储动作的统一出口：把 StoreError 的 code 原样带给前端，其余归 internal。
+    四个新端点与 clear 共用——错误形状各写一份就会各自漂移。"""
+    try:
+        return jsonify({"ok": True, **(fn(*args, **kw) or {})})
+    except capture_store.StoreError as e:
+        return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 400
+    except Exception as e:
+        log.exception("存储动作失败：%s", fn.__name__)
+        return jsonify({"ok": False, "error_code": "internal", "error": str(e)}), 500
 
 
 @app.route("/api/captures/clear", methods=["POST"])
 def captures_clear():
-    """清除指定日期录制。body: {date, mode} —— mode=purge 直接删 / archive 先压缩存档再删。
+    """清除指定日期录制。body: {date, mode, source?, label?} ——
+    mode=purge 直接删 / archive 先归档成单文件 .ccwa 再删。
 
     date 缺省=今天。返回 {ok, removed, archive?}；失败 {ok:false, error, error_code}（code:
-    bad_date/not_found/delete_failed/archive_failed）。date 经格式校验防路径穿越。"""
+    bad_date/not_found/delete_failed/archive_failed）。date 经格式校验防路径穿越。
+
+    260825：archive 的产物从 `{date}.zip`（zip DEFLATE，实测只有 2.6x）换成 `.ccwa`
+    （内容寻址去重，实测 20~34x，且拷到别的机器不解压就能查看）。"""
     data = request.get_json(silent=True) or {}
     date = data.get("date") or None
     mode = data.get("mode") or "purge"
+    source = data.get("source") or ""
     try:
         if mode == "archive":
-            info = capture_store.archive_date(date)
-            return jsonify({"ok": True, "removed": info["count"],
+            info = capture_store.archive_date(date, source=source,
+                                              label=data.get("label") or "")
+            return jsonify({"ok": True, "removed": info["removed"],
                             "archive": {"path": info["path"], "size": info["size"],
-                                        "compressed": info["compressed"]}})
-        removed = capture_store.purge_date(date)
+                                        "count": info["count"]}})
+        removed = capture_store.purge_date(date, source)
         return jsonify({"ok": True, "removed": removed})
     except capture_store.StoreError as e:
         return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 500
     except Exception as e:
         return jsonify({"ok": False, "error_code": "internal", "error": str(e)}), 500
+
+
+@app.route("/api/captures/compact", methods=["POST"])
+def captures_compact():
+    """压实：原地缩小，**不删任何东西**，压实完照常查看（这是它与 clear 的根本区别）。
+
+    body: {date?, source?, older_than?}。不给 date 则压实全部「过去的、还没压实的」天。
+    **今天永远不压**——`append` 只写今天，压实今天就要和写盘热路径抢同一个文件，
+    而代理透明性是本项目第一优先级。
+    返回 {ok, compacted:[{date,count,raw_bytes,packed_bytes,saved_bytes,ratio}], failed:[]}。"""
+    data = request.get_json(silent=True) or {}
+    source = data.get("source") or ""
+    date = data.get("date")
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    if date:
+        dates = [date]
+    else:
+        dates = [d for d in capture_store.list_dates(source)
+                 if d != today and not capture_store.is_packed(d, source)]
+        older = data.get("older_than")
+        if isinstance(older, int) and older > 0:
+            cutoff = (datetime.date.today() - datetime.timedelta(days=older)).isoformat()
+            dates = [d for d in dates if d < cutoff]
+    done, failed = [], []
+    for d in dates:
+        try:
+            done.append(capture_store.compact_date(d, source))
+        except capture_store.StoreError as e:
+            failed.append({"date": d, "error_code": e.code, "error": str(e)})
+        except Exception as e:
+            log.exception("压实失败 %s", d)
+            failed.append({"date": d, "error_code": "internal", "error": str(e)})
+    return jsonify({"ok": bool(done) or not failed, "compacted": done, "failed": failed,
+                    "saved_bytes": sum(x["saved_bytes"] for x in done)})
+
+
+@app.route("/api/captures/uncompact", methods=["POST"])
+def captures_uncompact():
+    """把压实的一天还原回 jsonl（压实的逆操作，给"我要拿原始文件"的场景留的出口）。"""
+    data = request.get_json(silent=True) or {}
+    return _store_call(capture_store.uncompact_date,
+                       data.get("date") or "", data.get("source") or "")
+
+
+@app.route("/api/captures/archive", methods=["POST"])
+def captures_archive():
+    """归档成单文件 `.ccwa`（可拷到另一台机器导入）。默认**保留**原录制。
+
+    body: {date, source?, label?, clear?}。clear=true 才删原录制（那条路等同 clear 的
+    archive 模式）。label 会写进归档，导入端默认拿它当来源标签。"""
+    data = request.get_json(silent=True) or {}
+    return _store_call(capture_store.archive_date,
+                       data.get("date") or "", source=data.get("source") or "",
+                       label=data.get("label") or "",
+                       keep=not data.get("clear"))
+
+
+@app.route("/api/captures/import", methods=["POST"])
+def captures_import():
+    """导入 `.ccwa` 到 `sources/<标签>/`。body: {file, label?}。
+
+    **导入的录制进独立命名空间**，不与本机录制混在一起：两台机器同一天都在录，日期一定
+    撞车；混在一起的后果不是报错，而是把别的机器的证据当本机事实读——排查会直接跑偏。"""
+    data = request.get_json(silent=True) or {}
+    return _store_call(capture_store.import_archive,
+                       data.get("file") or "", data.get("label") or "")
+
+
+@app.route("/api/sources")
+def sources_list():
+    """已导入的外来录制来源 + 本机归档清单（设置页与日期选择器用）。"""
+    return jsonify({"ok": True,
+                    "sources": capture_store.list_sources(),
+                    "archives": capture_store.list_archives()})
+
+
+@app.route("/api/sources/delete", methods=["POST"])
+def sources_delete():
+    """删掉一个导入来源（整个标签目录）。外来录制不参与保留策略，只能显式删。"""
+    data = request.get_json(silent=True) or {}
+    return _store_call(capture_store.delete_source, data.get("label") or "")
 
 
 @app.route("/api/captures/stream")
@@ -907,28 +1023,45 @@ def storage():
     caps = _dir_usage(capture_store.CAPTURES_DIR, split_idx=True)
     arch = _dir_usage(capture_store.ARCHIVES_DIR)
     snaps = _dir_usage(snapshot_store.SNAPSHOTS_DIR)
+    srcs = _dir_usage(capture_store.SOURCES_DIR)
     log_size = CFG.LOG_FILE.stat().st_size if CFG.LOG_FILE.exists() else 0
-    # 天数与最大的一天来自主文件名（YYYY-MM-DD.jsonl），仍然只用 stat
-    days, largest = 0, None
+    # 天数 / 最大的一天 / 能压实多少：全部只用 stat 与目录名，**不读文件内容**
+    # （上面那条注释的成本约束仍然成立）。压实态的一天是目录 `{date}.pack`，
+    # 260825 前这里只认 `.jsonl` 文件 —— 不改的话压实过的天会从"天数"里整片消失。
+    days, largest, packed_days, compactable = 0, None, 0, 0
+    today = time.strftime("%Y-%m-%d", time.localtime())
     try:
         with os.scandir(capture_store.CAPTURES_DIR) as it:
             for e in it:
-                stem = e.name[:-6] if e.name.endswith(".jsonl") else ""
-                if not e.is_file() or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", stem):
+                stem = e.name[:-6] if e.name.endswith(".jsonl") else (
+                    e.name[:-5] if e.name.endswith(".pack") else "")
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", stem):
+                    continue
+                if e.is_dir():
+                    days += 1
+                    packed_days += 1
+                    continue
+                if not e.is_file():
                     continue
                 days += 1
                 size = e.stat().st_size
+                if stem != today:
+                    compactable += size     # 可压实的量：过去的天且还是 jsonl 形态
                 if not largest or size > largest["bytes"]:
                     largest = {"date": stem, "bytes": size}
     except OSError as err:
         log.debug("usage day scan failed: %s", err)
     return jsonify({
         "data_dir": str(CFG.CONFIG_DIR),
-        "captures": caps, "archives": arch, "snapshots": snaps,
+        "captures": caps, "archives": arch, "snapshots": snaps, "sources": srcs,
+        "packed_days": packed_days,
+        # 还能压出多少空间：按实测 20~34x 保守取 20x（说"最少能省这么多"，不夸大）
+        "compactable_bytes": compactable,
+        "compactable_saving": int(compactable * 0.95) if compactable else 0,
         "log_bytes": log_size,
         "capture_days": days, "largest_day": largest,
         "total_bytes": (caps["bytes"] + caps.get("index_bytes", 0) + arch["bytes"]
-                        + snaps["bytes"] + log_size),
+                        + snaps["bytes"] + srcs["bytes"] + log_size),
     })
 
 

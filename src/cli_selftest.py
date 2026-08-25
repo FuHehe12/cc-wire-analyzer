@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import shutil
@@ -279,10 +280,15 @@ def main() -> None:
         check("其他字段无损", token_intact())
 
         print("\n[5] 保留天数（原死配置）")
+        # 「近期」必须**按运行当天现算**，不能写死日期：原先拿固定的 2026-07-12 当近期，
+        # 它在 2026-08-11 之后就滑出 30 天窗口，于是这条断言从那天起必然失败——
+        # 断言测的不再是保留策略，而是"今天是哪天"（260825 修，与压实改造无关的既有腐化）。
+        recent = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        (tmp / "captures" / f"{recent}.jsonl").write_text('{"id":"req_new"}\n', encoding="utf-8")
         (tmp / "captures" / "2026-01-01.jsonl").write_text('{"id":"req_old"}\n', encoding="utf-8")
         o = run(env, "clear", "--older-than", "30")
         check("超期录制被清", "2026-01-01" in o.get("removed", []), str(o.get("removed")))
-        check("近期录制没被误删", (tmp / "captures" / "2026-07-12.jsonl").exists())
+        check("近期录制没被误删", (tmp / "captures" / f"{recent}.jsonl").exists())
     finally:
         run(env, "proxy", "stop", expect_ok=False)   # 兜底：别把 daemon 留在后台
         time.sleep(0.5)

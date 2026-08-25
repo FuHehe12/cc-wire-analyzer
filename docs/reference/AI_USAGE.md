@@ -91,8 +91,10 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 
 ```
 ~/.cc-wire-analyzer/
-├── captures/YYYY-MM-DD.jsonl    ← 录制，每行一个 JSON 对象，append-only
-├── archives/                    ← 用户显式归档的压缩录制
+├── captures/YYYY-MM-DD.jsonl    ← 今天的录制，每行一个 JSON 对象，append-only
+├── captures/YYYY-MM-DD.pack/    ← 已压实的过去某天（**不是 jsonl，别直接 parse**）
+├── archives/*.ccwa              ← 归档单文件（可拷到别的机器导入）
+├── sources/<标签>/              ← 从别的机器导入的录制（独立命名空间）
 ├── config.json                  ← 设置（LLM key、保留天数、UI 语言）
 ├── port.txt                     ← 当前服务实例的端口
 ├── serve.pid                    ← serve 进程的 pid（用来停它）
@@ -101,6 +103,39 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 ```
 
 你可以通过 HTTP 查（见下）**或**直接读 JSONL。结构化的问题优先走 HTTP；只有服务没跑时才碰原始文件。
+
+### 一天有两种形态（260825 起）
+
+CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条全量落盘的——实测一天里
+`messages` 有 93% 的字节是前面某条记录里一模一样的块。所以过去的天可以被**压实**：
+把 `system`/`tools`/`messages` 的每个顶层块做内容寻址去重再逐块压缩，实测 477MB → 14.8MB
+（33.9x），单条详情随机读中位 17ms，**逐字节可还原**。
+
+| 形态 | 是什么 | 你该怎么读 |
+|---|---|---|
+| `YYYY-MM-DD.jsonl` | 今天。格式没变，一行一条 | HTTP/CLI 优先；真要直读就分块读，别 `cat` 整个文件 |
+| `YYYY-MM-DD.pack/` | 过去某天，已压实 | **只能走 HTTP/CLI**。目录里是骨架 + blob 池 + 索引，`skel.jsonl` 里的 `{"$cas":[...]}` 是指针不是内容 |
+
+**这对你的影响只有一条：别再假设「录制 = 一个 jsonl 文件」。** 所有 API 与 CLI 对两种形态
+行为完全一致（同一天压实前后，list/dag/get/grep/stats 的输出逐字节相同——除了 stats 的
+`file_size`/`packed`/`raw_bytes`，那三个字段的意义本来就是"现在占多少"）。
+
+- 压实：`POST /api/captures/compact {date?}` 或 `cc-wire-analyzer compact [--date D]`。
+  **今天永远不压**（代理正往里写）。压实**不删任何东西**，可用 `uncompact` 还原回 jsonl。
+- 归档：`POST /api/captures/archive {date, label?}` 或 `cc-wire-analyzer archive --date D --label 机器名`
+  → `archives/<date>.<label>.<时分秒>.ccwa` 单文件，可以拷到别的机器。
+- 导入：`POST /api/captures/import {file}` 或 `cc-wire-analyzer import <file.ccwa>`
+  → 落到 `sources/<标签>/`。
+
+### 看别的机器导入的录制：`source` 参数
+
+导入的录制在**独立命名空间**里，因为两台机器同一天都在录、日期必然撞车。要读它，给
+`/api/captures`、`/api/captures/<id>`、`/api/dag`、`/api/grep`、`/api/stats`、`/api/unknowns`、
+`/api/diagnose/errors` 加 `&source=<标签>`，CLI 则是 `--source <标签>`。
+`GET /api/sources`（CLI `sources`）列出有哪些标签、各有哪些日期。
+
+**不传 source 就是本机录制。** 这一点值得停一秒：如果你在排查"另一台机器上的问题"却忘了带
+`source`，你看到的是本机数据，而且**没有任何东西会提示你搞错了**。
 
 ### record schema（JSONL 的一行）
 
@@ -284,11 +319,17 @@ uv run python src/cli.py <子命令>
 | `unknowns --date` | 盲区雷达 | 只读 |
 | `dag --date` | 时序 DAG（泳道/节点/边）| 只读 |
 | `doctor` | 配置体检 | 只读 |
+| `sources [--delete 标签]` | 已导入的外来录制来源 + 本机归档清单 | 只读（`--delete` 会删）|
 | `proxy start` / `proxy stop` | 起/停代理（**会改 settings.json**）| ⚠️ 有 |
 | `restore` | 强制恢复 settings.json（进程被强杀后救回）| ⚠️ 有 |
-| `clear --date --mode` / `clear --older-than N` | 删除 / 压缩存档录制 | ⚠️ 有 |
+| `compact [--date D] [--older-than N]` | 压实过去的天（约 20-34x，**不删数据**，之后照常查看）| 改存储形态，不丢内容 |
+| `uncompact --date D` | 压实的逆操作，还原回 jsonl | 改存储形态，不丢内容 |
+| `archive --date D [--label 机器名] [--clear]` | 归档成单文件 `.ccwa`（可拷到别的机器）| `--clear` 才删原录制 |
+| `import <file.ccwa> [--label]` | 导入到 `sources/<标签>/` | 只写新目录 |
+| `clear --date --mode` / `clear --older-than N` | 删除录制（`--mode archive` 先归档再删）| ⚠️ 有 |
 
-前 12 条只读的都接受 `--session` / `--exclude-session`（语义同 HTTP）。
+只读的那些都接受 `--session` / `--exclude-session`（语义同 HTTP），以及 `--source <标签>`
+（看导入的外来录制，不给就是本机）。
 `--help` 与 `<子命令> --help` 是权威参数清单，本表只讲各条**做什么、有没有副作用**。
 
 > **自检**：加 CLI 子命令时必须更新本表，`tools/doc_audit.py` 会对账

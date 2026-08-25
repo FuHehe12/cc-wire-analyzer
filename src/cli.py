@@ -130,13 +130,10 @@ def _daemon_pid() -> int | None:
 
 # ===== 录制读取 =====
 
-def _lines(date: str | None) -> list[str]:
-    date = date or time.strftime("%Y-%m-%d", time.localtime())
-    f = capture_store.CAPTURES_DIR / f"{date}.jsonl"
-    if not f.exists():
-        return []
-    with f.open("r", encoding="utf-8") as fh:
-        return fh.readlines()
+def _records(date: str | None, source: str = "") -> list[dict]:
+    """某天的完整记录。走 capture_store 的统一访问器——260825 压实上线后，
+    自己 open(f"{date}.jsonl") 的写法在压实过的天上会安静地读到空。"""
+    return list(capture_store.iter_records(date, source))
 
 
 _usage = classifier.usage_norm   # 键名归一的单一真源在 classifier（别再各抄一份，那正是这个 bug 的根因）
@@ -180,11 +177,15 @@ def cmd_paths(a) -> None:
         "today_file": str(today_f),
         "today_exists": today_f.exists(),
         "archives_dir": str(capture_store.ARCHIVES_DIR),
+        "sources_dir": str(capture_store.SOURCES_DIR),
         "config_dir": str(CFG.CONFIG_DIR),
         "config_file": str(CFG.CONFIG_FILE),
         "log_file": str(CFG.LOG_FILE),
         "claude_settings": str(CFG.CLAUDE_SETTINGS),
-        "note": "录制是 append-only JSONL，一行一条记录。不要整文件读入——用 list/grep 定位，再用 get 取单条。",
+        "note": "今天的录制是 append-only JSONL（一行一条）；**过去的天可能已被压实成 "
+                "{date}.pack/ 目录**（内容寻址去重 + zstd，实测 30x），那不是能直接 parse 的 jsonl。"
+                "一律用 list/grep 定位再用 get 取单条，别自己读文件。"
+                "看别的机器导入的录制：给读取类命令加 --source <标签>（cc-wire-analyzer sources 列出有哪些）。",
     })
 
 
@@ -307,56 +308,26 @@ def cmd_restore(a) -> None:
 
 
 def cmd_list(a) -> None:
-    lines = _lines(a.date)
+    src = getattr(a, "source", "")
+    recs = _records(a.date, src)
     if a.session or a.exclude_session:
-        # 会话过滤走索引（与 HTTP API 同一套前缀匹配语义），先取保留 id 集再滤原始行。
-        # 只在意过滤场景才全量解析，热路径（无过滤）不受影响。
+        # 会话过滤走索引（与 HTTP API 同一套前缀匹配语义），先取保留 id 集再滤记录。
         keep = {e.get("id") for e in capture_store.list_index(
-            a.date, exclude_session=a.exclude_session, session=a.session)}
-        kept = []
-        for ln in lines:
-            try:
-                if json.loads(ln).get("id") in keep:
-                    kept.append(ln)
-            except json.JSONDecodeError:
-                continue
-        lines = kept
-    total = len(lines)
-    sel = lines[::-1][a.offset:a.offset + a.limit]   # 最新的在前
-    items = []
-    for ln in sel:
-        try:
-            items.append(_brief(json.loads(ln)))
-        except json.JSONDecodeError:
-            continue
+            a.date, exclude_session=a.exclude_session, session=a.session, source=src)}
+        recs = [r for r in recs if r.get("id") in keep]
+    total = len(recs)
+    items = [_brief(r) for r in recs[::-1][a.offset:a.offset + a.limit]]   # 最新的在前
     if a.kind:
         items = [i for i in items if i["kind"] == a.kind]
     _out({"ok": True, "date": a.date or time.strftime("%Y-%m-%d", time.localtime()),
-          "total": total, "returned": len(items), "items": items})
+          "source": src, "total": total, "returned": len(items), "items": items})
 
 
 def cmd_get(a) -> None:
-    rec = None
-    for ln in _lines(a.date):
-        try:
-            r = json.loads(ln)
-        except json.JSONDecodeError:
-            continue
-        if r.get("id") == a.id:
-            rec = r
-            break
-    if rec is None and not a.date:                   # 当天没有 → 回落翻历史
-        for d in CFG.list_capture_dates():
-            for ln in _lines(d["date"]):
-                try:
-                    r = json.loads(ln)
-                except json.JSONDecodeError:
-                    continue
-                if r.get("id") == a.id:
-                    rec = r
-                    break
-            if rec:
-                break
+    # 收口到 capture_store.get_capture：它优先走索引 off/len 直接定位（压实态也一样），
+    # 找不到才扫描兜底。CLI 原本自己逐行读整天再比对 id——大流量天要秒级，且压实后读不到。
+    src = getattr(a, "source", "")
+    rec = capture_store.get_capture(a.id, a.date or None, source=src)
     if rec is None:
         _die("not_found", f"找不到记录 {a.id}")
 
@@ -393,6 +364,7 @@ def cmd_get(a) -> None:
 def cmd_grep(a) -> None:
     # 核心逻辑在 capture_store.grep（HTTP 与 CLI 共用，单一真源）。
     r = capture_store.grep(a.date, a.pattern, in_=a.in_, limit=a.limit, case=a.case, fixed=a.fixed,
+                           source=getattr(a, "source", ""),
                            exclude_session=a.exclude_session, session=a.session)
     if not r.get("ok") and r.get("error") == "bad_pattern":
         _die("bad_pattern", r.get("message", "正则错误"))   # 保留 CLI 非零退出语义
@@ -401,7 +373,8 @@ def cmd_grep(a) -> None:
 
 def cmd_dag(a) -> None:
     dag = classifier.build_dag(capture_store.list_index(
-        a.date, exclude_session=a.exclude_session, session=a.session))
+        a.date, exclude_session=a.exclude_session, session=a.session,
+        source=getattr(a, "source", "")))
     _out({"ok": True, **dag,
           "note": "主线/子代理判别取自上游权威位（计费头 cc_is_subagent），泳道键=CC 会话 id；"
                   "子代理另按派生实例分列，trigger 边指向该实例的首条请求。"
@@ -419,12 +392,13 @@ def cmd_errors(a) -> None:
     """失败聚合：按上游错误消息归并当天所有失败，附请求侧关键字段。诊断入口。"""
     import diagnose
     _out(diagnose.aggregate(capture_store.list_index(
-        a.date, exclude_session=a.exclude_session, session=a.session), limit=a.limit))
+        a.date, exclude_session=a.exclude_session, session=a.session,
+        source=getattr(a, "source", "")), limit=a.limit))
 
 
 def cmd_stats(a) -> None:
     # 核心逻辑在 capture_store.stats（HTTP 与 CLI 共用，单一真源）。
-    _out(capture_store.stats(a.date, a.exclude_session, a.session))
+    _out(capture_store.stats(a.date, a.exclude_session, a.session, getattr(a, "source", "")))
 
 
 def cmd_unknowns(a) -> None:
@@ -433,7 +407,7 @@ def cmd_unknowns(a) -> None:
     此前只有 HTTP 一面，而本机自审工作流规定走 CLI —— 想看一眼未知就得起 serve，
     而 serve 会 patch 用户真 settings.json（`.claude/workflows/self-audit.md` 铁律 1 是"只读"）。
     分析面一律要有 CLI 入口。"""
-    _out(capture_store.unknowns(a.date, a.exclude_session, a.session))
+    _out(capture_store.unknowns(a.date, a.exclude_session, a.session, getattr(a, "source", "")))
 
 
 def cmd_trends(a) -> None:
@@ -457,15 +431,77 @@ def cmd_clear(a) -> None:
         return
     if not a.date:
         _die("bad_args", "要么 --date YYYY-MM-DD，要么 --older-than N")
+    src = getattr(a, "source", "")
     try:
         if a.mode == "archive":
-            info = capture_store.archive_date(a.date)
-            _out({"ok": True, "mode": "archive", "date": a.date, **info})
+            info = capture_store.archive_date(a.date, source=src, label=a.label)
+            _out({"ok": True, "mode": "archive", **info})
         else:
-            _out({"ok": True, "mode": "purge", "date": a.date,
-                  "removed": capture_store.purge_date(a.date)})
+            _out({"ok": True, "mode": "purge", "date": a.date, "source": src,
+                  "removed": capture_store.purge_date(a.date, src)})
     except capture_store.StoreError as e:
         _die(e.code, str(e))
+
+
+def cmd_compact(a) -> None:
+    """压实：原地缩小，**不删任何东西**，之后照常查看（与 clear --mode archive 的区别在这）。"""
+    src = getattr(a, "source", "")
+    dates = [a.date] if a.date else [
+        d for d in capture_store.list_dates(src)
+        if d != time.strftime("%Y-%m-%d", time.localtime())
+        and not capture_store.is_packed(d, src)]
+    if a.older_than is not None:
+        import datetime as _dt
+        cutoff = (_dt.date.today() - _dt.timedelta(days=a.older_than)).isoformat()
+        dates = [d for d in dates if d < cutoff]
+    done, failed = [], []
+    for d in dates:
+        try:
+            done.append(capture_store.compact_date(d, src))
+        except capture_store.StoreError as e:
+            failed.append({"date": d, "error_code": e.code, "error": str(e)})
+    _out({"ok": not failed or bool(done), "compacted": done, "failed": failed,
+          "saved_bytes": sum(x["saved_bytes"] for x in done)})
+
+
+def cmd_uncompact(a) -> None:
+    if not a.date:
+        _die("bad_args", "要 --date YYYY-MM-DD")
+    try:
+        _out({"ok": True, **capture_store.uncompact_date(a.date, getattr(a, "source", ""))})
+    except capture_store.StoreError as e:
+        _die(e.code, str(e))
+
+
+def cmd_archive(a) -> None:
+    """归档成单文件 .ccwa（可拷到另一台机器 import）。默认保留原录制，要清理加 --clear。"""
+    if not a.date:
+        _die("bad_args", "要 --date YYYY-MM-DD")
+    try:
+        _out({"ok": True, **capture_store.archive_date(
+            a.date, source=getattr(a, "source", ""), label=a.label, keep=not a.clear)})
+    except capture_store.StoreError as e:
+        _die(e.code, str(e))
+
+
+def cmd_import(a) -> None:
+    try:
+        _out({"ok": True, **capture_store.import_archive(a.file, a.label)})
+    except capture_store.StoreError as e:
+        _die(e.code, str(e))
+
+
+def cmd_sources(a) -> None:
+    if a.delete:
+        try:
+            _out({"ok": True, "deleted": capture_store.delete_source(a.delete)})
+        except capture_store.StoreError as e:
+            _die(e.code, str(e))
+        return
+    _out({"ok": True, "sources": capture_store.list_sources(),
+          "archives": capture_store.list_archives(),
+          "note": "sources = 从别的机器导入的录制（--source <标签> 传给 list/get/grep/dag/stats）；"
+                  "archives = 本机产出的可搬运单文件。"})
 
 
 def _serve() -> None:
@@ -481,6 +517,14 @@ def _serve() -> None:
     CFG.write_port(port)
     flask_app.app.run(host="127.0.0.1", port=port, debug=False,
                       use_reloader=False, threaded=True)
+
+
+def _source_arg(sp) -> None:
+    """外来录制来源标签。空 = 本机录制。
+    与 --session 一样，**新加读取面必须一并挂上**——挂漏了的表现是"导入了但那条命令看不见"，
+    而不是报错（260802 grep/stats/unknowns 漏挂 --session 就是这个形状）。"""
+    sp.add_argument("--source", default="",
+                    help="看导入的外来录制（sources/<标签>/），默认看本机录制")
 
 
 def _session_args(sp) -> None:
@@ -523,6 +567,7 @@ def main(argv=None) -> None:
     pl.add_argument("--offset", type=int, default=0)
     pl.add_argument("--kind", choices=classifier.KIND_ORDER)
     _session_args(pl)
+    _source_arg(pl)
     pl.set_defaults(fn=cmd_list)
 
     pg = sub.add_parser("get", help="取单条记录（默认截断长文本，防炸上下文）")
@@ -532,6 +577,7 @@ def main(argv=None) -> None:
     pg.add_argument("--max-chars", dest="max_chars", type=int, default=2000,
                     help="单个字符串字段最多保留多少字符（默认 2000）")
     pg.add_argument("--full", action="store_true", help="不截断（当心：单条可达数 MB）")
+    _source_arg(pg)
     pg.set_defaults(fn=cmd_get)
 
     pr = sub.add_parser("grep", help="在录制里搜文本，只回 id + 片段")
@@ -542,10 +588,12 @@ def main(argv=None) -> None:
     pr.add_argument("--case", action="store_true", help="区分大小写")
     pr.add_argument("--limit", type=int, default=20)
     _session_args(pr)
+    _source_arg(pr)
     pr.set_defaults(fn=cmd_grep)
 
     pd = sub.add_parser("dag", help="时序 DAG（泳道/节点/边）")
     pd.add_argument("--date"); _session_args(pd)
+    _source_arg(pd)
     pd.set_defaults(fn=cmd_dag)
 
     pdoc = sub.add_parser("doctor", help="配置体检（只读，不改任何文件）")
@@ -555,14 +603,17 @@ def main(argv=None) -> None:
     perr.add_argument("--date")
     perr.add_argument("--limit", type=int, default=20, help="最多回几组（默认 20）")
     _session_args(perr)
+    _source_arg(perr)
     perr.set_defaults(fn=cmd_errors)
 
     pt = sub.add_parser("stats", help="当日聚合：kind/模型/状态/token/耗时分位")
     pt.add_argument("--date"); _session_args(pt)
+    _source_arg(pt)
     pt.set_defaults(fn=cmd_stats)
 
     pu = sub.add_parser("unknowns", help="盲区雷达：已知集合外的值（协议演进 / 录制盲区）")
     pu.add_argument("--date"); _session_args(pu)
+    _source_arg(pu)
     pu.set_defaults(fn=cmd_unknowns)
 
     ptr = sub.add_parser("trends", help="跨天失败趋势（跨天归并 + 每日曲线 + host/版本切片）")
@@ -574,10 +625,39 @@ def main(argv=None) -> None:
     _session_args(ptr)
     ptr.set_defaults(fn=cmd_trends)
 
-    pc = sub.add_parser("clear", help="清除录制")
+    pc = sub.add_parser("clear", help="清除录制（删除；archive 模式先归档再删）")
     pc.add_argument("--date"); pc.add_argument("--mode", default="purge", choices=["purge", "archive"])
     pc.add_argument("--older-than", dest="older_than", type=int, help="删早于 N 天的全部录制")
+    pc.add_argument("--label", default="", help="archive 模式的归档标签（机器名等）")
+    _source_arg(pc)
     pc.set_defaults(fn=cmd_clear)
+
+    pk = sub.add_parser("compact", help="压实录制（原地缩小约 20-30x，不删数据，照常查看）")
+    pk.add_argument("--date", help="指定某天；不给则压实全部未压实的过去日期")
+    pk.add_argument("--older-than", dest="older_than", type=int, help="只压实早于 N 天的")
+    _source_arg(pk)
+    pk.set_defaults(fn=cmd_compact)
+
+    pun = sub.add_parser("uncompact", help="把压实的一天还原回 jsonl")
+    pun.add_argument("--date")
+    _source_arg(pun)
+    pun.set_defaults(fn=cmd_uncompact)
+
+    pa = sub.add_parser("archive", help="归档成单文件 .ccwa（可拷到另一台机器 import）")
+    pa.add_argument("--date")
+    pa.add_argument("--label", default="", help="来源标签（机器名等），会写进归档并作为导入默认标签")
+    pa.add_argument("--clear", action="store_true", help="归档后删除原录制（默认保留）")
+    _source_arg(pa)
+    pa.set_defaults(fn=cmd_archive)
+
+    pi = sub.add_parser("import", help="导入 .ccwa 到 sources/<标签>/（外来录制独立命名空间）")
+    pi.add_argument("file", help=".ccwa 文件路径")
+    pi.add_argument("--label", default="", help="来源标签（默认取归档里记的）")
+    pi.set_defaults(fn=cmd_import)
+
+    psrc = sub.add_parser("sources", help="已导入的外来录制来源 + 本机归档清单")
+    psrc.add_argument("--delete", default="", help="删掉某个来源（整个标签目录）")
+    psrc.set_defaults(fn=cmd_sources)
 
     a = p.parse_args(argv)
     if getattr(a, "_serve", False):     # daemon 子进程：进来就是当服务器，不走命令分发

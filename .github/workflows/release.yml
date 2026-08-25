@@ -13,7 +13,7 @@ jobs:
   # 260808 新增。此前这个 workflow 从 checkout 直接到 PyInstaller 再到发 release，
   # **中间没有任何验证**——一次没跑过自测的 tag 可以直接产出 release。
   #
-  # 为什么跑在 windows-latest 而不是更快的 ubuntu：六条自测（尤其 cli_selftest 真起 daemon、
+  # 为什么跑在 windows-latest 而不是更快的 ubuntu：这批自测（尤其 cli_selftest 真起 daemon、
   # 真 patch/restore settings.json）只在 Windows 上有实证，项目一直在 Windows 上开发。
   # 换平台省几分钟、换来一个从没跑通过的环境，第一次发版就会红在与代码无关的地方。
   # 要上 Linux 应该单独做一次验证再改，不该顺手夹带在闸门这件事里。
@@ -65,6 +65,7 @@ jobs:
           uv run python src/diagnose_selftest.py
           uv run python src/snapshot_selftest.py
           uv run python src/update_selftest.py
+          uv run python src/pack_selftest.py
 
   build:
     name: Build (${{ matrix.os }})

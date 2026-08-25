@@ -60,7 +60,12 @@ def main() -> int:
     js = re.sub(r"\{\{.*?\}\}", json.dumps([]), js)
     tmp = pathlib.Path(tempfile.gettempdir()) / "ccwa_check.js"
     tmp.write_text(js, encoding="utf-8")
-    r = subprocess.run(["node", "--check", str(tmp)], capture_output=True, text=True)
+    # encoding 必须显式给（260825）：不给的话 text=True 走系统 locale，Windows 上是 GBK，
+    # 而 node 报语法错时会把**出错那一行原文**打进 stderr——本项目那一行往往是中日文案，
+    # 于是读取管道的线程抛 UnicodeDecodeError、r.stderr 变成 None、脚本崩在下一行。
+    # 表现是「真有语法错时这个检查自己先崩掉」，恰恰在最需要它的时候失灵（260825 撞到）。
+    r = subprocess.run(["node", "--check", str(tmp)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
     print("node --check:", "OK" if r.returncode == 0 else f"FAIL\n{r.stderr[:2000]}")
     return 0 if r.returncode == 0 else 1
 

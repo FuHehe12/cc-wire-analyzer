@@ -285,22 +285,105 @@ data: {...}
 
 ### `POST /api/captures/clear` — 清除录制（260712）
 
-**请求**：`{ "date": "2026-07-12", "mode": "purge"|"archive" }`。`date` 缺省=今天；`mode` 缺省=`purge`。`date` 经 `YYYY-MM-DD` 格式 + 语义校验（防路径穿越）。
+**请求**：`{ "date": "2026-07-12", "mode": "purge"|"archive", "source"?: "标签", "label"?: "机器名" }`。`date` 缺省=今天；`mode` 缺省=`purge`。`date` 经 `YYYY-MM-DD` 格式 + 语义校验（防路径穿越）。
 
-- `mode=purge`：直接删 `captures/<date>.jsonl`
-- `mode=archive`：先压缩到 `archives/<date>.<HHMMSS>.jsonl.zip`（ZIP_DEFLATED 优先，zlib 缺失降级 ZIP_STORED），再删原文件
+- `mode=purge`：直接删这一天（jsonl 主文件+索引，或整个 `<date>.pack/` 目录）
+- `mode=archive`：先归档成 `archives/<date>[.<label>].<HHMMSS>.ccwa`，再删原录制
 
 **响应**：
 ```json
 // purge
 { "ok": true, "removed": 42 }
 // archive
-{ "ok": true, "removed": 42, "archive": { "path": "~/.cc-wire-analyzer/archives/2026-07-12.193021.jsonl.zip", "size": 12345, "compressed": true } }
+{ "ok": true, "removed": 42, "archive": { "path": "~/.cc-wire-analyzer/archives/2026-07-12.193021.ccwa", "size": 12345, "count": 42 } }
 // 失败（HTTP 500）
 { "ok": false, "error_code": "bad_date|not_found|delete_failed|archive_failed|internal", "error": "…" }
 ```
 
-`removed` = 删除的记录条数；archive 的锁粒度：锁内仅 rename 抢占、锁外压缩（不阻塞代理 append）。
+`removed` = 删除的记录条数。
+
+> **260825 破坏性变更**：archive 的产物从 `<date>.<HHMMSS>.jsonl.zip` 换成 `.ccwa`，响应里的
+> `archive.compressed` 字段随之移除（换成 `count`）。旧的 zip 归档不会被动，仍会出现在
+> `/api/sources` 的 `archives` 列表里并标 `legacy: true`，但**本版本不能导入它们**——
+> 它们就是一个装着 jsonl 的 zip，解开即可直接用。
+
+---
+
+## 2.5 存储形态：压实 / 归档 / 导入（260825）
+
+一天有两种形态：`captures/<date>.jsonl`（今天，格式未变）与 `captures/<date>.pack/`（过去某天，
+已压实）。**所有读取端点对两种形态行为一致**——同一天压实前后 `/api/captures`、`/api/dag`、
+`/api/captures/<id>`、`/api/grep` 的响应逐字节相同；`/api/stats` 只有 `file_size` / `packed` /
+`raw_bytes` 三个字段会变，因为它们的语义就是"现在占多少"。
+
+压实做的事是内容寻址去重 + 逐块 zstd：CC 因 prompt caching 每轮重发整段历史，实测一天里
+`messages` 有 93% 的字节是重复块。实测 500MB 的一天 → 14.8MB（33.9x），单条随机读中位 17ms，
+**逐字节可还原**（压实前会全量比对，通过才删原文件）。
+
+### `POST /api/captures/compact` — 压实（原地缩小，不删数据）
+
+**请求**：`{ "date"?: "2026-08-24", "source"?: "标签", "older_than"?: 7 }`。
+不给 `date` 则压实全部「过去的、还没压实的」天；`older_than` 再按天数过滤。
+**今天永远不压**（`append` 正往里写，代理透明性优先于省空间）。
+
+**响应**：
+```json
+{ "ok": true, "saved_bytes": 485532286,
+  "compacted": [{ "date": "2026-08-09", "count": 855, "raw_bytes": 500284782,
+                  "packed_bytes": 14752496, "saved_bytes": 485532286, "ratio": 33.9,
+                  "blob_count": 2227, "elapsed_ms": 31471 }],
+  "failed": [{ "date": "…", "error_code": "is_today|already_packed|not_found|verify_failed", "error": "…" }] }
+```
+
+失败是**逐天**的：一天压不了不影响其他天。`verify_failed` 表示还原出来与原文件对不上——
+这种情况原录制**一个字节都没被删**，pack 半成品已清掉。
+
+### `POST /api/captures/uncompact` — 还原回 jsonl
+
+**请求**：`{ "date": "2026-08-24", "source"?: "标签" }`。
+**响应**：`{ "ok": true, "date": …, "count": 855, "bytes": 500284782 }`。
+还原后按 manifest 里记的原文件哈希复核，对不上就删掉半成品并报 `verify_failed`。
+
+### `POST /api/captures/archive` — 归档成可搬运的单文件
+
+**请求**：`{ "date": "2026-08-24", "source"?: "标签", "label"?: "机器名", "clear"?: false }`。
+`clear=true` 才删原录制（默认保留——跨机排查时源机器通常还要继续用自己的录制）。
+
+**响应**：`{ "ok": true, "path": "…/archives/2026-08-24.laptop.193021.ccwa", "size": 14753387, "count": 855, "removed": 0, "kept": true }`
+
+### `POST /api/captures/import` — 导入别的机器的归档
+
+**请求**：`{ "file": "C:/…/2026-08-24.laptop.193021.ccwa", "label"?: "laptop" }`。
+标签缺省取归档里记的 `label`。落到 `sources/<标签>/<date>.pack/`。
+
+**响应**：`{ "ok": true, "label": "laptop", "date": "2026-08-24", "count": 855, "bytes": 14752496 }`
+失败码：`not_found` / `bad_archive` / `schema_mismatch` / `already_imported` / `bad_label`。
+
+> **为什么必须进独立命名空间**：两台机器同一天都在录，日期一定撞车。混进 `captures/` 的后果
+> 不是报错，而是更糟的东西——把别的机器的证据当本机事实读，排查会直接跑偏。
+
+### `GET /api/sources` — 已导入的来源 + 本机归档清单
+
+```json
+{ "ok": true,
+  "sources": [{ "label": "laptop", "dates": ["2026-08-24"], "days": 1, "count": 855, "bytes": 14752496 }],
+  "archives": [{ "name": "2026-08-24.laptop.193021.ccwa", "path": "…", "size": 14753387,
+                 "date": "2026-08-24", "count": 855, "label": "laptop", "raw_bytes": 500284782,
+                 "archived_at": "2026-08-25T19:30:21" }] }
+```
+
+坏归档不会从列表里消失，而是带 `error` 字段列出来。旧的 zip 归档带 `legacy: true`。
+
+### `POST /api/sources/delete` — 删掉一个导入来源
+
+**请求**：`{ "label": "laptop" }` → `{ "ok": true, "label": "laptop", "days": 1 }`。
+外来录制不参与保留天数，只能显式删。
+
+### 读取端点的 `source` 参数
+
+`/api/captures`、`/api/captures/<id>`、`/api/dag`、`/api/grep`、`/api/stats`、`/api/unknowns`、
+`/api/diagnose/errors` 都接受 `source=<标签>`：空/不给 = 本机录制，给了 = 看那个导入来源。
+CLI 对应 `--source`。
 
 ---
 

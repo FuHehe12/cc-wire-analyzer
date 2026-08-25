@@ -340,6 +340,22 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
 .date-chip:hover{border-color:var(--border-warm);}
 .date-chip.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);font-weight:600;}
 .date-meta{font-size:11px;color:var(--apple-secondary);}
+/* 来源切换（260825）。外来录制用一颗实心点 + 高亮边框标出来——不变量：导入的录制
+   必须一眼可辨，否则排查时会把别的机器的证据当本机事实。 */
+.source-picker{display:flex;gap:6px;flex-wrap:wrap;padding-right:10px;margin-right:4px;
+  border-right:1px solid var(--border-soft);}
+.src-chip.active{background:var(--bg-warm);border-color:var(--accent);color:var(--gold-text);font-weight:600;}
+.src-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);
+  margin-right:6px;vertical-align:middle;}
+/* 归档与来源卡（设置页）：列出可导入的归档与已导入的来源，各自带动作。
+   与只读的"录制体积"卡分开——那张卡的规矩是不放动作入口，这里管的是另一类对象。 */
+.arc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;
+  border-top:1px solid var(--border-soft);}
+.arc-row:first-of-type{border-top:none;}
+.arc-name{font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.arc-meta{font-size:10.5px;color:var(--apple-secondary);}
+.arc-empty{font-size:11.5px;color:var(--apple-secondary);padding:6px 0;}
 .capture-list{background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);
   box-shadow:var(--apple-shadow),var(--apple-highlight);overflow-x:auto;overflow-y:hidden;}
 /* 行版式改 CSS grid 固定列（260730）：原为 flex，kind chip 有无（48px）与模型名长短
@@ -1076,6 +1092,9 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
       <div id="doctorList"></div>
     </div>
     <div class="date-row">
+      <!-- 来源切换（260825）：只有导入过别的机器的录制时才出现，否则一个多余的控件天天占位。
+           选中外来来源时整行加 src-on 类，让"现在看的不是本机数据"在视觉上跑不掉。 -->
+      <div class="source-picker" id="sourcePicker" hidden></div>
       <div class="date-chips" id="dateChips"></div>
       <div class="date-row-right">
         <div class="date-meta" id="dateMeta"></div>
@@ -1092,13 +1111,31 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span class="lbl" data-i18n="clear.title">清理</span>
           </button>
           <div class="dropdown-menu" id="clearMenu" hidden>
+            <!-- 三组动作，语义边界必须在文案上就分清（260825）：
+                 压缩 = 原地缩小，不删任何东西，之后照常查看
+                 归档 = 打成单文件 .ccwa，可拷到另一台机器导入
+                 清除 = 真的删掉
+                 260825 之前"清除并压缩存档"把归档与清除混成一条，且用的是 zip DEFLATE
+                 （滑动窗口 32KB，看不见跨记录的重复，实测只有 2.6x）。 -->
+            <button onclick="doCompact(false)">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M12 12v5"/><path d="M9.5 14.5 12 12l2.5 2.5"/></svg>
+              <span><span data-i18n="stor.compact">压缩当天录制</span><span class="dm-sub" data-i18n="stor.compactSub">原地缩小约 20-30 倍，不删数据，照常查看</span></span>
+            </button>
+            <button onclick="doCompact(true)">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M12 12v5"/><path d="M9.5 14.5 12 12l2.5 2.5"/></svg>
+              <span><span data-i18n="stor.compactAll">压缩全部过去日期</span><span class="dm-sub" data-i18n="stor.compactAllSub">今天正在录，永远不压</span></span>
+            </button>
+            <button onclick="doArchive()">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+              <span><span data-i18n="stor.archive">归档为单文件</span><span class="dm-sub" data-i18n="stor.archiveSub">存到 archives/，可拷到另一台机器查看；原录制保留</span></span>
+            </button>
+            <button class="danger" onclick="requestClear('archive')">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+              <span><span data-i18n="clear.archive">归档后清除</span><span class="dm-sub" data-i18n="clear.archiveSub">先归档到 archives/，再删除原录制</span></span>
+            </button>
             <button class="danger" onclick="requestClear('purge')">
               <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               <span><span data-i18n="clear.purge">清除录制</span><span class="dm-sub" data-i18n="clear.purgeSub">删除当日报文，不可恢复</span></span>
-            </button>
-            <button onclick="requestClear('archive')">
-              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-              <span><span data-i18n="clear.archive">清除并压缩存档</span><span class="dm-sub" data-i18n="clear.archiveSub">先压缩保存到 archives/，再删除</span></span>
             </button>
           </div>
         </div>
@@ -1299,6 +1336,10 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
           <div class="val" id="storSnap">—</div>
         </div>
         <div class="srow">
+          <div><div class="lbl" data-i18n="set.stor.sources">导入的来源</div><div class="sub" data-i18n="set.stor.sourcesSub">别的机器的录制，不参与保留天数</div></div>
+          <div class="val" id="storSrc">—</div>
+        </div>
+        <div class="srow">
           <div><div class="lbl" data-i18n="set.stor.log">运行日志</div><div class="sub" data-i18n="set.stor.logSub">run.log</div></div>
           <div class="val" id="storLog">—</div>
         </div>
@@ -1306,6 +1347,27 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
           <div><div class="lbl" data-i18n="set.stor.total">合计</div><div class="sub" id="storLargest">—</div></div>
           <div class="val" id="storTotal">—</div>
         </div>
+      </div>
+
+      <!-- 归档与来源（260825）。上面那张"录制体积"卡的规矩是只读、不放动作入口
+           （动作在捕获页，两处入口迟早分叉）——这条规矩仍然成立：本卡管的是**另一类对象**
+           （归档文件与导入的外来录制），它们在捕获页没有任何入口，不构成第二个入口。
+           导入走"先把 .ccwa 拷进 archives/ 再点导入"，不做文件选择框：
+           跨机搬运本来就是拷文件，多一个系统对话框只是多一条平台相关的代码路径。 -->
+      <div class="scard">
+        <h3 data-i18n="set.arc.title">归档与来源</h3>
+        <div class="card-sub" data-i18n="set.arc.sub">归档是可搬运的单文件；把别的机器的 .ccwa 拷进 archives/ 后在这里导入</div>
+        <div class="srow" style="border:none;padding-bottom:4px">
+          <div><div class="lbl" data-i18n="set.arc.archives">本机归档</div>
+               <div class="sub" data-i18n="set.arc.archivesSub">archives/ 目录 · 保留天数不会自动删它</div></div>
+          <button class="btn tool" onclick="openFolder('archives')" data-i18n="set.arc.open">打开目录</button>
+        </div>
+        <div id="arcList"></div>
+        <div class="srow" style="border:none;padding-bottom:4px;margin-top:10px">
+          <div><div class="lbl" data-i18n="set.arc.sources">已导入的来源</div>
+               <div class="sub" data-i18n="set.arc.sourcesSub">别的机器的录制，与本机录制分开存放；在捕获页顶部切换查看</div></div>
+        </div>
+        <div id="srcList"></div>
       </div>
 
       <div class="scard">
@@ -1509,6 +1571,12 @@ const S = {
   status: null,          // /api/proxy/status
   date: null,            // 当前选中日期 YYYY-MM-DD
   dates: [],             // dates_available
+  /* 外来录制来源（260825）。"" = 本机录制；否则是 sources/<标签>/ 下导入的别的机器的录制。
+     两台机器同一天都在录，日期必然撞车，所以来源必须是**独立命名空间**而不是混在一起；
+     界面上也必须一眼看得出当前看的是谁的（把别的机器的证据当本机事实读，排查会直接跑偏）。 */
+  source: "",
+  sources: [],           // /api/sources 的 sources 段
+  archives: [],          // /api/sources 的 archives 段
   items: [],             // 当前列表
   total: 0,
   captureId: null,       // View B 当前请求
@@ -1720,11 +1788,22 @@ zh: {
   "toast.cfgLoadFailed": "配置加载失败：{msg}", "toast.backupDir": "备份目录：{dir}",
   "dates.meta": "显示 {shown} / {total} 条", "dates.live": " · 新请求实时插入顶部",
   "clear.title": "清理", "clear.purge": "清除录制", "clear.purgeSub": "删除当日报文，不可恢复",
-  "clear.archive": "清除并压缩存档", "clear.archiveSub": "先压缩保存到 archives/，再删除",
-  "clear.confirmPurge": "确认清除 {n} 条？", "clear.confirmArchive": "确认压缩存档并清除 {n} 条？",
+  "clear.archive": "归档后清除", "clear.archiveSub": "先归档到 archives/，再删除原录制",
+  "clear.confirmPurge": "确认清除 {n} 条？", "clear.confirmArchive": "确认归档并清除 {n} 条？",
   "clear.purging": "清除中…", "clear.archiving": "压缩中…",
-  "clear.purgeOk": "已清除 {n} 条录制", "clear.archiveOk": "已压缩存档并清除 {n} 条（{kb} KB）",
+  "clear.purgeOk": "已清除 {n} 条录制", "clear.archiveOk": "已归档并清除 {n} 条（{kb} KB）",
   "clear.fail": "清除失败", "clear.empty": "当天无录制可清除",
+  "stor.compact": "压缩当天录制", "stor.compactSub": "原地缩小约 20-30 倍，不删数据，照常查看",
+  "stor.compactAll": "压缩全部过去日期", "stor.compactAllSub": "今天正在录，永远不压",
+  "stor.archive": "归档为单文件", "stor.archiveSub": "存到 archives/，可拷到另一台机器查看；原录制保留",
+  "stor.working": "处理中…", "stor.fail": "操作失败",
+  "stor.compactOk": "已压缩 {n} 天，省下 {saved}", "stor.compactNone": "没有可压缩的日期（今天不压、已压的不再压）",
+  "stor.archiveOk": "已归档（{size}）", "stor.importOk": "已导入 {label} 的 {date}（{n} 条）",
+  "stor.import": "导入", "stor.imported": "已导入", "stor.legacy": "旧格式",
+  "stor.noArchives": "还没有归档。用上面的「归档为单文件」产出，或把别的机器的 .ccwa 拷进 archives/",
+  "stor.noSources": "还没有导入任何来源",
+  "stor.srcDelete": "删除", "stor.srcDeleted": "已删除来源 {label}",
+  "src.local": "本机",
   "list.loading": "加载中…",
   "loading.badge": "正在加载 {date}…",
   "list.emptyToday": "今天还没有捕获——启动代理后，新开一个 CC 会话即可看到请求。",
@@ -1858,10 +1937,16 @@ zh: {
   "set.inst.failed": "扫描失败：{msg}",
   "set.stor.title": "录制体积", "set.stor.sub": "数据目录占用情况 · 只读展示，不在这里做清理",
   "set.stor.captures": "录制正文", "set.stor.index": "写时索引", "set.stor.indexSub": "列表与时序图读它，不必碰正文",
-  "set.stor.archives": "存档", "set.stor.archivesSub": "手动压缩存档，保留天数不会自动删它",
+  "set.stor.archives": "归档", "set.stor.archivesSub": "可搬运的单文件，保留天数不会自动删它",
   "set.stor.snapshots": "快照", "set.stor.snapshotsSub": "提示词快照与对话",
   "set.stor.log": "运行日志", "set.stor.logSub": "run.log",
   "set.stor.total": "合计", "set.stor.days": "{n} 天", "set.stor.largest": "最大的一天 {date} · {size}",
+  "set.stor.packed": "{n} 天已压缩", "set.stor.canSave": "还能省约 {size}",
+  "set.stor.sources": "导入的来源", "set.stor.sourcesSub": "别的机器的录制，不参与保留天数",
+  "set.arc.title": "归档与来源", "set.arc.sub": "归档是可搬运的单文件；把别的机器的 .ccwa 拷进 archives/ 后在这里导入",
+  "set.arc.archives": "本机归档", "set.arc.archivesSub": "archives/ 目录 · 保留天数不会自动删它",
+  "set.arc.sources": "已导入的来源", "set.arc.sourcesSub": "别的机器的录制，与本机录制分开存放；在捕获页顶部切换查看",
+  "set.arc.open": "打开目录",
   "set.stor.failed": "读取失败：{msg}",
   "set.about.title": "关于", "set.about.version": "版本", "set.about.dataDir": "数据目录", "set.about.log": "运行日志",
   "set.about.checkBtn": "检查更新", "set.about.checking": "检查中…", "set.about.upToDate": "已是最新版本", "set.about.newVersion": "发现新版本 {v}", "set.about.checkFailed": "检查失败（网络不通？）",
@@ -2054,11 +2139,22 @@ en: {
   "toast.cfgLoadFailed": "Failed to load settings: {msg}", "toast.backupDir": "Backup dir: {dir}",
   "dates.meta": "{shown} / {total} shown", "dates.live": " · new requests appear on top",
   "clear.title": "Clear", "clear.purge": "Clear captures", "clear.purgeSub": "Delete today's records, unrecoverable",
-  "clear.archive": "Archive then clear", "clear.archiveSub": "Compress to archives/ first, then delete",
+  "clear.archive": "Archive then clear", "clear.archiveSub": "Archive into archives/, then delete the originals",
   "clear.confirmPurge": "Clear {n} records?", "clear.confirmArchive": "Archive & clear {n} records?",
   "clear.purging": "Clearing…", "clear.archiving": "Archiving…",
   "clear.purgeOk": "Cleared {n} records", "clear.archiveOk": "Archived & cleared {n} records ({kb} KB)",
   "clear.fail": "Clear failed", "clear.empty": "No records to clear for this date",
+  "stor.compact": "Compact this date", "stor.compactSub": "Shrinks ~20-30x in place; nothing is deleted, browsing is unchanged",
+  "stor.compactAll": "Compact all past dates", "stor.compactAllSub": "Today is still recording and is never compacted",
+  "stor.archive": "Archive to a single file", "stor.archiveSub": "Saved to archives/, viewable on another machine; originals kept",
+  "stor.working": "Working…", "stor.fail": "Action failed",
+  "stor.compactOk": "Compacted {n} day(s), saved {saved}", "stor.compactNone": "Nothing to compact (today is skipped, already-compacted days too)",
+  "stor.archiveOk": "Archived ({size})", "stor.importOk": "Imported {date} from {label} ({n} records)",
+  "stor.import": "Import", "stor.imported": "Imported", "stor.legacy": "legacy format",
+  "stor.noArchives": "No archives yet. Use \u201cArchive to a single file\u201d above, or copy a .ccwa from another machine into archives/",
+  "stor.noSources": "No imported sources yet",
+  "stor.srcDelete": "Delete", "stor.srcDeleted": "Deleted source {label}",
+  "src.local": "This machine",
   "list.loading": "Loading…",
   "loading.badge": "Loading {date}…",
   "list.emptyToday": "No captures today — start the proxy, then open a new CC session to see requests.",
@@ -2192,10 +2288,16 @@ en: {
   "set.inst.failed": "Scan failed: {msg}",
   "set.stor.title": "Recording size", "set.stor.sub": "Disk used by the data directory · read-only, no cleanup here",
   "set.stor.captures": "Recordings", "set.stor.index": "Write-time index", "set.stor.indexSub": "Lists and the timeline read this, never the bodies",
-  "set.stor.archives": "Archives", "set.stor.archivesSub": "Manually compressed; retention never deletes these",
+  "set.stor.archives": "Archives", "set.stor.archivesSub": "Portable single files; retention never deletes these",
   "set.stor.snapshots": "Snapshots", "set.stor.snapshotsSub": "Prompt snapshots and chats",
   "set.stor.log": "Run log", "set.stor.logSub": "run.log",
   "set.stor.total": "Total", "set.stor.days": "{n} days", "set.stor.largest": "Largest day {date} · {size}",
+  "set.stor.packed": "{n} compacted", "set.stor.canSave": "~{size} still recoverable",
+  "set.stor.sources": "Imported sources", "set.stor.sourcesSub": "Recordings from other machines; retention leaves them alone",
+  "set.arc.title": "Archives & sources", "set.arc.sub": "An archive is a portable single file; copy a .ccwa from another machine into archives/, then import it here",
+  "set.arc.archives": "Local archives", "set.arc.archivesSub": "archives/ directory · retention never deletes these",
+  "set.arc.sources": "Imported sources", "set.arc.sourcesSub": "Other machines' recordings, kept separate from yours; switch at the top of the capture page",
+  "set.arc.open": "Open folder",
   "set.stor.failed": "Failed to read: {msg}",
   "set.about.title": "About", "set.about.version": "Version", "set.about.dataDir": "Data dir", "set.about.log": "Log file",
   "set.about.checkBtn": "Check for updates", "set.about.checking": "Checking…", "set.about.upToDate": "Up to date", "set.about.newVersion": "New version {v} available", "set.about.checkFailed": "Check failed (network blocked?)",
@@ -2387,11 +2489,22 @@ ja: {
   "toast.cfgLoadFailed": "設定の読み込みに失敗：{msg}", "toast.backupDir": "バックアップ先：{dir}",
   "dates.meta": "{shown} / {total} 件表示", "dates.live": " · 新リクエストは先頭に追加",
   "clear.title": "クリア", "clear.purge": "録画を削除", "clear.purgeSub": "当日の録画を削除、元に戻せません",
-  "clear.archive": "圧縮保存して削除", "clear.archiveSub": "archives/ に圧縮保存してから削除",
+  "clear.archive": "アーカイブして削除", "clear.archiveSub": "archives/ にアーカイブしてから元を削除",
   "clear.confirmPurge": "{n} 件を削除しますか？", "clear.confirmArchive": "{n} 件を圧縮保存して削除しますか？",
   "clear.purging": "削除中…", "clear.archiving": "圧縮中…",
   "clear.purgeOk": "{n} 件を削除しました", "clear.archiveOk": "{n} 件を圧縮保存して削除しました（{kb} KB）",
   "clear.fail": "削除に失敗", "clear.empty": "この日付の録画はありません",
+  "stor.compact": "この日を圧縮", "stor.compactSub": "その場で約 20-30 倍に縮小 · データは消えず、閲覧もそのまま",
+  "stor.compactAll": "過去の全日付を圧縮", "stor.compactAllSub": "今日は録画中なので圧縮しません",
+  "stor.archive": "単一ファイルにアーカイブ", "stor.archiveSub": "archives/ に保存 · 別のマシンでも閲覧可 · 元の録画は残す",
+  "stor.working": "処理中…", "stor.fail": "操作に失敗",
+  "stor.compactOk": "{n} 日分を圧縮し {saved} を節約", "stor.compactNone": "圧縮できる日付がありません（今日と圧縮済みは対象外）",
+  "stor.archiveOk": "アーカイブしました（{size}）", "stor.importOk": "{label} の {date} を取り込みました（{n} 件）",
+  "stor.import": "取り込む", "stor.imported": "取り込み済み", "stor.legacy": "旧形式",
+  "stor.noArchives": "アーカイブはまだありません。上の「単一ファイルにアーカイブ」を使うか、別マシンの .ccwa を archives/ にコピーしてください",
+  "stor.noSources": "取り込んだソースはまだありません",
+  "stor.srcDelete": "削除", "stor.srcDeleted": "ソース {label} を削除しました",
+  "src.local": "このマシン",
   "list.loading": "読み込み中…",
   "loading.badge": "{date} を読み込み中…",
   "list.emptyToday": "本日のキャプチャはまだありません——プロキシを開始し、新しい CC セッションを開くとリクエストが表示されます。",
@@ -2525,10 +2638,16 @@ ja: {
   "set.inst.failed": "スキャン失敗：{msg}",
   "set.stor.title": "記録容量", "set.stor.sub": "データディレクトリの使用量 · 表示のみ、ここでは削除しません",
   "set.stor.captures": "記録本体", "set.stor.index": "書き込み時インデックス", "set.stor.indexSub": "一覧とタイムラインはこれを読み、本体には触れません",
-  "set.stor.archives": "アーカイブ", "set.stor.archivesSub": "手動で圧縮したもの · 保持日数では削除されません",
+  "set.stor.archives": "アーカイブ", "set.stor.archivesSub": "持ち運べる単一ファイル · 保持日数では削除されません",
   "set.stor.snapshots": "スナップショット", "set.stor.snapshotsSub": "プロンプトのスナップショットと対話",
   "set.stor.log": "実行ログ", "set.stor.logSub": "run.log",
   "set.stor.total": "合計", "set.stor.days": "{n} 日分", "set.stor.largest": "最大の日 {date} · {size}",
+  "set.stor.packed": "{n} 日分は圧縮済み", "set.stor.canSave": "あと約 {size} 節約できます",
+  "set.stor.sources": "取り込んだソース", "set.stor.sourcesSub": "別マシンの録画 · 保持日数の対象外",
+  "set.arc.title": "アーカイブとソース", "set.arc.sub": "アーカイブは持ち運べる単一ファイル · 別マシンの .ccwa を archives/ にコピーしてここで取り込みます",
+  "set.arc.archives": "ローカルのアーカイブ", "set.arc.archivesSub": "archives/ ディレクトリ · 保持日数では削除されません",
+  "set.arc.sources": "取り込んだソース", "set.arc.sourcesSub": "別マシンの録画 · 自分の録画とは別に保存 · キャプチャ画面の上部で切り替え",
+  "set.arc.open": "フォルダを開く",
   "set.stor.failed": "読み込み失敗：{msg}",
   "set.about.title": "情報", "set.about.version": "バージョン", "set.about.dataDir": "データ保存先", "set.about.log": "ログ",
   "set.about.checkBtn": "更新を確認", "set.about.checking": "確認中…", "set.about.upToDate": "最新です", "set.about.newVersion": "新バージョン {v} があります", "set.about.checkFailed": "確認失敗（ネットワーク不通？）",
@@ -2769,6 +2888,42 @@ function timePart(iso){
   if(!iso) return "—";
   const t = iso.split("T")[1] || iso;
   return t.length > 12 ? t.slice(0,12) : t;
+}
+/* 当前来源的查询串。**每个按日期取数的请求都要带上它**——漏带的表现不是报错，
+   而是"切到导入来源后看到的还是本机数据"，界面上完全看不出来（260802 grep/stats/unknowns
+   漏挂 --session 是同一个形状）。 */
+function srcQ(){ return S.source ? "&source=" + encodeURIComponent(S.source) : ""; }
+async function loadSources(){
+  try{
+    const j = await (await fetch("/api/sources")).json();
+    S.sources = j.sources || []; S.archives = j.archives || [];
+  }catch(e){ S.sources = []; S.archives = []; }
+  renderSourcePicker(); renderArchiveCard();
+}
+async function switchSource(label){
+  if(label === S.source) return;
+  S.source = label || "";
+  /* 切到外来来源要落在**它最近的一天**，不能落在"今天"——别的机器的录制通常没有今天那天，
+     落过去的结果是一个空列表，而用户会以为"导入失败了"（260825 视觉验收当场撞到）。
+     切回本机则回到今天，并恢复跨天自动跟随。 */
+  const src = (S.sources || []).find(x => x.label === S.source);
+  S.date = S.source ? ((src && src.dates && src.dates[0]) || null) : null;
+  S.dates = []; S.items = []; S.total = 0;
+  S.followToday = !S.source;      /* 外来录制没有"今天"可跟 */
+  await fetchCaptures(S.date);
+  if(S.view === "dag") loadDag();
+}
+function renderSourcePicker(){
+  const wrap = $("sourcePicker");
+  if(!wrap) return;
+  if(!(S.sources || []).length && !S.source){ wrap.hidden = true; wrap.innerHTML = ""; return; }
+  wrap.hidden = false;
+  const opts = [{label:"", name: t18("src.local")}].concat(
+    (S.sources || []).map(x => ({label: x.label, name: x.label})));
+  wrap.innerHTML = opts.map(o =>
+    '<button class="date-chip src-chip' + (o.label === S.source ? " active" : "") +
+    '" onclick="switchSource(' + JSON.stringify(o.label).replace(/"/g, "&quot;") + ')">' +
+    (o.label ? '<span class="src-dot"></span>' : "") + esc(o.name) + '</button>').join("");
 }
 function todayStr(){
   const d = new Date();
@@ -3322,7 +3477,7 @@ function renderDoctor(openDrawer){
 async function refreshDiag(){
   try{
     const d = S.date || todayStr();
-    const r = await fetch("/api/diagnose/errors?date=" + encodeURIComponent(d) + "&limit=50");
+    const r = await fetch("/api/diagnose/errors?date=" + encodeURIComponent(d) + "&limit=50" + srcQ());
     if(!r.ok) return;                /* 失败聚合自己挂了不许影响主界面（同体检） */
     const j = await r.json();
     if(j.error) return;
@@ -3399,7 +3554,7 @@ function loadEnd(){
 async function fetchCaptures(date){
   loadBegin(date);
   try{
-    const q = date ? ("?date=" + encodeURIComponent(date)) : "";
+    const q = "?date=" + encodeURIComponent(date || "") + srcQ();
     const r = await fetch("/api/captures" + q);
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
@@ -3425,6 +3580,10 @@ function dateChipList(){
   return [...new Set([...(S.dates || []), S.date].filter(Boolean))].sort().reverse();
 }
 function renderDates(){
+  /* 来源条与日期条是同一行的两半，**必须一起重绘**：只重绘日期的话，切换来源后
+     选中态还留在"本机"上，而列表里已经是别的机器的数据了——这正是"外来录制必须一眼
+     可辨"那条不变量最怕的样子（260825 视觉验收当场撞到）。 */
+  renderSourcePicker();
   const wrap = $("dateChips");
   wrap.innerHTML = dateChipList().map(d =>
     '<button class="date-chip' + (d === S.date ? " active" : "") + '" onclick="fetchCaptures(\'' + d + '\')">' + d + '</button>'
@@ -3510,7 +3669,7 @@ function renderList(){
 }
 async function loadMore(){
   try{
-    const r = await fetch("/api/captures?date=" + encodeURIComponent(S.date) + "&offset=" + S.items.length);
+    const r = await fetch("/api/captures?date=" + encodeURIComponent(S.date) + "&offset=" + S.items.length + srcQ());
     const d = await r.json();
     S.items = S.items.concat(d.items || []); S.total = d.total || S.total;
     renderList(); renderDates();
@@ -3544,6 +3703,77 @@ function cancelClear(){
   const btn = $("clearBtn");
   if(btn){ btn.classList.remove("confirm"); setBtnLabel(btn, t18("clear.title")); }
 }
+/* 压缩 / 归档 / 导入（260825）。三者都不是"清除"——只有 doClear 会删数据。
+   长任务（一天几百 MB 要几十秒）期间按钮 disabled 并改文案：异步任务从用户动作到状态可见
+   之间不许有裸窗，否则用户会以为没点上而反复点（v0.4.13 自更新下载那次的教训）。 */
+async function _storAction(url, body, okMsg){
+  const btn = $("clearBtn");
+  _closeClearMenu(); cancelClear();
+  if(btn){ btn.disabled = true; setBtnLabel(btn, t18("stor.working")); }
+  try{
+    const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+                                body:JSON.stringify(body)});
+    const j = await r.json();
+    if(j.ok){ okMsg(j); await fetchCaptures(S.date); if(S.view === "dag") loadDag();
+              loadStorage(); loadSources(); }
+    else{ toast(t18("stor.fail") + "：" + (j.error || ""), true); }
+  }catch(e){ toast(t18("stor.fail") + "：" + e.message, true); }
+  if(btn){ btn.disabled = false; setBtnLabel(btn, t18("clear.title")); }
+}
+function doCompact(all){
+  _storAction("/api/captures/compact",
+    all ? {source: S.source} : {date: S.date, source: S.source},
+    j => {
+      const n = (j.compacted || []).length;
+      if(!n){
+        const why = (j.failed || [])[0];
+        toast(why ? (t18("stor.fail") + "：" + why.error) : t18("stor.compactNone"), !!why);
+        return;
+      }
+      toast(t18("stor.compactOk", {n, saved: fmtBytes(j.saved_bytes || 0)}));
+    });
+}
+function doArchive(){
+  _storAction("/api/captures/archive", {date: S.date, source: S.source},
+    j => toast(t18("stor.archiveOk", {size: fmtBytes(j.size || 0)})));
+}
+function importArchive(path){
+  _storAction("/api/captures/import", {file: path},
+    j => toast(t18("stor.importOk", {label: j.label, date: j.date, n: j.count})));
+}
+function deleteSource(label){
+  _storAction("/api/sources/delete", {label}, j => {
+    if(S.source === label) switchSource("");
+    toast(t18("stor.srcDeleted", {label}));
+  });
+}
+function renderArchiveCard(){
+  const aw = $("arcList"), sw = $("srcList");
+  if(!aw || !sw) return;
+  const imported = new Set((S.sources || []).flatMap(x => (x.dates || []).map(d => x.label + "|" + d)));
+  aw.innerHTML = (S.archives || []).length ? (S.archives || []).map(a => {
+    const key = (a.label || "") + "|" + (a.date || "");
+    const done = imported.has(key);
+    return '<div class="arc-row"><div style="min-width:0">' +
+      '<div class="arc-name">' + esc(a.name) + '</div>' +
+      '<div class="arc-meta">' + esc(a.date || "?") + " · " + (a.count || 0) + " · " +
+        fmtBytes(a.size || 0) + (a.legacy ? " · " + t18("stor.legacy") : "") + '</div></div>' +
+      (a.legacy ? "" :
+        '<button class="btn tool" ' + (done ? "disabled" : "") +
+        ' onclick="importArchive(' + JSON.stringify(a.path).replace(/"/g, "&quot;") + ')">' +
+        esc(done ? t18("stor.imported") : t18("stor.import")) + '</button>') +
+      '</div>';
+  }).join("") : '<div class="arc-empty">' + esc(t18("stor.noArchives")) + '</div>';
+  sw.innerHTML = (S.sources || []).length ? (S.sources || []).map(x =>
+    '<div class="arc-row"><div style="min-width:0">' +
+    '<div class="arc-name">' + esc(x.label) + '</div>' +
+    '<div class="arc-meta">' + (x.days || 0) + " · " + (x.count || 0) + " · " +
+      fmtBytes(x.bytes || 0) + '</div></div>' +
+    '<button class="btn tool danger" onclick="deleteSource(' +
+      JSON.stringify(x.label).replace(/"/g, "&quot;") + ')">' + esc(t18("stor.srcDelete")) +
+    '</button></div>').join("") : '<div class="arc-empty">' + esc(t18("stor.noSources")) + '</div>';
+}
+
 async function doClear(mode){
   const pending = _clearPending; _clearPending = null;
   clearTimeout(pending?.timer);
@@ -3640,7 +3870,7 @@ async function openDetail(id, from){
   $("reqCol").innerHTML = '<div class="dcard">' + t18("detail.loading") + '</div>';
   $("respCol").innerHTML = "";
   try{
-    const r = await fetch("/api/captures/" + encodeURIComponent(id) + "?date=" + encodeURIComponent(S.date || ""));
+    const r = await fetch("/api/captures/" + encodeURIComponent(id) + "?date=" + encodeURIComponent(S.date || "") + srcQ());
     if(seq !== S.detailSeq) return;   /* 期间已切到别的 capture，丢弃 */
     if(!r.ok) throw new Error("HTTP " + r.status);
     renderDetail(await r.json());
@@ -4038,7 +4268,7 @@ async function loadDag(){
        S.date 设成后端裁定值（如 null→今天），取早了守卫会误杀首次加载。 */
     const myDate = S.date;
     const seq = ++DG.loadSeq;
-    const q = myDate ? ("?date=" + encodeURIComponent(myDate)) : "";
+    const q = "?date=" + encodeURIComponent(myDate || "") + srcQ();
     const r = await fetch("/api/dag" + q);
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));   /* 260712：HTTP 错误不再静默空 */
@@ -6021,6 +6251,7 @@ async function loadStorage(){
   try{
     S.storage = await (await fetch("/api/storage")).json();
     renderStorage();
+    loadSources();
   }catch(e){
     /* 失败要说出来：全 "—" 与"真的是 0 字节"在界面上无法区分（惯犯 ③）*/
     S.storage = null;
@@ -6033,10 +6264,17 @@ function renderStorage(){
   if(!j || !$("storTotal")) return;
   const cap = j.captures || {}, arch = j.archives || {}, snap = j.snapshots || {};
   $("storCap").textContent = fmtBytes(cap.bytes || 0);
-  $("storCapSub").textContent = t18("set.stor.days", {n: j.capture_days || 0});
+  /* 天数后面接一句"多少天已压实 / 还能省多少"——不说的话，用户看到的只是一个大数字，
+     不知道这里有个能一键降一个数量级的开关（惯犯 ①「界面给了承诺、用户看不见」的反面）。 */
+  let sub = t18("set.stor.days", {n: j.capture_days || 0});
+  if(j.packed_days) sub += " · " + t18("set.stor.packed", {n: j.packed_days});
+  if(j.compactable_saving) sub += " · " + t18("set.stor.canSave", {size: fmtBytes(j.compactable_saving)});
+  $("storCapSub").textContent = sub;
   $("storIdx").textContent = fmtBytes(cap.index_bytes || 0);
   $("storArch").textContent = fmtBytes(arch.bytes || 0);
   $("storSnap").textContent = fmtBytes(snap.bytes || 0);
+  const srcEl = $("storSrc");
+  if(srcEl) srcEl.textContent = fmtBytes((j.sources || {}).bytes || 0);
   $("storLog").textContent = fmtBytes(j.log_bytes || 0);
   $("storTotal").textContent = fmtBytes(j.total_bytes || 0);
   const lg = j.largest_day;
@@ -6390,6 +6628,17 @@ async function restoreUpstream(){
   }
   btn.disabled = false;
 }
+/* 打开数据目录下的某个子目录（后端只放行 CONFIG_DIR 内的路径）。
+   归档卡用它把 archives/ 打开——跨机搬运就是往这个目录里拷文件。 */
+function openFolder(sub){
+  const base = (S.storage && S.storage.data_dir) || "";
+  if(!base){ toast(t18("stor.fail"), true); return; }
+  const sep = base.includes("\\") ? "\\" : "/";
+  fetch("/api/open-folder", {method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({path: base + sep + sub})})
+    .then(r => r.json()).then(j => { if(!j.ok) toast(t18("stor.fail") + "：" + (j.error || ""), true); })
+    .catch(e => toast(t18("stor.fail") + "：" + e.message, true));
+}
 function openBackupDir(){
   const dir = $("cfgBackupDir").textContent;
   /* 经后端 /api/open-folder 打开（os.startfile）；原 pywebview bridge open_folder 未注册致失效（260712） */
@@ -6412,6 +6661,7 @@ function openBackupDir(){
   applyI18n();
   syncThemePicker();
   ctxInit();                  /* 自绘右键菜单 + Cmd/Ctrl+C 兜底（WebView2/WebKit 都不给原生的）*/
+  await loadSources();        /* 有导入的外来录制才会渲染来源切换条 */
   await fetchCaptures();      /* 默认今天，含 dates_available */
   await refreshStatus();
   await refreshHealth();      /* 启动横幅之后、自动启动代理之前体检（拦得住 auto_start） */

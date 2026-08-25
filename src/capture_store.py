@@ -9,6 +9,27 @@
   - threading.Lock 串行写盘
   - deque(maxlen=200) 供 LIVE 推送
   - 订阅者 queue.Queue 广播，SSE 客户端阻塞读
+
+## 一天有两种形态，读取侧一律经 `_Day` 取数（260825 压实上线）
+
+  {date}.jsonl    **热**：今天正在录的那天。格式与写盘路径一个字节都没改——
+                  代理透明性优先级最高，压实再省也不许碰 `append()` 的同步段。
+  {date}.pack/    **温**：已压实的过去某天。内容寻址去重 + 逐 blob zstd（见 pack.py），
+                  实测 477MB → 17MB，且仍能按索引 off/len 随机取单条（中位 3.7ms）。
+
+索引对两种形态一视同仁：`off/len` 指向**锚点文件**——jsonl 形态是主文件本身，pack 形态是
+`skel.jsonl`。所以 `_load_index` 的「覆盖到哪了」判据从"主文件大小"推广成"锚点文件大小"，
+回填逻辑也跟着分两路（pack 回填要先把 `$cas` 指针还原成完整记录再交给 classifier）。
+
+**别再自己拼 `{date}.jsonl` 路径**。压实上线前全仓有六处各自拼路径，压实之后它们会各自
+静默失效：文件不在了 → 当成空的一天 → 列表空白但没有任何东西报错（惯犯 bug ③ 的形状）。
+
+## 三个存储根，语义各不相同
+
+  captures/        本机录制（热 + 温）。retention 会自动删这里
+  archives/        归档单文件 .ccwa（用户显式产出，**绝不自动删**）
+  sources/<标签>/  从别的机器导入的录制。日期会与本机撞车（两台机器同一天都在录），
+                   靠标签命名空间隔开；界面上必须一眼可辨是外来的
 """
 from __future__ import annotations
 
@@ -17,6 +38,7 @@ import datetime
 import json
 import logging
 import queue
+import shutil
 import threading
 import time
 import uuid
@@ -24,11 +46,13 @@ from pathlib import Path
 
 import classifier
 import config as CFG
+import pack
 
 log = logging.getLogger(__name__)
 
 CAPTURES_DIR = CFG.CONFIG_DIR / "captures"
 ARCHIVES_DIR = CFG.CONFIG_DIR / "archives"
+SOURCES_DIR = CFG.CONFIG_DIR / "sources"
 
 _LOCK = threading.Lock()
 _LIVE_DEQUE: collections.deque = collections.deque(maxlen=200)
@@ -114,12 +138,253 @@ def _public_summary(idx: dict) -> dict:
 
 
 def _idx_file(date: str) -> Path:
+    """**热路径专用**：今天那天的索引文件。`append` 只写今天，今天永远是 jsonl 形态
+    （压实不碰今天，见模块 docstring），所以这里不必判形态。
+    其余一切读取走 `_Day(date, source).idx`。"""
     return CAPTURES_DIR / f"{date}.idx.jsonl"
 
 
-# date → (covered_end, entries)：covered_end = 索引已覆盖到的主文件字节位置。
-# 主文件 size 不变直接命中缓存（/api/dag 被 LIVE 防抖反复调用时近乎零成本）。
-_IDX_CACHE: dict[str, tuple[int, list[dict]]] = {}
+def _source_root(source: str = "") -> Path:
+    """录制根目录：空 = 本机 captures/，否则 sources/<标签>/（导入的外来录制）。"""
+    if not source:
+        return CAPTURES_DIR
+    _validate_label(source)
+    return SOURCES_DIR / source
+
+
+class _Day:
+    """一天录制的统一访问器：屏蔽 jsonl（热）/ pack（已压实）两种形态。
+
+    读取侧一律经它拿数据。两条不变量：
+      1. **两种形态同时存在时以 pack 为准**——pack 只有在逐字节校验通过后才会就位，
+         残留的 jsonl 是"删到一半"的垃圾，不是另一份事实。`stray_jsonl` 把它暴露出来给清理用。
+      2. **不缓存打开的 PackReader**。Windows 上占着文件句柄会让删除/改名失败（本项目
+         已经因为句柄占用踩过存档失败），而 map.json 解析实测只有毫秒级——用一点点重复
+         解析换"任何时候都能删掉一天"，划算。
+    """
+
+    __slots__ = ("date", "source", "root", "jsonl", "pack_dir")
+
+    def __init__(self, date: str, source: str = ""):
+        self.date = date
+        self.source = source
+        self.root = _source_root(source)
+        self.jsonl = self.root / f"{date}.jsonl"
+        self.pack_dir = self.root / f"{date}{pack.PACK_SUFFIX}"
+
+    # -- 形态 --
+    @property
+    def is_pack(self) -> bool:
+        return pack.is_pack(self.pack_dir)
+
+    @property
+    def exists(self) -> bool:
+        return self.is_pack or self.jsonl.exists()
+
+    @property
+    def stray_jsonl(self) -> Path | None:
+        """pack 已就位却还留着的原 jsonl（压实收尾时被打断的残留）。"""
+        return self.jsonl if (self.is_pack and self.jsonl.exists()) else None
+
+    @property
+    def idx(self) -> Path:
+        """索引文件。pack 形态放在 pack 目录内（且整体压缩）——一天自包含，删一天 = 删一个目录。"""
+        if self.is_pack:
+            return pack.idx_path(self.pack_dir)
+        return self.root / f"{self.date}.idx.jsonl"
+
+    # -- 索引读写（两种形态的差异全部收在这三个方法里）--
+    def idx_lines(self):
+        """索引的原始行（bytes）。pack 形态整体解压后按行切——它本来就是一次全读进内存的。"""
+        if self.is_pack:
+            data = pack.read_idx_bytes(self.pack_dir)
+            for raw in data.splitlines():
+                if raw.strip():
+                    yield raw
+            return
+        fi = self.idx
+        if not fi.exists():
+            return
+        try:
+            with fi.open("rb") as fh:
+                for raw in fh:
+                    if raw.strip():
+                        yield raw
+        except OSError as e:
+            log.error("索引读失败 %s：%s", fi.name, e)
+
+    def drop_idx(self) -> None:
+        """丢弃索引（schema 过期 / 主文件消失）。索引是缓存，丢了会重建。"""
+        try:
+            fi = self.idx
+            if fi.exists():
+                fi.unlink()
+        except OSError as e:
+            log.error("陈旧索引删除失败 %s：%s", self.date, e)
+
+    def write_idx(self, entries: list[dict], append: bool = True) -> None:
+        """写索引条目。jsonl 形态是追加（增量回填），pack 形态**只能整体覆盖**
+        （冻结的一天没有追加语义，且它整体压缩存放）。"""
+        blob = b"".join((json.dumps(e, ensure_ascii=False) + "\n").encode("utf-8")
+                        for e in entries)
+        if self.is_pack:
+            old = pack.read_idx_bytes(self.pack_dir) if append else b""
+            pack.write_idx_bytes(self.pack_dir, old + blob)
+            return
+        with self.idx.open("ab" if append else "wb") as fh:
+            fh.write(blob)
+
+    # -- 尺寸与条数 --
+    @property
+    def anchor_size(self) -> int:
+        """索引 off/len 的锚点文件大小（jsonl 是主文件，pack 是 skel.jsonl）。
+        `_load_index` 用它判断"索引覆盖到哪了"，`/api/dag` 用它当缓存键。"""
+        try:
+            if self.is_pack:
+                return (self.pack_dir / pack._SKEL).stat().st_size
+            return self.jsonl.stat().st_size
+        except OSError:
+            return 0
+
+    def disk_bytes(self) -> int:
+        """这一天在磁盘上真正占了多少（含索引）。设置页算占用用。"""
+        total = 0
+        if self.is_pack:
+            for f in self.pack_dir.rglob("*"):
+                try:
+                    total += f.stat().st_size
+                except OSError:
+                    continue
+            return total
+        for f in (self.jsonl, self.idx):
+            try:
+                total += f.stat().st_size
+            except OSError:
+                continue
+        return total
+
+    def count(self) -> int:
+        """记录条数。pack 直接读 manifest（不必数行），jsonl 只数行不 parse。"""
+        if self.is_pack:
+            try:
+                return int(pack.read_manifest(self.pack_dir).get("count") or 0)
+            except pack.PackError:
+                return 0
+        return _count_lines(self.jsonl)
+
+    def manifest(self) -> dict | None:
+        if not self.is_pack:
+            return None
+        try:
+            return pack.read_manifest(self.pack_dir)
+        except pack.PackError as e:
+            log.error("pack manifest 读失败 %s: %s", self.pack_dir.name, e)
+            return None
+
+    # -- 取数 --
+    def record_at(self, off: int, ln: int) -> dict | None:
+        """按锚点文件的 off/len 取一条完整记录（索引就是这么喂的）。"""
+        if self.is_pack:
+            try:
+                with pack.PackReader(self.pack_dir) as r:
+                    return r.record_at(off, ln)
+            except pack.PackError as e:
+                log.error("pack 取记录失败 %s@%s: %s", self.date, off, e)
+                return None
+        try:
+            with self.jsonl.open("rb") as fh:
+                fh.seek(off)
+                return json.loads(fh.read(ln))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def find_by_id(self, rid: str) -> dict | None:
+        """索引缺行时的兜底扫描。子串预筛后才 parse（不逐行全量 parse）。"""
+        if self.is_pack:
+            try:
+                with pack.PackReader(self.pack_dir) as r:
+                    return r.find_by_id(rid)
+            except pack.PackError as e:
+                log.error("pack 扫描失败 %s: %s", self.date, e)
+                return None
+        if not self.jsonl.exists():
+            return None
+        needle = f'"{rid}"'.encode("utf-8")
+        try:
+            with self.jsonl.open("rb") as fh:
+                for raw in fh:
+                    if needle not in raw:
+                        continue
+                    try:
+                        rec = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if rec.get("id") == rid:
+                        return rec
+        except OSError:
+            return None
+        return None
+
+    def iter_records(self):
+        """按录制顺序遍历完整记录（坏行跳过——两种形态行为一致）。"""
+        if self.is_pack:
+            try:
+                with pack.PackReader(self.pack_dir) as r:
+                    yield from r.iter_records()
+            except pack.PackError as e:
+                log.error("pack 遍历失败 %s: %s", self.date, e)
+            return
+        if not self.jsonl.exists():
+            return
+        with self.jsonl.open("rb") as fh:
+            for raw in fh:
+                try:
+                    yield json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+
+    def iter_indexable(self, start: int = 0):
+        """回填索引用：从锚点文件 `start` 字节处续读，产出 (off, len, record | None)。
+
+        **坏行也要产出（record=None）**，只是不建索引条目——调用方据此推进"覆盖到哪了"。
+        原实现在这里踩过：坏行若不推进偏移，每次读取都会对同一行重复回填一次。
+        """
+        if self.is_pack:
+            try:
+                with pack.PackReader(self.pack_dir) as r:
+                    for off, ln in r.lines:
+                        if off < start:
+                            continue
+                        yield off, ln, r.record_at(off, ln)
+            except pack.PackError as e:
+                log.error("pack 回填失败 %s: %s", self.date, e)
+            return
+        if not self.jsonl.exists():
+            return
+        with self.jsonl.open("rb") as fh:
+            fh.seek(start)
+            data = fh.read()
+        lines = data.split(b"\n")
+        lines.pop()                 # 末段：以 \n 结尾时是 b""，否则是没写完的半行
+        off = start
+        for raw in lines:
+            ln = len(raw) + 1       # +1 是被 split 吃掉的 \n
+            rec = None
+            if raw.strip():
+                try:
+                    rec = json.loads(raw)
+                except json.JSONDecodeError:
+                    rec = None      # 崩溃残留/合并坏行：不建条目但仍推进偏移
+            yield off, ln, rec
+            off += ln
+
+
+# (source, date) → (covered_end, entries)：covered_end = 索引已覆盖到的**锚点文件**字节位置
+# （jsonl 形态是主文件，pack 形态是 skel.jsonl）。锚点 size 不变直接命中缓存
+# （/api/dag 被 LIVE 防抖反复调用时近乎零成本）。
+# 键带 source 是因为外来录制的日期会与本机撞车（两台机器同一天都在录）——
+# 只用 date 当键，切到导入来源的同一天会读到本机的缓存，而且**不会有任何东西报错**。
+_IDX_CACHE: dict[tuple[str, str], tuple[int, list[dict]]] = {}
 
 
 def append(record: dict) -> None:
@@ -154,10 +419,10 @@ def append(record: dict) -> None:
                 idx_entry["len"] = len(data)
                 with _idx_file(date).open("ab") as fh:
                     fh.write((json.dumps(idx_entry, ensure_ascii=False) + "\n").encode("utf-8"))
-                cached = _IDX_CACHE.get(date)
+                cached = _IDX_CACHE.get(("", date))
                 if cached:
                     cached[1].append(idx_entry)
-                    _IDX_CACHE[date] = (off + len(data), cached[1])
+                    _IDX_CACHE[("", date)] = (off + len(data), cached[1])
             except Exception as e:      # 索引是优化不是事实源，失败不阻塞转发，回填自愈
                 idx_entry = None
                 _IDX_ERRORS += 1
@@ -181,8 +446,8 @@ def append(record: dict) -> None:
                 _LIVE_SUBSCRIBERS.discard(q)
 
 
-def _read_idx_entries(fi: Path) -> tuple[list[dict], int]:
-    """读索引文件全部有效条目，返回 (entries, covered_end)。
+def _read_idx_entries(day: "_Day") -> tuple[list[dict], int]:
+    """读索引全部有效条目，返回 (entries, covered_end)。
     崩溃残留的半行跳过（条目自带 off/len，covered_end 只认完整条目）。
 
     **schema 版本不符 → 整个索引作废**（返回空 + covered=0，调用方会从 0 全量回填）。
@@ -192,94 +457,69 @@ def _read_idx_entries(fi: Path) -> tuple[list[dict], int]:
     「键名错位」的同型。宁可多花一次回填（826MB 天约 5s，有日志）也不要静默错。"""
     entries: list[dict] = []
     covered = 0
-    if not fi.exists():
-        return entries, covered
-    with fi.open("rb") as fh:
-        for raw in fh:
-            try:
-                e = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if e.get("v") != classifier.IDX_SCHEMA:
-                log.info("索引 schema 过期（%s: v=%r，当前 v=%d）→ 整体重建",
-                         fi.name, e.get("v"), classifier.IDX_SCHEMA)
-                # 必须先删文件再让调用方从 0 回填：_backfill_index 是 append 写，
-                # 不删的话旧条目留在文件里，下次读又判过期 → 每次读都重复回填一整天。
-                try:
-                    fh.close()
-                    fi.unlink()
-                except OSError as err:
-                    log.error("陈旧索引删除失败 %s: %s（本次仍走全量回填）", fi.name, err)
-                return [], 0
-            off, ln = e.get("off"), e.get("len")
-            if isinstance(off, int) and isinstance(ln, int):
-                covered = max(covered, off + ln)
-            entries.append(e)
+    for raw in day.idx_lines():
+        try:
+            e = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if e.get("v") != classifier.IDX_SCHEMA:
+            log.info("索引 schema 过期（%s: v=%r，当前 v=%d）→ 整体重建",
+                     day.idx.name, e.get("v"), classifier.IDX_SCHEMA)
+            # 必须先丢掉旧索引再让调用方从 0 回填：jsonl 形态的回填是 append 写，
+            # 不丢的话旧条目留在文件里，下次读又判过期 → 每次读都重复回填一整天。
+            day.drop_idx()
+            return [], 0
+        off, ln = e.get("off"), e.get("len")
+        if isinstance(off, int) and isinstance(ln, int):
+            covered = max(covered, off + ln)
+        entries.append(e)
     return entries, covered
 
 
-def _backfill_index(f: Path, fi: Path, start: int) -> tuple[list[dict], int]:
-    """从主文件 start 字节处续读，为完整行建索引并追加进 idx 文件（增量回填自愈）。
+def _backfill_index(day: "_Day", start: int) -> tuple[list[dict], int]:
+    """从锚点文件 start 字节处续读，为完整记录建索引并追加进 idx 文件（增量回填自愈）。
 
-    触发场景：旧录制没有索引 / 索引写失败落下几条 / 崩溃后索引落后。
-    返回 (新条目, 新的 covered_end)。不可解析的行（崩溃残留）跳过但仍推进 covered_end
-    ——与主文件读取侧行为一致（json 坏的行当不存在），避免每次读取都重复回填同一行。"""
+    触发场景：旧录制没有索引 / 索引写失败落下几条 / 崩溃后索引落后 / 压实后索引作废。
+    返回 (新条目, 新的 covered_end)。两种形态同一套逻辑，差异全部收在 `_Day.iter_indexable`
+    里——260825 压实上线时这里若各写一份，pack 天的回填迟早与 jsonl 天分叉。"""
     new_entries: list[dict] = []
     end = start
-    with f.open("rb") as fh:
-        fh.seek(start)
-        data = fh.read()
-    lines = data.split(b"\n")
-    trailing = lines.pop()          # 最后一段：data 以 \n 结尾时是 b""，否则是未写完的半行
-    off = start
-    for raw in lines:
-        ln = len(raw) + 1           # +1 是被 split 吃掉的 \n
-        if raw.strip():
-            try:
-                rec = json.loads(raw)
-            except json.JSONDecodeError:
-                pass                # 崩溃残留/合并坏行：跳过但推进偏移
-            else:
-                e = classifier.index_record(rec)
-                e["off"] = off
-                e["len"] = ln
-                new_entries.append(e)
-        off += ln
-        end = off
+    for off, ln, rec in day.iter_indexable(start):
+        if rec is not None:
+            e = classifier.index_record(rec)
+            e["off"] = off
+            e["len"] = ln
+            new_entries.append(e)
+        end = max(end, off + ln)
     if new_entries:
-        with fi.open("ab") as fh:
-            for e in new_entries:
-                fh.write((json.dumps(e, ensure_ascii=False) + "\n").encode("utf-8"))
+        day.write_idx(new_entries, append=True)
     return new_entries, end
 
 
-def _load_index(date: str) -> list[dict]:
+def _load_index(date: str, source: str = "") -> list[dict]:
     """读指定日期索引（缓存 + 按需增量回填）。**调用方须持 _LOCK**。"""
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    fi = _idx_file(date)
-    if not f.exists():
-        if fi.exists():
-            try:
-                fi.unlink()         # 主文件被外部删了 → 陈旧索引一并清
-            except OSError:
-                pass
-        _IDX_CACHE.pop(date, None)
+    day = _Day(date, source)
+    key = (source, date)
+    if not day.exists:
+        day.drop_idx()              # 主文件被外部删了 → 陈旧索引一并清
+        _IDX_CACHE.pop(key, None)
         return []
-    size = f.stat().st_size
-    cached = _IDX_CACHE.get(date)
+    size = day.anchor_size
+    cached = _IDX_CACHE.get(key)
     if cached and cached[0] == size:
         return cached[1]
-    entries, covered = _read_idx_entries(fi)
+    entries, covered = _read_idx_entries(day)
     if covered < size:
         try:
-            new_entries, covered = _backfill_index(f, fi, covered)
+            new_entries, covered = _backfill_index(day, covered)
             entries.extend(new_entries)
             if new_entries:
-                log.info("索引回填 %s：补 %d 条", date, len(new_entries))
+                log.info("索引回填 %s%s：补 %d 条",
+                         f"{source}/" if source else "", date, len(new_entries))
         except Exception as e:
             # 回填失败不致命：返回已有部分（可能不全），下次读取再试
             log.error("索引回填失败 %s: %s", date, e)
-    _IDX_CACHE[date] = (covered, entries)
+    _IDX_CACHE[key] = (covered, entries)
     return entries
 
 
@@ -300,53 +540,69 @@ def _session_filter(entries: list[dict], exclude_session: str = "",
 
 
 def list_index(date: str | None = None, exclude_session: str = "",
-               session: str = "") -> list[dict]:
+               session: str = "", source: str = "") -> list[dict]:
     """指定日期的全部索引记录（DAG 构建用）。无 1000 条上限——260719 前 list_full
     写死 limit=1000，大流量天（实测 2993 条）泳道图直接丢后 2/3。"""
-    if date is None:
+    # `not date` 而不是 `date is None`：**空串也要当成"没给"**。
+    # 260825 撞到——前端把 `?date=` 空着传上来，空串不是 None 于是被当成一个真日期，
+    # 结果是"今天有 14 条但界面显示 0 条"，而 API 本身一切正常、没有任何报错。
+    if not date:
         date = time.strftime("%Y-%m-%d", time.localtime())
     with _LOCK:
-        entries = list(_load_index(date))
+        entries = list(_load_index(date, source))
     return _session_filter(entries, exclude_session, session)
 
 
 def list_captures(date: str | None = None, limit: int = 200, offset: int = 0,
-                  exclude_session: str = "", session: str = "") -> dict:
+                  exclude_session: str = "", session: str = "", source: str = "") -> dict:
     """读指定日期索引，倒序分页返回摘要列表。
     260719 改读索引前：每次 readlines 整个主文件 + parse 倒序头 N 行（恰是最大的行），
     826MB 录制实测峰值内存 3.3GB。"""
-    if date is None:
+    # `not date` 而不是 `date is None`：**空串也要当成"没给"**。
+    # 260825 撞到——前端把 `?date=` 空着传上来，空串不是 None 于是被当成一个真日期，
+    # 结果是"今天有 14 条但界面显示 0 条"，而 API 本身一切正常、没有任何报错。
+    if not date:
         date = time.strftime("%Y-%m-%d", time.localtime())
     # 过滤必须在 total 之前——total 是分页依据，若算的是过滤前的数量，翻页会翻出空页。
-    entries = list_index(date, exclude_session, session)
+    entries = list_index(date, exclude_session, session, source)
     total = len(entries)
     items = [_public_summary(e) for e in entries[::-1][offset:offset + limit]]
     return {
         "date": date,
+        "source": source,
         "total": total,
         "items": items,
-        "dates_available": _available_dates(),
+        "dates_available": _available_dates(source),
     }
 
 
-def list_full(date: str | None = None, limit: int = 100000) -> list[dict]:
+def iter_records(date: str | None = None, source: str = ""):
+    """按录制顺序流式遍历某天的完整记录（两种形态透明）。
+
+    公开出来是给 CLI 与 dev 工具用的——**它们过去各自 `open(f"{date}.jsonl")`**，
+    压实之后那种写法会安静地读到空。要遍历录制就用这个，别自己拼路径。"""
+    # `not date` 而不是 `date is None`：**空串也要当成"没给"**。
+    # 260825 撞到——前端把 `?date=` 空着传上来，空串不是 None 于是被当成一个真日期，
+    # 结果是"今天有 14 条但界面显示 0 条"，而 API 本身一切正常、没有任何报错。
+    if not date:
+        date = time.strftime("%Y-%m-%d", time.localtime())
+    yield from _Day(date, source).iter_records()
+
+
+def list_full(date: str | None = None, limit: int = 100000, source: str = "") -> list[dict]:
     """读指定日期全量**完整** records（含 body，MB 级/条，大流量天 parse 要秒级）。
     仅供 tools/lane_probe.py 等需要 body 内部细节的 dev 工具；热路径一律走 list_index。"""
-    if date is None:
+    # `not date` 而不是 `date is None`：**空串也要当成"没给"**。
+    # 260825 撞到——前端把 `?date=` 空着传上来，空串不是 None 于是被当成一个真日期，
+    # 结果是"今天有 14 条但界面显示 0 条"，而 API 本身一切正常、没有任何报错。
+    if not date:
         date = time.strftime("%Y-%m-%d", time.localtime())
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    if not f.exists():
-        return []
     out = []
     with _LOCK:
-        with f.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-                if len(out) >= limit:
-                    break
+        for rec in _Day(date, source).iter_records():
+            out.append(rec)
+            if len(out) >= limit:
+                break
     return out
 
 
@@ -407,7 +663,7 @@ def _grep_fields(rec: dict, body: dict, areas: tuple) -> dict:
 
 def grep(date: str | None = None, pattern: str = "", in_: str = "all",
          limit: int = 50, case: bool = False, fixed: bool = False,
-         exclude_session: str = "", session: str = "") -> dict:
+         exclude_session: str = "", session: str = "", source: str = "") -> dict:
     """在指定日期录制里搜文本。返回结构同 cli cmd_grep（不含 date；HTTP 路由自行包装）。
 
     命中撞 limit 提前 break 时，两个字符计数只覆盖扫过的那部分记录——此时给比例会偏，
@@ -426,41 +682,35 @@ def grep(date: str | None = None, pattern: str = "", in_: str = "all",
     skipped = [x for x in _GREP_AREAS if x not in areas]
     hits = []
     searched_chars = skipped_chars = 0
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    if f.exists():
-        with f.open("r", encoding="utf-8") as fh:
-            for ln in fh:
-                try:
-                    rec = json.loads(ln)
-                except json.JSONDecodeError:
-                    continue
-                body = (rec.get("request") or {}).get("body") or {}
-                if not isinstance(body, dict):
-                    body = {}
-                if exclude_session or session:
-                    sid = classifier._session_id(rec, body)
-                    if exclude_session and sid.startswith(exclude_session):
-                        continue
-                    if session and not sid.startswith(session):
-                        continue
-                fields = _grep_fields(rec, body, areas)
-                searched_chars += sum(len(v or "") for v in fields.values())
-                skipped_chars += sum(len(v or "") for v in _grep_fields(rec, body, tuple(skipped)).values())
-                for where, text in fields.items():
-                    m = pat.search(text or "")
-                    if not m:
-                        continue
-                    s = max(0, m.start() - 50)
-                    hits.append({
-                        "id": rec.get("id"), "ts_start": rec.get("ts_start"),
-                        "kind": classifier.classify(rec), "where": where,
-                        "snippet": (text[s:m.end() + 50]).replace("\n", " "),
-                        "match_count": len(pat.findall(text or "")),
-                    })
-                    if len(hits) >= limit:
-                        break
-                if len(hits) >= limit:
-                    break
+    # 走 _Day 而不是自己开主文件：压实后的天没有主文件，自己拼路径 = 整天搜不到且不报错。
+    for rec in _Day(date, source).iter_records():
+        body = (rec.get("request") or {}).get("body") or {}
+        if not isinstance(body, dict):
+            body = {}
+        if exclude_session or session:
+            sid = classifier._session_id(rec, body)
+            if exclude_session and sid.startswith(exclude_session):
+                continue
+            if session and not sid.startswith(session):
+                continue
+        fields = _grep_fields(rec, body, areas)
+        searched_chars += sum(len(v or "") for v in fields.values())
+        skipped_chars += sum(len(v or "") for v in _grep_fields(rec, body, tuple(skipped)).values())
+        for where, text in fields.items():
+            m = pat.search(text or "")
+            if not m:
+                continue
+            s = max(0, m.start() - 50)
+            hits.append({
+                "id": rec.get("id"), "ts_start": rec.get("ts_start"),
+                "kind": classifier.classify(rec), "where": where,
+                "snippet": (text[s:m.end() + 50]).replace("\n", " "),
+                "match_count": len(pat.findall(text or "")),
+            })
+            if len(hits) >= limit:
+                break
+        if len(hits) >= limit:
+            break
     scanned_all = len(hits) < limit
     total = searched_chars + skipped_chars
     ratio = round(skipped_chars / total, 4) if (scanned_all and total) else None
@@ -477,7 +727,7 @@ def grep(date: str | None = None, pattern: str = "", in_: str = "all",
 
 
 def stats(date: str | None = None, exclude_session: str = "",
-          session: str = "") -> dict:
+          session: str = "", source: str = "") -> dict:
     """指定日期的请求 / token / 耗时统计。返回结构同 cli cmd_stats（含 date）。
 
     cache_creation 必须累加：它按 token 数只占几个百分点，按**成本**却可能占三到四成
@@ -495,8 +745,8 @@ def stats(date: str | None = None, exclude_session: str = "",
     tin = tout = tcache = tcreate = 0
     durs = []
     errors = 0
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    entries = list_index(date, exclude_session, session)
+    day = _Day(date, source)
+    entries = list_index(date, exclude_session, session, source)
     n = len(entries)
     for e in entries:
         kinds[classifier.classify_idx(e)] += 1
@@ -519,8 +769,12 @@ def stats(date: str | None = None, exclude_session: str = "",
     # cache_hit_ratio：读 /（读+写）。分母 0 给 None 而非 0——「没有缓存」≠「命中率 0%」。
     # 不做美元换算：单价随模型/链路/TTL 变，硬编码必然腐化；给全 token 数，换算交给使用者。
     cache_total = tcache + tcreate
+    # file_size = 这一天在磁盘上真正占多少。压实后它会变小——这不是"数字对不上"，
+    # 而是事实变了；`packed`/`raw_bytes` 把变化讲清楚，免得使用者以为录制少了。
     return {"ok": True, "date": date, "records": n,
-            "file_size": (f.stat().st_size if f.exists() else 0),
+            "file_size": day.disk_bytes(),
+            "packed": day.is_pack,
+            "raw_bytes": ((day.manifest() or {}).get("raw_bytes") if day.is_pack else None),
             "kinds": dict(kinds), "models": dict(models), "statuses": dict(statuses),
             "errors": errors,
             "tokens": {"input": tin, "output": tout,
@@ -533,7 +787,7 @@ UNK_BETA_LIFT_MIN = 1.5      # beta 关联的提升度门槛（低于它就不�
 
 
 def unknowns(date: str | None = None, exclude_session: str = "",
-             session: str = "") -> dict:
+             session: str = "", source: str = "") -> dict:
     """盲区雷达（260802）：聚合当天索引里所有「已知集合外」的值，给 AI 当协议演进 / 录制
     盲区的改进线索。读 idx（unknowns 已在写时算好，schema≥14），不读主文件——比 stats 快。
 
@@ -667,50 +921,36 @@ def unknowns(date: str | None = None, exclude_session: str = "",
     }
 
 
-def get_capture(rid: str, date: str | None = None) -> dict | None:
-    """按 id 取完整 record。优先走索引 off/len 直接 seek（826MB 文件也是毫秒级）；
-    索引缺行时兜底子串预筛扫描（命中 `"<rid>"` 的行才 json.loads，不再逐行全量 parse）。
+def get_capture(rid: str, date: str | None = None, source: str = "") -> dict | None:
+    """按 id 取完整 record。优先走索引 off/len 直接 seek（826MB 文件也是毫秒级；
+    压实后锚点变成 skel.jsonl，实测中位 3.7ms）；索引缺行时兜底扫描（子串预筛后才 parse）。
 
     date 指定则只扫该日；为 None 则先扫今天，找不到回退遍历所有历史日期
     （修复：原先写死今天，历史日期详情必然 404，审计 260712 #4）。
     """
     def _scan_one(d: str) -> dict | None:
-        f = CAPTURES_DIR / f"{d}.jsonl"
-        if not f.exists():
+        day = _Day(d, source)
+        if not day.exists:
             return None
-        entries = list_index(d)
+        entries = list_index(d, source=source)
         hit = next((e for e in entries if e.get("id") == rid), None)
         if hit is not None and isinstance(hit.get("off"), int) and isinstance(hit.get("len"), int):
-            try:
-                with f.open("rb") as fh:
-                    fh.seek(hit["off"])
-                    rec = json.loads(fh.read(hit["len"]))
-                if rec.get("id") == rid:
-                    return rec
-            except (OSError, json.JSONDecodeError):
-                pass                # 偏移失效（文件被外部改动）→ 落到扫描兜底
-        needle = f'"{rid}"'.encode("utf-8")
+            rec = day.record_at(hit["off"], hit["len"])
+            if rec is not None and rec.get("id") == rid:
+                return rec
+            # 偏移失效（文件被外部改动 / 索引是压实前的）→ 落到扫描兜底
         with _LOCK:
-            with f.open("rb") as fh:
-                for raw in fh:
-                    if needle not in raw:
-                        continue
-                    try:
-                        rec = json.loads(raw)
-                        if rec.get("id") == rid:
-                            return rec
-                    except json.JSONDecodeError:
-                        continue
-        return None
+            return day.find_by_id(rid)
 
     if date:
         return _scan_one(date)
     today = time.strftime("%Y-%m-%d", time.localtime())
-    hit = _scan_one(today)
-    if hit is not None:
-        return hit
-    for d in _available_dates():  # 回退遍历历史，最近优先
-        if d == today:
+    if not source:
+        hit = _scan_one(today)
+        if hit is not None:
+            return hit
+    for d in _available_dates(source):  # 回退遍历历史，最近优先
+        if d == today and not source:
             continue
         hit = _scan_one(d)
         if hit is not None:
@@ -718,14 +958,18 @@ def get_capture(rid: str, date: str | None = None) -> dict | None:
     return None
 
 
-def _available_dates() -> list[str]:
-    if not CAPTURES_DIR.exists():
+def _available_dates(source: str = "") -> list[str]:
+    """某个录制根下有哪些日期。**两种形态都要认**——只认 jsonl 的话，压实过的天会从
+    日期 chip 里整片消失，而且不会有任何东西报错（惯犯 ③ 的形状）。"""
+    root = _source_root(source)
+    if not root.exists():
         return []
-    # 只认 YYYY-MM-DD 主文件：滤掉 {date}.idx.jsonl（索引）和 .archiving.* 临时文件，
+    # 只认 YYYY-MM-DD：滤掉 {date}.idx.jsonl（索引）和 .{date}.packing.* 临时目录，
     # 否则它们会变成日期 chip 混进 UI（260719 索引文件引入后必现）
-    dates = [f.stem for f in CAPTURES_DIR.glob("*.jsonl") if _DATE_RE.match(f.stem)]
-    dates.sort(reverse=True)
-    return dates
+    dates = {f.stem for f in root.glob("*.jsonl") if _DATE_RE.match(f.stem)}
+    dates |= {d.stem for d in root.glob(f"*{pack.PACK_SUFFIX}")
+              if _DATE_RE.match(d.stem) and pack.is_pack(d)}
+    return sorted(dates, reverse=True)
 
 
 def _count_lines(f: Path) -> int:
@@ -748,6 +992,10 @@ class StoreError(RuntimeError):
 # 否则 date="../etc/x" 会让 purge/archive 读写到 captures/archives 目录外。
 import re as _re
 _DATE_RE = _re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+# 来源标签：字母数字加 - _ .，长度 1~40，且不许点开头。
+# 点开头会让标签目录变成隐藏目录（在文件管理器里凭空消失），`..` 更是直接路径穿越——
+# 标签来自 API 参数和归档文件名，两个入口都不可信。
+_LABEL_RE = _re.compile(r"(?!\.)[A-Za-z0-9._-]{1,40}\Z")
 
 
 def _validate_date(date: str) -> None:
@@ -760,28 +1008,48 @@ def _validate_date(date: str) -> None:
         raise StoreError("bad_date", f"非法日期：{date!r}")
 
 
-def purge_date(date: str) -> int:
-    """删除指定日期的录制文件（主文件 + 索引 + 缓存），返回删除的记录条数。
+def _validate_label(label: str) -> None:
+    """来源标签校验（防路径穿越 + 防隐藏目录）。"""
+    if not isinstance(label, str) or not _LABEL_RE.match(label):
+        raise StoreError("bad_label",
+                         f"非法来源标签：{label!r}（只允许字母数字与 - _ .，不能以点开头，≤40 字符）")
+
+
+def _rm(p: Path) -> None:
+    """删一个文件或一个 pack 目录。删不掉要上抛——静默失败会让用户以为空间已经释放。"""
+    try:
+        if p.is_dir():
+            shutil.rmtree(p)
+        elif p.exists():
+            p.unlink()
+    except OSError as e:
+        raise StoreError("delete_failed", f"删除失败 {p.name}：{e}")
+
+
+def purge_date(date: str, source: str = "") -> int:
+    """删除指定日期的录制（jsonl 主文件+索引，或整个 pack 目录），返回删除的记录条数。
     持 _LOCK 防与 append 竞争；当天则一并清内存 deque（否则 SSE 客户端还看到旧摘要）。"""
     _validate_date(date)
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    fi = _idx_file(date)
+    day = _Day(date, source)
     removed = 0
     today = time.strftime("%Y-%m-%d", time.localtime())
     with _LOCK:
-        if f.exists():
-            removed = _count_lines(f)   # 只数行不 parse（删 826MB 文件不该先付 9s 回填）
+        if day.is_pack:
+            removed = day.count()       # manifest 里就有，不必遍历
+            _rm(day.pack_dir)
+            if day.jsonl.exists():
+                _rm(day.jsonl)          # 压实收尾被打断留下的残留，一并清
+        elif day.jsonl.exists():
+            removed = _count_lines(day.jsonl)   # 只数行不 parse（删 826MB 不该先付 9s 回填）
+            fi = day.idx                # 先取路径：主文件删掉后 is_pack 判断仍稳定，但顺序清晰点
+            _rm(day.jsonl)
             try:
-                f.unlink()
-            except OSError as e:
-                raise StoreError("delete_failed", f"删除失败：{e}")
-        if fi.exists():
-            try:
-                fi.unlink()
+                if fi.exists():
+                    fi.unlink()
             except OSError:
-                pass            # 索引删不掉不致命：主文件已没，读取侧会清陈旧索引
-        _IDX_CACHE.pop(date, None)
-        if date == today:
+                pass        # 索引删不掉不致命：主文件已没，读取侧会清陈旧索引
+        _IDX_CACHE.pop((source, date), None)
+        if date == today and not source:
             _LIVE_DEQUE.clear()
     return removed
 
@@ -823,70 +1091,380 @@ def enforce_retention(days: int) -> list[str]:
     return removed
 
 
-def archive_date(date: str) -> dict:
-    """压缩存档指定日期录制到 archives/，再删原文件。
-    优先 ZIP_DEFLATED（真压缩，需 zlib）；不可用降级 ZIP_STORED（只打包）——对应用户「压缩不了就打包」。
+# ===== 压实 / 还原 / 归档 / 导入（260825）=====
+#
+# 三个动作的边界（命名先划清，否则 UI 上会打架，snapshot_store 头部那份声明同步过）：
+#   compact_date()      原地压实成 pack，**不删任何东西**，读取侧透明——纯瘦身
+#   archive_date()      打成可搬运的单文件 .ccwa，默认**归档后删原录制**——清理动作
+#   enforce_retention() 按天数自动删——唯一会自动删数据的动作
+#   snapshot_*          用户显式保存的拷贝——永不自动清理
+#
+# 260825 前 archive_date 叫「压缩存档」，实为清理；且用 zip DEFLATE（滑动窗口 32KB）压
+# 一份重复块相隔几十 MB 的数据，实测 49MB 的一天只压到 19MB（2.6x）。现在归档走 pack，
+# 同一天 28x，且拷到另一台机器不解压就能翻。
 
-    锁粒度（260712 性能修复）：锁内只做原子 rename 抢占（毫秒级，不阻塞代理 append），
-    压缩移到锁外（数十 MB 可能数秒）。rename 后代理若继续 append 当天会创建新文件（=清除「到目前为止」），
-    压缩失败则把临时文件 rename 回原位，不丢数据。"""
+
+def _tool_version() -> str:
+    try:
+        import _version
+        return getattr(_version, "__version__", "")
+    except Exception:
+        return ""
+
+
+def _verify_and_index(pack_dir: Path, src_jsonl: Path) -> None:
+    """逐字节校验 pack，**同一趟把索引也建出来**写进 pack 目录。
+
+    校验本来就要把每条记录还原一遍，顺手交给 classifier 建索引等于白捡（477MB 的一天
+    省掉约 10s 的重建）。索引缺了不致命——读取侧会回填自愈——但让每个压实完的天在
+    第一次点开时卡十几秒，是"能跑但难用"，而这类问题从来不会有人回头再修。"""
+    entries: list[dict] = []
+
+    def _idx(off: int, ln: int, rec: dict) -> None:
+        try:
+            e = classifier.index_record(rec)
+        except Exception as err:        # 单条分类失败不该让整次压实失败（索引是缓存不是事实源）
+            log.error("压实建索引失败（该条留给读取侧回填）：%s", err)
+            return
+        e["off"] = off
+        e["len"] = ln
+        entries.append(e)
+
+    pack.verify_against(pack_dir, src_jsonl, on_record=_idx)
+    pack.write_idx_bytes(pack_dir, b"".join(
+        (json.dumps(e, ensure_ascii=False) + "\n").encode("utf-8") for e in entries))
+
+
+def compact_date(date: str, source: str = "", progress=None) -> dict:
+    """把某天的 jsonl 压实成 pack。**不删今天**，**校验通过才删原文件**。
+
+    为什么不碰今天：`append` 只写今天，压实今天就得和写盘热路径抢同一个文件。代理透明性
+    是本项目第一优先级——录制体积再大，也不值得让「转发」这条路上多一个可能失败的环节。
+
+    顺序是有讲究的（每一步都按"这里断电会怎样"设计）：
+      1. 锁外写 staging 目录（`.{date}.packing.{ts}`，点开头，不会被 `_available_dates` 认成日期）
+         —— 断电只留一个垃圾目录，原录制一个字节没动
+      2. 锁外逐字节校验，**顺手把索引也建了**（校验本来就要还原每条记录，见 pack.verify_against）
+         —— 校验不过就抛，原录制仍在原地
+      3. 锁内 rename staging → `{date}.pack` 并删原文件
+         —— 中间断电会同时留下 pack 和 jsonl，读取侧以 pack 为准（它已校验过），
+            残留 jsonl 由 `cleanup_partials()` 清
+    """
     _validate_date(date)
-    import zipfile
-    import time as _t
-    f = CAPTURES_DIR / f"{date}.jsonl"
-    ARCHIVES_DIR.mkdir(parents=True, exist_ok=True)
-    # 压缩级别：DEFLATED 优先，zlib 缺失（极罕见）降级 STORED（只打包）
-    try:
-        import zlib  # noqa: F401  zipfile 用 zlib 做 DEFLATED，缺则降级
-        zmode, compressed = zipfile.ZIP_DEFLATED, True
-    except ImportError:
-        zmode, compressed = zipfile.ZIP_STORED, False
-    ts = _t.strftime("%H%M%S", _t.localtime())
-    staging = CAPTURES_DIR / f".{date}.archiving.{ts}.jsonl"
-    staging_idx = CAPTURES_DIR / f".{date}.archiving.{ts}.idx.jsonl"
-    dst = ARCHIVES_DIR / f"{date}.{ts}.jsonl.zip"
+    day = _Day(date, source)
     today = time.strftime("%Y-%m-%d", time.localtime())
-    # 锁内：复检 exists（TOCTOU）+ 数行 + rename 抢占（主文件与索引一起走）+ 清 deque/缓存
-    with _LOCK:
-        if not f.exists():
-            raise StoreError("not_found", f"{date} 无录制文件")
-        count = _count_lines(f)
-        f.rename(staging)   # 原子抢占；此后 append 会建新 {date}.jsonl
-        fi = _idx_file(date)
-        if fi.exists():
-            try:
-                fi.rename(staging_idx)
-            except OSError:
-                pass        # 索引 rename 失败不阻断存档：残留索引会因主文件消失被读取侧清掉
-        _IDX_CACHE.pop(date, None)
-        if date == today:
-            _LIVE_DEQUE.clear()
-    # 锁外：压缩 staging → dst，失败回退
+    if not source and date == today:
+        raise StoreError("is_today", "今天正在录制，不压实（压实只处理过去的天）")
+    if day.is_pack:
+        raise StoreError("already_packed", f"{date} 已经是压实态")
+    if not day.jsonl.exists():
+        raise StoreError("not_found", f"{date} 无录制文件")
+
+    raw_bytes = day.jsonl.stat().st_size
+    old_idx = day.idx
+    ts = time.strftime("%H%M%S", time.localtime())
+    staging = day.root / f".{date}.packing.{ts}"
+    t0 = time.time()
     try:
-        with zipfile.ZipFile(dst, "w", zmode) as zf:
-            zf.write(staging, arcname=f"{date}.jsonl")
-        staging.unlink()
-        if staging_idx.exists():
-            try:
-                staging_idx.unlink()    # 存档成功：索引已无主文件，一并清
-            except OSError:
-                pass
-    except Exception as e:
-        # 压缩失败/删除失败：把 staging 放回原位，不丢录制；dst 若已建则清掉
+        manifest = pack.write_pack(day.jsonl, staging, date=date,
+                                   tool_version=_tool_version(), progress=progress)
+        _verify_and_index(staging, day.jsonl)
+    except pack.PackError as e:
+        pack._rmtree_quiet(staging)
+        raise StoreError(e.code, str(e))
+    except OSError as e:
+        pack._rmtree_quiet(staging)
+        raise StoreError("compact_failed", f"压实失败：{e}")
+
+    with _LOCK:
+        if day.jsonl.stat().st_size != raw_bytes:
+            # 压实期间源文件长大了 = 有人在往过去的日期写（不该发生）。宁可放弃也不要
+            # 用一个"少了后半截"的 pack 顶替原文件。
+            pack._rmtree_quiet(staging)
+            raise StoreError("source_changed", f"{date} 在压实期间被写入，已放弃（原录制未动）")
+        try:
+            staging.rename(day.pack_dir)
+        except OSError as e:
+            pack._rmtree_quiet(staging)
+            raise StoreError("compact_failed", f"压实结果就位失败：{e}")
+        try:
+            if old_idx.exists():
+                old_idx.unlink()        # 老索引的 off/len 指向已不存在的主文件，留着只会误导
+        except OSError:
+            pass
+        try:
+            day.jsonl.unlink()
+        except OSError as e:
+            # pack 已就位且校验过，读取侧以它为准；残留的 jsonl 只是占地方，不是数据风险
+            log.error("压实后删原文件失败 %s（下次 cleanup_partials 再清）：%s", date, e)
+        _IDX_CACHE.pop((source, date), None)
+
+    packed = day.disk_bytes()
+    return {
+        "date": date, "source": source, "count": manifest["count"],
+        "raw_bytes": raw_bytes, "packed_bytes": packed,
+        "saved_bytes": max(0, raw_bytes - packed),
+        "ratio": round(raw_bytes / packed, 1) if packed else None,
+        "blob_count": manifest["blob_count"],
+        "elapsed_ms": int((time.time() - t0) * 1000),
+    }
+
+
+def uncompact_date(date: str, source: str = "") -> dict:
+    """pack → jsonl 还原（compact 的逆操作）。同样是「新的就位了才删旧的」。
+
+    还原后**不重建索引，直接删掉**：pack 里的索引 off/len 指向 skel.jsonl，对还原出来的
+    jsonl 是错的；而读取侧的增量回填本来就能自愈（这套机制 260719 起就在跑）。
+    与其在这里写第二份 off/len 改写逻辑（两份迟早分叉），不如让已被验证的那条路去干。
+    """
+    _validate_date(date)
+    day = _Day(date, source)
+    if not day.is_pack:
+        raise StoreError("not_packed", f"{date} 不是压实态")
+    ts = time.strftime("%H%M%S", time.localtime())
+    staging = day.root / f".{date}.unpacking.{ts}.jsonl"
+    try:
+        count = pack.unpack(day.pack_dir, staging)
+    except pack.PackError as e:
         try:
             if staging.exists():
-                staging.rename(f)
-            if staging_idx.exists():
-                staging_idx.rename(fi)
+                staging.unlink()
         except OSError:
             pass
+        raise StoreError(e.code, str(e))
+    with _LOCK:
+        if day.jsonl.exists():
+            try:
+                staging.unlink()
+            except OSError:
+                pass
+            raise StoreError("dst_exists", f"{date}.jsonl 已存在，未覆盖")
         try:
-            if dst.exists():
-                dst.unlink()
-        except OSError:
-            pass
-        raise StoreError("archive_failed", f"压缩存档失败：{e}")
-    return {"path": str(dst), "size": dst.stat().st_size, "count": count, "compressed": compressed}
+            staging.rename(day.jsonl)
+        except OSError as e:
+            raise StoreError("uncompact_failed", f"还原就位失败：{e}")
+        pack_dir = day.pack_dir
+        _IDX_CACHE.pop((source, date), None)
+    try:
+        shutil.rmtree(pack_dir)
+    except OSError as e:
+        log.error("还原后删 pack 目录失败 %s：%s", date, e)
+    return {"date": date, "source": source, "count": count,
+            "bytes": day.jsonl.stat().st_size}
+
+
+def archive_date(date: str, source: str = "", label: str = "", keep: bool = False) -> dict:
+    """归档某天成单文件 `.ccwa`（可拷到另一台机器导入）。默认归档后删原录制（清理语义）。
+
+    `keep=True` 只导出不删——跨机排查时源机器往往还要继续用自己的录制。
+    今天也能归档（此前的 archive_date 就支持"清除到目前为止"），走的是先压实到临时目录
+    再打包的路子，**不动正在录的那个文件**。
+    """
+    _validate_date(date)
+    day = _Day(date, source)
+    if not day.exists:
+        raise StoreError("not_found", f"{date} 无录制")
+    if label:
+        _validate_label(label)
+    ARCHIVES_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%H%M%S", time.localtime())
+    dst = ARCHIVES_DIR / (f"{date}.{label}.{ts}{pack.CCWA_SUFFIX}" if label
+                          else f"{date}.{ts}{pack.CCWA_SUFFIX}")
+    tmp_pack = None
+    try:
+        if day.is_pack:
+            src_pack = day.pack_dir
+        else:
+            # jsonl 形态：先压实到临时目录（含逐字节校验），再打包。
+            # 临时目录点开头，不会被 _available_dates 认成日期。
+            tmp_pack = day.root / f".{date}.archiving.{ts}"
+            pack.write_pack(day.jsonl, tmp_pack, date=date, label=label,
+                            tool_version=_tool_version())
+            # 索引一并建进归档：跨机搬运时对面就不用先卡一次全量重建
+            _verify_and_index(tmp_pack, day.jsonl)
+            src_pack = tmp_pack
+        info = pack.to_ccwa(src_pack, dst, label=label)
+    except pack.PackError as e:
+        if tmp_pack:
+            pack._rmtree_quiet(tmp_pack)
+        raise StoreError(e.code, str(e))
+    finally:
+        if tmp_pack and tmp_pack.exists() and dst.exists():
+            pack._rmtree_quiet(tmp_pack)
+    removed = 0
+    if not keep:
+        removed = purge_date(date, source)
+    return {"path": str(dst), "size": info["size"], "count": info.get("count", 0),
+            "removed": removed, "date": date, "label": label, "kept": keep}
+
+
+def import_archive(src: str | Path, label: str = "") -> dict:
+    """导入 `.ccwa` 到 `sources/<标签>/`（外来录制的独立命名空间）。
+
+    **必须分命名空间**：两台机器同一天都在录，日期一定撞车。混进 captures/ 的后果不是
+    报错而是更糟的东西——把别的机器的证据当成本机事实读，排查会直接跑偏。
+
+    标签缺省取归档里记的 label，再没有就用文件名前缀。
+    """
+    src = Path(src)
+    if not src.exists():
+        raise StoreError("not_found", f"找不到归档文件：{src}")
+    try:
+        manifest = pack.peek_ccwa(src)
+    except pack.PackError as e:
+        raise StoreError(e.code, str(e))
+    date = manifest.get("date") or ""
+    _validate_date(date)
+    label = label or manifest.get("label") or src.stem.split(".")[-1] or "imported"
+    _validate_label(label)
+    dst_dir = SOURCES_DIR / label / f"{date}{pack.PACK_SUFFIX}"
+    if pack.is_pack(dst_dir):
+        raise StoreError("already_imported", f"来源 {label} 下的 {date} 已经导入过")
+    dst_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        pack.from_ccwa(src, dst_dir)
+    except pack.PackError as e:
+        raise StoreError(e.code, str(e))
+    with _LOCK:
+        _IDX_CACHE.pop((label, date), None)
+    return {"label": label, "date": date, "count": manifest.get("count", 0),
+            "bytes": _Day(date, label).disk_bytes(),
+            "from": manifest.get("tool_version", ""),
+            "created_at": manifest.get("created_at", "")}
+
+
+def list_sources() -> list[dict]:
+    """已导入的外来录制来源清单（界面上要与本机录制区分开）。"""
+    if not SOURCES_DIR.exists():
+        return []
+    out = []
+    for d in sorted(SOURCES_DIR.iterdir()):
+        if not d.is_dir() or not _LABEL_RE.match(d.name):
+            continue
+        dates = _available_dates(d.name)
+        if not dates:
+            continue
+        days = [_Day(x, d.name) for x in dates]
+        out.append({
+            "label": d.name,
+            "dates": dates,
+            "days": len(dates),
+            "count": sum(x.count() for x in days),
+            "bytes": sum(x.disk_bytes() for x in days),
+        })
+    return out
+
+
+def delete_source(label: str) -> dict:
+    """删掉一个导入来源（整个目录）。外来录制不参与 retention，只能显式删。"""
+    _validate_label(label)
+    d = SOURCES_DIR / label
+    if not d.is_dir():
+        raise StoreError("not_found", f"没有这个来源：{label}")
+    dates = _available_dates(label)
+    _rm(d)
+    with _LOCK:
+        for x in dates:
+            _IDX_CACHE.pop((label, x), None)
+    return {"label": label, "days": len(dates)}
+
+
+def list_archives() -> list[dict]:
+    """archives/ 下的归档单文件清单（不解包，只读 manifest）。"""
+    if not ARCHIVES_DIR.exists():
+        return []
+    out = []
+    for f in sorted(ARCHIVES_DIR.glob(f"*{pack.CCWA_SUFFIX}"), reverse=True):
+        item = {"name": f.name, "path": str(f), "size": f.stat().st_size}
+        try:
+            m = pack.peek_ccwa(f)
+            item.update({"date": m.get("date"), "count": m.get("count"),
+                         "label": m.get("label", ""), "raw_bytes": m.get("raw_bytes"),
+                         "archived_at": m.get("archived_at", "")})
+        except pack.PackError as e:
+            item["error"] = str(e)      # 坏归档要显示出来，不能从列表里悄悄消失
+        out.append(item)
+    # 旧版 zip 归档（260825 之前的格式）也列出来，否则用户会以为文件丢了
+    for f in sorted(ARCHIVES_DIR.glob("*.jsonl.zip"), reverse=True):
+        out.append({"name": f.name, "path": str(f), "size": f.stat().st_size,
+                    "legacy": True, "date": f.name.split(".")[0]})
+    return out
+
+
+def cleanup_partials() -> dict:
+    """清理压实/归档中断留下的残留（点开头的临时目录 + pack 已就位却还在的原 jsonl）。
+
+    在代理启动时调一次。**只清能证明是残留的东西**：临时目录名带我们自己的前缀，
+    残留 jsonl 的旁边一定有一个校验通过的 pack——两条都不会误伤真录制。
+    """
+    dirs = files = 0
+    roots = [CAPTURES_DIR]
+    if SOURCES_DIR.exists():
+        roots += [d for d in SOURCES_DIR.iterdir() if d.is_dir()]
+    for root in roots:
+        if not root.exists():
+            continue
+        for p in root.iterdir():
+            if p.is_dir() and p.name.startswith(".") and (
+                    ".packing." in p.name or ".archiving." in p.name):
+                shutil.rmtree(p, ignore_errors=True)
+                dirs += 1
+            elif p.is_file() and p.name.startswith(".") and ".unpacking." in p.name:
+                try:
+                    p.unlink()
+                    files += 1
+                except OSError:
+                    pass
+        source = "" if root == CAPTURES_DIR else root.name
+        for d in _available_dates(source):
+            stray = _Day(d, source).stray_jsonl
+            if stray is None:
+                continue
+            try:
+                stray.unlink()
+                files += 1
+                log.info("清理压实残留：%s", stray.name)
+            except OSError:
+                pass
+    if dirs or files:
+        log.info("清理中断残留：%d 个目录 / %d 个文件", dirs, files)
+    return {"dirs": dirs, "files": files}
+
+
+def list_dates(source: str = "") -> list[str]:
+    """某个录制根下有哪些日期（降序）。`_available_dates` 的公开名——
+    app/cli 不该去碰下划线开头的东西。"""
+    return _available_dates(source)
+
+
+def is_packed(date: str, source: str = "") -> bool:
+    """这一天是不是压实态。"""
+    return _Day(date, source).is_pack
+
+
+def day_anchor_size(date: str, source: str = "") -> int:
+    """索引锚点文件的大小。**给缓存失效判据用**（/api/dag 的缓存键）——
+    形态无关：jsonl 天是主文件大小，pack 天是骨架大小，两者都随"这天有没有变"而变。"""
+    return _Day(date, source).anchor_size
+
+
+def day_info(date: str, source: str = "") -> dict:
+    """一天的形态与占用（设置页/CLI dates 用）。"""
+    day = _Day(date, source)
+    info = {"date": date, "source": source, "exists": day.exists,
+            "packed": day.is_pack, "bytes": day.disk_bytes(), "count": day.count()}
+    try:
+        anchor = day.pack_dir if day.is_pack else day.jsonl
+        info["mtime"] = anchor.stat().st_mtime
+    except OSError:
+        info["mtime"] = 0.0
+    m = day.manifest()
+    if m:
+        info["raw_bytes"] = m.get("raw_bytes")
+        info["packed_at"] = m.get("created_at")
+        info["ratio"] = (round(m["raw_bytes"] / info["bytes"], 1)
+                         if m.get("raw_bytes") and info["bytes"] else None)
+    return info
 
 
 def subscribe() -> tuple[queue.Queue, list[dict]]:
