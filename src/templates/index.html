@@ -1525,6 +1525,14 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
           <div><label class="lbl" for="cfgExplainPrompt" data-i18n="set.explain">AI 解读提示词</label><div class="sub" data-i18n="set.explainSub">AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响</div></div>
           <textarea id="cfgExplainPrompt" rows="4" data-i18n-ph="set.explainPh"></textarea>
         </div>
+        <div class="srow">
+          <div><label class="lbl" for="cfgAnaTurnsPrompt" data-i18n="set.anaTurns">轮级归纳提示词</label><div class="sub" data-i18n="set.anaTurnsSub">分析页「AI 归纳」的轮次任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架不受影响</div></div>
+          <textarea id="cfgAnaTurnsPrompt" rows="4" data-i18n-ph="set.anaTurnsPh"></textarea>
+        </div>
+        <div class="srow">
+          <div><label class="lbl" for="cfgAnaStepsPrompt" data-i18n="set.anaSteps">步级简报提示词</label><div class="sub" data-i18n="set.anaStepsSub">每步一行简报的任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架不受影响</div></div>
+          <textarea id="cfgAnaStepsPrompt" rows="4" data-i18n-ph="set.anaStepsPh"></textarea>
+        </div>
         <div class="srow test-row">
           <button class="btn tool" onclick="testLlm()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg><span class="lbl" data-i18n="set.test">测试连通</span></button>
           <span id="llmTestResult" class="sub test-result"></span>
@@ -1744,9 +1752,9 @@ zh: {
   "an.clearSel": "取消选择", "an.tidy": "整理贴纸",
   "an.del": "删除这张贴纸", "an.delConfirm": "删除这张贴纸？", "an.delYes": "删除", "an.delNo": "取消",
   "an.deleted": "已删除", "an.delFailed": "删除失败：{msg}", "an.tidied": "已按时间整理 {n} 张贴纸",
-  "an.ai.analyze": "AI 归纳轮次", "an.ai.redo": "重新归纳", "an.ai.running": "分析中…",
+  "an.ai.analyze": "AI 归纳", "an.ai.redo": "重新归纳", "an.ai.running": "分析中…",
   "an.ai.badge": "AI 归纳", "an.ai.intent": "意图：", "an.ai.risk": "注意：",
-  "an.ai.none": "骨架由程序抽取（步骤与轮次来自录制原文，可复算）。点「AI 归纳轮次」让模型在此之上补一层语义：每轮在做什么、想达到什么、哪里值得注意。",
+  "an.ai.none": "骨架由程序抽取（步骤与轮次来自录制原文，可复算）。点「AI 归纳」让模型在此之上补两层语义：每轮在做什么（轮头），以及每步一行简报（做了什么、为什么、发现了什么问题）。",
   "an.ai.meta": "{model} · {time}",
   "an.ai.dropped": "模型引用了 {n} 个不存在的步号，已剔除",
   "an.ai.partialBrief": "{n} 批步级简报生成失败，对应步显示机械信息",
@@ -2034,6 +2042,8 @@ zh: {
   "set.explain": "AI 解读提示词",
   "set.explainSub": "AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响",
   "set.explainPh": "请用通俗的语言解释这段内容在做什么：它是谁发给谁的、想达到什么目的、关键动作有哪些。遇到代码或工具调用，说明它的作用即可，不要逐行复述。最后用一两句话总结。",
+  "set.anaTurnsPh": "分析任务：按 turn（轮次）归纳……（需保留输出 JSON 格式约定：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
+  "set.anaStepsPh": "分析任务：用简单平实的语言复述每个 step 在做什么……（需保留输出 JSON 格式约定：{\"steps\":[{\"step\":1,\"brief\":\"…\"}]}）",
   "set.test": "测试连通", "set.testing": "测试中…",
   "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
   "set.inst.title": "运行中的实例", "set.inst.scanLbl": "扫描范围", "set.inst.refresh": "刷新", "set.inst.scanning": "扫描中…",
@@ -2096,9 +2106,9 @@ en: {
   "an.clearSel": "Clear selection", "an.tidy": "Tidy up",
   "an.del": "Delete this sticker", "an.delConfirm": "Delete this sticker?", "an.delYes": "Delete", "an.delNo": "Cancel",
   "an.deleted": "Deleted", "an.delFailed": "Delete failed: {msg}", "an.tidied": "Tidied {n} stickers by time",
-  "an.ai.analyze": "AI turn summary", "an.ai.redo": "Summarise again", "an.ai.running": "Analysing…",
+  "an.ai.analyze": "AI summary", "an.ai.redo": "Summarise again", "an.ai.running": "Analysing…",
   "an.ai.badge": "AI", "an.ai.intent": "Intent: ", "an.ai.risk": "Watch: ",
-  "an.ai.none": "The skeleton is extracted by code — steps and turns come from the recording itself and can be recomputed. Click \"AI turn summary\" to add a semantic layer on top: what each turn is doing, what it wants, and what is worth noticing.",
+  "an.ai.none": "The skeleton is extracted by code — steps and turns come from the recording itself and can be recomputed. Click \"AI summary\" to add two semantic layers on top: what each turn is doing (turn headers), and a one-line brief per step (what was done, why, what turned up).",
   "an.ai.meta": "{model} · {time}",
   "an.ai.dropped": "{n} step number(s) the model invented were dropped",
   "an.ai.partialBrief": "{n} step-brief batch(es) failed; those steps show raw facts",
@@ -2388,6 +2398,8 @@ en: {
   "set.explain": "Ask-AI prompt",
   "set.explainSub": "Task description for Ask AI; empty = built-in default. The injection guard is built-in and unaffected",
   "set.explainPh": "Explain in plain language what this content is doing: who is sending it to whom, what it is trying to achieve, and what the key actions are. For code or tool calls, describe their purpose instead of going line by line. End with a one- or two-sentence summary.",
+  "set.anaTurnsPh": "Task: summarise the conversation by turn… (keep the JSON output format: {\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"})",
+  "set.anaStepsPh": "Task: retell each step in plain simple language… (keep the JSON output format: {\"steps\":[{\"step\":1,\"brief\":\"…\"}]})",
   "set.test": "Test connection", "set.testing": "Testing…",
   "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
   "set.inst.title": "Running instances", "set.inst.scanLbl": "Scan range", "set.inst.refresh": "Refresh", "set.inst.scanning": "Scanning…",
@@ -2450,9 +2462,9 @@ ja: {
   "an.clearSel": "選択解除", "an.tidy": "付箋を整列",
   "an.del": "この付箋を削除", "an.delConfirm": "この付箋を削除しますか？", "an.delYes": "削除", "an.delNo": "キャンセル",
   "an.deleted": "削除しました", "an.delFailed": "削除に失敗：{msg}", "an.tidied": "{n} 枚を時刻順に整列しました",
-  "an.ai.analyze": "AI でターンを要約", "an.ai.redo": "再度要約", "an.ai.running": "分析中…",
+  "an.ai.analyze": "AI で要約", "an.ai.redo": "再度要約", "an.ai.running": "分析中…",
   "an.ai.badge": "AI 要約", "an.ai.intent": "意図：", "an.ai.risk": "注意：",
-  "an.ai.none": "スケルトンはプログラムが抽出したものです（ステップとターンは記録原文由来で再計算可能）。「AI でターンを要約」を押すと、その上に意味の層を重ねます：各ターンが何をしていて、何を達成しようとし、どこに注意すべきか。",
+  "an.ai.none": "スケルトンはプログラムが抽出したものです（ステップとターンは記録原文由来で再計算可能）。「AI で要約」を押すと、その上に二層の意味を重ねます：各ターンの要約（ターン見出し）と、各ステップ一行のブリーフ（何をしたか・なぜ・何が分かったか）。",
   "an.ai.meta": "{model} · {time}",
   "an.ai.dropped": "モデルが挙げた存在しないステップ番号 {n} 件を除外しました",
   "an.ai.partialBrief": "{n} バッチのステップ要約に失敗、該当ステップは生の事実表示",
@@ -2741,6 +2753,8 @@ ja: {
   "set.explain": "AI 解説プロンプト",
   "set.explainSub": "AI 解説のタスク記述；空欄＝内蔵デフォルト。注入対策ガードは内蔵のため影響を受けません",
   "set.explainPh": "この内容が何をしているのか、わかりやすい言葉で説明してください：誰が誰に送ったものか、何を達成しようとしているのか、主要なアクションは何か。コードやツール呼び出しは逐行ではなく役割を説明してください。最後に1〜2文でまとめてください。",
+  "set.anaTurnsPh": "タスク：ターンごとに会話を要約…（JSON 出力形式を維持：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
+  "set.anaStepsPh": "タスク：各ステップを平易な言葉で復述…（JSON 出力形式を維持：{\"steps\":[{\"step\":1,\"brief\":\"…\"}]}）",
   "set.test": "接続テスト", "set.testing": "テスト中…",
   "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
   "set.inst.title": "実行中のインスタンス", "set.inst.scanLbl": "スキャン範囲", "set.inst.refresh": "更新", "set.inst.scanning": "スキャン中…",
@@ -6326,6 +6340,8 @@ async function loadConfig(){
     $("cfgChatCtxMax").value = tr.chat_context_max_chars ?? 20000;
     $("cfgTransLang").value = tr.target_lang || "zh";
     $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
+    $("cfgAnaTurnsPrompt").value = (cfg.analysis || {}).turns_prompt || "";
+    $("cfgAnaStepsPrompt").value = (cfg.analysis || {}).steps_prompt || "";
     $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
     $("aboutDataDir").textContent = about.data_dir || "—";
     $("aboutLogPath").textContent = about.log_path || "—";
@@ -6651,6 +6667,8 @@ async function saveConfig(){
       target_lang: $("cfgTransLang").value,
     },
     explain: { prompt: $("cfgExplainPrompt").value.trim() },
+    analysis: { turns_prompt: $("cfgAnaTurnsPrompt").value.trim(),
+                steps_prompt: $("cfgAnaStepsPrompt").value.trim() },
   };
   try{
     const r = await fetch("/api/config", {

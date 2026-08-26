@@ -7,6 +7,7 @@
   - translate: LLM 配置（api_key/base_url/model/temperature 供翻译与 AI 解读共用）
     + target_lang: 翻译目标语言 zh/en/ja（默认 zh）
   - explain: AI 解读配置（prompt 留空 = 用内置默认提示词，按界面语言取）
+  - analysis: 归纳提示词（turns_prompt/steps_prompt 留空 = 内置默认任务段，260826 开放）
 
 已移除：`redact_headers`（260713）。它曾是个假开关——设置页承诺"可关闭脱敏"，而 `proxy._redact()`
 一直是无条件调用的。没有把它接线实现，而是**连开关一起删掉、脱敏恒开**：真让它生效 =
@@ -58,6 +59,12 @@ _DEFAULTS = {
     },
     "explain": {
         "prompt": "",
+    },
+    # 归纳提示词（260826 开放进设置页）：留空 = 内置默认任务段，非空整段替换。
+    # 防注入 GUARD 骨架在 app.py 固定拼接、不进配置——用户能调任务描述，不能拆隔离墙。
+    "analysis": {
+        "turns_prompt": "",
+        "steps_prompt": "",
     },
 }
 

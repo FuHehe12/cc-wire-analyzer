@@ -384,20 +384,23 @@ ok(len(APP._sanitize_analysis({"turns": [{"turn": 1, "steps": [1],
 ok(APP._json_from_llm('```json\n{"a":1}\n```')["a"] == 1, "带 markdown 围栏的 JSON 能解析")
 ok(APP._json_from_llm('这是结果：{"a":2} 完毕')["a"] == 2, "前后有闲话的 JSON 能解析")
 
-# 步级简报批处理（260826）：纯工具步不进模型、截断与批预算——都不发网络请求的部分
+# 步级简报批处理（260826）：纯工具步不进模型、头尾截断与批预算——都不发网络请求的部分
 _bsteps = [
     {"step": 1, "turn": 1, "trigger": {"kind": "user"},
      "thinking": "想先看结构再动手", "reply": "", "tools": []},
     {"step": 2, "turn": 1, "trigger": {"kind": "user"}, "thinking": "", "reply": "",
      "tools": [{"name": "Grep"}, {"name": "Read"}]},
     {"step": 3, "turn": 1, "trigger": {"kind": "user"},
-     "thinking": "x" * 9000, "reply": "", "tools": []},
+     "thinking": "开头任务设定" + "x" * 9000 + "结尾决定用方案B", "reply": "", "tools": []},
 ]
 _batches = APP._step_brief_batches(_bsteps)
 ok([r["step"] for b in _batches for r in b] == [1, 3],
    "纯工具步不进模型（前端标签簇就是它们的全部形态）")
-ok(len(_batches[-1][-1]["thinking"]) <= APP.STEP_BRIEF_THINK_CLIP,
-   "单步思考链截断到喂入上限")
+_t3 = _batches[-1][-1]["thinking"]
+ok(len(_t3) <= APP.STEP_BRIEF_THINK_HEAD + APP.STEP_BRIEF_THINK_TAIL + 40,
+   "超长思考链截断到头+尾预算内")
+ok(_t3.startswith("开头任务设定") and "结尾决定用方案B" in _t3 and "中段截断" in _t3,
+   "头尾保留、中段截断且自陈（结论常在尾部，一刀切头会丢决定）")
 ok(all(len(json.dumps({"steps": b}, ensure_ascii=False)) <= APP.STEP_BRIEF_BATCH_CHARS + 400
        for b in _batches), "每批输入不超字符预算（单步截断后仍可能略超，容包装余量）")
 
