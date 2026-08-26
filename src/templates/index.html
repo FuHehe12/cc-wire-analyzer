@@ -36,6 +36,12 @@
   --radius-md:12px;
   --radius-lg:16px;
   --brand:var(--accent);
+  /* 分析视图（260808 加入）沿用的是一套老命名，而 token 体系里从来没有它们：实测 21 处
+     `var(--text)/--text-dim/--bg` 引用落空（无 fallback = 整条声明作废，颜色静默继承父级），
+     `var(--mono,…)` 则一路落到系统 Consolas，把「字体打包进产物保证跨平台一致」也绕过了。
+     文字色这两个给别名（引用点多、语义一一对应），字体那两个直接改回 --font-mono/--font-body：
+     它们的旧写法自带 fallback，留着别名等于留一条"看起来能用"的第二条路。 */
+  --text:var(--apple-text); --text-dim:var(--apple-text-secondary);
   --canvas-pattern:none;
   --canvas-pattern-size:auto;
 }
@@ -86,6 +92,39 @@
   --terminal-text:#D6D6DE; --input-focus-bg:#2F2F3C;
   --danger-node-hover:#3A2020; --node-hover-ring:rgba(232,184,85,0.35);
   --theme-selected-ring:rgba(232,184,85,0.24);
+  /* ---- 白板与贴纸（260826 token 化）----
+     此前这一族颜色全写死在组件里，于是两套浅色外观下白板是嵌在纸面上的一块深色孤岛。
+     纸感由四层构成——纸色渐变 / 顶部胶带 / 右下折角 / 投影+内高光——四层都得跟着外观换：
+     只换纸色会得到「浅色纸配黑折角」，比不换更糟。 */
+  --board-bg:#25252F; --board-grid:rgba(255,255,255,.055);
+  --board-inset:inset 0 2px 14px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.02);
+  --paper-1:linear-gradient(168deg,#3A332A 0%,#2B261F 62%);
+  --paper-2:linear-gradient(168deg,#33372E 0%,#262A22 62%);
+  --paper-3:linear-gradient(168deg,#38312F 0%,#2A2422 62%);
+  --paper-cap:linear-gradient(168deg,#2B323C 0%,#212730 62%);
+  --paper-border:rgba(0,0,0,.42);
+  --paper-shadow:0 10px 18px -6px rgba(0,0,0,.62),0 2px 4px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.10);
+  --paper-shadow-hover:0 18px 28px -8px rgba(0,0,0,.7),0 3px 6px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.14);
+  --paper-shadow-drag:0 26px 40px -10px rgba(0,0,0,.75);
+  --paper-tape:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
+  --paper-tape-border:rgba(255,255,255,.08);
+  --paper-fold:rgba(0,0,0,.45);
+  --paper-text:rgba(255,255,255,.94); --paper-text-2:rgba(255,255,255,.68);
+  --paper-text-3:rgba(255,255,255,.62); --paper-kind:rgba(255,255,255,.58);
+  --paper-tag-bg:rgba(0,0,0,.3); --paper-tag-fg:rgba(255,255,255,.72);
+  --paper-tag-border:rgba(255,255,255,.08);
+  --paper-x:rgba(255,255,255,.42); --paper-x-hover-bg:rgba(0,0,0,.35);
+  --paper-confirm-bg:rgba(12,10,8,.90); --paper-role-fg:#15130F;
+  /* 信号四色（犹豫/分支/自我修正/不确定）与泳道色板同理：一组色值不可能同时落在 #131318
+     和纸面上还都过 AA，所以三套各给一份，前景色随之翻面。 */
+  --sig-h:#C8912F; --sig-b:#4F9AD8; --sig-c:#C0645A; --sig-u:#7F8B96; --sig-fg:#15130F;
+  --row-hover:rgba(232,184,85,0.10); --chip-soft-bg:rgba(255,255,255,.08);
+  --chip-thinking-bg:#4A5568; --chip-err-soft-bg:rgba(180,69,47,.12);
+  --live-bg:#3D8B2E; --live-fg:#FFFFFF; --pulse-ring:rgba(79,122,58,.35);
+  --err-ring:rgba(248,113,113,0.25); --err-ring-strong:rgba(248,113,113,0.40);
+  --toggle-track:#2E2E38; --toggle-knob:#FFFFFF;
+  --mark-ic-bg:color-mix(in srgb,var(--brand) 32%,transparent);
+  --mark-hg-bg:color-mix(in srgb,var(--warn) 28%,transparent);
 }
 /* 经典暖灰：origin 的功能型视觉基线。保留较平的白卡和暖金，用来和两套改版公平对照。 */
 html[data-theme="classic"]{
@@ -119,6 +158,36 @@ html[data-theme="classic"]{
   --terminal-bg:#F5F2EC; --terminal-code-bg:#EEE9E0; --terminal-text:#39342E;
   --input-focus-bg:#FFFDF9; --danger-node-hover:#F8E3DC; --node-hover-ring:rgba(201,138,37,0.32);
   --theme-selected-ring:rgba(201,138,37,0.22);
+  /* 白板走软木/牛皮的暖调，贴纸是奶油、嫩绿、藕粉三色便签，字用深棕。
+     纸上文字对比度按**四张纸里最不利的那张**算（小字 AA≥4.5）：正文 #3A3026 ≥9.7:1、
+     次级 #6B5C46 ≥4.9:1、时间戳 #665942 ≥5.1:1、类别标签 #6E6049 ≥4.6:1，四项全过。 */
+  --board-bg:#D3C8B2; --board-grid:rgba(94,72,40,.12);
+  --board-inset:inset 0 3px 16px rgba(90,70,45,.22),inset 0 0 0 1px rgba(255,255,255,.42);
+  --paper-1:linear-gradient(168deg,#FFF7DE 0%,#F3E4B6 62%);
+  --paper-2:linear-gradient(168deg,#F2F8E1 0%,#DDEAC2 62%);
+  --paper-3:linear-gradient(168deg,#FDEDE5 0%,#F5DACB 62%);
+  --paper-cap:linear-gradient(168deg,#E9F1F9 0%,#D3E2F0 62%);
+  --paper-border:rgba(120,95,55,.24);
+  --paper-shadow:0 10px 18px -6px rgba(90,70,45,.40),0 3px 6px rgba(90,70,45,.26),inset 0 1px 0 rgba(255,255,255,.90);
+  --paper-shadow-hover:0 18px 28px -8px rgba(90,70,45,.46),0 4px 8px rgba(90,70,45,.30),inset 0 1px 0 rgba(255,255,255,.95);
+  --paper-shadow-drag:0 26px 40px -10px rgba(90,70,45,.50);
+  --paper-tape:linear-gradient(180deg,rgba(255,251,240,.60),rgba(224,209,180,.34));
+  --paper-tape-border:rgba(120,95,55,.13);
+  --paper-fold:rgba(120,95,55,.18);
+  --paper-text:#3A3026; --paper-text-2:#6B5C46;
+  --paper-text-3:#665942; --paper-kind:#6E6049;
+  --paper-tag-bg:rgba(120,95,55,.13); --paper-tag-fg:#5C4E3A;
+  --paper-tag-border:rgba(120,95,55,.20);
+  --paper-x:rgba(90,70,45,.58); --paper-x-hover-bg:rgba(90,70,45,.14);
+  --paper-confirm-bg:rgba(250,246,238,.94); --paper-role-fg:#1A1206;
+  --sig-h:#8A5A12; --sig-b:#265F92; --sig-c:#8F3A30; --sig-u:#5F6A73; --sig-fg:#FFFFFF;
+  --row-hover:rgba(201,138,37,0.11); --chip-soft-bg:rgba(91,72,45,.10);
+  --chip-thinking-bg:#6B6255; --chip-err-soft-bg:rgba(168,60,42,.10);
+  --live-bg:#2F7A24; --live-fg:#FFFFFF; --pulse-ring:rgba(53,106,43,.30);
+  --err-ring:rgba(168,60,42,0.22); --err-ring-strong:rgba(168,60,42,0.38);
+  --toggle-track:#C6BCAA; --toggle-knob:#FFFFFF;
+  --mark-ic-bg:color-mix(in srgb,var(--brand) 46%,transparent);
+  --mark-hg-bg:color-mix(in srgb,var(--warn) 40%,transparent);
 }
 /* 实验室日光：冷矿物纸面 + 精密青蓝。轻微 24px 网格只留在画布，呼应流量测量和 DAG 坐标。 */
 html[data-theme="light"]{
@@ -152,6 +221,37 @@ html[data-theme="light"]{
   --terminal-bg:#F1F6F7; --terminal-code-bg:#E5EFF1; --terminal-text:#263640;
   --input-focus-bg:#FFFFFF; --danger-node-hover:#F8DEDC; --node-hover-ring:rgba(30,105,114,0.32);
   --theme-selected-ring:rgba(30,105,114,0.22);
+  /* 白板是冷矿物板面 + 青蓝网格，贴纸走清透的浅色纸（便签黄 / 冷绿 / 淡紫），
+     录制快照那张继续用更冷的蓝，保持「整条录制 vs 一段提示词」一眼可分。
+     纸上文字同样按最不利的那张纸算：正文 #17212B ≥11.9:1、次级 #4A5B66 ≥5.1:1、
+     时间戳 #4E5C63 ≥5.0:1、类别标签 #546269 ≥4.6:1。 */
+  --board-bg:#D4DFE3; --board-grid:rgba(30,105,114,.13);
+  --board-inset:inset 0 3px 16px rgba(31,57,66,.20),inset 0 0 0 1px rgba(255,255,255,.50);
+  --paper-1:linear-gradient(168deg,#FCF5E1 0%,#EADFC2 62%);
+  --paper-2:linear-gradient(168deg,#EAF6F0 0%,#D4E9DF 62%);
+  --paper-3:linear-gradient(168deg,#F4EFF7 0%,#E4DAEC 62%);
+  --paper-cap:linear-gradient(168deg,#E4EFF8 0%,#CBDFF0 62%);
+  --paper-border:rgba(55,85,96,.22);
+  --paper-shadow:0 10px 20px -6px rgba(31,57,66,.30),0 3px 6px rgba(31,57,66,.20),inset 0 1px 0 rgba(255,255,255,.95);
+  --paper-shadow-hover:0 18px 30px -8px rgba(31,57,66,.36),0 4px 8px rgba(31,57,66,.24),inset 0 1px 0 rgba(255,255,255,1);
+  --paper-shadow-drag:0 26px 42px -10px rgba(31,57,66,.40);
+  --paper-tape:linear-gradient(180deg,rgba(255,255,255,.62),rgba(200,218,225,.32));
+  --paper-tape-border:rgba(55,85,96,.13);
+  --paper-fold:rgba(55,85,96,.16);
+  --paper-text:#17212B; --paper-text-2:#4A5B66;
+  --paper-text-3:#4E5C63; --paper-kind:#546269;
+  --paper-tag-bg:rgba(55,85,96,.11); --paper-tag-fg:#3F5058;
+  --paper-tag-border:rgba(55,85,96,.18);
+  --paper-x:rgba(31,57,66,.58); --paper-x-hover-bg:rgba(31,57,66,.12);
+  --paper-confirm-bg:rgba(247,250,251,.94); --paper-role-fg:#FFFFFF;
+  --sig-h:#7A5B13; --sig-b:#2A64A1; --sig-c:#A93635; --sig-u:#556772; --sig-fg:#FFFFFF;
+  --row-hover:rgba(30,105,114,0.09); --chip-soft-bg:rgba(55,85,96,.10);
+  --chip-thinking-bg:#55707C; --chip-err-soft-bg:rgba(169,54,53,.10);
+  --live-bg:#1F7A53; --live-fg:#FFFFFF; --pulse-ring:rgba(35,122,83,.28);
+  --err-ring:rgba(169,54,53,0.22); --err-ring-strong:rgba(169,54,53,0.38);
+  --toggle-track:#AFC0C7; --toggle-knob:#FFFFFF;
+  --mark-ic-bg:color-mix(in srgb,var(--brand) 42%,transparent);
+  --mark-hg-bg:color-mix(in srgb,var(--warn) 38%,transparent);
   --canvas-pattern:
     linear-gradient(rgba(30,105,114,0.045) 1px,transparent 1px),
     linear-gradient(90deg,rgba(30,105,114,0.045) 1px,transparent 1px);
@@ -252,9 +352,9 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
   border:1px solid transparent;}
 .chip.outline{background:transparent;color:var(--apple-text-secondary);border:1px solid var(--border);font-weight:600;}
 /* 没见过的 anthropic-beta 特性：CC 启用了新能力，可能带来还不认识的字段/响应块（260731） */
-.chip.beta-new{color:var(--warn,#b26a00);border-color:var(--warn,#b26a00);}
+.chip.beta-new{color:var(--warn);border-color:var(--warn);}
 .chip.ok-soft{background:var(--ok-soft-bg);color:var(--ok-soft-fg);}
-.chip.err-soft{background:rgba(180,69,47,.12);color:var(--err);}
+.chip.err-soft{background:var(--chip-err-soft-bg);color:var(--err);}
 .chip.probe{background:var(--text-tertiary);color:var(--chip-probe-fg);}
 .mono{font-family:var(--font-mono);}
 [hidden]{display:none !important;}
@@ -274,8 +374,8 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
 .dot{width:10px;height:10px;border-radius:50%;background:var(--apple-secondary);flex-shrink:0;}
 .dot.on{background:var(--ok);animation:pulse 1.8s ease-in-out infinite;}
 .dot.err{background:var(--err);}   /* 外部接管：代理被绕过，监控断档 */
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(79,122,58,.35);}50%{box-shadow:0 0 0 5px rgba(79,122,58,0);}}
-.live-chip{background:#3D8B2E;color:#fff;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--pulse-ring);}50%{box-shadow:0 0 0 5px transparent;}}
+.live-chip{background:var(--live-bg);color:var(--live-fg);font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:6px;
   font-family:var(--font-mono);letter-spacing:.05em;}
 .status-route{font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -376,7 +476,7 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
 @media (max-width:1100px){
   .cap-row{grid-template-columns:82px 8px 146px 84px 96px 40px 162px 88px minmax(0,1fr) auto;gap:8px;}
 }
-.cap-row:hover{background:rgba(232,184,85,0.10);}
+.cap-row:hover{background:var(--row-hover);}
 .cap-row:last-of-type{border-bottom:none;}
 .cap-row.new{animation:fadeIn .45s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
@@ -386,7 +486,7 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
 #loadBadge{position:fixed;right:16px;bottom:16px;z-index:200;display:none;align-items:center;gap:8px;
   background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:7px 14px;
   font-family:var(--font-body);font-size:11.5px;font-weight:600;color:var(--apple-text-secondary);
-  box-shadow:0 4px 16px rgba(0,0,0,.12);animation:fadeIn .18s ease;}
+  box-shadow:var(--apple-shadow);animation:fadeIn .18s ease;}
 #loadBadge.on{display:flex;}
 #loadBadge .ring{width:13px;height:13px;border-radius:50%;flex-shrink:0;
   border:2px solid var(--border);border-top-color:var(--gold-text);animation:lbRot .8s linear infinite;}
@@ -581,8 +681,8 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .dag-node.mid:hover{opacity:1;}
 .dag-node.chat{border-left-style:dashed;opacity:.88;}
 /* 连续错误折叠卡（260719）：刺眼（红底）但只占一格——错误洪峰天（实测 2029 连错）不把图撑爆 */
-.dag-node.err-run{background:var(--bg-error-soft);border-left-color:var(--err);box-shadow:var(--apple-shadow-sm),inset 0 0 0 1px rgba(248,113,113,0.25);}
-.dag-node.err-run:hover{background:var(--danger-node-hover);transform:translateY(-1px);box-shadow:var(--apple-shadow),inset 0 0 0 1px rgba(248,113,113,0.4);}
+.dag-node.err-run{background:var(--bg-error-soft);border-left-color:var(--err);box-shadow:var(--apple-shadow-sm),inset 0 0 0 1px var(--err-ring);}
+.dag-node.err-run:hover{background:var(--danger-node-hover);transform:translateY(-1px);box-shadow:var(--apple-shadow),inset 0 0 0 1px var(--err-ring-strong);}
 /* 辅助聚合卡：轮卡同族卡片态，虚线内框暗示「收起的一摞」；边线/计数章用主线色（260802） */
 .dag-node.aux-agg{background:var(--bg-card);border-left-width:4px;cursor:pointer;overflow:hidden;
   outline:1px dashed var(--border);outline-offset:-4px;}
@@ -678,10 +778,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .inst-note{font-size:10.5px;color:var(--apple-secondary);line-height:1.55;}
 .inst-note.warn{color:var(--warn);}
 .in-group{display:flex;gap:8px;align-items:center;}
-.toggle{position:relative;width:36px;height:20px;border-radius:10px;background:var(--border);cursor:pointer;
+.toggle{position:relative;width:36px;height:20px;border-radius:10px;background:var(--toggle-track);cursor:pointer;
   transition:var(--apple-transition);flex-shrink:0;border:none;}
 .toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
-  background:#fff;transition:var(--apple-transition);box-shadow:0 1px 3px rgba(0,0,0,.18);}
+  background:var(--toggle-knob);transition:var(--apple-transition);box-shadow:0 1px 3px rgba(0,0,0,.18);}
 .toggle.on{background:var(--accent);}
 .toggle.on::after{left:18px;}
 .theme-row{display:block;}
@@ -773,16 +873,16 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 
 /* 贴纸上的删除入口：平时隐着，hover 才出——白板上一排 × 会让它像个待办清单 */
 .sticky-x{position:absolute;right:4px;top:2px;width:20px;height:20px;line-height:18px;
-  padding:0;border:none;background:transparent;color:rgba(255,255,255,.34);
+  padding:0;border:none;background:transparent;color:var(--paper-x);
   font-size:16px;cursor:pointer;border-radius:4px;opacity:0;transition:opacity .12s;}
 .sticky:hover .sticky-x{opacity:1;}
-.sticky-x:hover{background:rgba(0,0,0,.35);color:var(--err,#e06c6c);}
+.sticky-x:hover{background:var(--paper-x-hover-bg);color:var(--err);}
 /* 二次确认盖在纸面上：删除不可撤销，不能一点就没 */
 .sticky-confirm{position:absolute;inset:0;border-radius:3px;z-index:3;
-  background:rgba(12,10,8,.9);display:flex;flex-direction:column;align-items:center;
+  background:var(--paper-confirm-bg);display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:8px;font-size:12px;color:var(--text);}
 .sticky-confirm .btn{padding:3px 12px;font-size:12px;}
-.btn.danger{background:var(--err,#c04b4b);border-color:var(--err,#c04b4b);color:#fff;}
+.btn.danger{background:var(--err);border-color:var(--err);color:#fff;}
 /* 骨架的 AI 语义层（260809）。**视觉上必须与程序骨架分得开**——底色偏移 + 「AI 归纳」角标，
    让人一眼看出哪行是模型说的、哪行是从录制里抽出来的事实。分层如果只存在于后端，
    用户读到的仍是一份分不清来源的文本。 */
@@ -817,17 +917,17 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 /* 信号分色：四类各一色，扫一眼就知道哪种是"在犹豫"哪种是"在分叉" */
 /* 信号 chip 分色。**兜底底色必须写在分色规则之前**：同特异性下靠源码顺序决胜，
    写在后面会把四种颜色全盖成一种（260808 实测踩过）。 */
-.chip.sig{color:#15130f;font-weight:600;background:var(--text-faint);}
-.chip.sig-h{background:#c8912f;}   /* 犹豫 */
-.chip.sig-b{background:#4f9ad8;}   /* 分支 */
-.chip.sig-c{background:#c0645a;}   /* 自我修正 */
-.chip.sig-u{background:#7f8b96;}   /* 不确定 */
+.chip.sig{color:var(--sig-fg);font-weight:600;background:var(--sig-u);}
+.chip.sig-h{background:var(--sig-h);}   /* 犹豫 */
+.chip.sig-b{background:var(--sig-b);}   /* 分支 */
+.chip.sig-c{background:var(--sig-c);}   /* 自我修正 */
+.chip.sig-u{background:var(--sig-u);}   /* 不确定 */
 /* 轮次骨架头部与视图切换 */
 .an-steps-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
 .an-viewsw{margin-left:auto;display:flex;gap:4px;}
 .an-vbtn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
   border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
-.an-vbtn.active{background:var(--brand);border-color:var(--brand);color:var(--bg);font-weight:600;}
+.an-vbtn.active{background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);font-weight:600;}
 /* 树视图：一条主干竖线，节点挂在上面 */
 .an-tree{position:relative;padding-left:20px;margin-top:8px;}
 .an-tree::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;
@@ -835,20 +935,20 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .tnode{position:relative;padding:7px 0 7px 10px;cursor:pointer;border-radius:6px;}
 .tnode:hover{background:var(--bg-soft);}
 .tdot{position:absolute;left:-19px;top:14px;width:9px;height:9px;border-radius:50%;
-  background:var(--text-faint);box-shadow:0 0 0 3px var(--bg-card,#1c1c22);}
+  background:var(--text-faint);box-shadow:0 0 0 3px var(--bg-card);}
 /* 有分支/自我修正信号的节点：实心强调 + 一条横向分叉小线 */
-.tnode.forked .tdot{background:#4f9ad8;width:11px;height:11px;left:-20px;}
+.tnode.forked .tdot{background:var(--sig-b);width:11px;height:11px;left:-20px;}
 .tnode.forked::before{content:"";position:absolute;left:-9px;top:19px;width:12px;height:2px;
-  background:#4f9ad8;opacity:.6;}
+  background:var(--sig-b);opacity:.6;}
 .thead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;}
 .tmarks{margin:5px 0 0 2px;display:flex;flex-direction:column;gap:4px;}
 .tmark{font-size:12px;color:var(--text-dim);line-height:1.55;padding-left:8px;
   border-left:2px solid var(--border);}
-.tmark.sig-b{border-left-color:#4f9ad8;}
-.tmark.sig-c{border-left-color:#c0645a;}
-.tmark.sig-h{border-left-color:#c8912f;}
+.tmark.sig-b{border-left-color:var(--sig-b);}
+.tmark.sig-c{border-left-color:var(--sig-c);}
+.tmark.sig-h{border-left-color:var(--sig-h);}
 .tmk{font-size:10px;padding:0 5px;border-radius:7px;margin-right:6px;
-  background:rgba(255,255,255,.08);color:var(--text-faint);}
+  background:var(--chip-soft-bg);color:var(--text-faint);}
 .tdid{margin-top:5px;font-size:11px;color:var(--text-dim);display:flex;gap:5px;
   align-items:center;flex-wrap:wrap;}
 .tdid.dim{color:var(--text-faint);}
@@ -859,68 +959,66 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 /* 白板：压暗的底 + 细网格 + 内阴影，做出"一块板子嵌在页面里"的下沉感 */
 .an-board{position:relative;border-radius:12px;margin-bottom:14px;overflow:hidden;
   background:
-    linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px) 0 0/28px 28px,
-    linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px) 0 0/28px 28px,
-    var(--bg-soft);
+    linear-gradient(var(--board-grid) 1px,transparent 1px) 0 0/28px 28px,
+    linear-gradient(90deg,var(--board-grid) 1px,transparent 1px) 0 0/28px 28px,
+    var(--board-bg);
   border:1px solid var(--border);
-  box-shadow:inset 0 2px 14px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.02);}
+  box-shadow:var(--board-inset);}
 .an-board .an-empty{position:absolute;left:22px;top:22px;max-width:520px;}
 /* 贴纸：纸感来自四层——偏暖的纸色（明显亮于板面，否则读成"深色卡片"而非"贴在板上的纸"）、
    顶部一条胶带、右下角折角、外投影 + 顶部高光边。三张纸色轮换，靠 sid 定死。 */
 .sticky{position:absolute;width:232px;height:132px;box-sizing:border-box;
   padding:12px 13px 10px;border-radius:3px;cursor:pointer;user-select:none;
   transform:rotate(var(--tilt,0deg));transform-origin:50% 6%;
-  background:linear-gradient(168deg,var(--paper-hi,#3a332a) 0%,var(--paper-lo,#2b261f) 62%);
-  border:1px solid rgba(0,0,0,.42);
-  box-shadow:0 10px 18px -6px rgba(0,0,0,.62), 0 2px 4px rgba(0,0,0,.5),
-             inset 0 1px 0 rgba(255,255,255,.10);
+  background:var(--paper,var(--paper-1));
+  border:1px solid var(--paper-border);
+  box-shadow:var(--paper-shadow);
   transition:transform .13s ease, box-shadow .13s ease;}
 /* 胶带：贴纸顶部中间那条半透明带 */
 .sticky::before{content:"";position:absolute;left:50%;top:-7px;width:56px;height:15px;
   transform:translateX(-50%) rotate(-1.5deg);
-  background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
-  border:1px solid rgba(255,255,255,.08);border-radius:1px;
-  box-shadow:0 1px 3px rgba(0,0,0,.35);}
+  background:var(--paper-tape);
+  border:1px solid var(--paper-tape-border);border-radius:1px;
+  box-shadow:0 1px 3px rgba(0,0,0,.18);}
 /* 折角：右下角翻起的一小片 */
 .sticky::after{content:"";position:absolute;right:0;bottom:0;width:20px;height:20px;
-  background:linear-gradient(135deg,transparent 50%,rgba(0,0,0,.45) 50%);
+  background:linear-gradient(135deg,transparent 50%,var(--paper-fold) 50%);
   border-bottom-right-radius:3px;}
-.sticky:nth-of-type(3n+1){--paper-hi:#3a332a;--paper-lo:#2b261f;}
-.sticky:nth-of-type(3n+2){--paper-hi:#33372e;--paper-lo:#262a22;}
-.sticky:nth-of-type(3n){--paper-hi:#38312f;--paper-lo:#2a2422;}
+.sticky:nth-of-type(3n+1){--paper:var(--paper-1);}
+.sticky:nth-of-type(3n+2){--paper:var(--paper-2);}
+.sticky:nth-of-type(3n){--paper:var(--paper-3);}
 .sticky:hover{transform:rotate(0deg) translateY(-3px);
-  box-shadow:0 18px 28px -8px rgba(0,0,0,.7), 0 3px 6px rgba(0,0,0,.55),
-             inset 0 1px 0 rgba(255,255,255,.14);z-index:5;}
+  box-shadow:var(--paper-shadow-hover);z-index:5;}
 .sticky.dragging{transform:rotate(1.2deg) scale(1.04);z-index:20;cursor:grabbing;
-  box-shadow:0 26px 40px -10px rgba(0,0,0,.75);}
+  box-shadow:var(--paper-shadow-drag);}
 /* 录制快照用冷色纸，一眼区分"整条录制"与"一段提示词" */
-.sticky.cap{--paper-hi:#2b323c;--paper-lo:#212730;}
+.sticky.cap{--paper:var(--paper-cap);}
 .sticky.sel-a,.sticky.sel-b{transform:rotate(0deg);}
 .sticky.sel-a{outline:2px solid var(--brand);outline-offset:2px;}
-.sticky.sel-b{outline:2px solid var(--ok,#3fa46a);outline-offset:2px;}
+.sticky.sel-b{outline:2px solid var(--ok);outline-offset:2px;}
 /* 角色徽章（左/右/析）。**在左上角，因为右上角是删除按钮**（260809 用户报）：
    两者原先都在右上且矩形相交，徽章有 z-index:2 而 .sticky-x 没有 —— 徽章赢得命中测试，
    于是「一选中就删不掉」。`pointer-events:none` 是第二道保险：它是纯展示物，
    任何情况下都不该参与命中测试，将来谁再把它挪回右上也不会重现这个 bug。 */
 .sticky-role{position:absolute;left:-9px;top:-9px;min-width:22px;height:22px;
   border-radius:11px;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;padding:0 7px;color:#15130f;z-index:2;
-  pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.5);}
+  font-size:11px;font-weight:700;padding:0 7px;color:var(--paper-role-fg);z-index:2;
+  pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.28);}
 .sticky.sel-a .sticky-role{background:var(--brand);}
-.sticky.sel-b .sticky-role{background:var(--ok,#3fa46a);}
+.sticky.sel-b .sticky-role{background:var(--ok);}
 .sticky-kind{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-  color:rgba(255,255,255,.42);}
-.sticky-title{font-size:13px;font-weight:600;color:rgba(255,255,255,.94);margin-top:3px;
+  color:var(--paper-kind);}
+.sticky-title{font-size:13px;font-weight:600;color:var(--paper-text);margin-top:3px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-family:var(--mono,ui-monospace,Consolas,monospace);}
-.sticky-meta{font-size:11px;color:rgba(255,255,255,.68);margin-top:4px;
+  font-family:var(--font-mono);}
+.sticky-meta{font-size:11px;color:var(--paper-text-2);margin-top:4px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.sticky-meta.dim{color:rgba(255,255,255,.44);}
+.sticky-meta.dim{color:var(--paper-text-3);}
 .sticky-tags{position:absolute;left:12px;bottom:9px;right:12px;display:flex;gap:4px;
   flex-wrap:wrap;overflow:hidden;height:18px;}
 .sticky-tag{font-size:10px;padding:1px 7px;border-radius:9px;
-  background:rgba(0,0,0,.3);color:rgba(255,255,255,.72);
-  border:1px solid rgba(255,255,255,.08);white-space:nowrap;}
+  background:var(--paper-tag-bg);color:var(--paper-tag-fg);
+  border:1px solid var(--paper-tag-border);white-space:nowrap;}
 
 /* ===== 分析视图（260808）===== */
 .an-head{display:flex;align-items:center;justify-content:space-between;gap:12px;
@@ -929,7 +1027,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-tab{background:transparent;border:1px solid var(--border);color:var(--text-dim);
   padding:6px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;}
 .an-tab:hover{color:var(--text);border-color:var(--text-faint);}
-.an-tab.active{background:var(--brand);border-color:var(--brand);color:var(--bg);font-weight:600;}
+.an-tab.active{background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);font-weight:600;}
 .an-usage{font-size:12px;color:var(--text-faint);}
 .an-pick{padding:12px 14px;margin-bottom:12px;}
 .an-pick-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -944,15 +1042,15 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-verdict,.an-guard,.an-hidden,.an-meta,.an-tier,.an-src,.an-steps,.an-stepfull,.an-diff{
   padding:12px 14px;margin-bottom:12px;}
 .an-verdict{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:3px solid var(--border);}
-.an-verdict.ok{border-left-color:var(--ok,#3fa46a);}
-.an-verdict.warn{border-left-color:var(--warn,#b26a00);}
+.an-verdict.ok{border-left-color:var(--ok);}
+.an-verdict.warn{border-left-color:var(--warn);}
 .an-verdict.diff{border-left-color:var(--brand);}
 .an-counts{font-size:12px;color:var(--text-faint);}
-.an-guard{border-left:3px solid var(--warn,#b26a00);}
+.an-guard{border-left:3px solid var(--warn);}
 .an-guard ul{margin:6px 0 0 18px;font-size:12px;color:var(--text-dim);line-height:1.7;}
 .an-hidden{border-left:3px solid var(--brand);}
-.an-tier.ok{border-left:3px solid var(--ok,#3fa46a);}
-.an-tier.warn{border-left:3px solid var(--warn,#b26a00);}
+.an-tier.ok{border-left:3px solid var(--ok);}
+.an-tier.warn{border-left:3px solid var(--warn);}
 .an-head-txt{font-size:11px;color:var(--text-faint);margin-top:3px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .an-a{color:var(--text-dim);}
@@ -965,12 +1063,12 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-sn{color:var(--text-faint);min-width:36px;font-variant-numeric:tabular-nums;}
 .an-tk{color:var(--text-dim);font-variant-numeric:tabular-nums;}
 /* diff 正文：等宽、可横向滚，不撑破页面 */
-.an-diff-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-family:var(--sans,system-ui);}
-.an-diff{overflow-x:auto;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:12px;
+.an-diff-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-family:var(--font-body);}
+.an-diff{overflow-x:auto;font-family:var(--font-mono);font-size:12px;
   line-height:1.65;}
 .dl{display:flex;gap:8px;white-space:pre-wrap;word-break:break-word;padding:0 4px;border-radius:3px;}
-.dl.del{background:color-mix(in srgb,var(--err,#c04b4b) 12%,transparent);}
-.dl.ins{background:color-mix(in srgb,var(--ok,#3fa46a) 12%,transparent);}
+.dl.del{background:color-mix(in srgb,var(--err) 12%,transparent);}
+.dl.ins{background:color-mix(in srgb,var(--ok) 12%,transparent);}
 .dl.fold-mark{color:var(--text-faint);justify-content:center;padding:4px 0;}
 .dn{color:var(--text-faint);min-width:78px;text-align:right;flex-shrink:0;
   font-variant-numeric:tabular-nums;user-select:none;}
@@ -978,10 +1076,10 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .dt{flex:1;min-width:0;}
 /* 行内字符级差异：普通改动加底色，同形异码额外加下划波浪 —— 它们**看起来一模一样**，
    不给一个独立的视觉标记，读者会以为工具在无中生有 */
-mark.ic{background:color-mix(in srgb,var(--brand) 32%,transparent);color:inherit;
+mark.ic{background:var(--mark-ic-bg);color:inherit;
   border-radius:2px;padding:0 1px;}
-mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-offset:3px;
-  background:color-mix(in srgb,var(--warn,#b26a00) 28%,transparent);cursor:help;}
+mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
+  background:var(--mark-hg-bg);cursor:help;}
 /* 软件内 AI 多轮分析（P1）。列表**限高可滚**而不是无限长：对话长起来之后，
    页面高度会把上面的骨架和贴纸墙全推走，而那两块正是提问时要对照着看的东西。 */
 .an-chat{padding:12px 14px;margin-bottom:12px;}
@@ -994,9 +1092,9 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
 .an-msg{padding:8px 11px;border-radius:9px;background:var(--bg-soft);
   border:1px solid var(--border);font-size:12.5px;line-height:1.65;}
 .an-msg.u{background:var(--bg-softer);border-color:transparent;}
-.an-msg.a.err{border-left:3px solid var(--err,#c04b4b);}
+.an-msg.a.err{border-left:3px solid var(--err);}
 .an-msg-role{font-size:11px;color:var(--text-faint);margin-bottom:4px;}
-.an-msg-role.err{color:var(--err,#c04b4b);}
+.an-msg-role.err{color:var(--err);}
 .an-msg-text{margin:0;white-space:pre-wrap;word-break:break-word;font-family:inherit;
   font-size:12.5px;line-height:1.65;color:var(--text);}
 .an-msg.streaming .an-msg-text::after{content:"▌";color:var(--brand);animation:blink 1s steps(2) infinite;}
@@ -1015,7 +1113,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn,#b26a00);text-underline-off
 .an-clean-out{margin-top:10px;}
 .an-clean-list{max-height:200px;overflow-y:auto;margin-bottom:10px;}
 .an-clean-item{font-size:11.5px;color:var(--text-dim);padding:2px 0;}
-.an-clean-item code{font-family:var(--font-mono,ui-monospace,Consolas,monospace);font-size:11px;}
+.an-clean-item code{font-family:var(--font-mono);font-size:11px;}
 </style>
 </head>
 <body>
@@ -3964,7 +4062,7 @@ function renderDetail(d){
   if(betas.length){
     const unknown = betas.filter(b => KNOWN_BETAS.indexOf(b) < 0);
     L += '<details class="fold"><summary>' + t18("detail.betaTitle") + ' (' + betas.length +
-      (unknown.length ? ' · <span style="color:var(--warn,#b26a00)">' + t18("detail.betaNew", {n: unknown.length}) + '</span>' : '') +
+      (unknown.length ? ' · <span style="color:var(--warn)">' + t18("detail.betaNew", {n: unknown.length}) + '</span>' : '') +
       ')</summary><div class="fold-body">' +
       '<div class="chip-row">' +
       betas.map(b => '<span class="chip outline' + (KNOWN_BETAS.indexOf(b) < 0 ? ' beta-new' : '') + '">' + esc(b) + '</span>').join("") +
@@ -4070,7 +4168,7 @@ function renderDetail(d){
       '<div class="fold-body">' +
       '<div style="font-size:11px;color:var(--text-faint);margin:6px 0 8px;">' + t18("detail.wireOnlyHint") + '</div>' +
       '<table class="kv-table">' + rhKeys.map(k =>
-        '<tr><td class="k" style="' + (isWireKey(k) ? "font-weight:600;color:var(--brand,#d4a55a);" : "") + '">' +
+        '<tr><td class="k" style="' + (isWireKey(k) ? "font-weight:600;color:var(--brand);" : "") + '">' +
         esc(k) + '</td><td class="v">' + esc(rhs[k]) + '</td></tr>').join("") +
       '</table></div></details>';
   }
@@ -4149,7 +4247,7 @@ function renderMsg(m, mi){
           bigText(cl.join("\n"), 1500) + '</div>';
       }
     }else if(b.type === "thinking"){
-      inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:#4A5568">thinking</span></div>' +
+      inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--chip-thinking-bg)">thinking</span></div>' +
         bigText(b.thinking || b.text || "", 3000) + '</div>';
     }else if(b.type === "tool_use"){
       /* 260825：原先是 `JSON.stringify(...).slice(0,1500)` —— 硬切、没有展开按钮、
@@ -4184,7 +4282,7 @@ function renderMsg(m, mi){
 }
 function renderRespBlock(b){
   if(b.type === "thinking"){
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:#4A5568">thinking</span></div>' +
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--chip-thinking-bg)">thinking</span></div>' +
       bigText(b.text || b.thinking || "", 3000) + '</div>';
   }
   if(b.type === "text"){
@@ -4244,7 +4342,7 @@ function renderRespBlock(b){
      proxy 的 SSE 累积器把 compaction_delta 累成 {type, content}。压缩何时发生、压出了什么
      是 wire 层最该揭示的东西之一，落 default 的 JSON dump 等于白录。 */
   if(b.type === "compaction"){
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--warn,#b26a00)">compaction</span>' +
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--warn)">compaction</span>' +
       '<span class="blk-meta">' + t18("detail.compaction") + '</span></div>' +
       bigText(b.content || "", 4000) + '</div>';
   }

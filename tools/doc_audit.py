@@ -133,6 +133,12 @@ def _theme_tokens() -> dict:
       · 深色块里的每个 token，classic 与 light 都必须给出取值——漏一个，那套外观会静默
         落回深色的颜色（不报错、不白屏，只是某个组件在浅底上变成深色块）；
       · 定义了却没人 `var()` 引用的 token 是死的——留着只会让下一个人从里面挑错。
+      · **引用了却没人定义、且没写 fallback 的 token 是隐形失效**（260826 加）：CSS 里
+        `color:var(--没定义)` 不是报错也不是落回默认值，而是整条声明作废，颜色静默继承父级。
+        分析视图（260808 加入）沿用一套老命名（`--text` / `--text-dim` / `--bg`），21 处引用
+        就这么空转了两周多没人发现——那一族颜色分层在三套外观下全部消失，而界面看起来"有颜色"。
+        带 fallback 的引用（`var(--mono,ui-monospace)`）不算这一类：它有确定的降级结果，
+        只是可能降到不想要的值上，那是判断题不是错误。
     主题块**覆盖**共用 token 是合法的（实验室日光覆盖了画布网格），不算差异。
     """
     text = _read(SRC / "templates" / "index.html")
@@ -148,6 +154,10 @@ def _theme_tokens() -> dict:
     used = set(re.findall(r"var\((--[a-z0-9-]+)", text))
     # 主题选择器上的局部变量（.theme-option 的色板样例）不是全局 token，不参与
     local = set(re.findall(r"--swatch-[a-z]+", text))
+    # 无 fallback 的引用（`var(--x)` 而非 `var(--x, 兜底)`）对着**文件里任何地方**的定义解析：
+    # 组件局部变量（`.sticky:nth-of-type(3n){--paper:…}`）与 JS 内联下发的（`--tilt`）都算数。
+    bare = set(re.findall(r"var\(\s*(--[a-z0-9-]+)\s*\)", text))
+    anywhere = set(re.findall(r"(--[a-z0-9-]+)\s*:", text))
 
     return {
         "counts": {"shared": len(shared), "dark": len(dark),
@@ -156,6 +166,7 @@ def _theme_tokens() -> dict:
                        for k, v in themes.items() if dark - v],
         "shared_leaked": sorted((shared & dark)),   # 拆块拆漏了：同一个 token 两边都定义
         "dead_tokens": sorted((shared | dark) - used - local),
+        "unresolved_refs": sorted(bare - anywhere),
     }
 
 
@@ -414,7 +425,8 @@ def audit() -> dict:
         "missing_selftest_files": sorted(set(missing_selftests)),
         "tokens": _theme_tokens(),
         "note": ("硬差异（ghost_routes / missing_paths / idx_schema_drift / "
-                 "missing_selftest_files / tokens.theme_gaps / tokens.shared_leaked）"
+                 "missing_selftest_files / tokens.theme_gaps / tokens.shared_leaked / "
+                 "tokens.unresolved_refs）"
                  "是文档说错了，会挡发版；软差异（undocumented_*、dead_tokens）只是文档没写，"
                  "有意不公开的内部端点会一直待在那里，人判断。看 `ok` 字段，别猜退出码。"),
     }
@@ -443,6 +455,9 @@ def _rows(r: dict) -> tuple[list, list]:
             ("某套外观缺取值的 token（会变成隐形字）", [f"{g['theme']} 缺 {', '.join(g['missing'])}"
                                                         for g in tk["theme_gaps"]]),
             ("共用块与深色块重复定义的 token", tk["shared_leaked"]),
+            # 归硬类的理由与缺取值同源：两者都没有任何运行时反馈。缺取值是"某套外观变深色块"，
+            # 这个是"整条声明作废、颜色继承父级"——后者更隐蔽，因为三套外观一起失效。
+            ("引用了但没定义、也没写 fallback 的 token（整条声明作废）", tk["unresolved_refs"]),
             ("spec 要打包的文件不存在", r.get("spec_missing_datas", [])),
             ("两份 spec 分叉了", r.get("spec_divergence", [])),
             # 白名单过期：本项目真加了同名端点，那条外部豁免必须删，否则它会让对账对这个
@@ -518,13 +533,29 @@ def _selftest() -> int:
     ok = any(g["theme"] == "classic" and "--focus-ring" in g["missing"] for g in gaps)
     print("[token 检查自测]", "PASS 缺失能被检出" if ok else "FAIL 缺失没被检出")
 
+    # 第二个反例（260826）：把一处引用改成没人定义的名字，确认"隐形失效"这一类真会响。
+    # 复刻的是分析视图那 21 处空转的形状——它当年没被任何检查抓到，正是因为这一类不存在。
+    broken2 = real.replace("color:var(--paper-text);", "color:var(--paper-txt);", 1)
+    assert broken2 != real, "反例没造出来：--paper-text 的引用点变了，改这里"
+    try:
+        globals()["SRC"] = tmp.parent.parent
+        (tmp.parent.parent / "templates" / "index.html").write_text(broken2, encoding="utf-8")
+        unresolved = _theme_tokens()["unresolved_refs"]
+    finally:
+        globals()["SRC"] = orig
+        (tmp.parent.parent / "templates" / "index.html").write_text(real, encoding="utf-8")
+    ok2 = "--paper-txt" in unresolved
+    print("[无定义引用自测]", "PASS 隐形失效能被检出" if ok2 else "FAIL 隐形失效没被检出")
+    ok = ok and ok2
+
     # 门本身也要被验证：分类错了（把硬差异归进软类）闸门就形同虚设，而它照样打印
     # 「对账通过」——正是本项目惯犯 ③「静默失效」的形状，且这次犯在守卫自己身上。
     base = {"routes": 0, "cli_commands": 0, "idx_schema": 1,
             "undocumented_routes": [], "ghost_routes": [], "undocumented_cli": [],
             "missing_paths": [], "idx_schema_drift": [], "missing_selftest_files": [],
             "stale_external_endpoints": [],
-            "tokens": {"counts": {}, "theme_gaps": [], "shared_leaked": [], "dead_tokens": []}}
+            "tokens": {"counts": {}, "theme_gaps": [], "shared_leaked": [], "dead_tokens": [],
+                       "unresolved_refs": []}}
 
     # 外部端点白名单的两种腐化，各查一次（260809）。豁免是判据上开的口子，开了就得看住：
     #   ① 死条目——文档早就不提它了，白名单却还留着，下次有人看到会以为这个豁免仍有意义；
@@ -547,6 +578,8 @@ def _selftest() -> int:
         ("缺 token 取值挡",
          n_hard(tokens={**base["tokens"], "theme_gaps": [{"theme": "light", "missing": ["--x"]}]}) == 1),
         ("外部端点豁免过期挡", n_hard(stale_external_endpoints=["/api/anthropic/v1/messages"]) == 1),
+        ("无定义引用挡",
+         n_hard(tokens={**base["tokens"], "unresolved_refs": ["--nope"]}) == 1),
         # 反向：软差异**不该**挡，否则第一个内部端点就卡住发版
         ("未登记端点不挡", n_hard(undocumented_routes=["/api/internal"]) == 0),
         ("未登记子命令不挡", n_hard(undocumented_cli=["secret"]) == 0),
