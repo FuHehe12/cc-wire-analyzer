@@ -1139,6 +1139,63 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 
 判档在**步**这一级做，不在模型级：`adaptive` 是主流形态，同一模型内部也会有的步不思考。
 
+### `GET|POST /api/snapshots/<id>/analysis` — 骨架的 AI 语义层（仅录制快照）
+
+`GET` 读已有（**不调模型**，`{ok, exists, data}`）；`POST` 跑一次（重新分析就是再 POST 一次）。
+存成 `<id>.analysis.json`——不进快照信封：信封是不可改的，这份是可重算的派生物。
+
+一次 POST 做三件事，落在同一份文件里：轮级归纳（`turns` / `summary`）、主线**步级简报**
+（`steps`：`{step, title, detail}`，`title` 一句话、`detail` 是为什么/发现/放弃）、以及各条
+**子代理线的步级简报**（`sub`，按 `lane_id` 分组；账目在 `sub_meta`）。
+
+- 语义层只挂在**程序抽出来的真实步号**上：越界步号一律剔除并记进 `dropped_steps`——
+  没有这条，"AI 归纳挂在程序事实上"就只是一句说辞。
+- 单批失败不连坐：`steps_brief_meta.failed_batches` / `sub_meta.failed_batches` 如实自陈，
+  界面把没归纳到的步退回机械行。
+- 老格式兼容：早期缓存与自定义提示词产出的单段 `brief` 仍可渲染（落进 `detail`）。
+- 任务段可在设置页覆盖（`analysis.turns_prompt` / `analysis.steps_prompt`），
+  **防注入定界与规则永远内置**——能调叙事风格，不能拆隔离墙。
+- 失败码：`not_capture` / `no_steps` / `bad_json`（模型没给出可解析 JSON，如实说，不留空面板）。
+
+### `GET /api/snapshots/<id>/analysis/progress` — 正在跑的那次归纳跑到第几批了
+
+一次归纳现在可能是几十个批次（主线十来批 + 每条子代理线各自的批，实测 27 批 / 26 分钟）。
+`{"ok": true, "running": true, "phase": "turns|steps|sub", "batch": 3, "batches": 9,
+"lane": 2, "lanes": 6}`；没在跑就是 `{"ok": true, "running": false}`。
+
+**只存在内存里**：重启即失，多实例互不可见。它是一次前台点击的伴随信息，不是需要持久化的
+事实。归纳无论成败都会清掉——一条永远停在"12/27 批"的进度，比没有进度更像还在跑。
+
+### `GET /api/snapshots/<id>/subagents[?lane=&step=]` — 这条录制派出去的子代理线（仅录制快照）
+
+快照的 payload 是**一条请求**（主线的完整历史）。子代理的过程不在里面：主线 `messages` 里
+只有一次 `tool_use(Task)` 和最后那份报告，它自己想了什么、翻了哪些文件在**另外的请求**里。
+这个端点把那些请求接回来，一条线一份 L0 骨架，并给出它挂在主线**哪一步**。
+
+关联键全是 DAG 早就在用的，不新发明判据：泳道靠 `X-Claude-Code-Agent-Id`（老录制回落派生
+prompt 对齐），父子靠 `trigger` 边（派生 prompt 前 300 字 ⊂ 子代理剥掉 reminder 后的首条
+user），挂到哪一步则是同一条判据、只是拿快照自己那一步的 Task prompt 去比。子代理再派生
+子代理沿边递归（最深 3 层，最多 12 条线，超了 `truncated: true`）。
+
+```json
+{ "ok": true, "available": true, "source": "", "task_calls": 6, "truncated": false,
+  "agents": [{ "lane_id": "agent-guide-builder@session-314c8b37", "agent_id": "…",
+               "parent_lane": "", "depth": 1, "trigger_step": 18,
+               "label": "派生 prompt 前 120 字", "record_id": "req_…", "requests": 46,
+               "first_ts": "…", "availability": { "tier": "A" },
+               "steps": [ … L0 骨架行 … ], "steps_total": 44, "omitted_steps": 0 }] }
+```
+
+- `parent_lane` 为空串 = 挂在主线（快照这条）；非空 = 挂在另一条子代理线上（嵌套派生）。
+- `trigger_step` 为 `null` = 这条线**挂不到具体步骤**（派生 prompt 对不上：跨天截断、或派生方
+  那条请求没被录到）。**照样返回**，界面会单列并说明——悄悄丢掉等于宣称"它没派过子代理"。
+- `task_calls` 是主线自己派发过几次 Task。它与 `agents` 数对不上，就是"有派生没录到"的直接证据。
+- `available: false` + `reason_code`（`recording_gone` / `not_in_dag` / `no_record_id`）：
+  快照是自包含的，子代理线不是——它要回当日录制里捞。**录制被清理或归档走了要明说**，
+  不能渲染成"这条会话没有子代理"。
+- `lane=<lane_id>&step=N`：那条线单步的思考原文，与主线 `thinking?level=2` 同义（同样的
+  `level2` 产物），只是换了条记录。线不在了返回 404 `lane_not_found`。
+
 ### `GET /api/snapshots/<id>/sources` — 多源指令清单（仅录制快照）
 
 上下文冲突分析的原料。实测一条主线请求有五处在下指令（system 三块 + 用户 CLAUDE.md 注入 +

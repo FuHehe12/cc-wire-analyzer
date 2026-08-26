@@ -127,6 +127,13 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 - 导入：`POST /api/captures/import {file}` 或 `cc-wire-analyzer import <file.ccwa>`
   → 落到 `sources/<标签>/`。
 
+### 子代理干了什么：`/api/snapshots/<id>/subagents`
+
+读一条录制的 agent 行为时，**主线只是故事的一半**：`Task` 派出去的活在另外的请求里，主线
+`messages` 只留下一次工具调用和最后那份报告。这个端点把那些请求接回来（一条线一份 L0 骨架
+＋它挂在主线哪一步），`?lane=&step=` 取某条线单步的思考原文。挂不上的线与"录制已不在"都会
+如实带原因回来——**看到 `available:false` 不要读成"它没派过子代理"**。
+
 ### 看别的机器导入的录制：`source` 参数
 
 导入的录制在**独立命名空间**里，因为两台机器同一天都在录、日期必然撞车。要读它，给

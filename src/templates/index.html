@@ -351,6 +351,11 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
   color:var(--chip-default-fg);letter-spacing:0.02em;font-family:var(--font-mono);white-space:nowrap;
   border:1px solid transparent;}
 .chip.outline{background:transparent;color:var(--apple-text-secondary);border:1px solid var(--border);font-weight:600;}
+/* 工具名 chip（260826）：`.chip` 基类**不带背景**，配色靠修饰类给——裸 `class="chip"`
+   拿到的是 `--chip-default-fg`（白字）配透明底，在深色卡上看着正常，两套浅色外观下
+   直接隐形。分析视图的工具名此前正是裸 chip，浅色下整排消失而没有任何报错。
+   与 `.tmk` 同一套软底做法（同一个 token），三套外观都有取值。 */
+.chip.tool{background:var(--chip-soft-bg);color:var(--text-dim);font-weight:600;}
 /* 没见过的 anthropic-beta 特性：CC 启用了新能力，可能带来还不认识的字段/响应块（260731） */
 .chip.beta-new{color:var(--warn);border-color:var(--warn);}
 .chip.ok-soft{background:var(--ok-soft-bg);color:var(--ok-soft-fg);}
@@ -1041,7 +1046,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-empty{margin-top:8px;}
 .an-note{padding:10px 14px;margin-bottom:12px;}
 .an-hint{margin:4px 0 2px;}
-.an-verdict,.an-guard,.an-hidden,.an-meta,.an-tier,.an-src,.an-steps,.an-stepfull,.an-diff{
+.an-verdict,.an-guard,.an-hidden,.an-meta,.an-tier,.an-src,.an-steps,.an-diff{
   padding:12px 14px;margin-bottom:12px;}
 .an-verdict{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:3px solid var(--border);}
 .an-verdict.ok{border-left-color:var(--ok);}
@@ -1064,10 +1069,60 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-a{color:var(--text-dim);}
 .an-b{color:var(--brand);}
 .an-sub{font-size:12px;color:var(--text-dim);margin:10px 0 4px;font-weight:600;}
-/* 步骤行（260826 简报流）：一行一步的人话 + 机械信号，零点击——钻探在树视图 */
-.an-step{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:5px 8px;
-  border-radius:6px;font-size:12px;}
+/* 步骤区双栏（260826 晚）：左边叙事流，右边钻探抽屉。
+   抽屉用 **sticky 而不是 fixed**：ui_scale 走根元素 zoom，fixed 的定位坐标系会跟着缩放，
+   而 sticky 参与正常流——长列表里它自然跟着滚、停在视口内，缩放两档都不用另算。
+   原文此前渲染在整张卡**之后**（`#anStepBody`），137 步的会话点第 12 步要滚过几屏才看得到。 */
+.an-split{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start;}
+.an-splitmain{min-width:0;}
+.an-split.open{grid-template-columns:minmax(0,1fr) minmax(300px,410px);}
+/* top 要**让开顶栏**：app-header 是 sticky/70px，贴 top:12px 的话抽屉自己的标题条
+   会钻到顶栏底下，看上去就是"没有标题、内容被切了一截"（实测撞到）。 */
+.an-drawer{display:none;position:sticky;top:82px;max-height:calc(100vh - 104px);overflow:auto;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:10px 12px 14px;}
+.an-split.open .an-drawer{display:block;}
+.an-drawer-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;
+  background:var(--bg-soft);padding:2px 0 6px;border-bottom:1px solid var(--border-soft);}
+.an-drawer-head b{font-size:12px;}
+.an-drawer-x{margin-left:auto;background:transparent;border:1px solid var(--border);
+  color:var(--text-dim);border-radius:6px;cursor:pointer;font-family:inherit;
+  font-size:12px;line-height:1;padding:3px 8px;}
+.an-drawer-x:hover{color:var(--text);border-color:var(--text-faint);}
+/* 窄屏不做横向挤压：抽屉落回叙事流下方，仍然就近（不再退回页面最底部） */
+@media (max-width:1100px){
+  .an-split.open{grid-template-columns:minmax(0,1fr);}
+  .an-drawer{position:static;max-height:none;}
+}
+/* 步骤行（260826 简报流）：一行一步的人话 + 机械信号。
+   **两段结构**：title 是叙事骨干（扫读），detail 视觉降权（细读）——上一版把两者揉成
+   一段长文本塞进一个 flex 元素，上百步连成文字墙，丑的不是字多是没有层次。
+   点开=右侧抽屉看原文；不点也能读完整条叙事，「列表零点击」说的是这个。 */
+.an-step{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;padding:6px 8px;
+  border-radius:6px;font-size:12px;cursor:pointer;}
+.an-step:hover{background:var(--row-hover);}
+.an-step.active{background:var(--row-hover);box-shadow:inset 3px 0 0 var(--brand);}
+.an-stepbody{min-width:0;}
+.an-stepline{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+.an-title{color:var(--text);font-weight:600;line-height:1.5;}
+.an-detail{margin-top:3px;color:var(--text-dim);font-size:11.5px;line-height:1.65;
+  white-space:pre-wrap;max-width:96ch;}   /* 宽屏上一行铺满两千像素没法读，按字数收口 */
 .an-brief{flex:1;min-width:240px;color:var(--text-dim);line-height:1.55;}
+/* 某一步派发出去的子代理线（260826）：主线叙事里的**嵌套子叙事**。
+   缩进 + 左竖线 = "这一段属于上面那一步"，而不是另一条平起平坐的主线——
+   子代理的过程本来就藏在主线的一次 Task 调用背后，界面要还原的正是这层从属关系。
+   嵌套第二层靠自己套自己，缩进自然累加。 */
+.an-agent{margin:2px 0 8px 30px;padding:6px 0 2px 12px;border-left:2px solid var(--border);}
+/* **默认收起**：六条线摊开是 158 行，主线叙事当场被埋掉——而这正是要解决的问题。
+   头一行自己就是开关（与多源指令清单同一套折叠做法：原生 details，自绘指示符）。 */
+.an-agent-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px;
+  cursor:pointer;list-style:none;}
+.an-agent-head::-webkit-details-marker{display:none;}
+.an-agent-head::before{content:"▸";font-size:11px;color:var(--text-faint);transition:transform .12s;}
+.an-agent[open] > .an-agent-head::before{transform:rotate(90deg);}
+.an-agent-name{font-weight:600;color:var(--text);font-size:11.5px;}
+.an-agent-label{color:var(--text-faint);font-size:11px;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:min(560px,46vw);}
+.an-agent-none{margin-top:8px;}
 /* 纯工具步的聚合簇：视觉降权——它们是"期间干的粗活"，不是叙事主线 */
 .an-toolrun{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   padding:2px 8px 2px 44px;}
@@ -1819,7 +1874,14 @@ zh: {
   "an.stepsTitle": "轮次骨架", "an.stepsShown": "显示 {n} / 共 {total} 步（点一行看该步思考原文）",
   "an.turnN": "轮 {n}",
   "an.trig.user": "用户消息", "an.trig.tool_result": "工具返回", "an.trig.none": "无触发",
-  "an.stepFull": "第 {n} 步的思考原文", "an.trigText": "触发：",
+  "an.stepFull": "第 {n} 步的思考原文", "an.trigText": "触发：", "an.drawerClose": "关闭",
+  "an.ai.runningMain": "分析中… 主线 {b}/{batches} 批",
+  "an.ai.runningSub": "分析中… 子代理 {lane}/{lanes} 线 · {b}/{batches} 批",
+  "an.ai.subMeta": "另含 {n} 条子代理线（{b} 批）", "an.ai.subCapped": "子代理步数超上限，后面的线未归纳",
+  "an.sub.badge": "子代理", "an.sub.steps": "{n} 步",
+  "an.sub.tier": "思考链 {t} 档", "an.sub.stepFull": "{agent} 第 {n} 步的思考原文",
+  "an.sub.orphan": "另有 {n} 条子代理线挂不到具体步骤（派生 prompt 对不上：跨天截断、或派生方那条请求没录到）",
+  "an.sub.truncated": "子代理线太多，只摊开了前 {n} 条",
   "an.noThinkingStep": "这一步没有思考内容。", "an.replyText": "回复",
   "an.pickFirst": "请先选一个录制快照。",
   "an.taskA": "下面是一段 AI 对话录制抽取出的思考链。请判断：① AI 在哪些地方表现出疑惑或反复；② 它考虑过哪些分支、最终为什么这么选；③ 是否存在上下文冲突（system 提示词 / 注入的 CLAUDE.md / 会话中系统消息 / 工具描述 / 用户消息，这几个来源的指令有没有互相打架，打架时它听了谁的）；④ 是否存在上下文腐烂（后期轮次是否偏离早期约束）。",
@@ -2048,7 +2110,7 @@ zh: {
   "set.explainSub": "AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响",
   "set.explainPh": "请用通俗的语言解释这段内容在做什么：它是谁发给谁的、想达到什么目的、关键动作有哪些。遇到代码或工具调用，说明它的作用即可，不要逐行复述。最后用一两句话总结。",
   "set.anaTurnsPh": "分析任务：按 turn（轮次）归纳……（需保留输出 JSON 格式约定：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
-  "set.anaStepsPh": "分析任务：用简单平实的语言复述每个 step 在做什么……（需保留输出 JSON 格式约定：{\"steps\":[{\"step\":1,\"brief\":\"…\"}]}）",
+  "set.anaStepsPh": "分析任务：为每个 step 写一条两段式简报（title 一句话、detail 写为什么/发现/放弃）……（需保留输出 JSON 格式约定：{\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]}）",
   "set.test": "测试连通", "set.testing": "测试中…",
   "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
   "set.inst.title": "运行中的实例", "set.inst.scanLbl": "扫描范围", "set.inst.refresh": "刷新", "set.inst.scanning": "扫描中…",
@@ -2180,7 +2242,14 @@ en: {
   "an.stepsShown": "Showing {n} of {total} steps (click a row for that step's reasoning)",
   "an.turnN": "turn {n}",
   "an.trig.user": "user message", "an.trig.tool_result": "tool result", "an.trig.none": "no trigger",
-  "an.stepFull": "Reasoning of step {n}", "an.trigText": "Triggered by: ",
+  "an.stepFull": "Reasoning of step {n}", "an.trigText": "Triggered by: ", "an.drawerClose": "Close",
+  "an.ai.runningMain": "Analysing\u2026 main line {b}/{batches}",
+  "an.ai.runningSub": "Analysing\u2026 subagent {lane}/{lanes} \u00b7 {b}/{batches}",
+  "an.ai.subMeta": "plus {n} subagent lane(s), {b} batches", "an.ai.subCapped": "step budget reached; later lanes were not summarised",
+  "an.sub.badge": "subagent", "an.sub.steps": "{n} steps",
+  "an.sub.tier": "reasoning tier {t}", "an.sub.stepFull": "{agent} \u00b7 reasoning of step {n}",
+  "an.sub.orphan": "{n} more subagent lane(s) could not be pinned to a step (the spawn prompt did not match: truncated across days, or the spawning request was never recorded)",
+  "an.sub.truncated": "Too many subagent lanes; only the first {n} are shown",
   "an.noThinkingStep": "This step has no reasoning content.", "an.replyText": "Reply",
   "an.pickFirst": "Pick a recording snapshot first.",
   "an.taskA": "Below is the reasoning chain extracted from a recorded AI conversation. Assess: (1) where the AI hesitated or went back and forth; (2) which branches it considered and why it chose the one it did; (3) whether there is context conflict (system prompt / injected CLAUDE.md / mid-conversation system messages / tool descriptions / user messages \u2014 do their instructions contradict each other, and which one did it follow); (4) whether there is context rot (do later turns drift from earlier constraints).",
@@ -2406,7 +2475,7 @@ en: {
   "set.explainSub": "Task description for Ask AI; empty = built-in default. The injection guard is built-in and unaffected",
   "set.explainPh": "Explain in plain language what this content is doing: who is sending it to whom, what it is trying to achieve, and what the key actions are. For code or tool calls, describe their purpose instead of going line by line. End with a one- or two-sentence summary.",
   "set.anaTurnsPh": "Task: summarise the conversation by turn… (keep the JSON output format: {\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"})",
-  "set.anaStepsPh": "Task: retell each step in plain simple language… (keep the JSON output format: {\"steps\":[{\"step\":1,\"brief\":\"…\"}]})",
+  "set.anaStepsPh": "Task: write a two-part brief per step (title = one line, detail = why / what turned up / what was dropped)… (keep the JSON output format: {\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]})",
   "set.test": "Test connection", "set.testing": "Testing…",
   "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
   "set.inst.title": "Running instances", "set.inst.scanLbl": "Scan range", "set.inst.refresh": "Refresh", "set.inst.scanning": "Scanning…",
@@ -2537,7 +2606,14 @@ ja: {
   "an.stepsShown": "{total} ステップ中 {n} を表示（行をクリックで思考原文）",
   "an.turnN": "ターン {n}",
   "an.trig.user": "ユーザーメッセージ", "an.trig.tool_result": "ツール結果", "an.trig.none": "トリガーなし",
-  "an.stepFull": "ステップ {n} の思考原文", "an.trigText": "トリガー：",
+  "an.stepFull": "ステップ {n} の思考原文", "an.trigText": "トリガー：", "an.drawerClose": "閉じる",
+  "an.ai.runningMain": "分析中… メイン {b}/{batches} バッチ",
+  "an.ai.runningSub": "分析中… サブエージェント {lane}/{lanes}・{b}/{batches} バッチ",
+  "an.ai.subMeta": "他に {n} 本のサブエージェント系列（{b} バッチ）", "an.ai.subCapped": "ステップ上限に達したため以降の系列は未要約",
+  "an.sub.badge": "サブエージェント", "an.sub.steps": "{n} ステップ",
+  "an.sub.tier": "思考ログ {t} 段", "an.sub.stepFull": "{agent}・ステップ {n} の思考原文",
+  "an.sub.orphan": "他に {n} 本のサブエージェント系列は特定のステップに紐づけられませんでした（派生プロンプトが一致しない：日跨ぎで切れた、または派生元のリクエストが未記録）",
+  "an.sub.truncated": "サブエージェント系列が多すぎるため、先頭 {n} 本のみ表示",
   "an.noThinkingStep": "このステップに思考内容はありません。", "an.replyText": "返信",
   "an.pickFirst": "先に記録スナップショットを選んでください。",
   "an.taskA": "以下は AI 対話記録から抽出した思考チェーンです。次を判断してください：① AI が迷った・行き来した箇所；② どの分岐を検討し、最終的になぜそれを選んだか；③ コンテキストの衝突があるか（システムプロンプト / 注入された CLAUDE.md / 会話中のシステムメッセージ / ツール説明 / ユーザーメッセージの指示が矛盾していないか、矛盾時どれに従ったか）；④ コンテキストの腐敗があるか（後半のターンが初期の制約から逸脱していないか）。",
@@ -2763,7 +2839,7 @@ ja: {
   "set.explainSub": "AI 解説のタスク記述；空欄＝内蔵デフォルト。注入対策ガードは内蔵のため影響を受けません",
   "set.explainPh": "この内容が何をしているのか、わかりやすい言葉で説明してください：誰が誰に送ったものか、何を達成しようとしているのか、主要なアクションは何か。コードやツール呼び出しは逐行ではなく役割を説明してください。最後に1〜2文でまとめてください。",
   "set.anaTurnsPh": "タスク：ターンごとに会話を要約…（JSON 出力形式を維持：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
-  "set.anaStepsPh": "タスク：各ステップを平易な言葉で復述…（JSON 出力形式を維持：{\"steps\":[{\"step\":1,\"brief\":\"…\"}]}）",
+  "set.anaStepsPh": "タスク：各ステップに 2 段構成の要約を（title は一文、detail は理由・判明した点・見送った案）…（JSON 出力形式を維持：{\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]}）",
   "set.test": "接続テスト", "set.testing": "テスト中…",
   "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
   "set.inst.title": "実行中のインスタンス", "set.inst.scanLbl": "スキャン範囲", "set.inst.refresh": "更新", "set.inst.scanning": "スキャン中…",
@@ -3233,7 +3309,7 @@ function ctxInit(){
   document.addEventListener("scroll", ctxHide, true);
   window.addEventListener("blur", ctxHide);
   document.addEventListener("keydown", e => {
-    if(e.key === "Escape") ctxHide();
+    if(e.key === "Escape"){ ctxHide(); if(AN.openStep) anStepClose(); }
     /* Cmd/Ctrl+C 兜底：macOS 无 Edit 菜单，原生复制根本不存在。
        不 preventDefault——Windows 上原生复制是好的，让它照常走，我们只是写同样的内容，幂等。 */
     if((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")){
@@ -5280,7 +5356,9 @@ async function snapCreate(kind, where){
 const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
             selA: null, selB: null, recA: null, recB: null, pDiff: null,
             pendingDel: null, stepView: "list", recSources: [],
-            recAnalysis: null, anaBusy: false,   /* 骨架的 AI 语义层（260809） */
+            recAnalysis: null, anaBusy: false, anaProg: null, anaTimer: 0,
+            openStep: null, openLane: "", stepFull: null,   /* 右侧钻探抽屉（260826） */
+            subs: null,                          /* 子代理线（260826） */
             chat: [], chatBusy: false};
 
 async function anLoad(force){
@@ -5827,6 +5905,8 @@ function cps(s){
 
 async function anRecLoad(){
   const sid = anSel("c")[0];
+  AN.openStep = null; AN.openLane = ""; AN.stepFull = null;   /* 换录制＝换现场 */
+  AN.subs = null;
   if(!sid){ $("anRecOut").innerHTML = ""; return; }
   $("anRecOut").innerHTML = '<div class="card an-note">' + t18("an.loading") + '</div>';
   try{
@@ -5835,6 +5915,7 @@ async function anRecLoad(){
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/sources"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief"),
       anAnalysisLoad(sid)]);   /* 已有的 AI 归纳一并取回：分析过的不该再花一次钱（260809）*/
+    anSubsLoad(sid);          /* 子代理线：不 await——它要回原始录制里捞，慢一点不该拖住主线 */
     const tj = await tr.json(), sj = await sr.json();
     AN.brief = await br.text();
     if(!tj.ok) throw new Error(tj.error || "failed");
@@ -5898,10 +5979,14 @@ function renderRec(d, sources){
         '" onclick="anStepView(\'tree\')">' + t18("an.viewTree") + '</button>' +
     '</span>' +
     '<button class="btn" id="anAnaBtn" onclick="anAnalyze()"' + (AN.anaBusy ? " disabled" : "") + '>' +
-      t18(AN.anaBusy ? "an.ai.running" : (AN.recAnalysis ? "an.ai.redo" : "an.ai.analyze")) +
+      esc(AN.anaBusy ? anAnaLabel()
+                     : t18(AN.recAnalysis ? "an.ai.redo" : "an.ai.analyze")) +
     '</button></div>' + anAnalysisHead();
-  h += AN.stepView === "tree" ? anTreeHtml(d.steps || []) : anListHtml(d.steps || []);
-  h += '</div><div id="anStepBody"></div>';
+  h += '<div class="an-split' + (AN.openStep ? " open" : "") + '">' +
+    '<div class="an-splitmain">' +
+      (AN.stepView === "tree" ? anTreeHtml(d.steps || []) : anListHtml(d.steps || [])) +
+    '</div><aside class="an-drawer" id="anDrawer">' + anDrawerHtml() + '</aside></div>';
+  h += '</div>';
   $("anRecOut").innerHTML = h;
 }
 
@@ -5924,6 +6009,12 @@ function anAnalysisHead(){
         ? ' · <span class="an-ana-drop">' + t18("an.ai.partialBrief",
             {n: a.steps_brief_meta.failed_batches}) + '</span>'
         : "") +
+      /* 子代理线也一起归纳了：这笔账要摆出来——它是按线性涨的花费，
+         用户有权知道这次点击到底做了多少事、有没有被闸门截住。 */
+      (a.sub_meta && a.sub_meta.lanes
+        ? ' · ' + esc(t18("an.ai.subMeta", {n: a.sub_meta.lanes, b: a.sub_meta.batches || 0})) +
+          (a.sub_meta.capped ? ' · <span class="an-ana-drop">' + t18("an.ai.subCapped") + '</span>' : "")
+        : "") +
     '</div></div>';
 }
 /* 轮次分组头：列表与树共用一份，别各写一份（两种视图的 AI 文案分叉过就再也对不上） */
@@ -5943,27 +6034,29 @@ function anTurnHead(turn){
    （名称×次数，视觉降权），零点击——思考原文的钻探在树视图，两个视图分工。
    分层不变：步行上的 signals chip 是程序识别的机械真源，与 AI 简报互相印证；
    没有简报的步（未分析/该批失败/旧缓存）退回机械行，不白屏也不装懂。 */
-function anListHtml(steps){
-  const briefs = ((AN.recAnalysis || {}).steps) || [];
-  const bmap = {};
-  briefs.forEach(b => { bmap[b.step] = b.brief; });
+function anListHtml(steps, lane){
+  lane = lane || "";                    /* "" = 主线；非空 = 某条子代理线 */
+  const bmap = anBriefMap(lane);
   let h = "", lastTurn = null, cluster = null;
   const flushCluster = () => {
     if(!cluster) return;
     const chips = Object.keys(cluster.tools).map(k =>
-      '<span class="chip">' + esc(k) + (cluster.tools[k] > 1 ? "×" + cluster.tools[k] : "") + '</span>').join("");
+      '<span class="chip tool">' + esc(k) + (cluster.tools[k] > 1 ? "×" + cluster.tools[k] : "") + '</span>').join("");
     h += '<div class="an-toolrun"><span class="an-sn">#' + cluster.from +
       (cluster.to > cluster.from ? "-" + cluster.to : "") + '</span>' + chips +
       '<span class="an-tk">' + t18("an.toolRun", {n: cluster.n}) + '</span></div>';
     cluster = null;
   };
   steps.forEach(s => {
-    if(s.turn !== lastTurn){ lastTurn = s.turn; flushCluster(); h += anTurnHead(s.turn); }
+    /* 轮头只有主线才有：子代理线是一次派生里的连续干活，没有"用户又说了一句"这种边界，
+       给它画轮头等于凭空发明一层结构。 */
+    if(s.turn !== lastTurn){ lastTurn = s.turn; flushCluster(); if(!lane) h += anTurnHead(s.turn); }
     const sig = Object.keys(s.signals || {});
-    const brief = bmap[s.step];
+    const brief = bmap[s.step] || {};
+    const hasBrief = !!(brief.title || brief.detail);
     /* 纯工具步（无思考无回复）：进簇不单独成行——AI 不总结它们（后端同样过滤），
        "调了哪些工具各几次"标签簇本身就是全部要说的 */
-    if(!brief && !s.thinking_chars && !s.reply_chars && (s.tools || []).length){
+    if(!hasBrief && !s.thinking_chars && !s.reply_chars && (s.tools || []).length){
       if(!cluster) cluster = {from: s.step, to: s.step, n: 0, tools: {}};
       cluster.to = s.step;
       cluster.n += (s.tools || []).length;
@@ -5971,18 +6064,78 @@ function anListHtml(steps){
       return;
     }
     flushCluster();
-    h += '<div class="an-step">' +
+    /* 行首那一格：有标题就用标题（叙事），没有就退回机械 chip——
+       老缓存与自定义提示词只产出一段文本时，那一段落在 detail，标题为空，
+       此时把长文本冒充成标题会更丑，也会骗人说"这是一句话摘要"。 */
+    const lead = brief.title
+      ? '<span class="an-title">' + esc(brief.title) + '</span>'
+      : '<span class="chip outline">' + esc(t18("an.trig." + s.trigger)) + '</span>';
+    const laneArg = JSON.stringify(lane).replace(/"/g, "&quot;");
+    h += '<div class="an-step' + (AN.openStep === s.step && AN.openLane === lane ? " active" : "") +
+        '" data-step="' + s.step + '" data-lane="' + esc(lane) +
+        '" onclick="anStepOpen(' + s.step + ',' + laneArg + ')">' +
       '<span class="an-sn">#' + s.step + '</span>' +
-      (brief
-        ? '<span class="an-brief">' + esc(brief) + '</span>'
-        : '<span class="chip outline">' + esc(t18("an.trig." + s.trigger)) + '</span>' +
-          (s.tools || []).map(x => '<span class="chip">' + esc(x) + '</span>').join("")) +
-      (s.thinking_chars ? '<span class="an-tk">' + fmtTok(s.thinking_chars) + t18("an.chars") + '</span>' : "") +
-      sig.map(k => '<span class="chip sig ' + sigCls(k) + '">' + esc(k) + " " + s.signals[k] + '</span>').join("") +
-      '</div>';
+      '<div class="an-stepbody"><div class="an-stepline">' + lead +
+        anToolChips(s.tools) +
+        (s.thinking_chars ? '<span class="an-tk">' + fmtTok(s.thinking_chars) + t18("an.chars") + '</span>' : "") +
+        sig.map(k => '<span class="chip sig ' + sigCls(k) + '">' + esc(k) + " " + s.signals[k] + '</span>').join("") +
+      '</div>' +
+      (brief.detail ? '<div class="an-detail">' + esc(brief.detail) + '</div>' : "") +
+      '</div></div>';
+    h += anAgentsAt(s.step, lane);      /* 这一步派出去的子代理线，紧跟在它下面 */
   });
   flushCluster();
+  if(!lane) h += anAgentsOrphan();
   return h;
+}
+
+/* 挂在某一步下面的子代理线（可能不止一条：一步里并行派三个是常事）。 */
+function anAgentsAt(step, lane){
+  return (((AN.subs || {}).agents) || [])
+    .filter(a => (a.parent_lane || "") === lane && a.trigger_step === step)
+    .map(anAgentCard).join("");
+}
+/* 挂不上具体步骤的子代理线：派生 prompt 对不上（跨天截断 / 派生方那条请求没录到 /
+   Workflow 把 prompt 藏在别处）。**照样列出来**并说明为什么挂不上——
+   悄悄丢掉等于告诉用户"这个 agent 没派过子代理"，而那是假的。 */
+function anAgentsOrphan(){
+  const subs = AN.subs || {};
+  const orphans = (subs.agents || []).filter(a => !(a.parent_lane || "") && !a.trigger_step);
+  const notes = [];
+  if(subs.available === false && subs.reason) notes.push(esc(subs.reason));
+  if(subs.truncated) notes.push(esc(t18("an.sub.truncated", {n: (subs.agents || []).length})));
+  let h = notes.length ? '<div class="an-hint an-agent-none">' + notes.join(" · ") + '</div>' : "";
+  if(orphans.length){
+    h += '<div class="an-hint an-agent-none">' + esc(t18("an.sub.orphan", {n: orphans.length})) + '</div>' +
+      orphans.map(anAgentCard).join("");
+  }
+  return h;
+}
+/* 一条子代理线：它自己的头 + 它自己的简报流（同一套渲染，所以嵌套天然成立）。 */
+function anAgentCard(a){
+  const tier = (a.availability || {}).tier;
+  return '<details class="an-agent"><summary class="an-agent-head">' +
+    '<span class="chip outline">' + esc(t18("an.sub.badge")) + '</span>' +
+    '<span class="an-agent-name">' + esc(a.agent_id || a.lane_id) + '</span>' +
+    '<span class="an-tk">' + esc(t18("an.sub.steps", {n: a.steps_total || 0})) + '</span>' +
+    (tier && tier !== "A"
+      ? '<span class="chip outline">' + esc(t18("an.sub.tier", {t: tier})) + '</span>' : "") +
+    '<span class="an-agent-label">' + esc(a.label || "") + '</span>' +
+    '</summary>' + anListHtml(a.steps || [], a.lane_id) + '</details>';
+}
+
+/* 子代理线：录制里那些被 Task 派出去的线，各自带自己的骨架。
+   **不阻塞主线渲染**：主线来自快照（自包含、快），子代理线要回当日录制里捞（慢），
+   捞到了再补一次渲染；捞不到（录制被清理）也会带着原因回来，界面照实说。 */
+async function anSubsLoad(sid){
+  try{
+    const j = await (await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/subagents")).json();
+    if(anSel("c")[0] !== sid) return;      /* 期间换了录制：迟到的结果不许贴到别人身上 */
+    AN.subs = j.ok ? j : {available: false, reason: j.error || "", agents: []};
+  }catch(e){
+    AN.subs = {available: false, reason: e.message, agents: []};
+  }
+  if(AN.recData) renderRec(AN.recData, AN.recSources || []);
 }
 
 /* 取已有分析（不调模型）。选中一条录制时跟着走一次——**已经分析过的不该再花一次钱**。 */
@@ -5994,11 +6147,37 @@ async function anAnalysisLoad(sid){
     if(j.ok && j.exists) AN.recAnalysis = j.data;
   }catch(e){ /* 取不到就是没有，正常渲染成"还没分析过"；失败详情留给点按钮时报 */ }
 }
+/* 归纳按钮上的进度文案。一次归纳现在可能是几十个批次（主线十来批 + 每条子代理线自己的批），
+   十几分钟只写"分析中…"，在界面上与卡死长得一模一样。 */
+function anAnaLabel(){
+  const p = AN.anaProg;
+  if(!p || !p.batches) return t18("an.ai.running");
+  return p.phase === "sub"
+    ? t18("an.ai.runningSub", {lane: p.lane, lanes: p.lanes, b: p.batch, batches: p.batches})
+    : t18("an.ai.runningMain", {b: p.batch, batches: p.batches});
+}
+/* 轮询而不是 SSE：这是一次前台点击的伴随信息，2 秒一次的 GET 足够，
+   而把归纳改成流式响应是另一件事（会牵动落盘时机与错误语义）。 */
+function anAnaPoll(sid){
+  clearInterval(AN.anaTimer);
+  AN.anaTimer = setInterval(async () => {
+    if(!AN.anaBusy){ clearInterval(AN.anaTimer); return; }
+    try{
+      const j = await (await fetch("/api/snapshots/" + encodeURIComponent(sid) +
+                                   "/analysis/progress")).json();
+      if(!AN.anaBusy || !j.running) return;
+      AN.anaProg = j;
+      const btn = $("anAnaBtn");
+      if(btn) setBtnLabel(btn, anAnaLabel());
+    }catch(e){ /* 进度取不到不影响归纳本身，安静退回"分析中…" */ }
+  }, 2000);
+}
 async function anAnalyze(){
   const sid = anSel("c")[0];
   if(!sid || AN.anaBusy) return;
-  AN.anaBusy = true;
+  AN.anaBusy = true; AN.anaProg = null;
   if(AN.recData) renderRec(AN.recData, AN.recSources || []);   /* 按钮进入"分析中…" */
+  anAnaPoll(sid);
   try{
     const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/analysis", {method: "POST"});
     const j = await r.json();
@@ -6008,7 +6187,8 @@ async function anAnalyze(){
   }catch(e){
     toast(t18("an.ai.failed", {msg: e.message}), true);   /* 失败要说出来，不留空面板 */
   }finally{
-    AN.anaBusy = false;
+    AN.anaBusy = false; AN.anaProg = null;
+    clearInterval(AN.anaTimer);
     if(AN.recData) renderRec(AN.recData, AN.recSources || []);
   }
 }
@@ -6016,7 +6196,11 @@ async function anAnalyze(){
 function sigCls(k){
   return {"犹豫": "sig-h", "分支": "sig-b", "自我修正": "sig-c", "不确定": "sig-u"}[k] || "";
 }
-function anStepView(v){ AN.stepView = v; if(AN.recData) renderRec(AN.recData, AN.recSources || []); }
+function anStepView(v){
+  AN.stepView = v;
+  AN.openStep = null; AN.stepFull = null;   /* 换视图＝换看法，抽屉里那一步的原文不跟着走 */
+  if(AN.recData) renderRec(AN.recData, AN.recSources || []);
+}
 
 /* 树视图：主干是步骤序列，节点上挂**命中信号的原句**与该步实际执行的动作。
 
@@ -6030,7 +6214,8 @@ function anTreeHtml(steps){
     if(s.turn !== lastTurn){ lastTurn = s.turn; h += anTurnHead(s.turn); }
     const sig = Object.keys(s.signals || {});
     const forked = (s.signals || {})["分支"] || (s.signals || {})["自我修正"];
-    h += '<div class="tnode' + (forked ? " forked" : "") + '" onclick="anStepOpen(' + s.step + ')">' +
+    h += '<div class="tnode' + (forked ? " forked" : "") + (AN.openStep === s.step ? " active" : "") +
+      '" data-step="' + s.step + '" onclick="anStepOpen(' + s.step + ')">' +
       '<span class="tdot"></span>' +
       '<div class="tbody">' +
         '<div class="thead"><span class="an-sn">#' + s.step + '</span>' +
@@ -6044,34 +6229,103 @@ function anTreeHtml(steps){
               '</span>' + esc(m.text) + '</div>').join("") + '</div>' : "") +
         ((s.tools || []).length
           ? '<div class="tdid">' + t18("an.treeDid") +
-            s.tools.map(x => '<span class="chip">' + esc(x) + '</span>').join("") + '</div>'
+            s.tools.map(x => '<span class="chip tool">' + esc(x) + '</span>').join("") + '</div>'
           : '<div class="tdid dim">' + t18("an.treeNoTool") + '</div>') +
       '</div></div>';
   });
   return h + '</div>';
 }
 
-/* 点某一步 → 取该步思考原文（L2）。骨架是地图，这里才是钻探。 */
-async function anStepOpen(step){
+/* 简报索引：把老缓存的单段 `brief` 与新的 title/detail 归一到一处。
+   两处渲染各判一次「有没有 title」必然分叉，所以归一只做这一遍。 */
+function anBriefMap(lane){
+  const a = AN.recAnalysis || {};
+  const src = lane ? ((a.sub || {})[lane] || []) : (a.steps || []);
+  const out = {};
+  src.forEach(b => { out[b.step] = {title: b.title || "", detail: b.detail || b.brief || ""}; });
+  return out;
+}
+/* 工具 chip：程序事实层。多到一定数量就折成 +N —— 一步调十次 Read，
+   十个一模一样的 chip 只会把标题挤走，而"调了十次"这件事一个数字就说完了。 */
+const AN_TOOLCHIP_MAX = 4;
+function anToolChips(tools){
+  const xs = tools || [];
+  if(!xs.length) return "";
+  const c = {};                        /* 同名合并成 ×N：一步里四次 TaskCreate，
+                                          四个一模一样的 chip 只会把标题挤走 */
+  xs.forEach(x => { c[x] = (c[x] || 0) + 1; });
+  const keys = Object.keys(c);
+  return keys.slice(0, AN_TOOLCHIP_MAX).map(k =>
+      '<span class="chip tool">' + esc(k) + (c[k] > 1 ? "×" + c[k] : "") + '</span>').join("") +
+    (keys.length > AN_TOOLCHIP_MAX
+      ? '<span class="an-tk">+' + (keys.length - AN_TOOLCHIP_MAX) + '</span>' : "");
+}
+
+/* 右侧钻探抽屉（260826 晚）：点某一步 → 该步思考原文（L2）。骨架是地图，这里才是钻探。
+   此前它渲染在整张步骤卡**之后**，上百步的会话里点第 12 步要滚过几屏才看得见，
+   看完再滚回来找位置——用户原话「步骤数量一多就很难翻到」。 */
+function anDrawerHtml(){
+  if(!AN.openStep) return "";
+  const head = '<div class="an-drawer-head"><b>' +
+    esc(AN.openLane ? t18("an.sub.stepFull", {n: AN.openStep, agent: anLaneName(AN.openLane)})
+                    : t18("an.stepFull", {n: AN.openStep})) + '</b>' +
+    '<button class="an-drawer-x" onclick="anStepClose()">' + esc(t18("an.drawerClose")) + '</button></div>';
+  const d = AN.stepFull;
+  if(!d) return head + '<div class="an-hint">' + t18("an.loading") + '</div>';
+  if(d.error) return head + '<div class="err-card">' + esc(d.error) + '</div>';
+  const s = d.step || {};
+  return head +
+    (s.trigger && s.trigger.text
+      ? '<div class="an-hint">' + t18("an.trigText") + esc(s.trigger.text) + '</div>' : "") +
+    (s.thinking
+      ? bigText(s.thinking, 4000)
+      : '<div class="an-hint">' + t18("an.noThinkingStep") + '</div>') +
+    (s.reply ? '<div class="an-sub">' + t18("an.replyText") + '</div>' + bigText(s.reply, 2000) : "");
+}
+async function anStepOpen(step, lane){
+  lane = lane || "";
   const sid = anSel("c")[0];
-  const box = $("anStepBody");
-  box.innerHTML = '<div class="card an-note">' + t18("an.loading") + '</div>';
+  if(!sid) return;
+  if(AN.openStep === step && AN.openLane === lane){ anStepClose(); return; }  /* 再点收起 */
+  AN.openStep = step; AN.openLane = lane; AN.stepFull = null;
+  anDrawerPaint();
+  /* 主线走 thinking?level=2，子代理线走 subagents?lane=&step= —— 两者同义（都是"这一步的
+     思考原文"），只是记录换了一条：子代理的过程本来就在另外的请求里。 */
+  const url = lane
+    ? "/api/snapshots/" + encodeURIComponent(sid) + "/subagents?lane=" +
+      encodeURIComponent(lane) + "&step=" + step
+    : "/api/snapshots/" + encodeURIComponent(sid) + "/thinking?level=2&step=" + step;
   try{
-    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) +
-                          "/thinking?level=2&step=" + step);
+    const r = await fetch(url);
     const j = await r.json();
     if(!j.ok) throw new Error(j.error || "failed");
-    const s = j.data.step || {};
-    box.innerHTML = '<div class="card an-stepfull"><b>' + t18("an.stepFull", {n: step}) + '</b>' +
-      (s.trigger && s.trigger.text
-        ? '<div class="an-hint">' + t18("an.trigText") + esc(s.trigger.text) + '</div>' : "") +
-      (s.thinking
-        ? bigText(s.thinking, 4000)
-        : '<div class="an-hint">' + t18("an.noThinkingStep") + '</div>') +
-      (s.reply ? '<div class="an-sub">' + t18("an.replyText") + '</div>' + bigText(s.reply, 2000) : "") +
-      '</div>';
+    if(AN.openStep !== step || AN.openLane !== lane) return;   /* 迟到的响应不许盖掉现在这步 */
+    AN.stepFull = j.data;
   }catch(e){
-    box.innerHTML = '<div class="err-card">' + esc(e.message) + '</div>';
+    if(AN.openStep === step && AN.openLane === lane) AN.stepFull = {error: e.message};
+  }
+  anDrawerPaint();
+}
+function anStepClose(){ AN.openStep = null; AN.openLane = ""; AN.stepFull = null; anDrawerPaint(); }
+/* 泳道 id → 给人看的名字（agent_id 优先，它就是 CC 自己给的实例名）。 */
+function anLaneName(lane){
+  const a = (((AN.subs || {}).agents) || []).find(x => x.lane_id === lane);
+  return (a && (a.agent_id || a.lane_id)) || lane;
+}
+/* 只重画抽屉与选中态，**不整页重渲染**——137 行的列表重建一次就把滚动位置扔了，
+   而这个抽屉存在的全部理由就是"别让人翻来翻去"。 */
+function anDrawerPaint(){
+  const split = document.querySelector(".an-split"), box = $("anDrawer");
+  if(!split || !box) return;
+  split.classList.toggle("open", !!AN.openStep);
+  box.innerHTML = anDrawerHtml();
+  document.querySelectorAll(".an-step.active,.tnode.active").forEach(e => e.classList.remove("active"));
+  if(AN.openStep){
+    /* 步号在每条线里各自从 1 开始，所以选中态必须**连 lane 一起认**，
+       否则点子代理第 3 步会把主线第 3 步也点亮。 */
+    const el = document.querySelector('[data-step="' + AN.openStep + '"][data-lane="' +
+                                      (AN.openLane || "") + '"]');
+    if(el) el.classList.add("active");
   }
 }
 
