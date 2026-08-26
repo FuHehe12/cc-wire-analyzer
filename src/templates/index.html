@@ -1061,10 +1061,15 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-a{color:var(--text-dim);}
 .an-b{color:var(--brand);}
 .an-sub{font-size:12px;color:var(--text-dim);margin:10px 0 4px;font-weight:600;}
-/* 步骤行：一行一步，点开看原文 */
-.an-step{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 8px;
-  border-radius:6px;cursor:pointer;font-size:12px;}
-.an-step:hover{background:var(--bg-soft);}
+/* 步骤行（260826 简报流）：一行一步的人话 + 机械信号，零点击——钻探在树视图 */
+.an-step{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:5px 8px;
+  border-radius:6px;font-size:12px;}
+.an-brief{flex:1;min-width:240px;color:var(--text-dim);line-height:1.55;}
+/* 纯工具步的聚合簇：视觉降权——它们是"期间干的粗活"，不是叙事主线 */
+.an-toolrun{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:2px 8px 2px 44px;}
+.an-toolrun .chip{font-size:10.5px;opacity:.88;}
+.an-toolrun .an-sn{min-width:0;}
 .an-sn{color:var(--text-faint);min-width:36px;font-variant-numeric:tabular-nums;}
 .an-tk{color:var(--text-dim);font-variant-numeric:tabular-nums;}
 /* diff 正文：等宽、可横向滚，不撑破页面 */
@@ -1744,6 +1749,8 @@ zh: {
   "an.ai.none": "骨架由程序抽取（步骤与轮次来自录制原文，可复算）。点「AI 归纳轮次」让模型在此之上补一层语义：每轮在做什么、想达到什么、哪里值得注意。",
   "an.ai.meta": "{model} · {time}",
   "an.ai.dropped": "模型引用了 {n} 个不存在的步号，已剔除",
+  "an.ai.partialBrief": "{n} 批步级简报生成失败，对应步显示机械信息",
+  "an.toolRun": "{n} 次工具调用",
   "an.ai.done": "已归纳并保存", "an.ai.failed": "归纳失败：{msg}",
   "an.transA": "翻译左侧", "an.transB": "翻译右侧", "an.aiCompare": "AI 对比分析",
   "an.aiCompareHint": "把差异与元数据交给软件内的低成本模型，让它给结论（不发两段全文）",
@@ -2094,6 +2101,8 @@ en: {
   "an.ai.none": "The skeleton is extracted by code — steps and turns come from the recording itself and can be recomputed. Click \"AI turn summary\" to add a semantic layer on top: what each turn is doing, what it wants, and what is worth noticing.",
   "an.ai.meta": "{model} · {time}",
   "an.ai.dropped": "{n} step number(s) the model invented were dropped",
+  "an.ai.partialBrief": "{n} step-brief batch(es) failed; those steps show raw facts",
+  "an.toolRun": "{n} tool calls",
   "an.ai.done": "Summarised and saved", "an.ai.failed": "Summary failed: {msg}",
   "an.transA": "Translate left", "an.transB": "Translate right", "an.aiCompare": "AI comparison",
   "an.aiCompareHint": "Sends the differences and metadata to the built-in low-cost model for a verdict (not both full texts)",
@@ -2446,6 +2455,8 @@ ja: {
   "an.ai.none": "スケルトンはプログラムが抽出したものです（ステップとターンは記録原文由来で再計算可能）。「AI でターンを要約」を押すと、その上に意味の層を重ねます：各ターンが何をしていて、何を達成しようとし、どこに注意すべきか。",
   "an.ai.meta": "{model} · {time}",
   "an.ai.dropped": "モデルが挙げた存在しないステップ番号 {n} 件を除外しました",
+  "an.ai.partialBrief": "{n} バッチのステップ要約に失敗、該当ステップは生の事実表示",
+  "an.toolRun": "ツール呼び出し {n} 回",
   "an.ai.done": "要約して保存しました", "an.ai.failed": "要約に失敗：{msg}",
   "an.transA": "左を翻訳", "an.transB": "右を翻訳", "an.aiCompare": "AI 比較分析",
   "an.aiCompareHint": "差分とメタデータを内蔵の低コストモデルに渡して結論を出させます（全文は送りません）",
@@ -5874,6 +5885,10 @@ function anAnalysisHead(){
       ((a.dropped_steps || []).length
         ? ' · <span class="an-ana-drop">' + t18("an.ai.dropped", {n: a.dropped_steps.length}) + '</span>'
         : "") +
+      ((a.steps_brief_meta || {}).failed_batches
+        ? ' · <span class="an-ana-drop">' + t18("an.ai.partialBrief",
+            {n: a.steps_brief_meta.failed_batches}) + '</span>'
+        : "") +
     '</div></div>';
 }
 /* 轮次分组头：列表与树共用一份，别各写一份（两种视图的 AI 文案分叉过就再也对不上） */
@@ -5889,20 +5904,49 @@ function anTurnHead(turn){
     (t.risk ? '<div class="an-turnline risk">' + esc(t18("an.ai.risk")) + esc(t.risk) + '</div>' : "") +
     '</div>';
 }
+/* 列表视图 = 简报流（260826）：每步一行人话（AI brief），连续纯工具步聚合成标签簇
+   （名称×次数，视觉降权），零点击——思考原文的钻探在树视图，两个视图分工。
+   分层不变：步行上的 signals chip 是程序识别的机械真源，与 AI 简报互相印证；
+   没有简报的步（未分析/该批失败/旧缓存）退回机械行，不白屏也不装懂。 */
 function anListHtml(steps){
-  let h = "", lastTurn = null;
+  const briefs = ((AN.recAnalysis || {}).steps) || [];
+  const bmap = {};
+  briefs.forEach(b => { bmap[b.step] = b.brief; });
+  let h = "", lastTurn = null, cluster = null;
+  const flushCluster = () => {
+    if(!cluster) return;
+    const chips = Object.keys(cluster.tools).map(k =>
+      '<span class="chip">' + esc(k) + (cluster.tools[k] > 1 ? "×" + cluster.tools[k] : "") + '</span>').join("");
+    h += '<div class="an-toolrun"><span class="an-sn">#' + cluster.from +
+      (cluster.to > cluster.from ? "-" + cluster.to : "") + '</span>' + chips +
+      '<span class="an-tk">' + t18("an.toolRun", {n: cluster.n}) + '</span></div>';
+    cluster = null;
+  };
   steps.forEach(s => {
-    if(s.turn !== lastTurn){ lastTurn = s.turn; h += anTurnHead(s.turn); }
+    if(s.turn !== lastTurn){ lastTurn = s.turn; flushCluster(); h += anTurnHead(s.turn); }
     const sig = Object.keys(s.signals || {});
-    h += '<div class="an-step" onclick="anStepOpen(' + s.step + ')">' +
+    const brief = bmap[s.step];
+    /* 纯工具步（无思考无回复）：进簇不单独成行——AI 不总结它们（后端同样过滤），
+       "调了哪些工具各几次"标签簇本身就是全部要说的 */
+    if(!brief && !s.thinking_chars && !s.reply_chars && (s.tools || []).length){
+      if(!cluster) cluster = {from: s.step, to: s.step, n: 0, tools: {}};
+      cluster.to = s.step;
+      cluster.n += (s.tools || []).length;
+      (s.tools || []).forEach(t => { cluster.tools[t] = (cluster.tools[t] || 0) + 1; });
+      return;
+    }
+    flushCluster();
+    h += '<div class="an-step">' +
       '<span class="an-sn">#' + s.step + '</span>' +
-      '<span class="chip outline">' + t18("an.turnN", {n: s.turn}) + '</span>' +
-      '<span class="chip outline">' + esc(t18("an.trig." + s.trigger)) + '</span>' +
+      (brief
+        ? '<span class="an-brief">' + esc(brief) + '</span>'
+        : '<span class="chip outline">' + esc(t18("an.trig." + s.trigger)) + '</span>' +
+          (s.tools || []).map(x => '<span class="chip">' + esc(x) + '</span>').join("")) +
       (s.thinking_chars ? '<span class="an-tk">' + fmtTok(s.thinking_chars) + t18("an.chars") + '</span>' : "") +
-      (s.tools || []).map(x => '<span class="chip">' + esc(x) + '</span>').join("") +
       sig.map(k => '<span class="chip sig ' + sigCls(k) + '">' + esc(k) + " " + s.signals[k] + '</span>').join("") +
       '</div>';
   });
+  flushCluster();
   return h;
 }
 
