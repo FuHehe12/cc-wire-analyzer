@@ -476,6 +476,9 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .arc-meta{font-size:10.5px;color:var(--apple-secondary);}
 /* 机器名：标签是人起的，机器名是归档时自动写进去的——外来数据的判据是它，不是标签。 */
+/* 设置页里唯一一个可点的只读值：平时与相邻的只读值同形，hover 才显出可点 */
+.aiv-link{color:var(--brand-ink);text-decoration:none;cursor:pointer;}
+.aiv-link:hover{text-decoration:underline;}
 .arc-host{font-family:var(--font-mono);}
 .arc-host.foreign{color:var(--info);}
 .arc-empty{font-size:11.5px;color:var(--apple-secondary);padding:6px 0;}
@@ -1626,7 +1629,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
           <textarea id="cfgAnaTurnsPrompt" rows="4" data-i18n-ph="set.anaTurnsPh"></textarea>
         </div>
         <div class="srow">
-          <div><label class="lbl" for="cfgAnaStepsPrompt" data-i18n="set.anaSteps">步级简报提示词</label><div class="sub" data-i18n="set.anaStepsSub">每步一行简报的任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架不受影响</div></div>
+          <div><label class="lbl" for="cfgAnaStepsPrompt" data-i18n="set.anaSteps">步级简报提示词</label><div class="sub" data-i18n="set.anaStepsSub">每步一条两段式简报（title 一句话 + detail 写为什么/发现/放弃）的任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架内置，不受此项影响</div></div>
           <textarea id="cfgAnaStepsPrompt" rows="4" data-i18n-ph="set.anaStepsPh"></textarea>
         </div>
         <div class="srow test-row">
@@ -1651,6 +1654,13 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
         <div class="srow">
           <div><div class="lbl" data-i18n="set.ai.guide">说明书端点</div><div class="sub" data-i18n="set.ai.guideSub">Markdown 原文 + 本机运行期事实（端口、数据目录绝对路径）</div></div>
           <div class="val mono" id="aiGuideUrl">—</div>
+        </div>
+        <div class="srow">
+          <div><div class="lbl" data-i18n="set.ai.view">API 浏览面</div><div class="sub" data-i18n="set.ai.viewSub">人眼核对 AI 到底读到了什么：每个 GET 端点一行说明、点开即看；任何端点加 ?format=html 同理</div></div>
+          <div class="in-group">
+            <a class="val mono aiv-link" id="aiViewUrl" href="/view" target="_blank" rel="noopener">—</a>
+            <button class="btn" onclick="copyAiView(this)" data-i18n="set.ai.copy">复制</button>
+          </div>
         </div>
         <div class="srow">
           <div><div class="lbl" data-i18n="set.ai.headless">无界面模式</div><div class="sub" data-i18n="set.ai.headlessSub">不开窗只起服务与代理，供 AI 全程自驱</div></div>
@@ -1976,6 +1986,8 @@ zh: {
   "set.ai.title": "给 AI 用",
   "set.ai.sub": "本工具是双模式的：人看这个界面，AI 走 HTTP API。把下面这句话复制给你的 AI（Claude Code / Codex / opencode …），它就能自己读懂用法并驱动本工具。",
   "set.ai.prompt": "复制给 AI 的一句话", "set.ai.promptSub": "说明书随产物打包，离线可读，不联网",
+  "set.ai.view": "API 浏览面",
+  "set.ai.viewSub": "人眼核对 AI 到底读到了什么：每个 GET 端点一行说明、点开即看；任何端点加 ?format=html 同理",
   "set.ai.promptText": "这台机器上开着 CC Wire Analyzer（录制 Claude Code 与上游之间全部 HTTP 流量的本机代理）。先读 {url} —— 那是它的完整用法说明（含本机端口与数据目录绝对路径），然后按说明驱动它。",
   "set.ai.copy": "复制",
   "set.ai.guide": "说明书端点", "set.ai.guideSub": "Markdown 原文 + 本机运行期事实（端口、数据目录绝对路径）",
@@ -2148,6 +2160,10 @@ zh: {
   "set.explainSub": "AI 解读的任务描述；留空 = 内置默认。防注入隔离框架内置，不受此项影响",
   "set.explainPh": "请用通俗的语言解释这段内容在做什么：它是谁发给谁的、想达到什么目的、关键动作有哪些。遇到代码或工具调用，说明它的作用即可，不要逐行复述。最后用一两句话总结。",
   "set.anaTurnsPh": "分析任务：按 turn（轮次）归纳……（需保留输出 JSON 格式约定：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
+  "set.anaTurns": "轮级归纳提示词",
+  "set.anaTurnsSub": "分析页「AI 归纳」的轮次任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架内置，不受此项影响",
+  "set.anaSteps": "步级简报提示词",
+  "set.anaStepsSub": "每步一条两段式简报（title 一句话 + detail 写为什么/发现/放弃）的任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架内置，不受此项影响",
   "set.anaStepsPh": "分析任务：为每个 step 写一条两段式简报（title 一句话、detail 写为什么/发现/放弃）……（需保留输出 JSON 格式约定：{\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]}）",
   "set.test": "测试连通", "set.testing": "测试中…",
   "set.testOk": "✓ 连通正常：{snippet}", "set.testFail": "✗ {msg}",
@@ -2342,6 +2358,8 @@ en: {
   "set.ai.title": "For AI agents",
   "set.ai.sub": "This tool is dual-mode: humans use this window, agents use the HTTP API. Copy the line below to your AI (Claude Code / Codex / opencode …) and it can read the manual and drive the tool itself.",
   "set.ai.prompt": "One line to hand your AI", "set.ai.promptSub": "The manual ships inside the binary — readable offline, no network",
+  "set.ai.view": "API browse page",
+  "set.ai.viewSub": "See with your own eyes what the AI reads: every GET endpoint with one line of explanation, one click each; appending ?format=html to any endpoint does the same",
   "set.ai.promptText": "This machine is running CC Wire Analyzer (a local proxy that records all HTTP traffic between Claude Code and its upstream). Start by reading {url} — that is its full usage guide, including this machine's port and absolute data paths — then drive it from there.",
   "set.ai.copy": "Copy",
   "set.ai.guide": "Guide endpoint", "set.ai.guideSub": "Raw Markdown plus this machine's runtime facts (port, absolute data paths)",
@@ -2513,6 +2531,10 @@ en: {
   "set.explainSub": "Task description for Ask AI; empty = built-in default. The injection guard is built-in and unaffected",
   "set.explainPh": "Explain in plain language what this content is doing: who is sending it to whom, what it is trying to achieve, and what the key actions are. For code or tool calls, describe their purpose instead of going line by line. End with a one- or two-sentence summary.",
   "set.anaTurnsPh": "Task: summarise the conversation by turn… (keep the JSON output format: {\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"})",
+  "set.anaTurns": "Turn-level summary prompt",
+  "set.anaTurnsSub": "The per-turn task description behind \u201cAI summary\u201d on the Analyse page; empty = built-in default. Keep the JSON output format; the injection guard is internal and unaffected",
+  "set.anaSteps": "Step-level brief prompt",
+  "set.anaStepsSub": "The task description for the two-part brief per step (title in one line + detail carrying why / what turned up / what was dropped); empty = built-in default. Keep the JSON output format; the injection guard is internal and unaffected",
   "set.anaStepsPh": "Task: write a two-part brief per step (title = one line, detail = why / what turned up / what was dropped)… (keep the JSON output format: {\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]})",
   "set.test": "Test connection", "set.testing": "Testing…",
   "set.testOk": "✓ Connected: {snippet}", "set.testFail": "✗ {msg}",
@@ -2706,6 +2728,8 @@ ja: {
   "set.ai.title": "AI エージェント向け",
   "set.ai.sub": "本ツールは二つのモードを持ちます：人はこの画面、AI は HTTP API。下の一文をあなたの AI（Claude Code / Codex / opencode …）に渡せば、使い方を自分で読み取って本ツールを操作できます。",
   "set.ai.prompt": "AI に渡す一文", "set.ai.promptSub": "説明書は製品に同梱、オフラインで読めます",
+  "set.ai.view": "API ブラウズ画面",
+  "set.ai.viewSub": "AI が実際に何を読んでいるかを自分の目で確認：各 GET エンドポイントに一行の説明、クリックで表示。任意のエンドポイントに ?format=html でも同じ",
   "set.ai.promptText": "このマシンで CC Wire Analyzer（Claude Code と上流の間の全 HTTP 通信を記録するローカルプロキシ）が動いています。まず {url} を読んでください——本機のポートとデータディレクトリの絶対パスを含む完全な使用ガイドです——その上で操作してください。",
   "set.ai.copy": "コピー",
   "set.ai.guide": "説明書エンドポイント", "set.ai.guideSub": "Markdown 原文＋本機の実行時情報（ポート、データ保存先の絶対パス）",
@@ -2877,6 +2901,10 @@ ja: {
   "set.explainSub": "AI 解説のタスク記述；空欄＝内蔵デフォルト。注入対策ガードは内蔵のため影響を受けません",
   "set.explainPh": "この内容が何をしているのか、わかりやすい言葉で説明してください：誰が誰に送ったものか、何を達成しようとしているのか、主要なアクションは何か。コードやツール呼び出しは逐行ではなく役割を説明してください。最後に1〜2文でまとめてください。",
   "set.anaTurnsPh": "タスク：ターンごとに会話を要約…（JSON 出力形式を維持：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
+  "set.anaTurns": "ターン単位の要約プロンプト",
+  "set.anaTurnsSub": "分析ページ「AI 要約」のターン単位タスク記述。空欄 = 内蔵デフォルト。JSON 出力形式は維持すること。インジェクション対策の枠組みは内蔵で、この項目の影響を受けません",
+  "set.anaSteps": "ステップ単位の要約プロンプト",
+  "set.anaStepsSub": "各ステップの 2 段構成要約（title 一文 + detail は理由・判明した点・見送った案）のタスク記述。空欄 = 内蔵デフォルト。JSON 出力形式は維持すること。インジェクション対策の枠組みは内蔵で、この項目の影響を受けません",
   "set.anaStepsPh": "タスク：各ステップに 2 段構成の要約を（title は一文、detail は理由・判明した点・見送った案）…（JSON 出力形式を維持：{\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]}）",
   "set.test": "接続テスト", "set.testing": "テスト中…",
   "set.testOk": "✓ 接続 OK：{snippet}", "set.testFail": "✗ {msg}",
@@ -6662,11 +6690,21 @@ async function loadConfig(){
        写死 5051 是这个项目反复踩过的坑，UI 里也不许再写死一次） */
     const guideUrl = location.origin + (about.ai_guide || "/api/ai-guide");
     $("aiGuideUrl").textContent = guideUrl;
+    /* 浏览面同理走 location.origin：写死 5051 是这个项目反复踩过的坑 */
+    const viewUrl = location.origin + "/view";
+    $("aiViewUrl").textContent = viewUrl;
+    $("aiViewUrl").href = viewUrl;
+    S.aiViewUrl = viewUrl;
     S.aiGuideUrl = guideUrl;      /* 存原料：切语言时重算那句话要用（renderSettingsI18n）*/
     renderSettingsI18n();
   }catch(e){
     toast(t18("toast.cfgLoadFailed", {msg: e.message}), true);
   }
+}
+
+function copyAiView(btn){
+  if(!S.aiViewUrl){ toast(t18("toast.cfgLoadFailed", {msg: "—"}), true); return; }
+  return copyAndReport(S.aiViewUrl, btn);
 }
 
 /* ===== 运行中的实例（260809，issue 260809_设置页实例总览）=====
