@@ -36,6 +36,9 @@
   --radius-md:12px;
   --radius-lg:16px;
   --brand:var(--accent);
+  /* --brand 是**装饰**用（边框/角标/高亮底）；当**正文字**压在卡面上要用 --brand-ink。
+     同一个金色在深色卡上是 8:1、在白卡上只有 2.94:1——一个值扛不住两种底（260827 实测）。 */
+  --brand-ink:var(--accent);
   /* 分析视图（260808 加入）沿用的是一套老命名，而 token 体系里从来没有它们：实测 21 处
      `var(--text)/--text-dim/--bg` 引用落空（无 fallback = 整条声明作废，颜色静默继承父级），
      `var(--mono,…)` 则一路落到系统 Consolas，把「字体打包进产物保证跨平台一致」也绕过了。
@@ -64,7 +67,7 @@
   --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.08);
   --apple-text-strong:#FFFFFF;  /* 关键文字纯白，深底最强重音 */
   --node-user:#E8B855;
-  --node-assistant:#9A93A8;
+  --node-assistant:#777181;
   --node-system:#6A6478;
   --accent:#E8B855; --accent-deep:#C2882B;
   --gold-text:#E8B855; --gold-text-2:#D69A36;
@@ -74,7 +77,7 @@
   --bg-ask:#1A2536; --bg-permission:#3A2F1E; --bg-error-soft:#3A1E1E;
   --border:#2E2E38; --border-soft:#262630; --border-warm:#C2882B; --border-ask:#3D6FB4;
   --ok:#4ADE80; --err:#F87171; --warn:#FBBF24; --info:#60A5FA;
-  --text-tertiary:#A8A8B2; --text-faint:#888892;
+  --text-tertiary:#A8A8B2; --text-faint:#9797A0;
   /* 组件语义 token：三主题只换变量，不让深浅判断散落在选择器里。 */
   --card-border:rgba(255,255,255,0.12);
   --row-border:rgba(255,255,255,0.06);
@@ -113,7 +116,8 @@
   --paper-text-3:rgba(255,255,255,.62); --paper-kind:rgba(255,255,255,.58);
   --paper-tag-bg:rgba(0,0,0,.3); --paper-tag-fg:rgba(255,255,255,.72);
   --paper-tag-border:rgba(255,255,255,.08);
-  --paper-x:rgba(255,255,255,.42); --paper-x-hover-bg:rgba(0,0,0,.35);
+  --paper-x:rgba(255,255,255,.58); --paper-x-hover-bg:rgba(0,0,0,.35);
+  --role-a-fg:#211706; --role-b-fg:#0C2A16; --danger-solid:#BA5555;
   --paper-confirm-bg:rgba(12,10,8,.90); --paper-role-fg:#15130F;
   /* 信号四色（犹豫/分支/自我修正/不确定）与泳道色板同理：一组色值不可能同时落在 #131318
      和纸面上还都过 AA，所以三套各给一份，前景色随之翻面。 */
@@ -131,15 +135,15 @@
 html[data-theme="classic"]{
   --apple-primary:#C2882B;
   --apple-text:#1A1A1A; --apple-text-secondary:#5C564C;
-  --apple-secondary:#6E665C; --apple-tertiary:#756C5D;
+  --apple-secondary:#635C53; --apple-tertiary:#686053;
   --apple-shadow-sm:0 1px 3px rgba(45,35,20,0.07);
   --apple-shadow:0 3px 12px rgba(45,35,20,0.08);
   --apple-shadow-md:0 8px 24px rgba(45,35,20,0.11);
   --apple-shadow-lg:0 14px 36px rgba(45,35,20,0.14);
   --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.78);
   --apple-text-strong:#1A1A1A;
-  --node-user:#C98A25; --node-assistant:#675F55; --node-system:#81796D;
-  --accent:#C98A25; --accent-deep:#A66B13;
+  --node-user:#C98A25; --node-assistant:#675F55; --node-system:#7B7368;
+  --accent:#C98A25; --accent-deep:#A16812; --brand-ink:#9B6A1C;
   --gold-text:#6B4A12; --gold-text-2:#806025;
   --bg-canvas:#DED8CC; --bg-card:#FFFFFF;
   --bg-soft:#F4F2EF; --bg-softer:#FBFAF8;
@@ -147,7 +151,7 @@ html[data-theme="classic"]{
   --bg-ask:#EEF4FB; --bg-permission:#FFF7E6; --bg-error-soft:#FDF1EC;
   --border:#E1DBD0; --border-soft:#EDE7DC; --border-warm:#BFA77F; --border-ask:#B9CEE4;
   --ok:#356A2B; --err:#A83C2A; --warn:#7B5B1D; --info:#315F9D;
-  --text-tertiary:#655F55; --text-faint:#756C5D;
+  --text-tertiary:#655F55; --text-faint:#686053;
   --card-border:rgba(91,72,45,0.15); --row-border:#EDE7DC;
   --header-bg:rgba(255,255,255,0.88); --header-border:rgba(91,72,45,0.12);
   --header-shadow:0 3px 14px rgba(63,49,30,0.08);
@@ -155,7 +159,7 @@ html[data-theme="classic"]{
   --scroll-thumb:#B5AC9E; --focus-ring:rgba(166,107,19,0.45);
   --toast-bg:#27231E; --toast-fg:#FFFFFF; --accent-contrast:#FFFFFF;
   --chip-default-fg:#FFFFFF; --chip-user-fg:#2A1B05; --chip-assistant-fg:#FFFFFF; --chip-tool-fg:#FFFFFF;
-  --chip-probe-fg:#FFFFFF; --ok-soft-fg:#2D6127; --ok-soft-bg:rgba(53,106,43,0.12);
+  --chip-probe-fg:#FFFFFF; --ok-soft-fg:#2A5A24; --ok-soft-bg:rgba(53,106,43,0.12);
   --terminal-bg:#F5F2EC; --terminal-code-bg:#EEE9E0; --terminal-text:#39342E;
   --input-focus-bg:#FFFDF9; --danger-node-hover:#F8E3DC; --node-hover-ring:rgba(201,138,37,0.32);
   --theme-selected-ring:rgba(201,138,37,0.22);
@@ -175,11 +179,12 @@ html[data-theme="classic"]{
   --paper-tape:linear-gradient(180deg,rgba(255,251,240,.60),rgba(224,209,180,.34));
   --paper-tape-border:rgba(120,95,55,.13);
   --paper-fold:rgba(120,95,55,.18);
-  --paper-text:#3A3026; --paper-text-2:#6B5C46;
-  --paper-text-3:#665942; --paper-kind:#6E6049;
+  --paper-text:#3A3026; --paper-text-2:#5E513E;
+  --paper-text-3:#5D513C; --paper-kind:#5C513D;
   --paper-tag-bg:rgba(120,95,55,.13); --paper-tag-fg:#5C4E3A;
   --paper-tag-border:rgba(120,95,55,.20);
-  --paper-x:rgba(90,70,45,.58); --paper-x-hover-bg:rgba(90,70,45,.14);
+  --paper-x:#5C5142; --paper-x-hover-bg:rgba(90,70,45,.14);
+  --role-a-fg:#211706; --role-b-fg:#FFFFFF; --danger-solid:var(--err);
   --paper-confirm-bg:rgba(250,246,238,.94); --paper-role-fg:#1A1206;
   --sig-h:#8A5A12; --sig-b:#265F92; --sig-c:#8F3A30; --sig-u:#5F6A73; --sig-fg:#FFFFFF;
   --row-hover:rgba(201,138,37,0.11); --chip-soft-bg:rgba(91,72,45,.10);
@@ -188,7 +193,7 @@ html[data-theme="classic"]{
   --live-bg:#2F7A24; --live-fg:#FFFFFF; --pulse-ring:rgba(53,106,43,.30);
   --err-ring:rgba(168,60,42,0.22); --err-ring-strong:rgba(168,60,42,0.38);
   --toggle-track:#C6BCAA; --toggle-knob:#FFFFFF;
-  --mark-ic-bg:color-mix(in srgb,var(--brand) 46%,transparent);
+  --mark-ic-bg:color-mix(in srgb,var(--brand) 30%,transparent);
   --mark-hg-bg:color-mix(in srgb,var(--warn) 40%,transparent);
 }
 /* 实验室日光：冷矿物纸面 + 精密青蓝。轻微 24px 网格只留在画布，呼应流量测量和 DAG 坐标。 */
@@ -203,7 +208,7 @@ html[data-theme="light"]{
   --apple-highlight:inset 0 1px 0 rgba(255,255,255,0.88);
   --apple-text-strong:#101820;
   --node-user:#247B84; --node-assistant:#586B7A; --node-system:#657985;
-  --accent:#1E6972; --accent-deep:#15545B;
+  --accent:#1E6972; --accent-deep:#15545B; --brand-ink:#1E6972;
   --gold-text:#185A62; --gold-text-2:#276B73;
   --bg-canvas:#E8EEF0; --bg-card:#FFFFFF;
   --bg-soft:#EDF3F5; --bg-softer:#F7FAFB;
@@ -211,7 +216,7 @@ html[data-theme="light"]{
   --bg-ask:#E8F1FB; --bg-permission:#EDF7F3; --bg-error-soft:#FCEDEC;
   --border:#C7D4D9; --border-soft:#DEE7EA; --border-warm:#78AEB3; --border-ask:#A8C5E2;
   --ok:#237A53; --err:#A93635; --warn:#7A5B13; --info:#2A64A1;
-  --text-tertiary:#485964; --text-faint:#5B6B75;
+  --text-tertiary:#485964; --text-faint:#55646D;
   --card-border:rgba(55,85,96,0.17); --row-border:#E0E8EB;
   --header-bg:rgba(247,250,251,0.86); --header-border:rgba(55,85,96,0.14);
   --header-shadow:0 4px 18px rgba(31,57,66,0.08);
@@ -244,7 +249,8 @@ html[data-theme="light"]{
   --paper-text-3:#4E5C63; --paper-kind:#546269;
   --paper-tag-bg:rgba(55,85,96,.11); --paper-tag-fg:#3F5058;
   --paper-tag-border:rgba(55,85,96,.18);
-  --paper-x:rgba(31,57,66,.58); --paper-x-hover-bg:rgba(31,57,66,.12);
+  --paper-x:#526267; --paper-x-hover-bg:rgba(31,57,66,.12);
+  --role-a-fg:#FFFFFF; --role-b-fg:#FFFFFF; --danger-solid:var(--err);
   --paper-confirm-bg:rgba(247,250,251,.94); --paper-role-fg:#FFFFFF;
   --sig-h:#7A5B13; --sig-b:#2A64A1; --sig-c:#A93635; --sig-u:#556772; --sig-fg:#FFFFFF;
   --row-hover:rgba(30,105,114,0.09); --chip-soft-bg:rgba(55,85,96,.10);
@@ -253,7 +259,7 @@ html[data-theme="light"]{
   --live-bg:#1F7A53; --live-fg:#FFFFFF; --pulse-ring:rgba(35,122,83,.28);
   --err-ring:rgba(169,54,53,0.22); --err-ring-strong:rgba(169,54,53,0.38);
   --toggle-track:#AFC0C7; --toggle-knob:#FFFFFF;
-  --mark-ic-bg:color-mix(in srgb,var(--brand) 42%,transparent);
+  --mark-ic-bg:color-mix(in srgb,var(--brand) 28%,transparent);
   --mark-hg-bg:color-mix(in srgb,var(--warn) 38%,transparent);
   --canvas-pattern:
     linear-gradient(rgba(30,105,114,0.045) 1px,transparent 1px),
@@ -860,8 +866,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   opacity:0;pointer-events:none;transition:all .25s ease;max-width:80vw;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 #toast.err{background:var(--err);}
+/* 实底走 --accent-deep 而不是 --accent：亮金实底配白字实测 2.94:1（260827 全站走查）。
+   --accent 留给边框与线条，--accent-deep 才是"上面要压字"的那一档。 */
 html[data-theme="classic"] .btn.primary,html[data-theme="light"] .btn.primary{
-  background:var(--accent);border-color:var(--accent);color:var(--accent-contrast);}
+  background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);}
 html[data-theme="classic"] .btn.primary:hover,html[data-theme="light"] .btn.primary:hover{
   background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);}
 html[data-ui-scale="large"] .main-content{padding-left:18px;padding-right:18px;}
@@ -899,7 +907,9 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   background:var(--paper-confirm-bg);display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:8px;font-size:12px;color:var(--text);}
 .sticky-confirm .btn{padding:3px 12px;font-size:12px;}
-.btn.danger{background:var(--err);border-color:var(--err);color:#fff;}
+/* 实底红按钮走 --danger-solid：--err 是为"深底上的一行红字"调的，深色外观下它是 #F87171，
+   当按钮底配白字实测 2.77:1（260827）。两种用途、两个值。 */
+.btn.danger{background:var(--danger-solid);border-color:var(--danger-solid);color:#fff;}
 /* 骨架的 AI 语义层（260809）。**视觉上必须与程序骨架分得开**——底色偏移 + 「AI 归纳」角标，
    让人一眼看出哪行是模型说的、哪行是从录制里抽出来的事实。分层如果只存在于后端，
    用户读到的仍是一份分不清来源的文本。 */
@@ -925,7 +935,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-tools .an-llm-host{flex-basis:100%;}
 /* 隐蔽差异的定位按钮 */
 .an-jump-wrap{display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center;}
-.an-jump{background:transparent;border:1px solid var(--border);color:var(--brand);
+.an-jump{background:transparent;border:1px solid var(--border);color:var(--brand-ink);
   border-radius:5px;padding:1px 7px;font-size:11px;cursor:pointer;font-family:inherit;}
 .an-jump:hover{background:color-mix(in srgb,var(--brand) 18%,transparent);}
 @keyframes dlflash{0%{background:color-mix(in srgb,var(--brand) 55%,transparent);}
@@ -1021,8 +1031,11 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   border-radius:11px;display:flex;align-items:center;justify-content:center;
   font-size:11px;font-weight:700;padding:0 7px;color:var(--paper-role-fg);z-index:2;
   pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.28);}
-.sticky.sel-a .sticky-role{background:var(--brand);}
-.sticky.sel-b .sticky-role{background:var(--ok);}
+/* 角标文字色**按底分开**：sel-a 是品牌金底、sel-b 是 --ok 绿底，两者明暗在三套外观里
+   各不相同（classic 的金是亮的、绿是深的），共用一个 --paper-role-fg 必然有一边不达标
+   ——实测 classic 的 sel-b 只有 2.87:1（260827）。 */
+.sticky.sel-a .sticky-role{background:var(--brand);color:var(--role-a-fg);}
+.sticky.sel-b .sticky-role{background:var(--ok);color:var(--role-b-fg);}
 .sticky-kind{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--paper-kind);}
 .sticky-title{font-size:13px;font-weight:600;color:var(--paper-text);margin-top:3px;
@@ -1076,7 +1089,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-src summary::before{content:"▸";font-size:11px;color:var(--text-faint);transition:transform .12s;}
 .an-src[open] summary::before{transform:rotate(90deg);}
 .an-a{color:var(--text-dim);}
-.an-b{color:var(--brand);}
+.an-b{color:var(--brand-ink);}
 .an-sub{font-size:12px;color:var(--text-dim);margin:10px 0 4px;font-weight:600;}
 /* 步骤区双栏（260826 晚）：左边叙事流，右边钻探抽屉。
    抽屉用 **sticky 而不是 fixed**：ui_scale 走根元素 zoom，fixed 的定位坐标系会跟着缩放，
@@ -1131,8 +1144,11 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   border-radius:0 8px 8px 0;}
 /* **默认收起**：六条线摊开是 158 行，主线叙事当场被埋掉——而这正是要解决的问题。
    头一行自己就是开关（与多源指令清单同一套折叠做法：原生 details，自绘指示符）。 */
+/* **行级容器必须自己定字号**：不定就等着某个没设字号的子元素（这里是 .an-tk「44 步」）
+   一路继承到卡片默认的 16px，与同行的 10~11.5px 并置——用户原话「很唐」。
+   上一轮 .an-toolrun 是同一个形状（260827 两处一起修）。 */
 .an-agent-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px;
-  cursor:pointer;list-style:none;}
+  cursor:pointer;list-style:none;font-size:12px;}
 .an-agent-head::-webkit-details-marker{display:none;}
 .an-agent-head::before{content:"▸";font-size:11px;color:var(--text-faint);transition:transform .12s;}
 .an-agent[open] > .an-agent-head::before{transform:rotate(90deg);}
@@ -4302,7 +4318,7 @@ function renderDetail(d){
       '<div class="fold-body">' +
       '<div style="font-size:11px;color:var(--text-faint);margin:6px 0 8px;">' + t18("detail.wireOnlyHint") + '</div>' +
       '<table class="kv-table">' + rhKeys.map(k =>
-        '<tr><td class="k" style="' + (isWireKey(k) ? "font-weight:600;color:var(--brand);" : "") + '">' +
+        '<tr><td class="k" style="' + (isWireKey(k) ? "font-weight:600;color:var(--brand-ink);" : "") + '">' +
         esc(k) + '</td><td class="v">' + esc(rhs[k]) + '</td></tr>').join("") +
       '</table></div></details>';
   }
@@ -4433,7 +4449,7 @@ function renderRespBlock(b){
       cit = '<div class="tooluse-box"><span class="blk-meta">citations (' + b.citations.length + "):</span>\n" +
         bigText(cl.join("\n"), 1800) + '</div>';
     }
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--accent);color:var(--accent-contrast)">text</span>' +
+    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--accent-deep);color:var(--accent-contrast)">text</span>' +
       '<span class="blk-actions">' +
       toolBtn("translate", t18("bt.translate"), "translateBlock(this)") +
       toolBtn("explain", t18("bt.explain"), "explainBlock(this)") + '</span></div>' +
