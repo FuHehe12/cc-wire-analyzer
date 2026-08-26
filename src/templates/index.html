@@ -455,6 +455,9 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
 .arc-name{font-family:var(--font-mono);font-size:11.5px;color:var(--apple-text-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .arc-meta{font-size:10.5px;color:var(--apple-secondary);}
+/* 机器名：标签是人起的，机器名是归档时自动写进去的——外来数据的判据是它，不是标签。 */
+.arc-host{font-family:var(--font-mono);}
+.arc-host.foreign{color:var(--info);}
 .arc-empty{font-size:11.5px;color:var(--apple-secondary);padding:6px 0;}
 .capture-list{background:var(--bg-card);border:1px solid var(--card-border);border-radius:var(--radius-lg);
   box-shadow:var(--apple-shadow),var(--apple-highlight);overflow-x:auto;overflow-y:hidden;}
@@ -1917,6 +1920,8 @@ zh: {
   "stor.compactOk": "已压缩 {n} 天，省下 {saved}", "stor.compactNone": "没有可压缩的日期（今天不压、已压的不再压）",
   "stor.archiveOk": "已归档（{size}）", "stor.importOk": "已导入 {label} 的 {date}（{n} 条）",
   "stor.import": "导入", "stor.imported": "已导入", "stor.legacy": "旧格式",
+  "stor.importOkForeign": "已导入 {label} 的 {date}（{n} 条）· 来自另一台机器 {host}",
+  "stor.foreign": "另一台机器", "stor.hostUnknown": "机器未知",
   "stor.noArchives": "还没有归档。用上面的「归档为单文件」产出，或把别的机器的 .ccwa 拷进 archives/",
   "stor.noSources": "还没有导入任何来源",
   "stor.srcDelete": "删除", "stor.srcDeleted": "已删除来源 {label}",
@@ -2273,6 +2278,8 @@ en: {
   "stor.compactOk": "Compacted {n} day(s), saved {saved}", "stor.compactNone": "Nothing to compact (today is skipped, already-compacted days too)",
   "stor.archiveOk": "Archived ({size})", "stor.importOk": "Imported {date} from {label} ({n} records)",
   "stor.import": "Import", "stor.imported": "Imported", "stor.legacy": "legacy format",
+  "stor.importOkForeign": "Imported {date} from {label} ({n} records) · recorded on another machine, {host}",
+  "stor.foreign": "another machine", "stor.hostUnknown": "machine unknown",
   "stor.noArchives": "No archives yet. Use \u201cArchive to a single file\u201d above, or copy a .ccwa from another machine into archives/",
   "stor.noSources": "No imported sources yet",
   "stor.srcDelete": "Delete", "stor.srcDeleted": "Deleted source {label}",
@@ -2628,6 +2635,8 @@ ja: {
   "stor.compactOk": "{n} 日分を圧縮し {saved} を節約", "stor.compactNone": "圧縮できる日付がありません（今日と圧縮済みは対象外）",
   "stor.archiveOk": "アーカイブしました（{size}）", "stor.importOk": "{label} の {date} を取り込みました（{n} 件）",
   "stor.import": "取り込む", "stor.imported": "取り込み済み", "stor.legacy": "旧形式",
+  "stor.importOkForeign": "{label} の {date} を取り込みました（{n} 件）· 別のマシン {host} の録画です",
+  "stor.foreign": "別のマシン", "stor.hostUnknown": "マシン不明",
   "stor.noArchives": "アーカイブはまだありません。上の「単一ファイルにアーカイブ」を使うか、別マシンの .ccwa を archives/ にコピーしてください",
   "stor.noSources": "取り込んだソースはまだありません",
   "stor.srcDelete": "削除", "stor.srcDeleted": "ソース {label} を削除しました",
@@ -3871,13 +3880,23 @@ function doArchive(){
 }
 function importArchive(path){
   _storAction("/api/captures/import", {file: path},
-    j => toast(t18("stor.importOk", {label: j.label, date: j.date, n: j.count})));
+    j => toast(t18(j.foreign ? "stor.importOkForeign" : "stor.importOk",
+                   {label: j.label, date: j.date, n: j.count, host: j.host || ""})));
 }
 function deleteSource(label){
   _storAction("/api/sources/delete", {label}, j => {
     if(S.source === label) switchSource("");
     toast(t18("stor.srcDeleted", {label}));
   });
+}
+/* 归档/来源行尾的机器名。标签是人起的（能起错、能撞名），机器名是归档时自动写进 manifest 的
+   ——"这是不是另一台机器的数据"只认它。没有这个字段的老归档显示「机器未知」而不是默默算本机：
+   空 = 答不上来，不等于本机（260826 桌面上一份 .ccwa 就是这样被当成本机数据查了一大圈）。 */
+function hostBit(x){
+  if(x.legacy) return "";
+  if(!x.host) return ' · <span class="arc-host">' + esc(t18("stor.hostUnknown")) + '</span>';
+  return ' · <span class="arc-host' + (x.foreign ? " foreign" : "") + '">' + esc(x.host) + '</span>' +
+         (x.foreign ? ' · ' + esc(t18("stor.foreign")) : "");
 }
 function renderArchiveCard(){
   const aw = $("arcList"), sw = $("srcList");
@@ -3889,7 +3908,8 @@ function renderArchiveCard(){
     return '<div class="arc-row"><div style="min-width:0">' +
       '<div class="arc-name">' + esc(a.name) + '</div>' +
       '<div class="arc-meta">' + esc(a.date || "?") + " · " + (a.count || 0) + " · " +
-        fmtBytes(a.size || 0) + (a.legacy ? " · " + t18("stor.legacy") : "") + '</div></div>' +
+        fmtBytes(a.size || 0) + (a.legacy ? " · " + esc(t18("stor.legacy")) : hostBit(a)) +
+        '</div></div>' +
       (a.legacy ? "" :
         '<button class="btn tool" ' + (done ? "disabled" : "") +
         ' onclick="importArchive(' + JSON.stringify(a.path).replace(/"/g, "&quot;") + ')">' +
@@ -3900,7 +3920,7 @@ function renderArchiveCard(){
     '<div class="arc-row"><div style="min-width:0">' +
     '<div class="arc-name">' + esc(x.label) + '</div>' +
     '<div class="arc-meta">' + (x.days || 0) + " · " + (x.count || 0) + " · " +
-      fmtBytes(x.bytes || 0) + '</div></div>' +
+      fmtBytes(x.bytes || 0) + hostBit(x) + '</div></div>' +
     '<button class="btn tool danger" onclick="deleteSource(' +
       JSON.stringify(x.label).replace(/"/g, "&quot;") + ')">' + esc(t18("stor.srcDelete")) +
     '</button></div>').join("") : '<div class="arc-empty">' + esc(t18("stor.noSources")) + '</div>';

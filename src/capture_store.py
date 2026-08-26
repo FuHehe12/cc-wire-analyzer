@@ -39,6 +39,7 @@ import json
 import logging
 import queue
 import shutil
+import socket
 import threading
 import time
 import uuid
@@ -1105,10 +1106,31 @@ def enforce_retention(days: int) -> list[str]:
 
 
 def _tool_version() -> str:
+    """产出这份 pack / 归档的本工具版本。
+
+    **读的是 `VERSION`**——`_version.py` 里从来只有这一个名字（`app.py` 也是这么读的）。
+    260826 之前这里取的是 `__version__`，一个谁都没定义过的属性：`getattr` 有默认值，
+    于是它安安静静地一直返回空串，所有 pack 与归档的 `tool_version` 全是空的，导入端
+    显示的"来自哪个版本"永远空白——这正是惯犯 ③「静默吞异常」的形状（有兜底、不报错、
+    结果是错的），而它出现在一个专门用来回答"这份数据是谁产出的"的字段上。
+    """
     try:
-        import _version
-        return getattr(_version, "__version__", "")
+        from _version import VERSION
+        return VERSION or "dev"
     except Exception:
+        return "dev"
+
+
+def local_host() -> str:
+    """本机名。归档 manifest 与来源列表都用它回答"这是哪台机器"。
+
+    **只取 hostname，不取用户名**：归档是拿来分享的（跨机排查时会被拷来拷去），用户名是
+    个人标识，而 hostname 已经足以把两台机器分开——泄露面小得多。取不到就空着，
+    列表侧照旧显示"未知机器"，不编一个。
+    """
+    try:
+        return (socket.gethostname() or "").strip()[:64]
+    except OSError:
         return ""
 
 
@@ -1283,7 +1305,10 @@ def archive_date(date: str, source: str = "", label: str = "", keep: bool = Fals
             # 索引一并建进归档：跨机搬运时对面就不用先卡一次全量重建
             _verify_and_index(tmp_pack, day.jsonl)
             src_pack = tmp_pack
-        info = pack.to_ccwa(src_pack, dst, label=label)
+        # 归档本机录制时签上产出者（版本 + 机器名）；归档一个**导入来源**时一个字都不签，
+        # 保留原机器写在 manifest 里的身份——否则转手一次就把别人的证据变成了"本机的"。
+        stamp = {} if source else {"tool_version": _tool_version(), "host": local_host()}
+        info = pack.to_ccwa(src_pack, dst, label=label, **stamp)
     except pack.PackError as e:
         if tmp_pack:
             pack._rmtree_quiet(tmp_pack)
@@ -1327,9 +1352,11 @@ def import_archive(src: str | Path, label: str = "") -> dict:
         raise StoreError(e.code, str(e))
     with _LOCK:
         _IDX_CACHE.pop((label, date), None)
+    host = manifest.get("host", "")
     return {"label": label, "date": date, "count": manifest.get("count", 0),
             "bytes": _Day(date, label).disk_bytes(),
             "from": manifest.get("tool_version", ""),
+            "host": host, "foreign": bool(host) and host != local_host(),
             "created_at": manifest.get("created_at", "")}
 
 
@@ -1345,12 +1372,23 @@ def list_sources() -> list[dict]:
         if not dates:
             continue
         days = [_Day(x, d.name) for x in dates]
+        # 名片取最近导入的那天（老归档可能根本没有 host 字段，往前找一天算一天）
+        card = {}
+        for x in reversed(days):
+            card = x.manifest() or {}
+            if card.get("host") or card.get("tool_version"):
+                break
+        host = card.get("host", "")
         out.append({
             "label": d.name,
             "dates": dates,
             "days": len(dates),
             "count": sum(x.count() for x in days),
             "bytes": sum(x.disk_bytes() for x in days),
+            "host": host,
+            "foreign": bool(host) and host != local_host(),
+            "from": card.get("tool_version", ""),
+            "archived_at": card.get("archived_at", ""),
         })
     return out
 
@@ -1378,9 +1416,12 @@ def list_archives() -> list[dict]:
         item = {"name": f.name, "path": str(f), "size": f.stat().st_size}
         try:
             m = pack.peek_ccwa(f)
+            host = m.get("host", "")
             item.update({"date": m.get("date"), "count": m.get("count"),
                          "label": m.get("label", ""), "raw_bytes": m.get("raw_bytes"),
-                         "archived_at": m.get("archived_at", "")})
+                         "archived_at": m.get("archived_at", ""),
+                         "host": host, "from": m.get("tool_version", ""),
+                         "foreign": bool(host) and host != local_host()})
         except pack.PackError as e:
             item["error"] = str(e)      # 坏归档要显示出来，不能从列表里悄悄消失
         out.append(item)

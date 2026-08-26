@@ -786,8 +786,12 @@ def captures_import():
 
 @app.route("/api/sources")
 def sources_list():
-    """已导入的外来录制来源 + 本机归档清单（设置页与日期选择器用）。"""
+    """已导入的外来录制来源 + 本机归档清单（设置页与日期选择器用）。
+
+    带上本机 `host`：来源与归档各自报自己的 `host`，比对要有个参照物才做得了——
+    `foreign` 是后端已经比好的结果，`host` 让人（和 AI）看得见比的是什么。"""
     return jsonify({"ok": True,
+                    "host": capture_store.local_host(),
                     "sources": capture_store.list_sources(),
                     "archives": capture_store.list_archives()})
 

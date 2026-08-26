@@ -69,7 +69,9 @@ _SKEL = "skel.jsonl"
 _BLOBS = "blobs.zst"
 _MAP = "map.json"
 _IDX = "idx.jsonl.zst"
-_MANIFEST = "manifest.json"      # 只在 .ccwa 单文件里存在，便于不解包就看清是哪台机器哪一天
+_MANIFEST = "manifest.json"      # 归档产出者名片：谁在哪台机器上用哪个版本打的包。
+                                 # 打进 .ccwa 顶层（不解包就能看清），导入时一并解进 pack 目录
+                                 # ——不然"这是哪台机器录的"在落地那一刻就丢了。
 
 # 压缩级别 3：实测 477MB 的一天打包 9.3s；级别 19 只多省 6% 却慢一个数量级。
 _LEVEL = 3
@@ -119,9 +121,26 @@ def _read_map(pack_dir: Path) -> dict:
 
 
 def read_manifest(pack_dir: Path) -> dict:
-    """只读 manifest 段（不加载 blobs/lines 表，列表页用）。"""
-    m = _read_map(pack_dir)
-    return {k: v for k, v in m.items() if k not in ("blobs", "lines")}
+    """只读 manifest 段（不加载 blobs/lines 表，列表页用）。
+
+    导入进来的 pack 目录里还多躺着一份归档时写的 `manifest.json`（`from_ccwa` 一并解出来），
+    它比 map.json 里那份多记了**归档产出者**（`host` / `tool_version` / `archived_at`）——
+    而"这是哪台机器录的"只有它能回答，所以它盖在上面。本机自己压实出来的 pack 没有这个
+    文件，行为与从前一致。读坏了不能让整个列表页炸掉，但也不能装作没发生：降级回 map.json
+    的那份，并把原因塞进 `manifest_error` 让它显出来。
+    """
+    m = {k: v for k, v in _read_map(pack_dir).items() if k not in ("blobs", "lines")}
+    f = pack_dir / _MANIFEST
+    if not f.exists():
+        return m
+    try:
+        extra = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        m["manifest_error"] = f"{_MANIFEST} 读不出来：{e}"
+        return m
+    if isinstance(extra, dict):
+        m.update({k: v for k, v in extra.items() if k not in ("blobs", "lines")})
+    return m
 
 
 def idx_path(pack_dir: Path) -> Path:
@@ -455,18 +474,31 @@ def unpack(pack_dir: Path, dst_jsonl: Path) -> int:
 
 # ===== 单文件归档（.ccwa）=====
 
-def to_ccwa(pack_dir: Path, dst: Path, *, label: str = "") -> dict:
+def to_ccwa(pack_dir: Path, dst: Path, *, label: str = "",
+            tool_version: str = "", host: str = "") -> dict:
     """pack 目录 → 单文件 `.ccwa`（可拷到另一台机器）。
 
     成员用 ZIP_STORED（blobs 已经是 zstd，再压一遍白费 CPU），只有 idx.jsonl 用 DEFLATED
     ——它是纯文本 JSON，压得动，且带上它能让导入端免掉一次全量重建索引。
     顶层另存一份 `manifest.json`：不解包就能看清是哪台机器、哪一天、多少条。
+
+    `tool_version` / `host` 记的是**归档产出者**，给了就盖掉 pack 里原有的值。调用方只在归档
+    本机录制时给——归档一个从别的机器导入来的来源时不能给，那会把别人的证据签上自己的名字，
+    而这正是 `sources/` 独立命名空间要防的那件事（260826：一份桌面上的 .ccwa 因为 manifest
+    答不出"谁录的"，被当成本机数据查了一大圈）。
     """
     if not is_pack(pack_dir):
         raise PackError("not_a_pack", f"不是 pack 目录：{pack_dir}")
     manifest = dict(read_manifest(pack_dir))
     if label:
         manifest["label"] = label
+    if tool_version:
+        manifest["tool_version"] = tool_version
+    if host:
+        manifest["host"] = host
+    manifest.setdefault("tool_version", "")
+    manifest.setdefault("host", "")
+    manifest.pop("manifest_error", None)
     manifest["archived_at"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
     try:
         with zipfile.ZipFile(dst, "w", zipfile.ZIP_STORED) as zf:
@@ -517,7 +549,7 @@ def from_ccwa(src: Path, pack_dir: Path) -> dict:
             for name in (_SKEL, _BLOBS, _MAP):
                 if name not in names:
                     raise PackError("bad_archive", f"归档缺成员 {name}")
-            for name in (_SKEL, _BLOBS, _MAP, _IDX):
+            for name in (_SKEL, _BLOBS, _MAP, _IDX, _MANIFEST):
                 if name not in names:
                     continue
                 with zf.open(name) as fin, (pack_dir / name).open("wb") as fout:

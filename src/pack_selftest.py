@@ -238,15 +238,28 @@ def run(TMP: Path) -> None:
     print("\n[8] .ccwa 单文件往返（跨机搬运）")
     P.idx_path(pk).write_text('{"v":15,"id":"req_0000000","off":0,"len":10}\n', encoding="utf-8")
     ccwa = TMP / "2026-08-24.laptop.ccwa"
-    info = P.to_ccwa(pk, ccwa, label="laptop")
+    info = P.to_ccwa(pk, ccwa, label="laptop", tool_version="9.9.9", host="TEST-BOX")
     ok(ccwa.exists() and info["label"] == "laptop", "归档成单文件并带上来源标签")
     peek = P.peek_ccwa(ccwa)
     ok(peek["date"] == "2026-08-24" and peek["count"] == len(recs),
        "不解包就能读出日期与条数")
+    ok(peek.get("tool_version") == "9.9.9" and peek.get("host") == "TEST-BOX",
+       "manifest 答得出「谁在哪台机器上打的包」（260826：答不出就会被当成本机数据）",
+       f"{peek.get('tool_version')!r}/{peek.get('host')!r}")
 
     imported = TMP / "imported.pack"
     P.from_ccwa(ccwa, imported)
     ok(P.is_pack(imported), "导入解出的是个合法 pack")
+    im = P.read_manifest(imported)
+    ok(im.get("host") == "TEST-BOX" and im.get("tool_version") == "9.9.9",
+       "产出者身份跟着落地（导入后仍答得出是哪台机器录的）",
+       f"{im.get('tool_version')!r}/{im.get('host')!r}")
+    # 转手归档不许改签：把别人的证据签上自己的名字，正是 sources/ 独立命名空间要防的事
+    ccwa2 = TMP / "relay.ccwa"
+    P.to_ccwa(imported, ccwa2)
+    ok(P.peek_ccwa(ccwa2).get("host") == "TEST-BOX", "重新归档不覆盖原机器身份")
+    ok(P.to_ccwa(pk2, TMP / "nostamp.ccwa").get("host") == "",
+       "没人签名时 host 留空——空 = 答不上来，不等于本机")
     ok(P.idx_path(imported).exists(), "索引跟着归档走（导入端免掉一次全量重建）")
     with P.PackReader(imported) as r:
         ok(r.record_i(5) == recs[5], "导入后的 pack 能取出与原记录一致的内容")
@@ -325,10 +338,27 @@ def run(TMP: Path) -> None:
     ok(J(CS.get_capture(recs[0]["id"], D, source="laptop")) == J(before["detail"][recs[0]["id"]]),
        "导入来源的详情与本机一致")
     ok([x["label"] for x in CS.list_sources()] == ["laptop"], "来源清单列出它")
+    # 溯源：归档要答得出"谁在哪台机器上用哪个版本录的"。这里走的是 **jsonl 直录态** 那条
+    # 归档路径（上面刚 uncompact 回去），压实态那条在下面单独跑一遍——260826 的教训就是
+    # 两条路径只有一条签了名，而没签名的那条产出的文件被当成了本机数据。
+    host = CS.local_host()
+    ok(imp["host"] == host and imp["foreign"] is False and imp["from"],
+       "导入本机自己的归档：机器名对得上、不标外来、版本非空",
+       f"{imp.get('host')!r}/{imp.get('foreign')!r}/{imp.get('from')!r}")
+    ok(CS.list_sources()[0]["host"] == host, "来源清单带机器名（判断外来数据的唯一依据）")
+    ok(any(x.get("host") == host for x in CS.list_archives()), "归档清单也带机器名")
     # 来源命名空间必须真的隔离：删来源不能碰本机同一天
     CS.delete_source("laptop")
     ok(not CS.list_sources() and (CS.CAPTURES_DIR / f"{D}.jsonl").exists(),
        "删来源不影响本机同一天（命名空间真的隔开了）")
+    # 压实态那条归档路径也要签名（jsonl 路径过压实临时目录，pack 路径直通 to_ccwa）
+    CS.compact_date(D)
+    a2 = CS.archive_date(D, keep=True, label="packed")
+    imp2 = CS.import_archive(a2["path"], label="packed")
+    ok(imp2["host"] == host and imp2["from"], "压实态归档同样带机器名与版本",
+       f"{imp2.get('host')!r}/{imp2.get('from')!r}")
+    CS.delete_source("packed")
+    CS.uncompact_date(D)
     try:
         CS.import_archive(a["path"], label="../evil")
         ok(False, "非法来源标签必须被拒（路径穿越）", "居然接受了")

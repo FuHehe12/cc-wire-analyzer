@@ -356,8 +356,13 @@ data: {...}
 **请求**：`{ "file": "C:/…/2026-08-24.laptop.193021.ccwa", "label"?: "laptop" }`。
 标签缺省取归档里记的 `label`。落到 `sources/<标签>/<date>.pack/`。
 
-**响应**：`{ "ok": true, "label": "laptop", "date": "2026-08-24", "count": 855, "bytes": 14752496 }`
+**响应**：`{ "ok": true, "label": "laptop", "date": "2026-08-24", "count": 855, "bytes": 14752496,
+"from": "0.4.16", "host": "DESKTOP-A1B2C3", "foreign": true }`
 失败码：`not_found` / `bad_archive` / `schema_mismatch` / `already_imported` / `bad_label`。
+
+`host` = 归档产出机器名（归档 manifest 里记的，只有 hostname、不含用户名），`from` = 产出它的
+本工具版本，`foreign` = 与本机名不同（即"这是另一台机器的录制"）。老归档没有这两个字段时
+`host` 为空、`foreign` 为 `false`——**空不等于本机**，只等于"答不上来"。
 
 > **为什么必须进独立命名空间**：两台机器同一天都在录，日期一定撞车。混进 `captures/` 的后果
 > 不是报错，而是更糟的东西——把别的机器的证据当本机事实读，排查会直接跑偏。
@@ -365,12 +370,19 @@ data: {...}
 ### `GET /api/sources` — 已导入的来源 + 本机归档清单
 
 ```json
-{ "ok": true,
-  "sources": [{ "label": "laptop", "dates": ["2026-08-24"], "days": 1, "count": 855, "bytes": 14752496 }],
+{ "ok": true, "host": "本机名",
+  "sources": [{ "label": "laptop", "dates": ["2026-08-24"], "days": 1, "count": 855, "bytes": 14752496,
+                "host": "DESKTOP-A1B2C3", "foreign": true, "from": "0.4.16",
+                "archived_at": "2026-08-25T19:30:21" }],
   "archives": [{ "name": "2026-08-24.laptop.193021.ccwa", "path": "…", "size": 14753387,
                  "date": "2026-08-24", "count": 855, "label": "laptop", "raw_bytes": 500284782,
-                 "archived_at": "2026-08-25T19:30:21" }] }
+                 "archived_at": "2026-08-25T19:30:21",
+                 "host": "DESKTOP-A1B2C3", "from": "0.4.16", "foreign": true }] }
 ```
+
+顶层 `host` 是**本机**名，条目里的 `host` 是那份录制的产出机器，`foreign` 就是两者不同。
+标签是人起的（可以起错、可以撞名），机器名是归档时自动写进去的——判断"这是不是另一台机器
+的数据"看 `foreign`，别看标签。老归档没有 `host`，那时显示为空：**空 = 答不上来，不等于本机。**
 
 坏归档不会从列表里消失，而是带 `error` 字段列出来。旧的 zip 归档带 `legacy: true`。
 
