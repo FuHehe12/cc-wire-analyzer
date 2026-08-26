@@ -1034,7 +1034,6 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-pick-row label{font-size:12px;color:var(--text-dim);white-space:nowrap;}
 .an-pick-row select{background:var(--bg-soft);color:var(--text);border:1px solid var(--border);
   border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;max-width:min(420px,42vw);}
-.an-face{display:inline-flex;align-items:center;gap:6px;}
 .an-empty,.an-note,.an-hint{font-size:12px;color:var(--text-faint);line-height:1.6;}
 .an-empty{margin-top:8px;}
 .an-note{padding:10px 14px;margin-bottom:12px;}
@@ -1053,6 +1052,12 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-tier.warn{border-left:3px solid var(--warn);}
 .an-head-txt{font-size:11px;color:var(--text-faint);margin-top:3px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* 多源指令清单的折叠头：details 原生收起，summary 自绘指示符（原生三角在三套外观下不统一）。
+   summary 是可交互控件，user-select:none 由黑名单机制的自然默认覆盖，无需另写。 */
+.an-src summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;}
+.an-src summary::-webkit-details-marker{display:none;}
+.an-src summary::before{content:"▸";font-size:11px;color:var(--text-faint);transition:transform .12s;}
+.an-src[open] summary::before{transform:rotate(90deg);}
 .an-a{color:var(--text-dim);}
 .an-b{color:var(--brand);}
 .an-sub{font-size:12px;color:var(--text-dim);margin:10px 0 4px;font-weight:600;}
@@ -1630,14 +1635,6 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
         <button class="btn" onclick="anCopyPrompt(this)" data-i18n="an.copyPrompt">复制分析提示词</button>
         <button class="btn" onclick="anClearSel('c')" data-i18n="an.clearSel">取消选择</button>
         <button class="btn" onclick="anTidy('c')" data-i18n="an.tidy">整理贴纸</button>
-        <span class="an-face" id="anFaceWrap" hidden>
-          <label data-i18n="an.face">对比面</label>
-          <select id="anFace" onchange="anRecDiff()">
-            <option value="system" data-i18n="an.face.system">系统提示词</option>
-            <option value="tools" data-i18n="an.face.tools">工具集</option>
-            <option value="messages" data-i18n="an.face.messages">对话历史</option>
-          </select>
-        </span>
       </div>
       <div class="an-board" id="anRecBoard"></div>
       <div id="anRecOut"></div>
@@ -1738,7 +1735,7 @@ zh: {
   "tab.captures": "捕获", "tab.dag": "时序", "tab.settings": "设置",
   "tab.analyze": "分析",
   "an.subtabs": "分析子视图",
-  "an.tab.diff": "提示词对比", "an.tab.rec": "录制分析",
+  "an.tab.diff": "提示词对比", "an.tab.rec": "录制分析agent行为",
   "an.clearSel": "取消选择", "an.tidy": "整理贴纸",
   "an.del": "删除这张贴纸", "an.delConfirm": "删除这张贴纸？", "an.delYes": "删除", "an.delNo": "取消",
   "an.deleted": "已删除", "an.delFailed": "删除失败：{msg}", "an.tidied": "已按时间整理 {n} 张贴纸",
@@ -1756,7 +1753,7 @@ zh: {
   "an.viewList": "列表", "an.viewTree": "树",
   "an.treeHint": "主干是步骤顺序；蓝点是出现分支或自我修正的地方，下面是命中的原句与该步实际执行的动作。**这些是机械识别的候选，不是结论**——模型并没有把决策树显式写出来。",
   "an.treeDid": "实际执行：", "an.treeNoTool": "（这一步没有调用工具）",
-  "an.pickRec": "点一张贴纸分析这条录制；点两张则对比它们",
+  "an.pickRec": "点一张贴纸分析这条录制",
   "an.pickedRec": "正在分析：{a}", "an.roleOnly": "析",
   "an.thinkN": "思考 {n} 字",
   "an.pickTwo": "点两张贴纸进行对比", "an.pickOneMore": "已选左：{a} —— 再点一张作为右侧",
@@ -1765,8 +1762,6 @@ zh: {
   "an.posFailed": "贴纸位置没存上：{msg}",
   "an.bodyTitle": "正文差异", "an.bodyLegend": "左列行号 = 左/右；⟨⟩ 内是被揭示的不可见字符，波浪下划线是同形异码",
   "an.sideA": "左", "an.sideB": "右", "an.swap": "对调",
-  "an.face": "对比面", "an.face.system": "系统提示词", "an.face.tools": "工具集",
-  "an.face.messages": "对话历史",
   "an.diffEmpty": "还没有快照。在捕获详情页右键，选择「备份这段提示词」或「备份当前录制」。",
   "an.recPick": "录制快照", "an.copyBrief": "复制 agent 指令", "an.copyPrompt": "复制分析提示词",
   "an.recEmpty": "还没有录制快照。在捕获详情页右键，选择「备份当前录制」。",
@@ -1796,6 +1791,7 @@ zh: {
   "an.tierStats": "{steps} 步 · 其中 {think} 步有思考 · 共 {chars} 字 · {model}",
   "an.partialRedacted": "注意：有部分思考被上游加密读不到——「它没考虑过 X」可能只是那段恰好不可读。",
   "an.srcTitle": "多源指令清单",
+  "an.srcCount": "· {n} 处",
   "an.srcHint": "这条请求里有几处在下指令。它们互相打架就是「上下文冲突」。内容相同的重复注入已合并计数。",
   "an.behaviorTitle": "行为链",
   "an.behaviorHint": "没有思考链时的替代原料。它能回答「做了什么、在哪儿反复」，回答不了「当时在犹豫什么」。",
@@ -2089,7 +2085,7 @@ en: {
   "tab.captures": "Captures", "tab.dag": "Timeline", "tab.settings": "Settings",
   "tab.analyze": "Analyse",
   "an.subtabs": "Analysis sub-views",
-  "an.tab.diff": "Prompt diff", "an.tab.rec": "Recording analysis",
+  "an.tab.diff": "Prompt diff", "an.tab.rec": "Recording agent behavior",
   "an.clearSel": "Clear selection", "an.tidy": "Tidy up",
   "an.del": "Delete this sticker", "an.delConfirm": "Delete this sticker?", "an.delYes": "Delete", "an.delNo": "Cancel",
   "an.deleted": "Deleted", "an.delFailed": "Delete failed: {msg}", "an.tidied": "Tidied {n} stickers by time",
@@ -2107,7 +2103,7 @@ en: {
   "an.viewList": "List", "an.viewTree": "Tree",
   "an.treeHint": "The spine is the step order; a blue dot marks a branch or self-correction, with the matching sentence and what the step actually did below it. **These are mechanically detected candidates, not conclusions** \u2014 the model never wrote its decision tree down.",
   "an.treeDid": "Actually did: ", "an.treeNoTool": "(no tool call in this step)",
-  "an.pickRec": "Pick one sticker to analyse that recording; pick two to compare them",
+  "an.pickRec": "Pick one sticker to analyse that recording",
   "an.pickedRec": "Analysing: {a}", "an.roleOnly": "\u25b8",
   "an.thinkN": "{n} chars of reasoning",
   "an.pickTwo": "Pick two stickers to compare", "an.pickOneMore": "Left: {a} — pick one more for the right",
@@ -2116,8 +2112,6 @@ en: {
   "an.posFailed": "Sticker position was not saved: {msg}",
   "an.bodyTitle": "Text differences", "an.bodyLegend": "Line numbers are left/right; ⟨⟩ marks a revealed invisible character, a wavy underline marks a homoglyph",
   "an.sideA": "Left", "an.sideB": "Right", "an.swap": "Swap",
-  "an.face": "Compare", "an.face.system": "System prompt", "an.face.tools": "Tool set",
-  "an.face.messages": "Conversation history",
   "an.diffEmpty": "No snapshots yet. Right-click in a capture's detail view and choose \u201cSnapshot this prompt\u201d or \u201cSnapshot this recording\u201d.",
   "an.recPick": "Recording snapshot", "an.copyBrief": "Copy agent instructions",
   "an.copyPrompt": "Copy analysis prompt",
@@ -2151,6 +2145,7 @@ en: {
   "an.tierStats": "{steps} steps \u00b7 {think} with reasoning \u00b7 {chars} chars \u00b7 {model}",
   "an.partialRedacted": "Note: part of the reasoning is encrypted upstream \u2014 \u201cit never considered X\u201d may just mean that part is unreadable.",
   "an.srcTitle": "Instruction sources",
+  "an.srcCount": "· {n} sources",
   "an.srcHint": "How many places in this request are giving instructions. When they contradict each other, that is context conflict. Identical repeated injections are merged with a count.",
   "an.behaviorTitle": "Behaviour chain",
   "an.behaviorHint": "The substitute when there is no reasoning chain. It answers \u201cwhat it did and where it went in circles\u201d, never \u201cwhat it was hesitating about\u201d.",
@@ -2442,7 +2437,7 @@ ja: {
   "tab.captures": "キャプチャ", "tab.dag": "タイムライン", "tab.settings": "設定",
   "tab.analyze": "分析",
   "an.subtabs": "分析サブビュー",
-  "an.tab.diff": "プロンプト比較", "an.tab.rec": "記録の分析",
+  "an.tab.diff": "プロンプト比較", "an.tab.rec": "録画のagent行動分析",
   "an.clearSel": "選択解除", "an.tidy": "付箋を整列",
   "an.del": "この付箋を削除", "an.delConfirm": "この付箋を削除しますか？", "an.delYes": "削除", "an.delNo": "キャンセル",
   "an.deleted": "削除しました", "an.delFailed": "削除に失敗：{msg}", "an.tidied": "{n} 枚を時刻順に整列しました",
@@ -2460,7 +2455,7 @@ ja: {
   "an.viewList": "リスト", "an.viewTree": "ツリー",
   "an.treeHint": "幹はステップ順。青い点は分岐や自己修正が現れた箇所で、その下に該当する原文とそのステップで実際に行った操作を示します。**これらは機械的に検出した候補であり結論ではありません** —— モデルは決定木を明示的に書いていません。",
   "an.treeDid": "実際の操作：", "an.treeNoTool": "（このステップではツール未使用）",
-  "an.pickRec": "1 枚選ぶとその記録を分析、2 枚選ぶと比較します",
+  "an.pickRec": "1 枚選ぶとその記録を分析します",
   "an.pickedRec": "分析中：{a}", "an.roleOnly": "析",
   "an.thinkN": "思考 {n} 文字",
   "an.pickTwo": "付箋を 2 枚選ぶと比較します", "an.pickOneMore": "左：{a} —— もう 1 枚を右に選んでください",
@@ -2469,8 +2464,6 @@ ja: {
   "an.posFailed": "付箋の位置を保存できませんでした：{msg}",
   "an.bodyTitle": "本文の差異", "an.bodyLegend": "行番号は左/右。⟨⟩ は可視化された不可視文字、波線は同形異字",
   "an.sideA": "左", "an.sideB": "右", "an.swap": "入れ替え",
-  "an.face": "比較対象", "an.face.system": "システムプロンプト", "an.face.tools": "ツール一覧",
-  "an.face.messages": "会話履歴",
   "an.diffEmpty": "スナップショットがありません。キャプチャ詳細で右クリックし「このプロンプトを保存」または「この記録を保存」を選んでください。",
   "an.recPick": "記録スナップショット", "an.copyBrief": "agent 用の指示をコピー",
   "an.copyPrompt": "分析プロンプトをコピー",
@@ -2503,6 +2496,7 @@ ja: {
   "an.tierStats": "{steps} ステップ · うち思考あり {think} · 計 {chars} 文字 · {model}",
   "an.partialRedacted": "注意：一部の思考は上流で暗号化され読めません。「X を検討しなかった」は、単にその部分が読めないだけの可能性があります。",
   "an.srcTitle": "指示ソース一覧",
+  "an.srcCount": "· {n} 箇所",
   "an.srcHint": "このリクエストで指示を出している箇所の数。互いに矛盾すればそれが「コンテキストの衝突」です。同一内容の重複注入は件数にまとめています。",
   "an.behaviorTitle": "行動チェーン",
   "an.behaviorHint": "思考チェーンがない場合の代替材料。「何をしたか・どこで堂々巡りしたか」は答えられますが、「何を迷っていたか」は答えられません。",
@@ -2960,14 +2954,11 @@ async function setLang(lang){
       renderRec(AN.recData, AN.recSources || []);
       anChatPresetsRender(); anChatRender();
     }
-    /* 对比结果也是 JS 拼的——renderDiff 把 t18 文本拼进 anDiffOut/anRecOut，无 data-i18n，
+    /* 对比结果也是 JS 拼的——renderDiff 把 t18 文本拼进 anDiffOut，无 data-i18n，
        applyI18n 管不着。切语言必须用缓存重渲，否则停在「做对比那一刻」的语言（260808）。
        选中状态校验即缓存有效性：不再是这两条时拦住，不复活已失效的对比。 */
     if(AN.sub === "diff"){
       if(AN.selA && AN.selB && AN.selA !== AN.selB && AN.pDiff) renderDiff(AN.pDiff);
-    }else{
-      const c = anSel("c");
-      if(c[0] && c[1] && AN.rDiff) renderDiff(AN.rDiff, "anRecOut");
     }
   }
   /* 更新面板同理：标题/进度/校验和说明全是 t18 拼出来烤进 DOM 的（同上一条教训，
@@ -5241,7 +5232,7 @@ async function snapCreate(kind, where){
 }
 
 const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
-            selA: null, selB: null, recA: null, recB: null, pDiff: null, rDiff: null,
+            selA: null, selB: null, recA: null, recB: null, pDiff: null,
             pendingDel: null, stepView: "list", recSources: [],
             recAnalysis: null, anaBusy: false,   /* 骨架的 AI 语义层（260809） */
             chat: [], chatBusy: false};
@@ -5297,8 +5288,9 @@ function anFillSelects(){
 /* ---- 白板：备份的东西像贴纸一样贴在板上 ----
 
    两块板各管各的：**提示词板只放提示词，录制板只放录制**（260808 用户定）。
-   选择语义也不同——提示词板必须选两张才谈得上对比；录制板选 1 张是分析这条录制，
-   选 2 张是把两条录制按某个面对比（那正是上下文腐烂的观测方式）。 */
+   选择语义：提示词板选两张做对比；录制板**单选**——点新纸直接替换（260826 用户定，
+   issue 260826_录制分析取消对比与改名：双选按面对比从 GUI 砍掉，该观测方式只剩
+   `GET /api/snapshots/diff?face=` 一条 API 通道）。 */
 
 const BOARD = {w: 232, h: 132, gapX: 20, gapY: 20, padX: 22, padY: 22};
 const BOARDS = {
@@ -5442,9 +5434,16 @@ async function anSavePos(sid, x, y){
   }
 }
 
-/* 选择：先点的是左，后点的是右；再点第三张顶掉左边那张（先进先出）。
+/* 选择：录制板（c）单选——点新纸替换、点已选中的取消。提示词板（p）双选：
+   先点的是左，后点的是右；再点第三张顶掉左边那张（先进先出）。
    点已选中的贴纸 = 取消它。 */
 function anPick(which, sid){
+  if(which === "c"){
+    anSetSel("c", anSel("c")[0] === sid ? null : sid, null);
+    anRenderBoard("c");
+    anRecRun();
+    return;
+  }
   const cur = anSel(which);
   let a = cur[0], b = cur[1];
   if(a === sid){ a = b; b = null; }
@@ -5454,14 +5453,14 @@ function anPick(which, sid){
   else { a = b; b = sid; }
   anSetSel(which, a, b);
   anRenderBoard(which);
-  if(which === "p") anDiffRun(); else anRecRun();
+  anDiffRun();
 }
 
 function anClearSel(which){
   anSetSel(which, null, null);
   anRenderBoard(which);
   $(which === "p" ? "anDiffOut" : "anRecOut").innerHTML = "";
-  if(which === "c"){ $("anFaceWrap").hidden = true; anChatBind(null); }
+  if(which === "c"){ anChatBind(null); }
 }
 
 function anSelState(which){
@@ -5470,8 +5469,7 @@ function anSelState(which){
   const el = $(BOARDS[which].state);
   if(!el) return;
   if(which === "c"){
-    el.textContent = !a ? t18("an.pickRec")
-      : (!b ? t18("an.pickedRec", {a: name(a)}) : t18("an.picked", {a: name(a), b: name(b)}));
+    el.textContent = !a ? t18("an.pickRec") : t18("an.pickedRec", {a: name(a)});
   }else{
     el.textContent = !a ? t18("an.pickTwo")
       : (!b ? t18("an.pickOneMore", {a: name(a)}) : t18("an.picked", {a: name(a), b: name(b)}));
@@ -5527,11 +5525,9 @@ async function anDelete(ev, sid){
       if(AN.selA === sid) AN.selA = AN.selB;
       AN.selB = null; $("anDiffOut").innerHTML = "";
     }
-    if(AN.recA === sid || AN.recB === sid){
-      if(AN.recA === sid) AN.recA = AN.recB;
-      AN.recB = null; $("anRecOut").innerHTML = "";
+    if(AN.recA === sid){
+      AN.recA = null; $("anRecOut").innerHTML = "";
       anChatBind(null);
-      anRecRun();     /* 剩下的那张还在的话，重新分析它 —— 对话也跟着换成它的 */
     }
     anRenderBoard(which);
     anLoad(true);            /* 占用统计要跟着变 */
@@ -5542,29 +5538,11 @@ async function anDelete(ev, sid){
   }
 }
 
-/* 录制板：选 1 张 = 分析这条录制；选 2 张 = 按某个面对比两条录制 */
+/* 录制板：单选一张 = 分析这条录制（双选对比已砍，见 anPick 注释） */
 function anRecRun(){
-  const sel = anSel("c"), a = sel[0], b = sel[1];
-  $("anFaceWrap").hidden = !(a && b);
-  /* 对话只在「选中一条录制」时成立：选两条是在做对比，没有"这条录制"可问 */
-  if(a && b){ anChatBind(null); anRecDiff(); return; }
+  const sel = anSel("c"), a = sel[0];
   $("anRecOut").innerHTML = "";
   if(a) anRecLoad(); else anChatBind(null);
-}
-
-async function anRecDiff(){
-  const sel = anSel("c"), a = sel[0], b = sel[1];
-  if(!a || !b) return;
-  $("anRecOut").innerHTML = '<div class="card an-note">' + t18("an.diffing") + '</div>';
-  try{
-    const r = await fetch("/api/snapshots/diff?a=" + encodeURIComponent(a) + "&b=" +
-                          encodeURIComponent(b) + "&face=" + encodeURIComponent($("anFace").value));
-    const j = await r.json();
-    if(!j.ok) throw new Error(j.error || "failed");
-    renderDiff(j.diff, "anRecOut");
-  }catch(e){
-    $("anRecOut").innerHTML = '<div class="err-card">' + esc(e.message) + '</div>';
-  }
 }
 
 let _anResizeTimer = null;
@@ -5612,11 +5590,10 @@ async function anDiffRun(){
   }
 }
 
-function renderDiff(d, into){
+function renderDiff(d){
   /* 缓存本次对比结果，供切语言时用当前语言重渲：renderDiff 把 t18 文本拼进 DOM、无 data-i18n，
-     applyI18n 管不着，setLang 的 analyze 块靠这份缓存重渲（260808）。两个容器各自一份，不互相覆盖。 */
-  const _into = into || "anDiffOut";
-  if(_into === "anDiffOut") AN.pDiff = d; else if(_into === "anRecOut") AN.rDiff = d;
+     applyI18n 管不着，setLang 的 analyze 块靠这份缓存重渲（260808）。 */
+  AN.pDiff = d;
   let h = "";
   /* ① 结论先行：equal / 只差日期 / 有实质差异。**norm_equal 单独说**——
      CC 的提示词含当天日期，不点破的话每次对比都"有差异"，人会以为天天在变。 */
@@ -5765,13 +5742,13 @@ async function anTranslateSide(btn, side){
   }catch(e){ toast(String(e.message || e), true); }
 }
 
-/* AI 对比分析：把差异报告交给软件内的低成本模型，让它下结论 */
+/* AI 对比分析：把差异报告交给软件内的低成本模型，让它下结论。
+   只服务提示词对比（录制板双选已砍，录制快照按面对比的 AI 分析只剩 API 通道）。 */
 function anAiCompare(btn){
   if(!AN.selA || !AN.selB) return;
   const host = btn.closest(".an-tools").querySelector(".an-llm-host");
-  const face = $("anFace") && !$("anFaceWrap").hidden ? $("anFace").value : "";
   llmToolAction(btn, "diffai", t18("an.aiCompare"), host,
-                {a: AN.selA, b: AN.selB, face: face});
+                {a: AN.selA, b: AN.selB});
 }
 
 /* 行内字符级差异 → HTML。同形异码替换单独打标（title 里给出码位），
@@ -5837,15 +5814,19 @@ function renderRec(d, sources){
     (av.partial_redacted ? '<div class="an-hint">' + t18("an.partialRedacted") + '</div>' : "") +
     '</div>';
 
-  /* ② 多源指令清单：冲突分析从"有几处在下指令"开始，而不是从通读全文开始 */
+  /* ② 多源指令清单：**默认折叠**（260826 用户定）。实测一条录制的清单里常有几十条
+     harness 状态通知——每轮一条的 `<total_tokens>N tokens left</total_tokens>`（role=system
+     一律收录，数字逐条不同所以"内容相同才合并"合并不掉），全展开会把真指令源
+     （CLAUDE.md / 重复注入提醒 / 工具描述）淹掉。能力保留：点开见全表。 */
   if(sources.length){
-    h += '<div class="card an-src"><b>' + t18("an.srcTitle") + '</b>' +
+    h += '<details class="card an-src"><summary><b>' + t18("an.srcTitle") + '</b>' +
+      '<span class="an-counts">' + t18("an.srcCount", {n: sources.length}) + '</span></summary>' +
       '<div class="an-hint">' + t18("an.srcHint") + '</div><table class="kv-table">' +
       sources.map(s => '<tr><td class="k">' + esc(s.where) +
         (s.repeats > 1 ? ' <span class="chip outline">×' + s.repeats + '</span>' : "") +
         '</td><td class="v">' + esc(s.role) + ' · ' + fmtTok(s.chars) + t18("an.chars") +
         '<div class="an-head-txt">' + esc((s.head || "").slice(0, 110)) + '</div></td></tr>').join("") +
-      '</table></div>';
+      '</table></details>';
   }
 
   /* ③ 轮次骨架 / 行为链 */
