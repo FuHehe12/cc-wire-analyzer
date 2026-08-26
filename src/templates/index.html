@@ -5230,7 +5230,8 @@ async function snapCreate(kind, where){
     const r = await fetch("/api/snapshots", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({kind: kind, record_id: S.captureId,
-                            date: S.date || "", where: where, created_by: "ui"})});
+                            date: S.date || "", source: S.source || "",
+                            where: where, created_by: "ui"})});
     const j = await r.json();
     if(!j.ok) throw new Error(j.error || "failed");
     /* 备份是"存起来待会儿用"的动作，不该把用户从当前阅读位置弹走——

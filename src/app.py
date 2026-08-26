@@ -1630,10 +1630,12 @@ def snapshots_create():
     """备份一条录制或其中一段提示词。
 
     body:
-      {kind: "capture", record_id, date?, label?, note?, tags?}
-      {kind: "prompt",  record_id, date?, where: {...}, label?, note?, tags?}
+      {kind: "capture", record_id, date?, source?, label?, note?, tags?}
+      {kind: "prompt",  record_id, date?, source?, where: {...}, label?, note?, tags?}
     where 三形态见 snapshot_store._resolve_origin：
       {kind:"system", index:i} / {kind:"message", index:i, block:j} / {kind:"selection", text:"…"}
+    source 是导入来源标签（260826 补）——备份导入来源里的录制必须带上，
+    否则在本机命名空间里找 rid，not_found。
     """
     data = request.get_json(silent=True) or {}
     kind = data.get("kind") or "capture"
@@ -1642,7 +1644,8 @@ def snapshots_create():
         return jsonify({"ok": False, "error_code": "no_record_id",
                         "error": "缺少 record_id"}), 400
     try:
-        rec = capture_store.get_capture(rid, data.get("date"))
+        rec = capture_store.get_capture(rid, data.get("date"),
+                                        source=data.get("source") or "")
         if rec is None:
             return jsonify({"ok": False, "error_code": "not_found",
                             "error": f"录制不存在：{rid}"}), 404

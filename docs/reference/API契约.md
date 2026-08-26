@@ -1028,7 +1028,12 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 ```json
 {"kind": "capture", "record_id": "req_97f1e87", "date": "2026-07-28", "label": "", "tags": []}
 {"kind": "prompt",  "record_id": "req_97f1e87", "where": {"kind": "system", "index": 2}}
+{"kind": "capture", "record_id": "req_cc08fa7", "date": "2026-08-26", "source": "另一台机的标签"}
 ```
+
+`source`（260826 补）：备份**导入来源**里的录制必须带上，否则在本机命名空间里找
+`record_id`，得到 `not_found` 404——读取面 v0.4.15 就接了 `source`，这条备份链路
+当天漏了，用户真机在导入来源下右键备份时首撞。
 
 `where` 三形态（**提示词不只在 `system` 里**——实测一条主线请求的指令来源有五处，
 见 [同类工具构建手册.md](../methodology/同类工具构建手册.md)）：
