@@ -119,6 +119,7 @@
      和纸面上还都过 AA，所以三套各给一份，前景色随之翻面。 */
   --sig-h:#C8912F; --sig-b:#4F9AD8; --sig-c:#C0645A; --sig-u:#7F8B96; --sig-fg:#15130F;
   --row-hover:rgba(232,184,85,0.10); --chip-soft-bg:rgba(255,255,255,.08);
+  --chip-agent-bg:rgba(96,165,250,.16); --chip-agent-fg:#9CC6FC; --chip-agent-border:rgba(96,165,250,.34);
   --chip-thinking-bg:#4A5568; --chip-err-soft-bg:rgba(180,69,47,.12);
   --live-bg:#3D8B2E; --live-fg:#FFFFFF; --pulse-ring:rgba(79,122,58,.35);
   --err-ring:rgba(248,113,113,0.25); --err-ring-strong:rgba(248,113,113,0.40);
@@ -182,6 +183,7 @@ html[data-theme="classic"]{
   --paper-confirm-bg:rgba(250,246,238,.94); --paper-role-fg:#1A1206;
   --sig-h:#8A5A12; --sig-b:#265F92; --sig-c:#8F3A30; --sig-u:#5F6A73; --sig-fg:#FFFFFF;
   --row-hover:rgba(201,138,37,0.11); --chip-soft-bg:rgba(91,72,45,.10);
+  --chip-agent-bg:rgba(49,95,157,.13); --chip-agent-fg:#23477A; --chip-agent-border:rgba(49,95,157,.34);
   --chip-thinking-bg:#6B6255; --chip-err-soft-bg:rgba(168,60,42,.10);
   --live-bg:#2F7A24; --live-fg:#FFFFFF; --pulse-ring:rgba(53,106,43,.30);
   --err-ring:rgba(168,60,42,0.22); --err-ring-strong:rgba(168,60,42,0.38);
@@ -246,6 +248,7 @@ html[data-theme="light"]{
   --paper-confirm-bg:rgba(247,250,251,.94); --paper-role-fg:#FFFFFF;
   --sig-h:#7A5B13; --sig-b:#2A64A1; --sig-c:#A93635; --sig-u:#556772; --sig-fg:#FFFFFF;
   --row-hover:rgba(30,105,114,0.09); --chip-soft-bg:rgba(55,85,96,.10);
+  --chip-agent-bg:rgba(42,100,161,.13); --chip-agent-fg:#1E4C7D; --chip-agent-border:rgba(42,100,161,.34);
   --chip-thinking-bg:#55707C; --chip-err-soft-bg:rgba(169,54,53,.10);
   --live-bg:#1F7A53; --live-fg:#FFFFFF; --pulse-ring:rgba(35,122,83,.28);
   --err-ring:rgba(169,54,53,0.22); --err-ring-strong:rgba(169,54,53,0.38);
@@ -356,6 +359,12 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
    直接隐形。分析视图的工具名此前正是裸 chip，浅色下整排消失而没有任何报错。
    与 `.tmk` 同一套软底做法（同一个 token），三套外观都有取值。 */
 .chip.tool{background:var(--chip-soft-bg);color:var(--text-dim);font-weight:600;}
+/* 子代理徽章：与时序图同一族蓝（DAG 里子代理泳道就是 --info）。软底而不是实底——
+   一条子代理线可能有几十行，实底徽章重复几十次会盖过主线叙事。
+   **文字色不能直接用 --info**：它是为"深色卡上的一行蓝字"调的，压在自己的软底上，
+   两套浅色外观实测只有 4.45 / 4.22:1，卡在 AA 线下面。所以三套外观各给一份取值。 */
+.chip.agent{background:var(--chip-agent-bg);color:var(--chip-agent-fg);
+  border:1px solid var(--chip-agent-border);}
 /* 没见过的 anthropic-beta 特性：CC 启用了新能力，可能带来还不认识的字段/响应块（260731） */
 .chip.beta-new{color:var(--warn);border-color:var(--warn);}
 .chip.ok-soft{background:var(--ok-soft-bg);color:var(--ok-soft-fg);}
@@ -1097,7 +1106,10 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
    **两段结构**：title 是叙事骨干（扫读），detail 视觉降权（细读）——上一版把两者揉成
    一段长文本塞进一个 flex 元素，上百步连成文字墙，丑的不是字多是没有层次。
    点开=右侧抽屉看原文；不点也能读完整条叙事，「列表零点击」说的是这个。 */
-.an-step{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;padding:6px 8px;
+/* 步号列**定宽**（不是 auto）：步行与工具聚簇行是两个独立的 grid 容器，列宽各算各的，
+   auto 会让 `#7` 与 `#12-13` 对不齐——而它们上下相邻，差一点就很显眼。 */
+.an-splitmain,.an-agent{--sn-w:46px;}
+.an-step{display:grid;grid-template-columns:var(--sn-w) minmax(0,1fr);gap:8px;padding:6px 8px;
   border-radius:6px;font-size:12px;cursor:pointer;}
 .an-step:hover{background:var(--row-hover);}
 .an-step.active{background:var(--row-hover);box-shadow:inset 3px 0 0 var(--brand);}
@@ -1111,7 +1123,12 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
    缩进 + 左竖线 = "这一段属于上面那一步"，而不是另一条平起平坐的主线——
    子代理的过程本来就藏在主线的一次 Task 调用背后，界面要还原的正是这层从属关系。
    嵌套第二层靠自己套自己，缩进自然累加。 */
-.an-agent{margin:2px 0 8px 30px;padding:6px 0 2px 12px;border-left:2px solid var(--border);}
+/* 配色跟时序图对齐：DAG 里子代理泳道就是 `--info`（见 LANE_COLORS），同一个概念在两个视图里
+   用两种颜色，会让人以为是两回事。灰竖线与普通分隔线同色，扫读时看不出"这一段换了主体"
+   （260826 用户原话：没有层次感）。底色只上 5%——它是一段从属叙事，不是警告。 */
+.an-agent{margin:2px 0 10px 30px;padding:6px 0 4px 12px;border-left:2px solid var(--info);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--info) 7%,transparent),transparent 70%);
+  border-radius:0 8px 8px 0;}
 /* **默认收起**：六条线摊开是 158 行，主线叙事当场被埋掉——而这正是要解决的问题。
    头一行自己就是开关（与多源指令清单同一套折叠做法：原生 details，自绘指示符）。 */
 .an-agent-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px;
@@ -1119,16 +1136,21 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-agent-head::-webkit-details-marker{display:none;}
 .an-agent-head::before{content:"▸";font-size:11px;color:var(--text-faint);transition:transform .12s;}
 .an-agent[open] > .an-agent-head::before{transform:rotate(90deg);}
-.an-agent-name{font-weight:600;color:var(--text);font-size:11.5px;}
+.an-agent-name{font-weight:600;color:var(--info);font-size:11.5px;font-family:var(--font-mono);}
 .an-agent-label{color:var(--text-faint);font-size:11px;min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;max-width:min(560px,46vw);}
 .an-agent-none{margin-top:8px;}
-/* 纯工具步的聚合簇：视觉降权——它们是"期间干的粗活"，不是叙事主线 */
-.an-toolrun{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:2px 8px 2px 44px;}
-.an-toolrun .chip{font-size:10.5px;opacity:.88;}
-.an-toolrun .an-sn{min-width:0;}
-.an-sn{color:var(--text-faint);min-width:36px;font-variant-numeric:tabular-nums;}
+/* 纯工具步的聚合簇：视觉降权——它们是"期间干的粗活"，不是叙事主线。
+   **降权只靠颜色与字重，不靠缩进和字号**：260826 用户原话「突然和前面的缩进和字体都不一样了」
+   ——上一版这里写死 `padding-left:44px`（旧 flex 版步行的 36+8 硬编码）且没设 font-size，
+   于是新版步行改成 grid 之后，它既对不齐又比周围大一号。同一种东西的对齐值写在两个地方，
+   第二次改的时候必然分叉。 */
+.an-toolrun{display:grid;grid-template-columns:minmax(var(--sn-w),auto) minmax(0,1fr);gap:8px;
+  padding:3px 8px;font-size:12px;}   /* 定宽保对齐，`#123-131` 这种超宽区间才让它撑开，不撞 chip */
+.an-toolrun .an-inner{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  color:var(--text-faint);}
+.an-toolrun .chip{font-size:10.5px;opacity:.8;}
+.an-sn{color:var(--text-faint);font-variant-numeric:tabular-nums;white-space:nowrap;}
 .an-tk{color:var(--text-dim);font-variant-numeric:tabular-nums;}
 /* diff 正文：等宽、可横向滚，不撑破页面 */
 .an-diff-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-family:var(--font-body);}
@@ -5818,7 +5840,7 @@ function renderDiff(d){
     });
   });
   h += '</div>';
-  $(into || "anDiffOut").innerHTML = h;
+  $("anDiffOut").innerHTML = h;
 }
 
 /* 建立"隐蔽差异 → 出现在哪几行"的索引。渲染前扫一遍 hunks，
@@ -6043,8 +6065,9 @@ function anListHtml(steps, lane){
     const chips = Object.keys(cluster.tools).map(k =>
       '<span class="chip tool">' + esc(k) + (cluster.tools[k] > 1 ? "×" + cluster.tools[k] : "") + '</span>').join("");
     h += '<div class="an-toolrun"><span class="an-sn">#' + cluster.from +
-      (cluster.to > cluster.from ? "-" + cluster.to : "") + '</span>' + chips +
-      '<span class="an-tk">' + t18("an.toolRun", {n: cluster.n}) + '</span></div>';
+      (cluster.to > cluster.from ? "-" + cluster.to : "") + '</span>' +
+      '<span class="an-inner">' + chips +
+      '<span class="an-tk">' + t18("an.toolRun", {n: cluster.n}) + '</span></span></div>';
     cluster = null;
   };
   steps.forEach(s => {
@@ -6115,7 +6138,7 @@ function anAgentsOrphan(){
 function anAgentCard(a){
   const tier = (a.availability || {}).tier;
   return '<details class="an-agent"><summary class="an-agent-head">' +
-    '<span class="chip outline">' + esc(t18("an.sub.badge")) + '</span>' +
+    '<span class="chip agent">' + esc(t18("an.sub.badge")) + '</span>' +
     '<span class="an-agent-name">' + esc(a.agent_id || a.lane_id) + '</span>' +
     '<span class="an-tk">' + esc(t18("an.sub.steps", {n: a.steps_total || 0})) + '</span>' +
     (tier && tier !== "A"
