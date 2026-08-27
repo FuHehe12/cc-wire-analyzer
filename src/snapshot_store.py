@@ -573,6 +573,11 @@ def rebuild_index() -> list[dict]:
     if not SNAPSHOTS_DIR.exists():
         return entries
     for f in sorted(SNAPSHOTS_DIR.glob("snap_*.json")):
+        # 旁挂文件不是快照。`snap_*.json` 这个 glob 会把 `snap_x.analysis.json` 一起捞进来
+        # （260827 实测：重建后贴纸板上每份分析多出一张没有 kind/label 的幽灵贴纸）。
+        # 判据用 sid 正则而不是"排除 .analysis"——将来再加旁挂后缀不用回来改这里。
+        if not _SID_RE.match(f.name[:-len(".json")]):
+            continue
         try:
             snap = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as e:

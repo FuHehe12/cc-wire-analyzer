@@ -404,6 +404,83 @@ ok(_t3.startswith("开头任务设定") and "结尾决定用方案B" in _t3 and 
 ok(all(len(json.dumps({"steps": b}, ensure_ascii=False)) <= APP.STEP_BRIEF_BATCH_CHARS + 400
        for b in _batches), "每批输入不超字符预算（单步截断后仍可能略超，容包装余量）")
 
+# ===== 归纳管线：并发 / 续跑 / 轮级切批（260827，不发网络请求的部分）=====
+#
+# 这几条测的是**这次改动最容易悄悄失效的地方**：并发跑批乱序、续跑把已有结果算丢、
+# 一轮被拆到两批里。三者都不会报错，只会让归纳结果变得似是而非。
+import time as _time  # noqa: E402
+
+_order = APP._map_batches([1, 2, 3, 4, 5], lambda b: ([b], [], ""))
+ok([r[0][0] for r in _order] == [1, 2, 3, 4, 5],
+   "并发跑批**按输入顺序**返回（顺序是叙事的一部分，不能按完成先后拼）")
+
+
+def _slow(b):
+    _time.sleep(0.25)
+    return ([b], [], "")
+
+
+_t0 = _time.time()
+APP._map_batches(list(range(8)), _slow)
+_wall = _time.time() - _t0
+ok(_wall < 8 * 0.25 * 0.6,
+   f"并发确实在并发（8 批 × 0.25s 串行要 2s，实测 {_wall:.2f}s）")
+
+_boom = APP._map_batches([1], lambda b: 1 / 0)
+ok(_boom[0][0] == [] and _boom[0][2],
+   "一批抛异常只算这一批失败并记下原因——绝不连坐掉整次归纳")
+
+ok(APP._ana_workers() >= 1, "并发数有下限（0 会让归纳一批都跑不动）")
+
+_calls = []
+
+
+def _flaky():
+    _calls.append(1)
+    return None if len(_calls) < 3 else {"ok": 1}
+
+
+_got, _err = APP._retrying(_flaky)
+ok(_got == {"ok": 1} and len(_calls) == 3, "重试到成功为止（退避，不是马上再来一次）")
+
+
+def _nokey():
+    raise APP.LlmConfigError("no_api_key", "没配 Key")
+
+
+_c0 = _time.time()
+_g2, _e2 = APP._retrying(_nokey)
+ok(_g2 is None and "Key" in _e2 and _time.time() - _c0 < 1.0,
+   "配置错**立刻**放弃（重试三次还是没填 Key，只会把一次归纳拖成三倍）")
+
+_rows = [{"step": i, "turn": 1 if i <= 30 else 2, "trigger": "u", "tools": [],
+          "title": "标题" * 10, "detail": "细节" * 60} for i in range(1, 61)]
+_tb = APP._turn_batches(_rows)
+ok(len(_tb) >= 2, "长会话的轮级归纳会切批")
+for _b in _tb:
+    ok(len({r["turn"] for r in _b}) >= 1, "每批至少含一轮")
+_seen = {}
+for _i, _b in enumerate(_tb):
+    for _t in {r["turn"] for r in _b}:
+        _seen.setdefault(_t, set()).add(_i)
+ok(all(len(v) == 1 for v in _seen.values()),
+   "**一轮绝不被拆到两批里**（拆开的话两批各看到半轮，归纳出两个半截意图）")
+
+ok(APP._sanitize_analysis({"turns": [{"turn": 1, "steps": [1, 2, 99]}]}, {1, 2})["turns"][0]["steps"]
+   == [1, 2],
+   "步号校验收**真实步号集合**：L0 超预算会砍步骤，跟着骨架判合法会把好步号也误杀")
+
+_merged = {b["step"]: b for b in [{"step": 1, "title": "旧"}, {"step": 2, "title": "旧"}]}
+_merged.update({b["step"]: b for b in [{"step": 2, "title": "新"}, {"step": 3, "title": "新"}]})
+ok([_merged[k]["title"] for k in sorted(_merged)] == ["旧", "新", "新"],
+   "续跑合并：已有的保留、重跑的覆盖、新增的补进来（按步号归位，与批次顺序无关）")
+
+_have_steps = [{"step": i, "turn": 1, "trigger": {"kind": "user"},
+                "thinking": f"第{i}步在想什么", "reply": "", "tools": []} for i in range(1, 9)]
+_todo = [s for s in _have_steps if s["step"] not in {1, 2, 3}]
+ok([r["step"] for b in APP._step_brief_batches(_todo) for r in b] == [4, 5, 6, 7, 8],
+   "续跑只把缺口送进模型（已有简报的步不再花一次钱）")
+
 # 分析文件跟着快照走（与对话记录同一条清单）
 _av = SS.create_capture(make_record(rid="req_test010"))
 SS.write_analysis(_av["sid"], {"turns": [], "summary": "x"})
@@ -411,6 +488,65 @@ ok(SS.read_analysis(_av["sid"])["summary"] == "x", "语义分析可落盘可读�
 ok(SS.size_of(_av["sid"]) > 0, "size_of 把分析文件算进去")
 SS.delete_snapshot(_av["sid"])
 ok(not SS.analysis_file(_av["sid"]).exists(), "分析文件跟着快照一起删（不留孤儿文件）")
+
+# ===== 快照便携包：导出 → 导入 往返（260827，issue 260827_快照便携包导出导入）=====
+#
+# 这几条测的是**搬运过程中最容易悄悄丢东西的地方**：归纳没跟着走、同 sid 被覆盖、
+# 来源签名丢失。三者都不报错，只会让对面机器上的东西看起来"少了点什么"。
+import snapshot_pack as SP  # noqa: E402
+
+_p1 = SS.create_capture(make_record(rid="req_pack001"), label="待导出", tags=["e2e"])
+SS.write_analysis(_p1["sid"], {"turns": [{"turn": 1, "steps": [1], "title": "轮头"}],
+                               "steps": [{"step": 1, "title": "标题", "detail": "细节"}],
+                               "sub_summary": {"lane-x": {"task": "干活", "outcome": "成了"}},
+                               "summary": "整段总结"})
+SS.chat_append(_p1["sid"], "user", "这条问答也该跟着走")
+
+_pkg = TMP / "snapshots-e2e.ccwa"
+_man = SP.export_snapshots([_p1["sid"]], _pkg)
+ok(_pkg.exists() and _man["count"] == 1, "导出产出单文件包")
+ok(_man["items"][0]["has_analysis"] and _man["items"][0]["has_chat"],
+   "manifest 上就能看出带没带归纳与问答（不解包就该看得清——这正是它存在的理由）")
+ok(_man["host"] and _man["tool_version"] and _man["tool_version"] != "",
+   "签名非空：哪台机器、哪个版本产出的（空 = 答不上来，260826 为此查了一整轮）")
+ok("\\" not in json.dumps(_man["host"]) and "/" not in _man["host"],
+   "host 只取机器名，不带路径/用户名")
+
+_peek = SP.peek(_pkg)
+ok(_peek["kind"] == "snapshots", "不解包就能认出这是快照包")
+
+# 同 sid 再导入一次：**不许覆盖**，换个新 sid 落地
+_before = (SS._snap_file(_p1["sid"])).read_bytes()
+_r = SP.import_snapshots(_pkg)
+ok(_r["imported"] == 1 and _r["renamed"] and _r["renamed"][0]["from"] == _p1["sid"],
+   "同 sid 冲突时改名落地，不覆盖（拿别人的证据顶替自己的，正是 sources/ 要防的那件事）")
+ok(SS._snap_file(_p1["sid"]).read_bytes() == _before, "本机原件一个字节都没被动过")
+
+_new = _r["items"][0]["sid"]
+_ana = SS.read_analysis(_new)
+ok(_ana and len(_ana["steps"]) == 1 and _ana["sid"] == _new,
+   "归纳跟着搬过去了，且 sid 已改写成落地后的（不改就对不上快照）")
+ok(_ana.get("sub_summary", {}).get("lane-x", {}).get("outcome") == "成了",
+   "子代理线级结论也在包里——原始录制在对面机器上捞不到，它是唯一还能读到的部分")
+ok(SS.chat_file(_new).exists(), "问答记录跟着搬")
+_env = SS.get_snapshot(_new)
+ok((_env.get("imported_from") or {}).get("sid") == _p1["sid"]
+   and (_env.get("imported_from") or {}).get("host"),
+   "落地后记得住来路（哪台机器、原来叫什么）")
+
+try:
+    SP.export_snapshots([], TMP / "empty.ccwa")
+    ok(False, "空选择必须报错")
+except SP.SnapPackError as e:
+    ok(e.code == "no_snapshots", "空选择如实报错，不产出一个空包")
+
+_bad = TMP / "notapack.ccwa"
+_bad.write_bytes(b"not a zip at all")
+try:
+    SP.peek(_bad)
+    ok(False, "坏文件必须报错")
+except SP.SnapPackError as e:
+    ok(e.code == "bad_archive", "坏文件如实报错（不静默当成空包）")
 
 # ===== 结果 =====
 print()

@@ -543,6 +543,44 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - 结果存 `<sid>.analysis.json`，**不进快照信封**（信封不可改，这是可重算的派生物）；
   随快照删除一并清理，并计入 `size_of`。
 
+### `POST /api/snapshots/export` — 快照便携包（260827）
+
+body `{sids: ["snap_…"], note?}` → 在 `archives/` 里产出一个 `.ccwa`，返回 manifest：
+
+```json
+{
+  "ok": true, "kind": "snapshots", "snap_schema": 1, "count": 2,
+  "items": [{"sid": "snap_…", "kind": "capture", "label": "…", "created": "…",
+             "has_analysis": true, "has_chat": false, "bytes": 2049181}],
+  "host": "…", "tool_version": "0.4.17", "exported_at": "2026-08-27T15:34:58",
+  "path": "…/archives/snapshots-20260827-153458.ccwa", "size": 891369
+}
+```
+
+**搬的不是快照本身，是它旁边那份归纳**：一份 97KB 的 `analysis.json` 实测花了 27 批、
+26 分钟。没有这条通道，换一台机器（或换一个人）就只能重跑一遍，重新花一次钱、重新等半小时。
+
+- **与录制归档同后缀 `.ccwa`，靠 manifest 里的 `kind` 区分**（`snapshots` / `captures`）。
+  老的录制归档没有 `kind` 字段，按 `captures` 处理。用户那边只有一个"导入"，
+  文件是什么由工具自己看出来。
+- **签名与归档同源**：`host` 只取机器名不取用户名（包会被拷来拷去，机器名足以分辨两台机器，
+  泄露面小得多），`tool_version` 取真实版本。
+- 包内布局 `snapshots/<sid>.json` + `.analysis.json` + `.chat.jsonl`（后两份可缺）。
+- 空选择 → `no_snapshots`，**不产出一个空包**。
+
+### `POST /api/snapshots/import` — 导入快照便携包（260827）
+
+body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, manifest, host, foreign}`。
+
+⚠️ **同 sid 不覆盖**：撞了就换一个新 sid 落地，`renamed: [{from, to}]` 如实报回来。
+盖掉本机同名快照 = 拿别人的证据顶替自己的，正是 `sources/` 独立命名空间要防的那件事。
+落地后信封里多一个 `imported_from {host, tool_version, sid, at}`，界面据此标出"这不是本机的"。
+
+- 归纳里的 `sid` 会跟着改写成落地后的 sid——不改就与快照对不上。
+- **子代理线在对面机器上捞不到**（`_subagent_lanes` 要回当日录制里找，而那台机器没有那天的录制）。
+  所以包里已生成的子代理简报与线级结论是对面唯一还能读到的部分，它们随 `analysis.json` 一起走。
+- 传进来的是录制归档 → `wrong_kind`；不是本工具的包 → `bad_archive`；版本不认 → `schema_mismatch`。
+
 ### `GET /api/storage` — 数据目录占用（260809）
 
 ```json

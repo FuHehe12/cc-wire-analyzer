@@ -307,7 +307,32 @@ finally:
     sys.executable = real_exe
     del sys.frozen                                     # type: ignore[attr-defined]
 
-print("\n[8] 能力自陈")
+print("\n[8] 重启新实例的环境（260827：版本号变了、界面还是旧的）")
+_saved_env = dict(os.environ)
+try:
+    os.environ.update({
+        "_PYI_PARENT_PROCESS_LEVEL": "1",
+        "_PYI_APPLICATION_HOME_DIR": r"C:\Temp\_MEI76282",
+        "_PYI_ARCHIVE_FILE": r"C:\app\cc-wire-analyzer.exe",
+        "_PYI_SPLASH_IPC": "1234",
+        "_MEIPASS2": r"C:\Temp\_MEI76282",
+        "CCWA_SELFTEST_KEEPME": "keep",
+    })
+    env = U._child_env()
+    leaked = [k for k in env if k.startswith("_PYI_") or k == "_MEIPASS2"]
+    ok(not leaked,
+       "剥掉 PyInstaller 引导器私有变量（漏一个，新 exe 就复用旧解压目录 → "
+       f"版本号是新的、界面是旧的）；泄漏：{leaked}")
+    # 反向断言：只剥那几个键。连坐剥掉 PATH/TEMP 会引出一批新问题，而那种错误
+    # 在源码模式下完全不显形——必须在这里挡住。
+    ok(env.get("CCWA_SELFTEST_KEEPME") == "keep", "其余环境变量原样保留")
+    ok("CCWA_HOME" in env and "CCWA_CLAUDE_SETTINGS" in env,
+       "数据目录与 settings 路径两个隔离变量都要传给新实例")
+finally:
+    os.environ.clear()
+    os.environ.update(_saved_env)
+
+print("\n[9] 能力自陈")
 cap = U._capability(ASSET)
 ok(cap["can_apply"] is False and cap["apply_reason"] == "source",
    "源码模式如实说不能替换，并给出原因码（笼统的'不支持'会被当成坏了）")

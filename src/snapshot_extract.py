@@ -386,10 +386,14 @@ def level0(record: dict) -> dict:
 
     # 超预算就从中间往外砍（两端最有价值：开头是任务设定，结尾是当前状态；
     # 腐烂恰恰体现在两端的落差上）。**砍了必须说**——omitted_steps 会渲染成一行说明。
+    # **一次削 5%，削到刚好放得下**——原来是"一刀砍一半"，砍完往往远低于预算：
+    # 260827 实测 126 步那条砍剩 62 步、产出 16,799 字（预算 20,000），本来能留 ~75 步。
+    # 砍步骤是极端长对话的兜底，兜底也不该多砍。
     while _size(out) > L0_BUDGET and len(out["steps"]) > 6:
-        keep = max(3, len(out["steps"]) // 2)
-        half = keep // 2
-        out["steps"] = out["steps"][:half] + out["steps"][-half:]
+        n = len(out["steps"])
+        keep = max(6, n - max(1, n // 20))
+        head = (keep + 1) // 2
+        out["steps"] = out["steps"][:head] + out["steps"][head - keep:]
         out["omitted_steps"] = len(rows) - len(out["steps"])
     out["steps_total"] = len(steps)
     out["size"] = _size(out)

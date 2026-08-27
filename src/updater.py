@@ -522,6 +522,36 @@ def apply(is_recording: bool, restore_fn) -> dict:
     return {"ok": True, "in_place": True, "restart": True, "path": str(cur)}
 
 
+# PyInstaller onefile 引导器留在环境里的私有变量。**拉新进程前必须剥掉**，见 _child_env。
+# `_PYI_*` 是 6.x 的名字（本机 6.21 的 runw.exe 里就这几个），`_MEIPASS2` 是 5.x 及更早的，
+# 一起剥——将来换引导器版本不至于又漏一个。
+_PYI_ENV_PREFIX = "_PYI_"
+_PYI_ENV_LEGACY = ("_MEIPASS2",)
+
+
+def _child_env() -> dict:
+    """给新实例用的环境：**剥掉 PyInstaller 引导器的私有变量，其余原样保留**。
+
+    为什么非剥不可（260827 用户实测，run.log 里有完整现场）：onefile 的引导器靠
+    `_PYI_PARENT_PROCESS_LEVEL` / `_PYI_APPLICATION_HOME_DIR` 判断"我是不是已经解压过的子进程"。
+    `Popen` 默认继承整份环境 → 新 exe 的引导器认定自己是子进程，**跳过解压，把 `sys._MEIPASS`
+    指向旧进程那个正在被删的临时目录**。于是出现一个很难自己想明白的错位：
+
+      · Python 代码来自**新 exe**（PYZ 从 `_PYI_ARCHIVE_FILE` 指的那个路径读，而那个路径
+        刚好已经被换成新的）→ 版本号显示是新的；
+      · 数据文件（templates/、static/、字体）来自**旧解压目录**，而旧引导器正在退出时删它
+        → 界面还是旧的 index.html，静态资源一半 404/500。
+
+    用户看到的就是"版本号变过来了，实际还是老版本，得关掉重开"。**症状会飘**——它和旧引导器
+    的删除是赛跑，删到哪儿就缺哪些文件，所以不能靠"再试一次"来判断修没修好。
+
+    只剥这几个键、不做白名单：PATH / TEMP / 代理设置这些新实例照样要用，
+    连坐剥掉会引出一批新问题。
+    """
+    return {k: v for k, v in os.environ.items()
+            if not k.startswith(_PYI_ENV_PREFIX) and k not in _PYI_ENV_LEGACY}
+
+
 def _relaunch(exe: Path, restore_fn) -> None:
     """**先恢复 settings.json → 再拉新进程 → 再退出**。顺序确定性保证。
 
@@ -549,7 +579,8 @@ def _relaunch(exe: Path, restore_fn) -> None:
             # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP：新实例不做本进程的子进程，
             # 我们退出时不会连带它。
             kwargs["creationflags"] = 0x00000008 | 0x00000200
-        subprocess.Popen(argv, close_fds=True, **kwargs)
+        # env 必须显式给（见 _child_env）：继承整份环境会让新 exe 复用旧的解压目录。
+        subprocess.Popen(argv, close_fds=True, env=_child_env(), **kwargs)
     except Exception as e:                        # noqa: BLE001
         log.error("新版本拉起失败（旧版已被改名，用户需手动启动 %s）：%s", exe, e)
     os._exit(0)

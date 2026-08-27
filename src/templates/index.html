@@ -181,7 +181,9 @@ html[data-theme="classic"]{
   --paper-fold:rgba(120,95,55,.18);
   --paper-text:#3A3026; --paper-text-2:#5E513E;
   --paper-text-3:#5D513C; --paper-kind:#5C513D;
-  --paper-tag-bg:rgba(120,95,55,.13); --paper-tag-fg:#5C4E3A;
+  /* 260827 走查：#5C4E3A 压在经典暖灰的纸色上是 4.21:1，卡在 AA 线下面。上一轮全站走查
+     没抓到它，因为当时**没有一张贴纸带标签**——探针只看得见此刻渲染出来的东西。 */
+  --paper-tag-bg:rgba(120,95,55,.13); --paper-tag-fg:#4E412E;
   --paper-tag-border:rgba(120,95,55,.20);
   --paper-x:#5C5142; --paper-x-hover-bg:rgba(90,70,45,.14);
   --role-a-fg:#211706; --role-b-fg:#FFFFFF; --danger-solid:var(--err);
@@ -1100,12 +1102,34 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
    原文此前渲染在整张卡**之后**（`#anStepBody`），137 步的会话点第 12 步要滚过几屏才看得到。 */
 .an-split{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start;}
 .an-splitmain{min-width:0;}
-.an-split.open{grid-template-columns:minmax(0,1fr) minmax(300px,410px);}
+/* 宽度：默认按视口算，用户拖过就用拖出来的（`--an-drawer-w` 挂在根元素上，
+   见 anDrawerWidthInit）。410px 写死过一版——4K 与带鱼屏上和笔记本一样是同一条窄带，
+   而这块面板的全部价值就是"把原文摊开来读"（260827 用户反馈）。 */
+.an-split.open{grid-template-columns:minmax(0,1fr) 12px var(--an-drawer-w,clamp(320px,30vw,760px));
+  gap:4px;}
 /* top 要**让开顶栏**：app-header 是 sticky/70px，贴 top:12px 的话抽屉自己的标题条
-   会钻到顶栏底下，看上去就是"没有标题、内容被切了一截"（实测撞到）。 */
+   会钻到顶栏底下，看上去就是"没有标题、内容被切了一截"（实测撞到）。
+   ⚠️ `max-height` 这里只是兜底，真正的值由 `anDrawerFit()` 按**当前实际位置**算并写成
+   内联样式——`calc(100vh - 104px)` 是"顶栏贴住之后"才成立的高度，而 sticky 只有滚到
+   触发点才贴住。没贴住时抽屉从自然位置往下量 100vh，底部整段落在视口外（260827 实测：
+   起点 y=770、高 1138、视口 1242 → 666px 在屏幕外，翻译结果正好排在那一段里）。 */
 .an-drawer{display:none;position:sticky;top:82px;max-height:calc(100vh - 104px);overflow:auto;
   background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:10px 12px 14px;}
 .an-split.open .an-drawer{display:block;}
+/* 抽屉里**只允许有一个滚动容器**——它自己。里层 pre 的 420px 滚动框会把抽屉可见的那一条
+   占满，滚轮落在里层上，外层看着就像"滚不动、被切掉"（同一次实测的第二个成因）。 */
+.an-drawer .excerpt pre{max-height:none;}
+/* 中缝把手：宽度是"这台机器这块屏幕上顺手"的偏好，落 localStorage 不落 config——
+   用户有三台不同比例的机器（4K / 笔记本 / 带鱼屏），同步过去反而是错的。
+   把手是 grid 的中间一列（不是抽屉里的绝对定位元素：抽屉自己是滚动容器，
+   绝对定位的孩子会跟着内容滚走）。视觉条用 sticky 跟着视口走，长列表里随处可抓。 */
+.an-drawer-grip{display:none;align-self:stretch;cursor:col-resize;position:relative;}
+.an-split.open .an-drawer-grip{display:block;}
+.an-drawer-grip::before{content:"";position:sticky;top:50vh;display:block;margin:0 auto;
+  width:3px;height:44px;border-radius:2px;background:var(--border);}
+.an-drawer-grip:hover::before{background:var(--brand);height:72px;}
+body.an-resizing{user-select:none;cursor:col-resize;}
+body.an-resizing .an-drawer-grip::before{background:var(--brand);height:72px;}
 .an-drawer-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;
   background:var(--bg-soft);padding:2px 0 6px;border-bottom:1px solid var(--border-soft);}
 .an-drawer-head b{font-size:12px;}
@@ -1117,6 +1141,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 @media (max-width:1100px){
   .an-split.open{grid-template-columns:minmax(0,1fr);}
   .an-drawer{position:static;max-height:none;}
+  .an-split.open .an-drawer-grip{display:none;}   /* 单列没有中缝可拖 */
 }
 /* 步骤行（260826 简报流）：一行一步的人话 + 机械信号。
    **两段结构**：title 是叙事骨干（扫读），detail 视觉降权（细读）——上一版把两者揉成
@@ -1156,6 +1181,15 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-agent-head::before{content:"▸";font-size:11px;color:var(--text-faint);transition:transform .12s;}
 .an-agent[open] > .an-agent-head::before{transform:rotate(90deg);}
 .an-agent-name{font-weight:600;color:var(--info);font-size:11.5px;font-family:var(--font-mono);}
+/* 线级结论（260827）：展开一条子代理线，先看见的是四句话的结论，再往下才是步级流水。
+   四个 token 全部复用已有的语义色——新配色 = 新一轮 AA 走查，而这块是纯文字压在卡底上，
+   用正文色系就够（同 contrast_probe 的判据：一个 token 只服务一种明暗关系）。 */
+.an-lanesum{margin:2px 0 8px;padding:8px 10px;border-radius:8px;
+  background:var(--bg-soft);border:1px solid var(--border-soft);font-size:11.5px;line-height:1.6;}
+.an-lanerow{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;margin-top:4px;}
+.an-lanek{color:var(--text-faint);font-size:11px;}
+.an-lanev{color:var(--text);min-width:0;}
+.an-lanerow.out .an-lanev{font-weight:600;}
 .an-agent-label{color:var(--text-faint);font-size:11px;min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;max-width:min(560px,46vw);}
 .an-agent-none{margin-top:8px;}
@@ -1632,6 +1666,10 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
           <div><label class="lbl" for="cfgAnaStepsPrompt" data-i18n="set.anaSteps">步级简报提示词</label><div class="sub" data-i18n="set.anaStepsSub">每步一条两段式简报（title 一句话 + detail 写为什么/发现/放弃）的任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架内置，不受此项影响</div></div>
           <textarea id="cfgAnaStepsPrompt" rows="4" data-i18n-ph="set.anaStepsPh"></textarea>
         </div>
+        <div class="srow">
+          <div><label class="lbl" for="cfgAnaConc" data-i18n="set.anaConc">归纳并发数</label><div class="sub" data-i18n="set.anaConcSub">一次归纳会切成几十个批次，批次之间无依赖。调大更快（实测 126 步会话 26 批：串行约 26 分钟，并发 4 约 3 分钟），但上游会限流——限流让失败批变多，反而更慢。1~8</div></div>
+          <input type="number" id="cfgAnaConc" min="1" max="8" step="1" style="width:90px">
+        </div>
         <div class="srow test-row">
           <button class="btn tool" onclick="testLlm()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg><span class="lbl" data-i18n="set.test">测试连通</span></button>
           <span id="llmTestResult" class="sub test-result"></span>
@@ -1739,6 +1777,9 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
       <div class="an-boardbar">
         <span class="an-sel-state" id="anSelState"></span>
         <button class="btn" onclick="anSwap()" data-i18n="an.swap">对调</button>
+        <button class="btn" onclick="anExportPack(this,'p')" data-i18n="an.export"
+                data-i18n-title="an.exportTip"
+                title="把选中的贴纸连同 AI 归纳打成一个文件，另一台机器导入后接着看">导出便携包</button>
         <button class="btn" onclick="anClearSel('p')" data-i18n="an.clearSel">取消选择</button>
         <button class="btn" onclick="anTidy('p')" data-i18n="an.tidy">整理贴纸</button>
       </div>
@@ -1752,6 +1793,9 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
         <span class="an-sel-state" id="anRecState"></span>
         <button class="btn" onclick="anCopyBrief(this)" data-i18n="an.copyBrief">复制 agent 指令</button>
         <button class="btn" onclick="anCopyPrompt(this)" data-i18n="an.copyPrompt">复制分析提示词</button>
+        <button class="btn" onclick="anExportPack(this)" data-i18n="an.export"
+                data-i18n-title="an.exportTip"
+                title="把选中的贴纸连同 AI 归纳打成一个文件，另一台机器导入后接着看">导出便携包</button>
         <button class="btn" onclick="anClearSel('c')" data-i18n="an.clearSel">取消选择</button>
         <button class="btn" onclick="anTidy('c')" data-i18n="an.tidy">整理贴纸</button>
       </div>
@@ -1923,10 +1967,22 @@ zh: {
   "an.turnN": "轮 {n}",
   "an.trig.user": "用户消息", "an.trig.tool_result": "工具返回", "an.trig.none": "无触发",
   "an.stepFull": "第 {n} 步的思考原文", "an.trigText": "触发：", "an.drawerClose": "关闭",
+  "an.drawerDrag": "拖动调整宽度（记住这台机器的设置）",
   "an.ai.runningMain": "分析中… 主线 {b}/{batches} 批",
   "an.ai.runningSub": "分析中… 子代理 {lane}/{lanes} 线 · {b}/{batches} 批",
   "an.ai.subMeta": "另含 {n} 条子代理线（{b} 批）", "an.ai.subCapped": "子代理步数超上限，后面的线未归纳",
   "an.sub.badge": "子代理", "an.sub.steps": "{n} 步",
+  "an.export": "导出便携包", "an.exporting": "打包中…",
+  "an.exportTip": "把选中的贴纸连同 AI 归纳打成一个文件，另一台机器导入后接着看、接着问，不用重跑一遍",
+  "an.exportOk": "已导出 {n} 份快照（{size}），在 设置 → 存储 → 归档 里",
+  "an.exportFail": "导出失败：{msg}",
+  "an.ai.runningTurns": "分析中… 轮级 {b}/{batches} 批", "an.ai.runningLanes": "分析中… 子代理结论 {b}/{batches}",
+  "an.ai.partialSteps": "{n} 步没归纳成（第 {steps} 步），点「补齐」再试",
+  "an.ai.turnCover": "轮级覆盖 {n}/{total} 步",
+  "an.ai.fill": "补齐 {n} 步", "an.ai.full": "全部重算",
+  "an.ai.fullTip": "忽略已有结果，从头重算一遍（改了归纳提示词之后用这个；花费与第一次相同）",
+  "an.sub.task": "任务", "an.sub.problems": "遇到的问题", "an.sub.resolution": "怎么解决",
+  "an.sub.outcome": "最终结果", "an.sub.sumFail": "这条线的结论没生成成功，点「补齐」再试",
   "an.sub.tier": "思考链 {t} 档", "an.sub.stepFull": "{agent} 第 {n} 步的思考原文",
   "an.sub.orphan": "另有 {n} 条子代理线挂不到具体步骤（派生 prompt 对不上：跨天截断、或派生方那条请求没录到）",
   "an.sub.truncated": "子代理线太多，只摊开了前 {n} 条",
@@ -2032,6 +2088,11 @@ zh: {
   "stor.compactOk": "已压缩 {n} 天，省下 {saved}", "stor.compactNone": "没有可压缩的日期（今天不压、已压的不再压）",
   "stor.archiveOk": "已归档（{size}）", "stor.importOk": "已导入 {label} 的 {date}（{n} 条）",
   "stor.import": "导入", "stor.imported": "已导入", "stor.legacy": "旧格式",
+  "stor.snapPack": "快照包 · {n} 份", "stor.importSnap": "导入快照",
+  "stor.snapImported": "已导入 {n} 份快照（含 AI 归纳）",
+  "stor.snapRenamed": "{n} 份与本机同名，已换新编号落地（没有覆盖本机的）",
+  "stor.snapForeign": "来自另一台机器：{host}",
+  "stor.snapImportFail": "快照包导入失败：{msg}",
   "stor.importOkForeign": "已导入 {label} 的 {date}（{n} 条）· 来自另一台机器 {host}",
   "stor.foreign": "另一台机器", "stor.hostUnknown": "机器未知",
   "stor.noArchives": "还没有归档。用上面的「归档为单文件」产出，或把别的机器的 .ccwa 拷进 archives/",
@@ -2162,6 +2223,7 @@ zh: {
   "set.anaTurnsPh": "分析任务：按 turn（轮次）归纳……（需保留输出 JSON 格式约定：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
   "set.anaTurns": "轮级归纳提示词",
   "set.anaTurnsSub": "分析页「AI 归纳」的轮次任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架内置，不受此项影响",
+  "set.anaConc": "归纳并发数", "set.anaConcSub": "一次归纳会切成几十个批次，批次之间无依赖。调大更快（实测 126 步会话 26 批：串行约 26 分钟，并发 4 约 3 分钟），但上游会限流——限流让失败批变多，反而更慢。1~8",
   "set.anaSteps": "步级简报提示词",
   "set.anaStepsSub": "每步一条两段式简报（title 一句话 + detail 写为什么/发现/放弃）的任务描述；留空 = 内置默认。需保留 JSON 输出格式约定；防注入框架内置，不受此项影响",
   "set.anaStepsPh": "分析任务：为每个 step 写一条两段式简报（title 一句话、detail 写为什么/发现/放弃）……（需保留输出 JSON 格式约定：{\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]}）",
@@ -2297,10 +2359,22 @@ en: {
   "an.turnN": "turn {n}",
   "an.trig.user": "user message", "an.trig.tool_result": "tool result", "an.trig.none": "no trigger",
   "an.stepFull": "Reasoning of step {n}", "an.trigText": "Triggered by: ", "an.drawerClose": "Close",
+  "an.drawerDrag": "Drag to resize (remembered on this machine)",
   "an.ai.runningMain": "Analysing\u2026 main line {b}/{batches}",
   "an.ai.runningSub": "Analysing\u2026 subagent {lane}/{lanes} \u00b7 {b}/{batches}",
   "an.ai.subMeta": "plus {n} subagent lane(s), {b} batches", "an.ai.subCapped": "step budget reached; later lanes were not summarised",
   "an.sub.badge": "subagent", "an.sub.steps": "{n} steps",
+  "an.export": "Export bundle", "an.exporting": "Packing…",
+  "an.exportTip": "Pack the selected stickers together with their AI analysis into one file — another machine imports it and picks up where you left off, no re-run",
+  "an.exportOk": "Exported {n} snapshot(s) ({size}) — see Settings → Storage → Archives",
+  "an.exportFail": "Export failed: {msg}",
+  "an.ai.runningTurns": "Analysing… turns {b}/{batches}", "an.ai.runningLanes": "Analysing… subagent verdicts {b}/{batches}",
+  "an.ai.partialSteps": "{n} step(s) not summarised (step {steps}) — hit “Fill gaps” to retry",
+  "an.ai.turnCover": "turn level covers {n}/{total} steps",
+  "an.ai.fill": "Fill {n} gap(s)", "an.ai.full": "Recompute all",
+  "an.ai.fullTip": "Ignore what is cached and redo everything (use this after changing the analysis prompt; costs the same as the first run)",
+  "an.sub.task": "Task", "an.sub.problems": "Problems hit", "an.sub.resolution": "How it was resolved",
+  "an.sub.outcome": "Outcome", "an.sub.sumFail": "This lane’s verdict failed to generate — hit “Fill gaps” to retry",
   "an.sub.tier": "reasoning tier {t}", "an.sub.stepFull": "{agent} \u00b7 reasoning of step {n}",
   "an.sub.orphan": "{n} more subagent lane(s) could not be pinned to a step (the spawn prompt did not match: truncated across days, or the spawning request was never recorded)",
   "an.sub.truncated": "Too many subagent lanes; only the first {n} are shown",
@@ -2403,6 +2477,11 @@ en: {
   "stor.compactOk": "Compacted {n} day(s), saved {saved}", "stor.compactNone": "Nothing to compact (today is skipped, already-compacted days too)",
   "stor.archiveOk": "Archived ({size})", "stor.importOk": "Imported {date} from {label} ({n} records)",
   "stor.import": "Import", "stor.imported": "Imported", "stor.legacy": "legacy format",
+  "stor.snapPack": "snapshot bundle · {n} item(s)", "stor.importSnap": "Import snapshots",
+  "stor.snapImported": "Imported {n} snapshot(s), analysis included",
+  "stor.snapRenamed": "{n} clashed with local ids and landed under new ones (nothing local was overwritten)",
+  "stor.snapForeign": "from another machine: {host}",
+  "stor.snapImportFail": "Snapshot bundle import failed: {msg}",
   "stor.importOkForeign": "Imported {date} from {label} ({n} records) · recorded on another machine, {host}",
   "stor.foreign": "another machine", "stor.hostUnknown": "machine unknown",
   "stor.noArchives": "No archives yet. Use \u201cArchive to a single file\u201d above, or copy a .ccwa from another machine into archives/",
@@ -2533,6 +2612,7 @@ en: {
   "set.anaTurnsPh": "Task: summarise the conversation by turn… (keep the JSON output format: {\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"})",
   "set.anaTurns": "Turn-level summary prompt",
   "set.anaTurnsSub": "The per-turn task description behind \u201cAI summary\u201d on the Analyse page; empty = built-in default. Keep the JSON output format; the injection guard is internal and unaffected",
+  "set.anaConc": "Analysis concurrency", "set.anaConcSub": "One analysis run splits into dozens of independent batches. Higher is faster (measured on a 126-step session, 26 batches: ~26 min serial vs ~3 min at 4), but upstream rate limits push failures up and the total back down. 1–8",
   "set.anaSteps": "Step-level brief prompt",
   "set.anaStepsSub": "The task description for the two-part brief per step (title in one line + detail carrying why / what turned up / what was dropped); empty = built-in default. Keep the JSON output format; the injection guard is internal and unaffected",
   "set.anaStepsPh": "Task: write a two-part brief per step (title = one line, detail = why / what turned up / what was dropped)… (keep the JSON output format: {\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]})",
@@ -2667,10 +2747,22 @@ ja: {
   "an.turnN": "ターン {n}",
   "an.trig.user": "ユーザーメッセージ", "an.trig.tool_result": "ツール結果", "an.trig.none": "トリガーなし",
   "an.stepFull": "ステップ {n} の思考原文", "an.trigText": "トリガー：", "an.drawerClose": "閉じる",
+  "an.drawerDrag": "ドラッグで幅を調整（この端末に記憶）",
   "an.ai.runningMain": "分析中… メイン {b}/{batches} バッチ",
   "an.ai.runningSub": "分析中… サブエージェント {lane}/{lanes}・{b}/{batches} バッチ",
   "an.ai.subMeta": "他に {n} 本のサブエージェント系列（{b} バッチ）", "an.ai.subCapped": "ステップ上限に達したため以降の系列は未要約",
   "an.sub.badge": "サブエージェント", "an.sub.steps": "{n} ステップ",
+  "an.export": "ポータブルパック出力", "an.exporting": "パック中…",
+  "an.exportTip": "選択した付箋を AI 要約ごと 1 ファイルにまとめます。別のマシンで取り込めば、再実行なしで続きから読めます",
+  "an.exportOk": "{n} 件のスナップショットを書き出しました（{size}）。設定 → ストレージ → アーカイブ",
+  "an.exportFail": "書き出しに失敗：{msg}",
+  "an.ai.runningTurns": "分析中… ターン {b}/{batches} バッチ", "an.ai.runningLanes": "分析中… サブエージェント結論 {b}/{batches}",
+  "an.ai.partialSteps": "{n} ステップが要約できませんでした（ステップ {steps}）。「不足を補う」で再試行",
+  "an.ai.turnCover": "ターン要約のカバー率 {n}/{total} ステップ",
+  "an.ai.fill": "不足 {n} 件を補う", "an.ai.full": "全部再計算",
+  "an.ai.fullTip": "キャッシュを無視して最初からやり直します（要約プロンプトを変更した後に使用。費用は初回と同じ）",
+  "an.sub.task": "タスク", "an.sub.problems": "遭遇した問題", "an.sub.resolution": "どう解決したか",
+  "an.sub.outcome": "最終結果", "an.sub.sumFail": "この系列の結論は生成に失敗しました。「不足を補う」で再試行",
   "an.sub.tier": "思考ログ {t} 段", "an.sub.stepFull": "{agent}・ステップ {n} の思考原文",
   "an.sub.orphan": "他に {n} 本のサブエージェント系列は特定のステップに紐づけられませんでした（派生プロンプトが一致しない：日跨ぎで切れた、または派生元のリクエストが未記録）",
   "an.sub.truncated": "サブエージェント系列が多すぎるため、先頭 {n} 本のみ表示",
@@ -2773,6 +2865,11 @@ ja: {
   "stor.compactOk": "{n} 日分を圧縮し {saved} を節約", "stor.compactNone": "圧縮できる日付がありません（今日と圧縮済みは対象外）",
   "stor.archiveOk": "アーカイブしました（{size}）", "stor.importOk": "{label} の {date} を取り込みました（{n} 件）",
   "stor.import": "取り込む", "stor.imported": "取り込み済み", "stor.legacy": "旧形式",
+  "stor.snapPack": "スナップショットパック · {n} 件", "stor.importSnap": "スナップショットを取り込む",
+  "stor.snapImported": "{n} 件のスナップショットを取り込みました（AI 要約つき）",
+  "stor.snapRenamed": "{n} 件がローカルと同名だったため新しい ID で保存しました（上書きなし）",
+  "stor.snapForeign": "別のマシン由来：{host}",
+  "stor.snapImportFail": "スナップショットパックの取り込みに失敗：{msg}",
   "stor.importOkForeign": "{label} の {date} を取り込みました（{n} 件）· 別のマシン {host} の録画です",
   "stor.foreign": "別のマシン", "stor.hostUnknown": "マシン不明",
   "stor.noArchives": "アーカイブはまだありません。上の「単一ファイルにアーカイブ」を使うか、別マシンの .ccwa を archives/ にコピーしてください",
@@ -2903,6 +3000,7 @@ ja: {
   "set.anaTurnsPh": "タスク：ターンごとに会話を要約…（JSON 出力形式を維持：{\"turns\":[{\"turn\":1,\"steps\":[1,2],\"title\":\"…\",\"intent\":\"…\",\"risk\":\"\"}],\"summary\":\"…\"}）",
   "set.anaTurns": "ターン単位の要約プロンプト",
   "set.anaTurnsSub": "分析ページ「AI 要約」のターン単位タスク記述。空欄 = 内蔵デフォルト。JSON 出力形式は維持すること。インジェクション対策の枠組みは内蔵で、この項目の影響を受けません",
+  "set.anaConc": "要約の並列数", "set.anaConcSub": "1 回の要約は数十のバッチに分かれ、バッチ間に依存はありません。大きいほど速い（126 ステップ・26 バッチの実測：直列 約26分 / 並列4 約3分）が、上流のレート制限で失敗バッチが増えると逆に遅くなります。1〜8",
   "set.anaSteps": "ステップ単位の要約プロンプト",
   "set.anaStepsSub": "各ステップの 2 段構成要約（title 一文 + detail は理由・判明した点・見送った案）のタスク記述。空欄 = 内蔵デフォルト。JSON 出力形式は維持すること。インジェクション対策の枠組みは内蔵で、この項目の影響を受けません",
   "set.anaStepsPh": "タスク：各ステップに 2 段構成の要約を（title は一文、detail は理由・判明した点・見送った案）…（JSON 出力形式を維持：{\"steps\":[{\"step\":1,\"title\":\"…\",\"detail\":\"…\"}]}）",
@@ -4047,15 +4145,23 @@ function renderArchiveCard(){
   aw.innerHTML = (S.archives || []).length ? (S.archives || []).map(a => {
     const key = (a.label || "") + "|" + (a.date || "");
     const done = imported.has(key);
+    /* 同一个抽屉里现在有两种包：录制归档与快照便携包（260827）。
+       **导入按钮不能通用**——两者落地去处完全不同（sources/ 命名空间 vs 快照库），
+       点错了不是报错而是"导进去了但哪儿都找不到"。所以按 kind 分流，措辞也分开。 */
+    const isSnap = a.kind === "snapshots";
     return '<div class="arc-row"><div style="min-width:0">' +
       '<div class="arc-name">' + esc(a.name) + '</div>' +
-      '<div class="arc-meta">' + esc(a.date || "?") + " · " + (a.count || 0) + " · " +
+      '<div class="arc-meta">' +
+        (isSnap ? esc(t18("stor.snapPack", {n: a.count || 0}))
+                : esc(a.date || "?") + " · " + (a.count || 0)) + " · " +
         fmtBytes(a.size || 0) + (a.legacy ? " · " + esc(t18("stor.legacy")) : hostBit(a)) +
         '</div></div>' +
       (a.legacy ? "" :
-        '<button class="btn tool" ' + (done ? "disabled" : "") +
-        ' onclick="importArchive(' + JSON.stringify(a.path).replace(/"/g, "&quot;") + ')">' +
-        esc(done ? t18("stor.imported") : t18("stor.import")) + '</button>') +
+        '<button class="btn tool" ' + (done && !isSnap ? "disabled" : "") +
+        ' onclick="' + (isSnap ? "importSnapPack(" : "importArchive(") +
+          JSON.stringify(a.path).replace(/"/g, "&quot;") + ')">' +
+        esc(isSnap ? t18("stor.importSnap") : (done ? t18("stor.imported") : t18("stor.import"))) +
+        '</button>') +
       '</div>';
   }).join("") : '<div class="arc-empty">' + esc(t18("stor.noArchives")) + '</div>';
   sw.innerHTML = (S.sources || []).length ? (S.sources || []).map(x =>
@@ -4066,6 +4172,23 @@ function renderArchiveCard(){
     '<button class="btn tool danger" onclick="deleteSource(' +
       JSON.stringify(x.label).replace(/"/g, "&quot;") + ')">' + esc(t18("stor.srcDelete")) +
     '</button></div>').join("") : '<div class="arc-empty">' + esc(t18("stor.noSources")) + '</div>';
+}
+
+/* 快照便携包导入（260827）。**同 sid 不覆盖**——后端换个新 sid 落地并记来路，
+   这里如实把改名的事说出来，不然用户会以为"导入了但没变化"。 */
+async function importSnapPack(path){
+  try{
+    const r = await fetch("/api/snapshots/import", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({file: path})});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || "");
+    let msg = t18("stor.snapImported", {n: j.imported || 0});
+    if((j.renamed || []).length) msg += " · " + t18("stor.snapRenamed", {n: j.renamed.length});
+    if(j.foreign) msg += " · " + t18("stor.snapForeign", {host: j.host || "?"});
+    toast(msg);
+    await anLoad();          /* 贴纸板上立刻看得见 */
+    loadStorage();
+  }catch(e){ toast(t18("stor.snapImportFail", {msg: e.message}), true); }
 }
 
 async function doClear(mode){
@@ -6046,12 +6169,24 @@ function renderRec(d, sources){
     '</span>' +
     '<button class="btn" id="anAnaBtn" onclick="anAnalyze()"' + (AN.anaBusy ? " disabled" : "") + '>' +
       esc(AN.anaBusy ? anAnaLabel()
-                     : t18(AN.recAnalysis ? "an.ai.redo" : "an.ai.analyze")) +
-    '</button></div>' + anAnalysisHead();
+                     : (AN.recAnalysis
+                          ? (anFailedSteps().length
+                               ? t18("an.ai.fill", {n: anFailedSteps().length})
+                               : t18("an.ai.redo"))
+                          : t18("an.ai.analyze"))) +
+    '</button>' +
+    /* 「全部重算」单独一个按钮，不藏在同一个里：两者花的钱差一个数量级，
+       而"点了以为在补、其实重算了半小时"正是这个软件最不该有的意外。 */
+    (AN.recAnalysis && !AN.anaBusy
+      ? '<button class="btn" onclick="anAnalyze(&quot;full&quot;)" title="' +
+        esc(t18("an.ai.fullTip")) + '">' + esc(t18("an.ai.full")) + '</button>'
+      : "") +
+    '</div>' + anAnalysisHead();
   h += '<div class="an-split' + (AN.openStep ? " open" : "") + '">' +
     '<div class="an-splitmain">' +
       (AN.stepView === "tree" ? anTreeHtml(d.steps || []) : anListHtml(d.steps || [])) +
-    '</div><aside class="an-drawer" id="anDrawer">' + anDrawerHtml() + '</aside></div>';
+    '</div><div class="an-drawer-grip" id="anDrawerGrip" title="' + esc(t18("an.drawerDrag")) +
+    '"></div><aside class="an-drawer" id="anDrawer">' + anDrawerHtml() + '</aside></div>';
   h += '</div>';
   $("anRecOut").innerHTML = h;
 }
@@ -6071,10 +6206,15 @@ function anAnalysisHead(){
       ((a.dropped_steps || []).length
         ? ' · <span class="an-ana-drop">' + t18("an.ai.dropped", {n: a.dropped_steps.length}) + '</span>'
         : "") +
-      ((a.steps_brief_meta || {}).failed_batches
-        ? ' · <span class="an-ana-drop">' + t18("an.ai.partialBrief",
-            {n: a.steps_brief_meta.failed_batches}) + '</span>'
+      /* 失败要说"哪几步"而不是"几批"（260827）：只给个批数，用户既补不了也说不清。 */
+      (anFailedSteps().length
+        ? ' · <span class="an-ana-drop">' + esc(t18("an.ai.partialSteps",
+            {n: anFailedSteps().length, steps: anFailedSteps().slice(0, 8).join("、") +
+             (anFailedSteps().length > 8 ? "…" : "")})) + '</span>'
         : "") +
+      ((a.turns_meta || {}).steps_total
+        ? ' · ' + esc(t18("an.ai.turnCover", {n: a.turns_meta.covered_steps || 0,
+                                              total: a.turns_meta.steps_total})) : "") +
       /* 子代理线也一起归纳了：这笔账要摆出来——它是按线性涨的花费，
          用户有权知道这次点击到底做了多少事、有没有被闸门截住。 */
       (a.sub_meta && a.sub_meta.lanes
@@ -6082,6 +6222,15 @@ function anAnalysisHead(){
           (a.sub_meta.capped ? ' · <span class="an-ana-drop">' + t18("an.ai.subCapped") + '</span>' : "")
         : "") +
     '</div></div>';
+}
+/* 这次归纳有哪几步没做成（主线 + 各子代理线合起来）。**要能点着补**，所以返回的是步号，
+   不是一个"失败 3 批"的数字——数字既不能告诉用户丢了什么，也不能拿去补。 */
+function anFailedSteps(){
+  const a = AN.recAnalysis || {};
+  let out = ((a.steps_brief_meta || {}).failed_steps || []).slice();
+  const sub = (a.sub_meta || {}).failed_steps || {};
+  for(const k in sub) out = out.concat(sub[k] || []);
+  return out;
 }
 /* 轮次分组头：列表与树共用一份，别各写一份（两种视图的 AI 文案分叉过就再也对不上） */
 function anTurnHead(turn){
@@ -6179,6 +6328,22 @@ function anAgentsOrphan(){
   return h;
 }
 /* 一条子代理线：它自己的头 + 它自己的简报流（同一套渲染，所以嵌套天然成立）。 */
+/* 线级结论（260827）：一条子代理线摊开是几十行步级简报，回答不了"它干成了没有"。
+   四个字段各答一问——被派去干什么 / 卡在哪 / 怎么解决的 / 结果如何。
+   **答不上来的字段不渲染**（后端给空字符串），不摆一行"无"来充数。 */
+function anLaneSummaryHtml(lane){
+  const s = ((AN.recAnalysis || {}).sub_summary || {})[lane];
+  if(!s) return "";
+  if(s.error) return '<div class="an-hint an-ana-drop">' + esc(t18("an.sub.sumFail")) + '</div>';
+  const row = (k, cls) => s[k]
+    ? '<div class="an-lanerow' + (cls ? " " + cls : "") + '"><span class="an-lanek">' +
+      esc(t18("an.sub." + k)) + '</span><span class="an-lanev">' + esc(s[k]) + '</span></div>'
+    : "";
+  const body = row("task") + row("problems") + row("resolution") + row("outcome", "out");
+  if(!body) return "";
+  return '<div class="an-lanesum"><span class="an-aibadge sm">' + t18("an.ai.badge") + '</span>' +
+         body + '</div>';
+}
 function anAgentCard(a){
   const tier = (a.availability || {}).tier;
   return '<details class="an-agent"><summary class="an-agent-head">' +
@@ -6188,7 +6353,8 @@ function anAgentCard(a){
     (tier && tier !== "A"
       ? '<span class="chip outline">' + esc(t18("an.sub.tier", {t: tier})) + '</span>' : "") +
     '<span class="an-agent-label">' + esc(a.label || "") + '</span>' +
-    '</summary>' + anListHtml(a.steps || [], a.lane_id) + '</details>';
+    '</summary>' + anLaneSummaryHtml(a.lane_id) +
+    anListHtml(a.steps || [], a.lane_id) + '</details>';
 }
 
 /* 子代理线：录制里那些被 Task 派出去的线，各自带自己的骨架。
@@ -6218,10 +6384,14 @@ async function anAnalysisLoad(sid){
    十几分钟只写"分析中…"，在界面上与卡死长得一模一样。 */
 function anAnaLabel(){
   const p = AN.anaProg;
-  if(!p || !p.batches) return t18("an.ai.running");
-  return p.phase === "sub"
-    ? t18("an.ai.runningSub", {lane: p.lane, lanes: p.lanes, b: p.batch, batches: p.batches})
-    : t18("an.ai.runningMain", {b: p.batch, batches: p.batches});
+  if(!p || !p.phase) return t18("an.ai.running");
+  /* 并发之后「第几批」没有意义——几个线程同时在跑，报哪一个都是错的。改成完成数/总数。 */
+  if(p.phase === "sub")
+    return t18("an.ai.runningSub", {lane: p.lane, lanes: p.lanes, b: p.done || 0, batches: p.total || 0});
+  if(p.phase === "turns") return t18("an.ai.runningTurns", {b: p.done || 0, batches: p.total || 0});
+  if(p.phase === "lanes") return t18("an.ai.runningLanes", {b: p.done || 0, batches: p.total || 0});
+  if(!p.total) return t18("an.ai.running");
+  return t18("an.ai.runningMain", {b: p.done || 0, batches: p.total});
 }
 /* 轮询而不是 SSE：这是一次前台点击的伴随信息，2 秒一次的 GET 足够，
    而把归纳改成流式响应是另一件事（会牵动落盘时机与错误语义）。 */
@@ -6239,14 +6409,18 @@ function anAnaPoll(sid){
     }catch(e){ /* 进度取不到不影响归纳本身，安静退回"分析中…" */ }
   }, 2000);
 }
-async function anAnalyze(){
+async function anAnalyze(mode){
   const sid = anSel("c")[0];
   if(!sid || AN.anaBusy) return;
   AN.anaBusy = true; AN.anaProg = null;
   if(AN.recData) renderRec(AN.recData, AN.recSources || []);   /* 按钮进入"分析中…" */
   anAnaPoll(sid);
   try{
-    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/analysis", {method: "POST"});
+    /* resume（默认）只补缺口；full 全部重算。**默认不重算**：一次归纳是几十次调用、
+       几十分钟，而失败的往往只有一两批（260827 用户："我重新归纳还是失败"）。 */
+    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) +
+                          "/analysis?mode=" + (mode === "full" ? "full" : "resume"),
+                          {method: "POST"});
     const j = await r.json();
     if(!j.ok) throw new Error(j.error || "failed");
     AN.recAnalysis = j.data;
@@ -6356,6 +6530,7 @@ async function anStepOpen(step, lane){
   if(AN.openStep === step && AN.openLane === lane){ anStepClose(); return; }  /* 再点收起 */
   AN.openStep = step; AN.openLane = lane; AN.stepFull = null;
   anDrawerPaint();
+  anDrawerReveal();
   /* 主线走 thinking?level=2，子代理线走 subagents?lane=&step= —— 两者同义（都是"这一步的
      思考原文"），只是记录换了一条：子代理的过程本来就在另外的请求里。 */
   const url = lane
@@ -6379,6 +6554,94 @@ function anLaneName(lane){
   const a = (((AN.subs || {}).agents) || []).find(x => x.lane_id === lane);
   return (a && (a.agent_id || a.lane_id)) || lane;
 }
+/* 抽屉高度按**当前实际位置**算，不能用写死的 `calc(100vh - 104px)`（260827 用户反馈
+   「翻译之后长内容无法翻页」的真因）。
+
+   `top:82px` 是 sticky **贴住之后**的位置，而刚打开时它还在自然位置——实测起点 y=770、
+   高 1138、视口 1242，于是 666px 在屏幕外，而翻译结果恰好排在思考原文之后、落在那一段里。
+   用户看到的就是"内容被切掉、没有滚动条"：抽屉自己的滚动条也一起在屏幕外。
+
+   所以高度取两者较小：贴住后的可用高度、以及**从它现在的位置往下到视口底**的高度。 */
+function anDrawerFit(){
+  const box = $("anDrawer");
+  if(!box || !document.querySelector(".an-split.open")) return;
+  if(getComputedStyle(box).position === "static"){
+    box.style.maxHeight = "";     /* 窄屏落回流内：把上一档留下的内联高度**清掉**，
+                                     否则媒体查询里的 max-height:none 被内联样式压着（实测撞到） */
+    return;
+  }
+  const top = box.getBoundingClientRect().top;
+  const stuck = window.innerHeight - 104;                   /* 贴住顶栏之后的可用高度 */
+  const here = Math.max(220, window.innerHeight - top - 16);
+  box.style.maxHeight = Math.min(stuck, here) + "px";
+}
+/* 打开时把页面滚到抽屉贴住顶栏的位置。不这么做的话，第一屏看到的只是抽屉的上面一小条
+   （它的自然位置在几屏之下），而"点一行就能读原文"正是这块面板存在的理由。
+   已经贴住或在更上方就不动——不跟用户的滚动位置抢方向盘。 */
+function anDrawerReveal(){
+  const box = $("anDrawer");
+  if(!box || !document.querySelector(".an-split.open")) return;
+  if(getComputedStyle(box).position === "static") return;
+  const top = box.getBoundingClientRect().top;
+  if(top <= 90) return;
+  window.scrollBy({top: top - 82, behavior: "smooth"});
+}
+let _anFitQueued = false;
+function anDrawerFitSoon(){
+  if(_anFitQueued) return;
+  _anFitQueued = true;
+  requestAnimationFrame(() => { _anFitQueued = false; anDrawerFit(); });
+}
+
+/* 宽度：拖过就记住（localStorage，跟着这台机器这块屏幕走）。变量挂在**根元素**上，
+   所以列表每次重渲染都不用重新套一遍。 */
+const AN_DRAWER_W_KEY = "ccwa.drawerW";
+function anDrawerWidthApply(px){
+  document.documentElement.style.setProperty("--an-drawer-w", px ? px + "px" : "");
+}
+function anDrawerWidthInit(){
+  let w = 0;
+  try{ w = parseInt(localStorage.getItem(AN_DRAWER_W_KEY) || "", 10) || 0; }catch(e){ w = 0; }
+  if(w) anDrawerWidthApply(anDrawerWidthClamp(w));
+  /* 事件委托：抽屉与把手每次 renderRec 都会被重建，绑在 document 上就不用重绑。 */
+  document.addEventListener("mousedown", e => {
+    const grip = e.target.closest && e.target.closest(".an-drawer-grip");
+    if(!grip) return;
+    e.preventDefault();
+    const split = document.querySelector(".an-split.open");
+    const box = $("anDrawer");
+    if(!split || !box) return;
+    const startX = e.clientX, startW = box.getBoundingClientRect().width;
+    document.body.classList.add("an-resizing");
+    const move = ev => {
+      /* 往左拖 = 变宽（抽屉在右边） */
+      anDrawerWidthApply(anDrawerWidthClamp(startW + (startX - ev.clientX)));
+      anDrawerFitSoon();
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("an-resizing");
+      const w2 = Math.round($("anDrawer").getBoundingClientRect().width);
+      try{ localStorage.setItem(AN_DRAWER_W_KEY, String(w2)); }catch(e){ /* 无痕模式等：不记就不记 */ }
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+  window.addEventListener("scroll", anDrawerFitSoon, {passive: true});
+  window.addEventListener("resize", () => { anDrawerWidthApply(anDrawerWidthClamp(
+    parseInt((document.documentElement.style.getPropertyValue("--an-drawer-w") || "0"), 10) || 0));
+    anDrawerFitSoon(); });
+}
+/* 夹取：太窄读不了、太宽把叙事流挤没。上限按当前容器算而不是写死，
+   带鱼屏上 760px 只占三分之一，笔记本上 760px 就该被夹回去。 */
+function anDrawerWidthClamp(px){
+  if(!px) return 0;
+  const split = document.querySelector(".an-split");
+  const total = split ? split.getBoundingClientRect().width : window.innerWidth;
+  return Math.round(Math.max(300, Math.min(px, Math.max(320, total * 0.72))));
+}
+
 /* 只重画抽屉与选中态，**不整页重渲染**——137 行的列表重建一次就把滚动位置扔了，
    而这个抽屉存在的全部理由就是"别让人翻来翻去"。 */
 function anDrawerPaint(){
@@ -6386,6 +6649,7 @@ function anDrawerPaint(){
   if(!split || !box) return;
   split.classList.toggle("open", !!AN.openStep);
   box.innerHTML = anDrawerHtml();
+  anDrawerFitSoon();
   document.querySelectorAll(".an-step.active,.tnode.active").forEach(e => e.classList.remove("active"));
   if(AN.openStep){
     /* 步号在每条线里各自从 1 开始，所以选中态必须**连 lane 一起认**，
@@ -6400,6 +6664,26 @@ function anDrawerPaint(){
 function anCopyBrief(btn){
   if(!AN.brief){ toast(t18("an.pickFirst"), true); return; }
   return copyAndReport(AN.brief, btn);
+}
+
+/* 便携包（260827，issue 260827_快照便携包导出导入）：把选中的贴纸连同 AI 归纳打成一个文件。
+   **搬的不是快照，是快照旁边那份归纳**——实测一份归纳花 26 分钟、几十次调用，
+   搬不走就等于对面机器只能重跑一遍。落在 archives/，与录制归档同一个抽屉。 */
+async function anExportPack(btn, which){
+  const sids = anSel(which || "c").filter(Boolean);
+  if(!sids.length){ toast(t18("an.pickFirst"), true); return; }
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = t18("an.exporting");
+  try{
+    const r = await fetch("/api/snapshots/export", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({sids})});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || "");
+    toast(t18("an.exportOk", {n: j.count || sids.length, size: fmtBytes(j.size || 0)}));
+    loadStorage();          /* 归档卡里立刻能看见它 */
+  }catch(e){ toast(t18("an.exportFail", {msg: e.message}), true); }
+  btn.disabled = false; btn.textContent = orig;
 }
 
 /* 复制"分析提示词 + 骨架数据"，粘到任意 AI 对话框（不需要对方能联网） */
@@ -6683,6 +6967,7 @@ async function loadConfig(){
     $("cfgExplainPrompt").value = (cfg.explain || {}).prompt || "";
     $("cfgAnaTurnsPrompt").value = (cfg.analysis || {}).turns_prompt || "";
     $("cfgAnaStepsPrompt").value = (cfg.analysis || {}).steps_prompt || "";
+    $("cfgAnaConc").value = (cfg.analysis || {}).concurrency || 4;
     $("aboutVersion").textContent = about.version ? "v" + about.version : "—";
     $("aboutDataDir").textContent = about.data_dir || "—";
     $("aboutLogPath").textContent = about.log_path || "—";
@@ -7019,7 +7304,8 @@ async function saveConfig(){
     },
     explain: { prompt: $("cfgExplainPrompt").value.trim() },
     analysis: { turns_prompt: $("cfgAnaTurnsPrompt").value.trim(),
-                steps_prompt: $("cfgAnaStepsPrompt").value.trim() },
+                steps_prompt: $("cfgAnaStepsPrompt").value.trim(),
+                concurrency: parseInt($("cfgAnaConc").value, 10) || 4 },
   };
   try{
     const r = await fetch("/api/config", {
@@ -7190,6 +7476,7 @@ function openBackupDir(){
   applyI18n();
   syncThemePicker();
   ctxInit();                  /* 自绘右键菜单 + Cmd/Ctrl+C 兜底（WebView2/WebKit 都不给原生的）*/
+  anDrawerWidthInit();        /* 思考原文抽屉：记住的宽度 + 中缝拖拽 + 随视口收高 */
   await loadSources();        /* 有导入的外来录制才会渲染来源切换条 */
   await fetchCaptures();      /* 默认今天，含 dates_available */
   await refreshStatus();

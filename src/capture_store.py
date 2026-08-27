@@ -1417,13 +1417,27 @@ def list_archives() -> list[dict]:
         try:
             m = pack.peek_ccwa(f)
             host = m.get("host", "")
-            item.update({"date": m.get("date"), "count": m.get("count"),
+            item.update({"kind": "captures",
+                         "date": m.get("date"), "count": m.get("count"),
                          "label": m.get("label", ""), "raw_bytes": m.get("raw_bytes"),
                          "archived_at": m.get("archived_at", ""),
                          "host": host, "from": m.get("tool_version", ""),
                          "foreign": bool(host) and host != local_host()})
         except pack.PackError as e:
-            item["error"] = str(e)      # 坏归档要显示出来，不能从列表里悄悄消失
+            # 快照便携包（260827）同后缀不同 kind——它不是坏归档，是另一种包。
+            # 延迟 import：snapshot_pack 反过来依赖本模块。
+            try:
+                import snapshot_pack
+                m = snapshot_pack.peek(f)
+                if m.get("kind") != snapshot_pack.KIND:
+                    raise ValueError("not a snapshot pack")
+                host = m.get("host", "")
+                item.update({"kind": "snapshots", "count": m.get("count"),
+                             "archived_at": m.get("exported_at", ""),
+                             "host": host, "from": m.get("tool_version", ""),
+                             "foreign": bool(host) and host != local_host()})
+            except Exception:
+                item["error"] = str(e)  # 坏归档要显示出来，不能从列表里悄悄消失
         out.append(item)
     # 旧版 zip 归档（260825 之前的格式）也列出来，否则用户会以为文件丢了
     for f in sorted(ARCHIVES_DIR.glob("*.jsonl.zip"), reverse=True):

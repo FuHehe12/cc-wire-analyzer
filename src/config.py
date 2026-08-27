@@ -65,6 +65,9 @@ _DEFAULTS = {
     "analysis": {
         "turns_prompt": "",
         "steps_prompt": "",
+        # 归纳批次的并发数（260827）。批次之间无依赖，串行纯粹是在等——实测 27 批 26 分钟。
+        # 上限 8 不是性能考虑，是别把用户的上游打成限流：限流会让失败批变多，总时间反而更长。
+        "concurrency": 4,
     },
 }
 
@@ -94,6 +97,8 @@ def get_config() -> dict:
     tr = merged.get("translate") or {}
     tr["input_max_chars"] = _clamp_chars(tr.get("input_max_chars"))
     tr["chat_context_max_chars"] = _clamp_chars(tr.get("chat_context_max_chars"))
+    an = merged.get("analysis") or {}
+    an["concurrency"] = _clamp_workers(an.get("concurrency"))
     return merged
 
 
@@ -104,6 +109,15 @@ def _clamp_scale(v) -> int:
         return max(80, min(200, int(v)))
     except (TypeError, ValueError):
         return 100
+
+
+def _clamp_workers(v, default: int = 4) -> int:
+    """归纳并发数夹到 1~8。与 _clamp_chars 同一条纪律：这是花钱又会撞限流的旋钮，
+    0 会让归纳一批都跑不动，天文数字会把上游打成 429——防呆必须在工具侧。"""
+    try:
+        return max(1, min(8, int(v) or default))
+    except (TypeError, ValueError):
+        return default
 
 
 def _clamp_chars(v, default: int = 20000) -> int:
@@ -130,6 +144,8 @@ def set_config(updates: dict) -> dict:
     tr = current.get("translate") or {}
     tr["input_max_chars"] = _clamp_chars(tr.get("input_max_chars"))
     tr["chat_context_max_chars"] = _clamp_chars(tr.get("chat_context_max_chars"))
+    an = current.get("analysis") or {}
+    an["concurrency"] = _clamp_workers(an.get("concurrency"))
     CONFIG_FILE.write_text(
         json.dumps(current, ensure_ascii=False, indent=2),
         encoding="utf-8",
