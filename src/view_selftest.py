@@ -14,7 +14,8 @@
   ④ 录制内容按不可信渲染（零 innerHTML）      → [3] + 静态扫描 [8]
   ⑤ 内嵌 payload 必须转义 `<`                 → [3]
   ⑥ 超限明说，不静默                          → [7]
-另加 [2] 渲染保真（页面里内嵌的就是原 JSON）与 [9] 清单不腐化（url_map 全覆盖）。
+另加 [2] 渲染保真（页面里内嵌的就是原 JSON）与 [9] 清单不腐化（url_map 全覆盖）；
+[10] 需要参数的端点：预填的样例**拿去真跑必须返回 200**；[11] 三套外观各有一份 token。
 """
 from __future__ import annotations
 
@@ -260,6 +261,79 @@ def main() -> None:
        f"缺 {sorted(expect - listed)} 多 {sorted(listed - expect)}")
     undocumented = sorted(r_ for r_ in expect if r_ not in A._VIEW_NOTES)
     ok(not undocumented, "每个端点都有一句话说明（没有就补 _VIEW_NOTES）", undocumented)
+
+    print("\n[10] 需要参数的端点：样例必须是**活的**（issue 260827）")
+    # 这一节守的不是"页面上有个输入框"，而是**预填进去的那个地址真能跑**。
+    # 样例的全部价值在于照抄就能用；一个跑不通的样例比不给样例更糟——它把人引向一次失败。
+    import snapshot_store as SS
+    _rec0 = json.loads((CS.CAPTURES_DIR / f"{DATE}.jsonl").read_text(
+        encoding="utf-8").splitlines()[0])
+    _s1 = SS.create_capture(_rec0, label="样例一")
+    SS.write_analysis(_s1["sid"], {"sid": _s1["sid"], "steps": [], "turns": [],
+                                   "summary": "自测用"})
+    _s2 = SS.create_capture(_rec0, label="样例二")
+
+    def _eps_of(html: str) -> list:
+        m = re.search(r'<script id="endpoints" type="application/json">(.*?)</script>',
+                      html, re.S)
+        return json.loads(m.group(1)) if m else []
+
+    _, html = page("/view")
+    eps = _eps_of(html)
+    need = [e for e in eps if e["needs_arg"]]
+    ok(len(need) >= 10, f"需要参数的端点都被认出来了（{len(need)} 条，含 diff）",
+       [e["rule"] for e in need])
+    ok(all(e["example"] for e in need), "每条都给了样例 URL",
+       [e["rule"] for e in need if not e["example"]])
+    ok(all(e["example_real"] for e in need), "样例取的是**本机真数据**，不是占位符",
+       [e["rule"] for e in need if not e["example_real"]])
+
+    bad = []
+    for e in need:
+        r = C.get(e["example"])
+        if r.status_code != 200:
+            bad.append(f'{e["rule"]} → {e["example"]} → HTTP {r.status_code}')
+    ok(not bad, "每条样例拿去真跑都返回 200（样例是死是活由机器判，肉眼看一次不算数）", bad)
+
+    _cap = next((e for e in need if e["rule"] == "/api/captures/<rid>"), None)
+    ok(_cap is not None and "date=" in (_cap["example"] or ""),
+       "captures 样例带上了 date=（历史日期不带 date 查不到，审计 260712 #4）",
+       _cap and _cap["example"])
+    if _cap:
+        _rid = _cap["example"].split("/")[-1].split("?")[0]
+        ok(_rid in C.get(_cap["example"]).get_data(as_text=True),
+           "样例跑回来的确实是样例里那一条（不是恰好有别的东西返回 200）")
+
+    _dif = next((e for e in eps if e["rule"] == "/api/snapshots/diff"), None)
+    ok(_dif is not None and not _dif["href"],
+       "diff 不再给一个注定报错的直链——给注定失败的入口比留白更糟，死行至少诚实")
+    ok(_dif and "a=" in _dif["example"] and "b=" in _dif["example"],
+       "diff 的样例把 a/b 两个 sid 都带齐了", _dif and _dif["example"])
+
+    # 全新装（本机什么都还没录）：必须仍给参考写法，并**如实标成占位符**。
+    # 不标就是在骗人照抄一个跑不通的地址。
+    _orig = A._view_sample_ids
+    try:
+        A._view_sample_ids = lambda: {"rid": "", "date": "", "sid": "", "sid2": ""}
+        _, html2 = page("/view")
+        need2 = [e for e in _eps_of(html2) if e["needs_arg"]]
+        ok(need2 and all(e["example"] and not e["example_real"] for e in need2),
+           "没有任何数据时：仍给参考写法，标成占位符，页面不空白也不报错")
+    finally:
+        A._view_sample_ids = _orig
+
+    print("\n[11] 外观：三套，与主界面一一对应（issue 260827）")
+    tpl = tpl_text()
+    for th in ("classic", "dark", "light"):
+        sel = ':root{' if th == "dark" else f'html[data-theme="{th}"]{{'
+        ok(sel in tpl, f"{th} 有自己的一份 token（不是折成两套后张冠李戴）")
+    ok('dataset.theme' in tpl and 'dataset.mode' not in tpl,
+       "属性名与主界面同为 data-theme（不再多一层 mode 的翻译）")
+    ok('"ccwa_ui_theme="' in tpl or 'ccwa_ui_theme' in tpl,
+       "外观开关写的是同一对 cookie/localStorage 键——同一个设置的第二个入口，不是第二个真相源")
+    # 一组色值不可能同时落在 #131318 和 #E8EEF0 上还都过 AA：语法高亮五色必须三套各一份。
+    for tok in ("--str", "--num", "--bool", "--null", "--key", "--link"):
+        ok(tpl.count(tok + ":") >= 3, f"{tok} 三套外观各给了一份", tpl.count(tok + ":"))
 
     print()
     if FAILED:

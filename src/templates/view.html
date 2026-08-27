@@ -15,18 +15,21 @@
        这个项目的惯犯 bug ③ 就是静默留空，在一个专门用来看清楚的页面上重犯它最讽刺。
 -->
 <script>
-/* 跟随主界面的外观选择，避免从 `/` 点过来时深浅闪切。cookie 跨动态端口，localStorage 兜底。
-   这里只分深/浅两套（主界面的 classic 与 light 在此都走浅色）——浏览面是审计工具，
-   不承担三套外观的对照职责，多养一套 token 就是多一处会分叉的地方。 */
+/* 跟随主界面的外观选择，避免从 `/` 点过来时闪切。cookie 跨动态端口，localStorage 兜底。
+   **三套，与主界面一一对应**（260827）。此前这里把三套折成深/浅两套，折的方式还有一处错位：
+   主界面选「实验室日光」（青蓝）时，浏览面拿的是「经典暖灰」的色板——不是少一套，是张冠李戴。
+   外观不是装饰，它是"我还在同一个软件里"的连续性信号；而这一页偏偏是拿来核对事实的。
+   属性名也用 `data-theme`，与主界面同名同值，省掉一层翻译。 */
 (function(){
+  const allowed = new Set(["classic", "dark", "light"]);
   let t = "";
   try{
     const m = document.cookie.match(/(?:^|;\s*)ccwa_ui_theme=([^;]+)/);
     t = m ? decodeURIComponent(m[1]) : localStorage.getItem("ccwa_ui_theme") || "";
   }catch(e){}
-  const dark = (t !== "classic" && t !== "light");
-  document.documentElement.dataset.mode = dark ? "dark" : "light";
-  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  if(!allowed.has(t)) t = "dark";
+  document.documentElement.dataset.theme = t;
+  document.documentElement.style.colorScheme = t === "dark" ? "dark" : "light";
 })();
 </script>
 <style>
@@ -40,31 +43,54 @@
   /* 深色：与主界面 260802 改版同源（深炭 + 驼金发光） */
   --accent:#E8B855; --accent-deep:#C2882B; --accent-contrast:#211706;
   --bg:#131318; --card:#1E1E26; --soft:#25252F; --softer:#2A2A35;
-  --text:#F5F5F7; --text-2:#C8C8D0; --dim:#9898A2; --faint:#74747F;
+  /* 文字三档与主界面同源（--text-tertiary / --text-faint）。260827 走查：原来的
+     --faint:#74747F 压在卡片上只有 3.58:1，而它正是 `.ep-why` / `.hint` / `.empty`
+     这些小字用的颜色——这一页此前从没被走查过。 */
+  --text:#F5F5F7; --text-2:#C8C8D0; --dim:#A8A8B2; --faint:#9797A0;
+  /* --accent 用于实底与边框，压字的那一档单列 --link（深色下两者同值，浅色下必须分开：
+     亮金实底配白字 2.94:1，这条教训 index.html 已经吃过一次，别在这里重犯）。 */
+  --link:#E8B855;
   --border:#2E2E38; --border-soft:#262630;
   --ok:#4ADE80; --err:#F87171; --warn:#FBBF24; --info:#60A5FA;
-  --str:#9BD1A0; --num:#F0B86E; --bool:#7FB2F0; --null:#8A8A96; --key:#E8B855;
+  --str:#9BD1A0; --num:#F0B86E; --bool:#7FB2F0; --null:#9494A0; --key:#E8B855;
   --shadow-sm:0 1px 2px rgba(0,0,0,.40),0 2px 6px rgba(0,0,0,.30);
   --shadow:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.30);
   --highlight:inset 0 1px 0 rgba(255,255,255,.08);
   --code-bg:rgba(0,0,0,.30);
 }
-html[data-mode="light"]{
-  --accent:#C98A25; --accent-deep:#A66B13; --accent-contrast:#FFFFFF;
+/* 经典暖灰：与 index.html 的 html[data-theme="classic"] 同源，色值逐个抄过来。
+   **不另调一套近似色**——两处各调各的就是下一次分叉。 */
+html[data-theme="classic"]{
+  --accent:#C98A25; --accent-deep:#A16812; --accent-contrast:#FFFFFF; --link:#6B4A12;
   --bg:#DED8CC; --card:#FFFFFF; --soft:#F4F2EF; --softer:#FBFAF8;
-  --text:#1A1A1A; --text-2:#5C564C; --dim:#6E665C; --faint:#8A8176;
+  --text:#1A1A1A; --text-2:#5C564C; --dim:#655F55; --faint:#686053;
   --border:#E1DBD0; --border-soft:#EDE7DC;
   --ok:#356A2B; --err:#A83C2A; --warn:#7B5B1D; --info:#315F9D;
-  --str:#2E6B3A; --num:#8A5A12; --bool:#2A5C99; --null:#8A8176; --key:#8A5F14;
+  --str:#2E6B3A; --num:#8A5A12; --bool:#2A5C99; --null:#686053; --key:#8A5F14;
   --shadow-sm:0 1px 3px rgba(45,35,20,.07);
   --shadow:0 3px 12px rgba(45,35,20,.10);
   --highlight:inset 0 1px 0 rgba(255,255,255,.78);
   --code-bg:rgba(0,0,0,.05);
 }
+/* 实验室日光：冷矿物纸面 + 精密青蓝。JSON 语法高亮那五个色也各给一份——
+   一组色值不可能同时落在 #131318 和 #E8EEF0 上还都过 AA，这是 v0.4.16 全站走查
+   留下的规矩，换个文件不等于不算数。 */
+html[data-theme="light"]{
+  --accent:#1E6972; --accent-deep:#15545B; --accent-contrast:#FFFFFF; --link:#185A62;
+  --bg:#E8EEF0; --card:#FFFFFF; --soft:#EDF3F5; --softer:#F7FAFB;
+  --text:#17212B; --text-2:#3D4C57; --dim:#485964; --faint:#55646D;
+  --border:#C7D4D9; --border-soft:#DEE7EA;
+  --ok:#237A53; --err:#A93635; --warn:#7A5B13; --info:#2A64A1;
+  --str:#1F6B45; --num:#8A5A12; --bool:#2A64A1; --null:#55646D; --key:#185A62;
+  --shadow-sm:0 1px 3px rgba(31,57,66,.10),0 1px 2px rgba(31,57,66,.06);
+  --shadow:0 8px 22px rgba(31,57,66,.11),0 2px 6px rgba(31,57,66,.07);
+  --highlight:inset 0 1px 0 rgba(255,255,255,.88);
+  --code-bg:rgba(31,57,66,.06);
+}
 *{box-sizing:border-box;}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);
   font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
-a{color:var(--accent);text-decoration:none;}
+a{color:var(--link);text-decoration:none;}
 a:hover{text-decoration:underline;}
 code,pre,.mono{font-family:var(--font-mono);}
 
@@ -74,9 +100,27 @@ header{position:sticky;top:0;z-index:10;background:var(--card);
 .bar{max-width:1180px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;
   gap:14px;flex-wrap:wrap;}
 .brand{font-weight:700;font-size:15px;letter-spacing:.2px;white-space:nowrap;}
-.brand .dot{color:var(--accent);}
+.brand .dot{color:var(--link);}
 .bar .sp{flex:1;}
 .rt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+/* 外观开关：写的是**同一对** cookie + localStorage 键（ccwa_ui_theme），所以它不是第二个
+   真相源，只是同一个设置的第二个入口——`/view` 能被直接敲 URL 打开（用户就是这么打开的），
+   而改外观的开关此前只长在主界面设置页里，第一次进来的人拿到深色就换不掉。
+   三块色板的取值与 index.html 设置页的 .theme-swatch 同源。 */
+.tsw{display:flex;gap:5px;align-items:center;}
+.tsw button{width:28px;height:21px;padding:0;border-radius:6px;cursor:pointer;
+  border:1px solid var(--border);position:relative;overflow:hidden;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.32);transition:box-shadow .14s ease;}
+.tsw button::before{content:"";position:absolute;left:4px;right:4px;top:4px;height:4px;
+  border-radius:2px;background:var(--sw-card);}
+.tsw button::after{content:"";position:absolute;left:4px;bottom:4px;width:11px;height:4px;
+  border-radius:2px;background:var(--sw-accent);}
+.tsw button[aria-checked="true"]{border-color:var(--accent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent);}
+.tsw button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.tsw button[data-t="classic"]{background:#DED8CC;--sw-card:#FFFFFF;--sw-accent:#C98A25;}
+.tsw button[data-t="dark"]{background:#131318;--sw-card:#2A2A35;--sw-accent:#E8B855;}
+.tsw button[data-t="light"]{background:#E8EEF0;--sw-card:#FFFFFF;--sw-accent:#1E6972;}
 
 /* ---- 通用件 ---- */
 .chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;
@@ -85,7 +129,7 @@ header{position:sticky;top:0;z-index:10;background:var(--card);
 .chip.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent);}
 .chip.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,transparent);}
 .chip.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent);}
-.chip.gold{color:var(--accent);border-color:var(--accent-deep);
+.chip.gold{color:var(--link);border-color:var(--accent-deep);
   background:color-mix(in srgb,var(--accent) 12%,transparent);}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;
   border:1px solid var(--border);background:var(--soft);color:var(--text-2);
@@ -94,6 +138,10 @@ header{position:sticky;top:0;z-index:10;background:var(--card);
 .btn:hover{background:var(--softer);color:var(--text);border-color:var(--faint);}
 .btn.primary{background:var(--accent);border-color:var(--accent-deep);color:var(--accent-contrast);}
 .btn.primary:hover{background:var(--accent-deep);color:var(--accent-contrast);}
+/* 两套浅色下实底走 --accent-deep 而不是 --accent（亮金实底配白字实测 2.94:1）。
+   与 index.html 同一条判据：--accent 留给边框与线条，--accent-deep 才是"上面要压字"的那一档。 */
+html[data-theme="classic"] .btn.primary,html[data-theme="light"] .btn.primary{
+  background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 main{max-width:1180px;margin:0 auto;padding:22px 20px 80px;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;
@@ -115,6 +163,15 @@ main{max-width:1180px;margin:0 auto;padding:22px 20px 80px;}
 .ep-act{display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;}
 .ep.muted .ep-rule{color:var(--faint);}
 .ep-why{font-size:11.5px;color:var(--faint);font-style:italic;white-space:nowrap;}
+/* 需要参数的端点：一行可编辑的、**照抄就能跑**的完整 URL（issue 260827）。
+   此前这些行只写一句"需路径参数"就没了下文——而 agent 读得最多的恰恰就是它们
+   （`/api/captures/<rid>`、`/api/snapshots/<sid>/*`），浏览面在自己最该说清楚的地方哑了。 */
+.ep-try{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:3px;}
+.ep-url{flex:1;min-width:240px;font-family:var(--font-mono);font-size:12.5px;
+  padding:6px 10px;border-radius:8px;border:1px solid var(--border);
+  background:var(--soft);color:var(--text);}
+.ep-url:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 32%,transparent);}
 @media(max-width:720px){
   .ep{grid-template-columns:1fr;gap:4px;}
   .ep-act{justify-content:flex-start;}
@@ -179,10 +236,10 @@ table.tbl tr:hover td{background:var(--soft);}
 .md{padding:8px 26px 30px;max-width:82ch;}
 .md h1{font-size:24px;margin:22px 0 12px;padding-bottom:9px;border-bottom:2px solid var(--accent-deep);}
 .md h2{font-size:19px;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
-.md h3{font-size:16px;margin:22px 0 8px;color:var(--accent);}
+.md h3{font-size:16px;margin:22px 0 8px;color:var(--link);}
 .md h4{font-size:14px;margin:18px 0 6px;color:var(--text-2);}
 .md p,.md li{color:var(--text-2);}
-.md code{background:var(--code-bg);padding:1.5px 5px;border-radius:5px;font-size:12.5px;color:var(--accent);}
+.md code{background:var(--code-bg);padding:1.5px 5px;border-radius:5px;font-size:12.5px;color:var(--link);}
 .md pre{background:var(--code-bg);padding:12px 14px;border-radius:9px;overflow-x:auto;
   border:1px solid var(--border-soft);}
 .md pre code{background:none;padding:0;color:var(--text-2);}
@@ -206,6 +263,7 @@ table.tbl tr:hover td{background:var(--soft);}
     <span class="brand">CC Wire Analyzer <span class="dot">·</span> <span id="hTitle"></span></span>
     <span class="sp"></span>
     <span class="rt" id="rt"></span>
+    <span class="tsw" id="tsw" role="radiogroup"></span>
     <a class="btn" href="/view" id="bHome"></a>
     <a class="btn" href="/" id="bApp"></a>
   </div>
@@ -234,6 +292,9 @@ const I18N = {
 zh:{
   titleIndex:"API 浏览面", titleView:"API 响应",
   home:"浏览面", app:"主界面", recOn:"正在录制", recOff:"未录制",
+  thPick:"外观", thClassic:"经典暖灰", thDark:"深色专业", thLight:"实验室日光",
+  exReal:"本机真实数据", exFake:"参考写法（本机还没有这类数据）",
+  epUrl:"请求地址（可改）", epEmpty:"地址是空的，先填一个",
   lead:"本工具是双模式的：<b>人看主界面，AI 走 HTTP API</b>。这一页把 AI 那一侧能拿到的东西原样渲染出来，"+
        "让你能亲眼核对——你复制给 agent 的那句话背后，它究竟读到了什么。"+
        "<br>页面只做呈现，<b>不改变 API 本身</b>：不带 <code>?format=html</code> 时，响应逐字节不变。",
@@ -271,6 +332,9 @@ zh:{
 en:{
   titleIndex:"API browser", titleView:"API response",
   home:"Browser", app:"Main UI", recOn:"recording", recOff:"not recording",
+  thPick:"Appearance", thClassic:"Classic Warm", thDark:"Dark Professional", thLight:"Lab Daylight",
+  exReal:"real data from this machine", exFake:"placeholder — nothing of this kind here yet",
+  epUrl:"request URL (editable)", epEmpty:"The URL is empty — fill one in first",
   lead:"This tool is dual-mode: <b>humans use the main UI, AI uses the HTTP API</b>. This page renders "+
        "what the AI side receives, so you can check with your own eyes what an agent actually reads "+
        "behind that one line you copied to it."+
@@ -309,6 +373,9 @@ en:{
 ja:{
   titleIndex:"API ブラウザ", titleView:"API レスポンス",
   home:"ブラウザ", app:"メイン画面", recOn:"記録中", recOff:"未記録",
+  thPick:"外観", thClassic:"クラシック暖色", thDark:"ダーク・プロ", thLight:"ラボ・デイライト",
+  exReal:"このマシンの実データ", exFake:"記入例（この種のデータはまだありません）",
+  epUrl:"リクエスト URL（編集可）", epEmpty:"URL が空です。まず入力してください",
   lead:"本ツールは二重モードです：<b>人はメイン画面、AI は HTTP API</b>。このページは AI 側が受け取る"+
        "内容をそのまま描画します。agent に渡したあの一文の裏で、実際に何を読んでいるのかを自分の目で確認できます。"+
        "<br>表示するだけで <b>API 自体は変えません</b>：<code>?format=html</code> を付けなければ応答はバイト単位で不変です。",
@@ -549,6 +616,49 @@ function renderArray(arr, depth){
   return box;
 }
 
+/* ===== 外观开关 =====
+   写的是**同一对** cookie + localStorage 键，与主界面设置页那个开关是同一个设置的两个入口，
+   不是第二个真相源。切换不刷新页面——三套外观全靠 CSS 变量，改 data-theme 就重绘完了。 */
+const THEMES = ["classic", "dark", "light"];
+const THEME_LABEL = {classic: "thClassic", dark: "thDark", light: "thLight"};
+function currentTheme(){
+  const t = document.documentElement.dataset.theme || "";
+  return THEMES.indexOf(t) >= 0 ? t : "dark";
+}
+function setTheme(t){
+  if(THEMES.indexOf(t) < 0) return;
+  document.documentElement.dataset.theme = t;
+  document.documentElement.style.colorScheme = (t === "dark" ? "dark" : "light");
+  try{
+    localStorage.setItem("ccwa_ui_theme", t);
+    /* 与主界面 setTheme 逐字同形：端口是动态的，cookie 才跨得过去 */
+    document.cookie = "ccwa_ui_theme=" + encodeURIComponent(t) +
+      "; Path=/; Max-Age=31536000; SameSite=Strict";
+  }catch(e){}
+  syncThemeSwitch();
+}
+function syncThemeSwitch(){
+  const cur = currentTheme();
+  document.querySelectorAll("#tsw button").forEach(b => {
+    b.setAttribute("aria-checked", b.dataset.t === cur ? "true" : "false");
+  });
+}
+function renderThemeSwitch(){
+  const box = document.getElementById("tsw");
+  box.setAttribute("aria-label", T("thPick"));
+  for(const t of THEMES){
+    const b = el("button");
+    b.dataset.t = t;
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.title = T(THEME_LABEL[t]);
+    b.setAttribute("aria-label", T(THEME_LABEL[t]));
+    b.onclick = () => setTheme(t);
+    box.appendChild(b);
+  }
+  syncThemeSwitch();
+}
+
 /* ===== 顶栏 ===== */
 function renderHeader(){
   document.getElementById("hTitle").textContent =
@@ -562,6 +672,34 @@ function renderHeader(){
   rt.appendChild(el("span", "chip " + (RUNTIME.recording ? "ok" : ""),
                     RUNTIME.recording ? "● " + T("recOn") : "○ " + T("recOff")));
   rt.appendChild(el("span", "chip", RUNTIME.listen));
+  renderThemeSwitch();
+}
+
+/* ===== 首页：需要参数的端点 =====
+   一行可编辑的完整 URL + 两个按钮。预填的样例由后端从**本机真实数据**里挑
+   （`_view_sample_ids`），挑不到才退回参考写法，并在旁边如实标成"参考写法"——
+   不标就是在骗人照抄一个跑不通的地址。 */
+function epTry(e){
+  const wrap = el("div", "ep-try");
+  wrap.appendChild(el("span", "chip" + (e.example_real ? " gold" : ""),
+                      T(e.example_real ? "exReal" : "exFake")));
+  const inp = el("input", "ep-url");
+  inp.type = "text";
+  inp.value = e.example;                 /* 用户数据走 value，绝不拼进 HTML */
+  inp.spellcheck = false;
+  inp.setAttribute("aria-label", T("epUrl"));
+  const go = (raw) => {
+    const u = inp.value.trim();
+    if(!u){ toast(T("epEmpty")); return; }
+    location.href = raw ? u : u + (u.indexOf("?") < 0 ? "?" : "&") + "format=html";
+  };
+  inp.onkeydown = (ev) => { if(ev.key === "Enter"){ ev.preventDefault(); go(false); } };
+  const b1 = el("button", "btn primary", T("gRender"));
+  b1.type = "button"; b1.onclick = () => go(false);
+  const b2 = el("button", "btn", T("gRaw"));
+  b2.type = "button"; b2.onclick = () => go(true);
+  wrap.appendChild(inp); wrap.appendChild(b1); wrap.appendChild(b2);
+  return wrap;
 }
 
 /* ===== 首页 ===== */
@@ -579,23 +717,26 @@ function renderIndex(){
     const card = el("div", "card");
     card.appendChild(el("h2", null, (L.grp[g] || g)));
     for(const e of groups[g]){
-      const row = el("div", "ep" + (e.href ? "" : " muted"));
+      const row = el("div", "ep" + ((e.href || e.example) ? "" : " muted"));
       row.appendChild(el("code", "ep-rule", e.rule));
       row.appendChild(el("span", "ep-note", (L.ep[e.note] || "")));
       const act = el("div", "ep-act");
       if(e.href){
         const a = el("a", "btn primary", T("gRender"));
         a.href = e.href; act.appendChild(a);
-      }else if(e.needs_arg){
-        act.appendChild(el("span", "ep-why", T("gNeedArg")));
       }else if(e.no_link){
         act.appendChild(el("span", "ep-why", T(e.no_link)));
+      }else if(e.needs_arg && !e.example){
+        /* 兜底：将来某个新端点带了 <rid>/<sid> 之外的参数，后端还没给它样例——
+           那就照旧说一句"需路径参数"，而不是留一行连原因都没有的空行。 */
+        act.appendChild(el("span", "ep-why", T("gNeedArg")));
       }
       if(e.raw){
         const r = el("a", "btn", T("gRaw"));
         r.href = e.raw; act.appendChild(r);
       }
       row.appendChild(act);
+      if(e.example) row.appendChild(epTry(e));   /* 需要参数的行：给它一个能填的地方 */
       card.appendChild(row);
     }
     main.appendChild(card);

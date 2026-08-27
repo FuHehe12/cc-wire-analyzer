@@ -1319,9 +1319,20 @@ body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**�
 列出全部可 GET 的 `/api/*` 端点（**从 `app.url_map` 现取，不是硬编码清单**），分组、每条
 一句话说明、每条一个可点链接。返回 `text/html`。
 
-需要路径参数的端点（`/api/captures/<id>` 等）列出但不可点；`/api/captures/stream`（SSE 长连接）
-与 `/api/update/check`（会联网）列出但**有意不给链接**，并在行内写明原因——藏起来就等于浏览面
-自己有盲区。
+需要参数的端点（`/api/captures/<rid>`、`/api/snapshots/<sid>/*`，以及靠 `?a=&b=` 传两个 sid 的
+`/api/snapshots/diff`，共 10 条）给一行**可编辑的完整 URL**，预填的样例由后端从**本机真实数据**
+里挑（`_view_sample_ids`：最近有数据那天的第一条 rid；快照优先挑**已经归纳过的录制快照**——
+`/analysis`、`/subagents` 落在别的快照上打开是空的，而空页会被读成"端点坏了"）。挑不到才退回
+参考写法，并在旁边如实标成「参考写法」（清单里的 `example_real=false`）——不标就是在骗人照抄一个
+跑不通的地址。`/api/captures/<rid>` 的样例带 `date=`（历史日期不带 date 查不到），diff 的样例带齐
+`a`/`b`：**样例的全部价值在于照抄就能跑**，少一个参数就退化成了另一种占位符。
+
+`/api/captures/stream`（SSE 长连接）与 `/api/update/check`（会联网）列出但**有意不给链接**，
+并在行内写明原因——藏起来就等于浏览面自己有盲区。反过来，`diff` 此前是有直链的，点下去必然
+报错；**给一个注定失败的入口比留白更糟**，所以它改走输入框那条路。
+
+页面外观跟随主界面的三套（`ccwa_ui_theme`，cookie + localStorage），顶栏那个三色开关写的是
+同一对键——同一个设置的第二个入口，不是第二个真相源。
 
 ### `?format=html` — 任意 `/api/*` GET 端点的渲染视图
 

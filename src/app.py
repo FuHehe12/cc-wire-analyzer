@@ -235,6 +235,74 @@ def _view_default_query(rule: str) -> str:
     return q
 
 
+# 需要参数才跑得动的端点：路径里带 `<rid>` / `<sid>` 的，以及 diff 那种靠 query 传两个 sid 的。
+#
+# **样例优先取本机真数据。** 一个写着 `/api/snapshots/{sid}` 的占位符只回答了"格式是什么"，
+# 回答不了"我这台机器上有什么"——而后者才是这个工具的全部主张。在自己的浏览面上退回抽象
+# 占位符，是主张没贯彻到底。取不到才退回参考写法，并**如实标成占位符**（`example_real=False`）；
+# 不标就是在骗人照抄一个跑不通的地址。
+_VIEW_NEEDS_QUERY = {"/api/snapshots/diff"}      # 没有 `<>`，但不给参数必然报错
+_VIEW_PLACEHOLDER_RID = "req_1a2b3c4"
+_VIEW_PLACEHOLDER_SID = "snap_1a2b3c4"
+_VIEW_PLACEHOLDER_SID2 = "snap_9f8e7d6"
+
+
+def _view_sample_ids() -> dict:
+    """从本机数据里挑一条 rid、两个 sid。挑不到就留空（调用方退回占位符）。"""
+    out = {"rid": "", "date": "", "sid": "", "sid2": ""}
+    try:
+        # 找「最新有数据的那天」而不是 today——理由同 `_view_default_query`：
+        # 点开一片空白会被读成"这个端点坏了"，而它只是今天还没录到东西。
+        for d in (capture_store.list_dates() or [])[:8]:
+            items = capture_store.list_captures(date=d, limit=1).get("items") or []
+            if items and items[0].get("id"):
+                out["rid"], out["date"] = items[0]["id"], d
+                break
+    except Exception as e:                       # 取样例失败不该让整个浏览面 500
+        log.warning("view: 取样例 rid 失败：%s", e)
+    try:
+        snaps = [s for s in (snapshot_store.list_snapshots() or []) if s.get("sid")]
+
+        def _rank(s: dict) -> int:
+            """优先**已经归纳过的录制快照**：`/analysis`、`/subagents` 落在别的快照上
+            打开是空的，而空页同样会被读成"端点坏了"。sorted 是稳定的，同档里仍是新的在前。"""
+            cap = (s.get("kind") == "capture")
+            try:
+                ana = snapshot_store.analysis_file(s["sid"]).exists()
+            except Exception:
+                ana = False
+            return 0 if (cap and ana) else (1 if cap else 2)
+
+        ranked = sorted(snaps, key=_rank)
+        if ranked:
+            out["sid"] = ranked[0]["sid"]
+        if len(ranked) > 1:
+            out["sid2"] = ranked[1]["sid"]
+    except Exception as e:
+        log.warning("view: 取样例 sid 失败：%s", e)
+    return out
+
+
+def _view_example(rule: str, ids: dict) -> tuple[str, bool]:
+    """给一条需要参数的规则拼出**照抄就能跑**的样例 URL；bool = 是不是本机真数据。
+
+    样例里该带的参数一个不少：`/api/captures/<rid>` 不带 `date=` 查历史日期查不到
+    （审计 260712 #4），diff 不带 a/b 必然报错——少一个参数，样例就退化成了另一种占位符。
+    """
+    if rule in _VIEW_NEEDS_QUERY:
+        a, b = ids.get("sid") or "", ids.get("sid2") or ""
+        real = bool(a and b)
+        return (rule + "?a=" + (a or _VIEW_PLACEHOLDER_SID)
+                + "&b=" + (b or _VIEW_PLACEHOLDER_SID2)), real
+    if "<rid>" in rule:
+        rid, date = ids.get("rid") or "", ids.get("date") or ""
+        url = rule.replace("<rid>", rid or _VIEW_PLACEHOLDER_RID)
+        return (url + ("?date=" + date if date else "")), bool(rid)
+    if "<sid>" in rule:
+        sid = ids.get("sid") or ""
+        return rule.replace("<sid>", sid or _VIEW_PLACEHOLDER_SID), bool(sid)
+    return "", False
+
 def _view_endpoints() -> list[dict]:
     """从 `app.url_map` 现取全部可 GET 的 `/api/*` 端点，附上说明与默认参数。
 
@@ -242,21 +310,29 @@ def _view_endpoints() -> list[dict]:
     浏览面自己有了盲区，而这正是本 issue 要消灭的东西。
     """
     out = []
+    ids = _view_sample_ids()
     for r in app.url_map.iter_rules():
         rule = str(r.rule)
         if not rule.startswith("/api/") or "GET" not in (r.methods or set()):
             continue
         group, note = _VIEW_NOTES.get(rule, ("", ""))
-        needs_arg = "<" in rule
+        needs_arg = "<" in rule or rule in _VIEW_NEEDS_QUERY
         q = _view_default_query(rule)
         no_link = _VIEW_NO_AUTOLINK.get(rule, "")
+        example, example_real = ("", False) if no_link else _view_example(rule, ids)
         out.append({
             "rule": rule,
             "group": group or "other",
             "note": note,
             "needs_arg": needs_arg,
             "no_link": no_link,
-            # 可点 = 不需要路径参数、且不在"点了有副作用/永不结束"名单里
+            # 可编辑的样例 URL（页面上那一行输入框的预填值）。带不带 format=html 由前端拼——
+            # 「渲染」和「原始 JSON」两个按钮读的是同一个输入框。
+            "example": example,
+            "example_real": example_real,
+            # 可点 = 不需要参数、且不在"点了有副作用/永不结束"名单里。
+            # 需要参数的那些走上面的 `example` + 输入框：给一个注定报错的链接不算"提供入口"，
+            # 比死行更糟——死行至少诚实。
             "href": ("" if (needs_arg or no_link)
                      else rule + "?" + (q + "&" if q else "") + "format=html"),
             # 「原始 JSON」同样受 no_link 约束：点它一样会开 SSE / 一样会联网，
