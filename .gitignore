@@ -38,10 +38,13 @@ port.txt
 #   issues/open/ 只放正在推进的改动）；挑到值得做的再单开 issue
 # .claude/ = 本地操作规程（workflows/self-audit.md 等，含本机路径与采集姿势）
 # sections/ = 项目断面（按版本线做的冻结快照，给人把握全貌用；见 issues/closed/260807_引入项目断面机制…）
+# prototypes/ = 可视化原型工作区（260828 从 issues/open/ 搬出：HTML 原型与配套工具不是 issue，
+#   issues/open/ 只放正在推进的改动方案；四代原型演进关系见 prototypes/README.md）
 CLAUDE.md
 ROADMAP.local.md
 UI-BACKLOG.local.md
 issues/
 sections/
 promo/
+prototypes/
 .claude/
