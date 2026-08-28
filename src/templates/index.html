@@ -1014,7 +1014,10 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
     var(--board-bg);
   border:1px solid var(--border);
   box-shadow:var(--board-inset);}
-.an-board .an-empty{position:absolute;left:22px;top:22px;max-width:520px;}
+/* 空板提示压在贴纸板底色上，`--text-faint` 在经典暖灰下只有 3.74:1（260828 走查量到）。
+   它只在板子为空时出现，所以此前几轮全站走查都没抓到——这正是「走查结果的有效性取决于
+   走查时屏幕上有什么」那条教训本身。只提这一处的字色，不动共享的 --text-faint。 */
+.an-board .an-empty{position:absolute;left:22px;top:22px;max-width:520px;color:var(--text);}
 /* 贴纸：纸感来自四层——偏暖的纸色（明显亮于板面，否则读成"深色卡片"而非"贴在板上的纸"）、
    顶部一条胶带、右下角折角、外投影 + 顶部高光边。三张纸色轮换，靠 sid 定死。 */
 .sticky{position:absolute;width:232px;height:132px;box-sizing:border-box;
