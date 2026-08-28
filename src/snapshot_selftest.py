@@ -78,7 +78,8 @@ def make_record(*, rid="req_test001", thinking=True, steps=6, thinking_type="ada
                                         + ("但是这里不对，等等，我重新想想。" if i % 2 else "")
                                         + ("方案 A 是直接改，或者方案 B 是先验证。" if i == 3 else "")
                                         + "细节内容。" * 60)})
-        blocks.append({"type": "tool_use", "name": "Read" if i % 2 else "Bash",
+        blocks.append({"type": "tool_use", "id": f"t{i}",
+                       "name": "Read" if i % 2 else "Bash",
                        "input": {"file_path": f"D:/x/{i}.py"} if i % 2 else {"command": "ls"}})
         msgs.append({"role": "assistant", "content": blocks})
         msgs.append({"role": "user", "content": [
@@ -395,7 +396,23 @@ _bsteps = [
 ]
 _batches = APP._step_brief_batches(_bsteps)
 ok([r["step"] for b in _batches for r in b] == [1, 3],
-   "纯工具步不进模型（前端标签簇就是它们的全部形态）")
+   "纯执行步不单独成条（不为它多花一次调用）")
+# 260828：不单独成条 ≠ 被丢掉。它的动作与结果要挂到前一个有判断的步上——
+# 否则模型只看得见「决定要做」，看不见「做了什么、成了没有」，got 这一段根本写不出来。
+_r1 = _batches[0][0]
+ok([a["tool"] for a in _r1["acts"]] == ["Grep", "Read"] and _r1["also_steps"] == [2],
+   "纯执行步的动作并入前一步，并记下它原本是第几步（证据链不断）")
+# 跨轮不许并：纯执行步偶尔正好落在轮首（用户刚说完，模型不思考直接调工具）。
+# 并错了界面上看不出任何异常，但"这一轮做了什么"从此是错的。
+_cross = [
+    {"step": 1, "turn": 1, "trigger": {"kind": "user"}, "thinking": "第一轮在想", "reply": "",
+     "tools": []},
+    {"step": 2, "turn": 2, "trigger": {"kind": "user"}, "thinking": "", "reply": "",
+     "tools": [{"name": "Write", "verb": "write", "target": "新的.py"}]},
+]
+_cb = [r for b in APP._step_brief_batches(_cross) for r in b]
+ok(len(_cb) == 1 and not _cb[0]["acts"] and "also_steps" not in _cb[0],
+   "轮首的纯执行步不并入上一轮（并错了不会报错，只会让整轮归纳变成错的）")
 _t3 = _batches[-1][-1]["thinking"]
 ok(len(_t3) <= APP.STEP_BRIEF_THINK_HEAD + APP.STEP_BRIEF_THINK_TAIL + 40,
    "超长思考链截断到头+尾预算内")
@@ -403,6 +420,97 @@ ok(_t3.startswith("开头任务设定") and "结尾决定用方案B" in _t3 and 
    "头尾保留、中段截断且自陈（结论常在尾部，一刀切头会丢决定）")
 ok(all(len(json.dumps({"steps": b}, ensure_ascii=False)) <= APP.STEP_BRIEF_BATCH_CHARS + 400
        for b in _batches), "每批输入不超字符预算（单步截断后仍可能略超，容包装余量）")
+
+
+# ===== 结果摘要 / 物料识别 / 轮级新原料（260828，issue 260828_轨迹节点化与步级简报重做）=====
+#
+# 这一批测的是**这次改动最容易悄悄失效的地方**：结果摘要一旦把 base64 放进去，
+# 一次归纳的成本会翻几倍而没有任何东西会报错；物料识别一旦退化成"取命令第一个 token"，
+# 一轮里十几件不同的事会被算成同一个物料；用户指令一旦仍被截到 200 字，
+# 「AI 有没有照你说的做」就还是答不了。
+
+# 结果摘要：图片只计数，**绝不把 base64 带进原料**（实测单张 33,768 字符）
+_img = [{"type": "image", "source": {"type": "base64", "data": "iVBORw0KGgo" + "A" * 30000}}]
+_d = SX.result_digest(_img, False)
+ok(_d == "1 张图片" and "iVBOR" not in _d, "图片结果只计数，base64 一个字符都不进摘要")
+ok(SX.result_digest([{"type": "image", "source": {}}, {"type": "image", "source": {}}], False)
+   == "2 张图片", "多张图片报张数")
+ok(SX.result_digest("boom: file not found", True).startswith("失败："),
+   "报错结果带失败前缀（成败必须一眼可读）")
+ok(len(SX.result_digest("x" * 5000, False)) <= SX.RESULT_MAX,
+   "长结果摘要不超硬上限（跑飞护栏）")
+ok("字/" in SX.result_digest("y" * 900, False), "长结果标出体量（多少字、多少行）")
+ok(SX.result_digest("", False) == "（空结果）", "空结果如实说空，不是留白让人猜")
+
+# 物料识别：四个真实反例（260828 画泳道图时逐个撞出来的）
+ok(SX.target_of({"command": 'cd "E:/p/lab" && uv run python scripts/x.py'}) == "x.py",
+   "剥掉 cd 前缀、跳过解释器，取到真正的脚本")
+ok(SX.target_of({"command": "uv run python -c \"print(1)\""}) == "«内联脚本»",
+   "python -c 没有脚本文件，归一到内联脚本（不能变成物料 python）")
+ok(SX.target_of({"command": 'cat <<EOF\nx\nEOF'}) == "«内联脚本»", "heredoc 同样归一")
+ok(SX.target_of({"command": '"C:/Program Files/c/chrome.exe" --headless'}) == "$chrome.exe",
+   "带引号的可执行路径取文件名，不是半条路径")
+ok(SX.target_of({"file_path": "D:/a/b/json_to_scl.py"}) == "json_to_scl.py", "文件参数取 basename")
+ok(SX.target_of({"command": "ls -la"}) == "$ls", "普通命令保留命令名（前缀 $ 表示它不是文件）")
+
+# 轮首用户指令不再被砍到 200 字（实测 teammate 报告 1,838 字，46 轮里 26 轮撞上老上限）
+_long = "请按以下要求做：" + "细则内容。" * 900 + "最后一句是完成标准。"
+_rec_long = make_record(steps=1)
+_rec_long["request"]["body"]["messages"][0] = {"role": "user", "content": _long}
+_st = SX.steps_of(_rec_long)
+ok(len(_st[0]["trigger"]["text"]) > 1500, "长指令不再被截到 200 字（否则答不了「有没有照你说的做」）")
+ok(_st[0]["trigger"]["text"].endswith("最后一句是完成标准。"),
+   "取头尾：完成标准常在指令末尾，一刀切头会把它丢掉")
+ok("中段截断" in _st[0]["trigger"]["text"], "截断了必须自陈（不许假装是全文）")
+
+# steps_of 现在带动作 / 物料 / 结果
+_rs = SX.steps_of(make_record(steps=2))
+_t0 = _rs[0]["tools"][0]
+ok(_t0["verb"] == "exec" and _t0["target"] == "$ls" and _t0["result"] == "output",
+   "每次工具调用都带 动作 / 作用对象 / 结果摘要")
+ok(SX.verb_of("Write") == "write" and SX.verb_of("Read") == "read"
+   and SX.verb_of("NoSuchTool") == "exec",
+   "动作规范化：未知工具算 exec（宁可把只读的算成执行，也不能把改现实的算成只读）")
+
+# 轮级原料：用户说了什么 + 程序事实（碰了什么、写了什么、验没验）
+_fsteps = [
+    {"step": 1, "turn": 1, "trigger": {"kind": "user", "text": "把 a.py 改好并跑通"},
+     "tools": [{"name": "Write", "verb": "write", "target": "a.py"}]},
+    {"step": 2, "turn": 1, "trigger": {"kind": "tool_result"},
+     "tools": [{"name": "Bash", "verb": "exec", "target": "a.py"}]},
+    {"step": 3, "turn": 2, "trigger": {"kind": "user", "text": "再改 b.py"},
+     "tools": [{"name": "Write", "verb": "write", "target": "b.py"},
+               {"name": "Bash", "verb": "exec", "target": "$ls", "error": True}]},
+]
+_f = APP._turn_facts(_fsteps)
+ok(_f[1]["wrote"] == ["a.py"] and _f[1]["verified"] == ["a.py"]
+   and _f[1]["wrote_unverified"] == [],
+   "写完又跑过 = 这一轮自己验过（验收状态由程序判，不问模型）")
+ok(_f[2]["wrote_unverified"] == ["b.py"] and _f[2]["errors"] == 1,
+   "写完没回头碰 = 未验证；失败次数一并记账")
+_rows = APP._turn_rollup_rows(_fsteps, [])
+ok(_rows[0].get("user_said") == "把 a.py 改好并跑通",
+   "轮级原料带上用户这轮说了什么（260828 之前这里一个字都没有）")
+ok(_rows[0]["facts"]["touched"] == ["a.py"] and "facts" not in _rows[1],
+   "程序事实只挂在每轮第一条（重复挂等于把同一份事实抄 N 遍进原料）")
+ok(_rows[0]["acts"] == ["write a.py"], "轮级看得到动作与对象，不只是工具名")
+
+# 三代简报格式并存：换 schema 不能把用户已经写好的 steps_prompt 判死
+_v = {1, 2, 3}
+_out = APP._brief_rows([{"step": 1, "brief": "老的单段"},
+                        {"step": 2, "title": "两段标题", "detail": "两段正文"},
+                        {"step": 3, "title": "三段标题", "why": "因为", "got": "CE=0"}], _v)
+ok(_out[0]["detail"] == "老的单段" and not _out[0]["title"], "单段格式落进 detail，标题留空")
+ok(_out[1]["title"] == "两段标题" and _out[1]["detail"] == "两段正文", "两段格式原样保留")
+ok(_out[2]["why"] == "因为" and _out[2]["got"] == "CE=0", "三段格式各字段归位")
+
+# 轮级归纳的新字段要能穿过步号校验（校验只该剔步号，不该把字段吃掉）
+_cl = APP._sanitize_analysis(
+    {"turns": [{"turn": 1, "steps": [1], "title": "t", "said": "要 x", "solving": "解决 y",
+                "done_when": "跑通", "outcome": "成了", "risk": ""}]}, {1})
+ok(_cl["turns"][0]["said"] == "要 x" and _cl["turns"][0]["solving"] == "解决 y"
+   and _cl["turns"][0]["outcome"] == "成了", "轮级五问字段完整落地")
+ok("intent" in _cl["turns"][0], "老字段 intent 仍在（自定义 turns_prompt 是已发布契约）")
 
 # ===== 归纳管线：并发 / 续跑 / 轮级切批（260827，不发网络请求的部分）=====
 #

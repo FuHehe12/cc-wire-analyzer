@@ -147,6 +147,144 @@ def _text_of(blocks, types=("text",)) -> str:
     return "\n".join(x for x in out if x)
 
 
+# ===== 工具结果摘要（260828，issue 260828_轨迹节点化与步级简报重做）=====
+#
+# 此前每一步只带"调了什么工具"，**不带这次调用的结果**——而结果就躺在下一条 user 消息的
+# `tool_result` 块里。实测三条会话：572 次调用、572 条结果、共 6.8 MB，一个字节都没被用过。
+# 于是归纳模型只看得见"它决定做什么"，看不见"做了没有、成了没有"，`got` 这种字段根本写不出来。
+#
+# **必须程序抽、按类型抽、绝不喂全文**：单条结果最大实测 569,960 字符；`Read` 一张 PNG 回来的
+# 是 33,768 字符的 base64（一条会话里 27 条、另一条 34 条）。把它们原样塞进原料是纯烧钱。
+RESULT_MAX = 90                 # 单条结果摘要的硬上限
+RESULT_HEAD = 60                # 摘要里保留的正文头部
+RESULT_ERR_HEAD = 60            # 报错取首行多少字
+
+# 工具 → 规范化动作。**按语义分类而不是按工具名**：界面要回答的是"这一步在感知还是在改现实"，
+# 而 `Read`/`Glob`/`TaskOutput` 都是感知、`Write`/`Edit` 都是改现实。未知工具一律算 exec
+# （宁可把只读的算成执行，也不能把改现实的算成只读——后者会让"它改了什么"漏报）。
+TOOL_VERBS = {
+    "Read": "read", "NotebookRead": "read", "TaskOutput": "read",
+    "Glob": "search", "Grep": "search",
+    "Write": "write", "Edit": "write", "NotebookEdit": "write",
+    "Bash": "exec", "BashOutput": "exec", "KillShell": "exec",
+    "TaskUpdate": "exec", "TaskStop": "exec", "TaskCreate": "delegate",
+    "WebFetch": "fetch", "WebSearch": "fetch",
+    "Agent": "delegate", "Task": "delegate", "SendMessage": "delegate",
+    "AskUserQuestion": "ask", "ExitPlanMode": "ask",
+}
+
+
+def verb_of(tool: str) -> str:
+    """工具名 → 规范化动作。MCP 工具（`mcp__x__y`）按名字里的动词猜，猜不到算 exec。"""
+    if tool in TOOL_VERBS:
+        return TOOL_VERBS[tool]
+    low = (tool or "").lower()
+    if low.startswith("mcp__"):
+        for key, verb in (("get_", "read"), ("read", "read"), ("list", "read"),
+                          ("search", "search"), ("query", "search"),
+                          ("write", "write"), ("create", "write"), ("update", "write")):
+            if key in low:
+                return verb
+    return "exec"
+
+
+def _result_text(content) -> tuple[str, int]:
+    """`tool_result.content` → (正文, 图片数)。**图片只计数不取内容**（见上面的 base64 教训）。"""
+    if isinstance(content, str):
+        return content, 0
+    if not isinstance(content, list):
+        return ("" if content is None else str(content)), 0
+    parts, imgs = [], 0
+    for b in content:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "image":
+            imgs += 1
+        elif b.get("type") == "text":
+            parts.append(b.get("text") or "")
+    return "\n".join(p for p in parts if p), imgs
+
+
+def result_digest(content, is_error: bool = False) -> str:
+    """一次工具调用的结果摘要（≤ RESULT_MAX 字）。
+
+    **这是事实层**：内容逐字来自 `tool_result`，程序截取，不经过模型。归纳模型拿它来回答
+    "结果如何"，也被允许直引其中的短片段——因为引用的东西必须能在这里字面找到，
+    所以它同时是一个**可校验的证据锚**。
+    """
+    txt, imgs = _result_text(content)
+    flat = " ".join(txt.split())
+    if is_error:
+        return ("失败：" + flat[:RESULT_ERR_HEAD]) if flat else "失败（无输出）"
+    if imgs and not flat:
+        return f"{imgs} 张图片" if imgs > 1 else "1 张图片"
+    if not flat:
+        return "（空结果）"
+    tail = ""
+    if imgs:
+        tail += f"（含 {imgs} 张图片）"
+    if len(txt) > 200:
+        tail += f"（{len(txt)} 字/{txt.count(chr(10)) + 1} 行）"
+    head = flat[:RESULT_HEAD] + ("…" if len(flat) > RESULT_HEAD else "")
+    return (head + tail)[:RESULT_MAX]
+
+
+def _results_of(msgs: list) -> dict:
+    """`tool_use_id` → (content, is_error)。结果在**下一条 user 消息**里，所以先扫一遍全表。"""
+    out: dict = {}
+    for m in msgs:
+        c = m.get("content")
+        if (m.get("role") or "") != "user" or not isinstance(c, list):
+            continue
+        for b in c:
+            if isinstance(b, dict) and b.get("type") == "tool_result":
+                out[b.get("tool_use_id")] = (b.get("content"), bool(b.get("is_error")))
+    return out
+
+
+_CD_PREFIX = re.compile(r'^cd\s+("[^"]*"|\S+)\s*&&\s*')
+_INTERP = re.compile(r"(?:uv run\s+)?(?:python3?|node|pytest|npm run)\s+([^\s-]\S*)")
+_QUOTED_EXE = re.compile(r'^"([^"]+)"')
+_BARE_CMD = re.compile(r"(?:uv run\s+)?([A-Za-z_.\-]+)")
+TARGET_MAX = 42
+
+
+def target_of(inp) -> str:
+    """这次调用**作用在哪个东西上**——文件名、脚本名、或命令名。物料轨/泳道图的行就是它。
+
+    命令行不能只取第一个 token，四个真实反例（260828 画图时逐个撞出来的）：
+      `cd "E:/..." && uv run python x.py` → 取到 `cd`      ：先剥 `cd … && ` 前缀
+      `uv run python x.py`                → 取到 `python`   ：解释器名要跳过，取它后面的脚本
+      `python -c "…"` / heredoc           → 取到 `python`   ：没有脚本文件，归一到「内联脚本」
+      `"C:/…/chrome.exe" --headless`      → 取到半条路径   ：带引号的可执行路径取 basename
+    不做这层解析，一轮里十几件不同的事会被算成同一个物料，物料轨直接糊掉。
+    """
+    if not isinstance(inp, dict):
+        return ""
+    for k in ("file_path", "notebook_path", "path"):
+        v = inp.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.replace("\\", "/").rstrip("/").split("/")[-1][:TARGET_MAX]
+    c = inp.get("command")
+    if isinstance(c, str) and c.strip():
+        c = _CD_PREFIX.sub("", " ".join(c.split()))
+        if "<<" in c or re.search(r"python3?\s+-", c):
+            return "«内联脚本»"
+        m = _INTERP.search(c)
+        if m:
+            return m.group(1).replace("\\", "/").split("/")[-1][:TARGET_MAX]
+        m = _QUOTED_EXE.match(c)
+        if m:
+            return "$" + m.group(1).replace("\\", "/").split("/")[-1][:TARGET_MAX]
+        m = _BARE_CMD.match(c)
+        return ("$" + m.group(1)[:TARGET_MAX]) if m else c[:TARGET_MAX]
+    for k in ("pattern", "query", "url", "description", "prompt", "subagent_type"):
+        v = inp.get(k)
+        if isinstance(v, str) and v.strip():
+            return " ".join(v.split())[:TARGET_MAX]
+    return ""
+
+
 def _brief_args(inp) -> str:
     """工具入参摘要：只留能看出"在对什么东西操作"的部分（路径/命令/模式）。"""
     if not isinstance(inp, dict):
@@ -160,6 +298,19 @@ def _brief_args(inp) -> str:
         return json.dumps(inp, ensure_ascii=False)[:120]
     except (TypeError, ValueError):
         return ""
+
+
+# 触发文本的上限。260828 之前是 200 字，实测**撑不下真实指令**：多 agent 协作会话里
+# teammate 单条报告 1,838 字，46 轮中有 26 轮撞上 200 字这个上限；粘贴的规范条文更长。
+# 归纳要回答"AI 有没有照你说的做"，就不能只看到指令的开头。
+# 仍然要有上限（一条 4 万字的粘贴不该整条进原料），所以取头尾、中间截断并自陈。
+TRIG_HEAD, TRIG_TAIL = 1400, 600
+
+
+def _trig_clip(txt: str) -> str:
+    if len(txt) <= TRIG_HEAD + TRIG_TAIL + 20:
+        return txt
+    return txt[:TRIG_HEAD].rstrip() + "\n…（中段截断）…\n" + txt[-TRIG_TAIL:].lstrip()
 
 
 def _trigger_of(msgs: list, i: int) -> dict:
@@ -177,7 +328,7 @@ def _trigger_of(msgs: list, i: int) -> dict:
         c = m.get("content")
         if isinstance(c, str):
             txt = classifier.strip_reminders(c).strip()
-            return {"kind": "user", "text": txt[:200], "index": j}
+            return {"kind": "user", "text": _trig_clip(txt), "index": j}
         if not isinstance(c, list):
             continue
         has_tool_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c)
@@ -186,7 +337,7 @@ def _trigger_of(msgs: list, i: int) -> dict:
             n_err = sum(1 for b in c if isinstance(b, dict) and b.get("type") == "tool_result"
                         and b.get("is_error"))
             return {"kind": "tool_result", "text": "", "index": j, "errors": n_err}
-        return {"kind": "user", "text": txt[:200], "index": j}
+        return {"kind": "user", "text": _trig_clip(txt), "index": j}
     return {"kind": "none", "text": "", "index": -1}
 
 
@@ -194,11 +345,15 @@ def steps_of(record: dict) -> list[dict]:
     """把一条 record 的 messages 拆成「步」——每条 assistant 消息算一步。
 
     每步带：触发者 / 思考（块数、字数、全文）/ 回复文本 / 工具调用 / 机械信号 / 轮次号。
+
+    260828 起每次工具调用还带 **`verb`（规范化动作）+ `result`（结果摘要）+ `error`**——
+    "做了什么"和"成了没有"从此是事实层的一部分，而不是让模型对着工具名去猜。
     """
     body = (record.get("request") or {}).get("body") or {}
     if not isinstance(body, dict):
         body = {}
     msgs = body.get("messages") or []
+    results = _results_of(msgs)
     steps: list[dict] = []
     turn = 0
     for i, m in enumerate(msgs):
@@ -218,7 +373,17 @@ def steps_of(record: dict) -> list[dict]:
             elif t == "redacted_thinking":
                 red_n += 1
             elif t == "tool_use":
-                tools.append({"name": b.get("name") or "", "args": _brief_args(b.get("input"))})
+                name = b.get("name") or ""
+                got, err = results.get(b.get("id"), (None, False))
+                tool = {"name": name, "args": _brief_args(b.get("input")),
+                        "verb": verb_of(name), "target": target_of(b.get("input"))}
+                # 结果可能真的不在（这条请求是在工具返回之前发出的——最后一步天然如此），
+                # 与"结果是空字符串"必须分开：前者不写字段，后者写"（空结果）"。
+                if b.get("id") in results:
+                    tool["result"] = result_digest(got, err)
+                    if err:
+                        tool["error"] = True
+                tools.append(tool)
         trig = _trigger_of(msgs, i)
         if trig["kind"] == "user":
             turn += 1

@@ -960,6 +960,24 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-vbtn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
   border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
 .an-vbtn.active{background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);font-weight:600;}
+/* 总目标条（260828）：轮头只答"这一轮在干什么"，看不出跑没跑偏，所以总目标单独一行 */
+.an-goal{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin:8px 0 2px;
+  padding:8px 12px;border-radius:var(--radius-sm);background:var(--bg-soft);
+  border-left:3px solid var(--accent);}
+.an-goal .k{font-size:10.5px;letter-spacing:.08em;color:var(--text-faint);flex:none;}
+.an-goal .v{font-size:13px;color:var(--text);font-weight:600;}
+.an-goal .drift{font-size:12px;color:var(--warn);}
+/* 轮头里的分行：用户要什么 / 在解决什么 / 结果如何 —— 各一行，标签在前 */
+.an-turnrow{display:flex;gap:7px;align-items:baseline;margin-top:3px;font-size:11.5px;}
+.an-turnrow .k{color:var(--text-faint);flex:none;letter-spacing:.05em;}
+.an-turnrow .v{color:var(--text-dim);}
+.an-turnrow.out .v{color:var(--text);font-weight:600;}
+/* 步行：why 与 got 两行。got 带左边条——它是"结果"，是这次改动最想让人看见的东西 */
+.an-why{font-size:12px;color:var(--text-dim);margin-top:3px;line-height:1.6;}
+.an-got{font-size:12px;color:var(--text);margin-top:3px;line-height:1.6;
+  padding-left:8px;border-left:2px solid var(--ok);}
+.an-got.bad{border-left-color:var(--err);}
+
 /* 树视图：一条主干竖线，节点挂在上面 */
 .an-tree{position:relative;padding-left:20px;margin-top:8px;}
 .an-tree::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;
@@ -1915,6 +1933,9 @@ zh: {
   "an.aiVerdict": "AI 结论", "an.aiRedo": "重新分析", "an.transOnlyPrompt": "只有提示词快照能整段翻译",
   "an.hiddenHint2": "肉眼看不出的差异：不可见字符与同形异码。字符水印正是这个形状——点右侧行号可直接跳到出现的位置。",
   "an.hiddenLine": "第 {n} 行", "an.hiddenNoLoc": "（在正文之外）",
+  "an.ai.goal": "总目标", "an.ai.drift": "目标变过：",
+  "an.ai.said": "你要的", "an.ai.solving": "在解决",
+  "an.ai.doneWhen": "完成标准", "an.ai.outcome": "结果",
   "an.viewList": "列表", "an.viewTree": "树",
   "an.treeHint": "主干是步骤顺序；蓝点是出现分支或自我修正的地方，下面是命中的原句与该步实际执行的动作。**这些是机械识别的候选，不是结论**——模型并没有把决策树显式写出来。",
   "an.treeDid": "实际执行：", "an.treeNoTool": "（这一步没有调用工具）",
@@ -2304,6 +2325,9 @@ en: {
   "an.hiddenLine": "line {n}", "an.hiddenNoLoc": "(outside the body)",
   "an.viewList": "List", "an.viewTree": "Tree",
   "an.treeHint": "The spine is the step order; a blue dot marks a branch or self-correction, with the matching sentence and what the step actually did below it. **These are mechanically detected candidates, not conclusions** \u2014 the model never wrote its decision tree down.",
+  "an.ai.goal": "Overall goal", "an.ai.drift": "Goal shifted: ",
+  "an.ai.said": "You asked", "an.ai.solving": "Solving",
+  "an.ai.doneWhen": "Done when", "an.ai.outcome": "Result",
   "an.treeDid": "Actually did: ", "an.treeNoTool": "(no tool call in this step)",
   "an.pickRec": "Pick one sticker to analyse that recording",
   "an.pickedRec": "Analysing: {a}", "an.roleOnly": "\u25b8",
@@ -2693,6 +2717,9 @@ ja: {
   "an.hiddenLine": "{n} 行目", "an.hiddenNoLoc": "（本文外）",
   "an.viewList": "リスト", "an.viewTree": "ツリー",
   "an.treeHint": "幹はステップ順。青い点は分岐や自己修正が現れた箇所で、その下に該当する原文とそのステップで実際に行った操作を示します。**これらは機械的に検出した候補であり結論ではありません** —— モデルは決定木を明示的に書いていません。",
+  "an.ai.goal": "全体目標", "an.ai.drift": "目標が変化：",
+  "an.ai.said": "依頼内容", "an.ai.solving": "解決対象",
+  "an.ai.doneWhen": "完了条件", "an.ai.outcome": "結果",
   "an.treeDid": "実際の操作：", "an.treeNoTool": "（このステップではツール未使用）",
   "an.pickRec": "1 枚選ぶとその記録を分析します",
   "an.pickedRec": "分析中：{a}", "an.roleOnly": "析",
@@ -6198,7 +6225,13 @@ function renderRec(d, sources){
 function anAnalysisHead(){
   const a = AN.recAnalysis;
   if(!a) return '<div class="an-hint an-ana-empty">' + t18("an.ai.none") + '</div>';
-  return '<div class="an-ana-sum">' +
+  /* 总目标与这一轮在解决什么，是两层——用户明确要求要能读出区别（260828）。
+     goal 只有整段总结那一次调用看得见全貌，所以它挂在这里而不是某个轮头上。 */
+  const goal = (a.goal ? '<div class="an-goal"><span class="k">' + t18("an.ai.goal") + '</span>' +
+      '<span class="v">' + esc(a.goal) + '</span>' +
+      (a.drift ? '<span class="drift">' + t18("an.ai.drift") + esc(a.drift) + '</span>' : "") +
+    '</div>' : "");
+  return goal + '<div class="an-ana-sum">' +
     '<span class="an-aibadge">' + t18("an.ai.badge") + '</span>' +
     '<span class="an-ana-text">' + esc(a.summary || "") + '</span>' +
     '<div class="an-ana-meta">' + esc(t18("an.ai.meta", {
@@ -6238,10 +6271,17 @@ function anTurnHead(turn){
   if(!a) return "";
   const t = (a.turns || []).find(x => x.turn === turn);
   if(!t) return "";
+  /* 一轮读下来要答四件事：你要什么 → 在解决哪一块 → 怎样算完成 → 最后成了什么。
+     答不上来的字段后端给空字符串，这里就不渲染那一行——不摆"无"充数。
+     `intent` 是 260828 之前的字段（老缓存与自定义 turns_prompt 仍会产出），照渲染。 */
+  const row = (k, v, cls) => v
+    ? '<div class="an-turnrow' + (cls ? " " + cls : "") + '"><span class="k">' +
+      esc(t18("an.ai." + k)) + '</span><span class="v">' + esc(v) + '</span></div>' : "";
   return '<div class="an-turnhead">' +
     '<span class="an-aibadge sm">' + t18("an.ai.badge") + '</span>' +
     '<b>' + esc(t.title || "") + '</b>' +
-    (t.intent ? '<div class="an-turnline">' + esc(t18("an.ai.intent")) + esc(t.intent) + '</div>' : "") +
+    row("said", t.said) + row("solving", t.solving || t.intent) +
+    row("doneWhen", t.done_when) + row("outcome", t.outcome, "out") +
     (t.risk ? '<div class="an-turnline risk">' + esc(t18("an.ai.risk")) + esc(t.risk) + '</div>' : "") +
     '</div>';
 }
@@ -6269,7 +6309,7 @@ function anListHtml(steps, lane){
     if(s.turn !== lastTurn){ lastTurn = s.turn; flushCluster(); if(!lane) h += anTurnHead(s.turn); }
     const sig = Object.keys(s.signals || {});
     const brief = bmap[s.step] || {};
-    const hasBrief = !!(brief.title || brief.detail);
+    const hasBrief = !!(brief.title || brief.detail || brief.why || brief.got);
     /* 纯工具步（无思考无回复）：进簇不单独成行——AI 不总结它们（后端同样过滤），
        "调了哪些工具各几次"标签簇本身就是全部要说的 */
     if(!hasBrief && !s.thinking_chars && !s.reply_chars && (s.tools || []).length){
@@ -6296,6 +6336,9 @@ function anListHtml(steps, lane){
         (s.thinking_chars ? '<span class="an-tk">' + fmtTok(s.thinking_chars) + t18("an.chars") + '</span>' : "") +
         sig.map(k => '<span class="chip sig ' + sigCls(k) + '">' + esc(k) + " " + s.signals[k] + '</span>').join("") +
       '</div>' +
+      (brief.why ? '<div class="an-why">' + esc(brief.why) + '</div>' : "") +
+      (brief.got ? '<div class="an-got' + (/失败|错误|报错|Traceback|failed|error/i.test(brief.got)
+          ? " bad" : "") + '">' + esc(brief.got) + '</div>' : "") +
       (brief.detail ? '<div class="an-detail">' + esc(brief.detail) + '</div>' : "") +
       '</div></div>';
     h += anAgentsAt(s.step, lane);      /* 这一步派出去的子代理线，紧跟在它下面 */
@@ -6483,7 +6526,10 @@ function anBriefMap(lane){
   const a = AN.recAnalysis || {};
   const src = lane ? ((a.sub || {})[lane] || []) : (a.steps || []);
   const out = {};
-  src.forEach(b => { out[b.step] = {title: b.title || "", detail: b.detail || b.brief || ""}; });
+  /* 三代格式归一到一处（单段 brief / 两段 title+detail / 三段 title+why+got）——
+     两处渲染各判一次必然分叉，所以只在这里判。 */
+  src.forEach(b => { out[b.step] = {title: b.title || "", why: b.why || "",
+                                    got: b.got || "", detail: b.detail || b.brief || ""}; });
   return out;
 }
 /* 工具 chip：程序事实层。多到一定数量就折成 +N —— 一步调十次 Read，
