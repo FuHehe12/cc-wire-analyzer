@@ -14,6 +14,31 @@
   3. The recording-blind-spot audit (protocol side and capability side) closed across v0.4.3–v0.4.6; method in `docs/reference/开发约定.md` §2.5 and unit 0 of `docs/methodology/同类工具构建手册.md`.
   4. **Storage follow-ups now that compaction exists.** Two are measured and deliberately deferred: the skeleton's pointer lists are a prefix-extension of the previous request's in the same lane, so delta-encoding them should roughly halve a pack again (estimated 477 MB → ~10 MB); and retention still only deletes — it could compact first and delete much later, which changes what "keep 30 days" costs. Neither is needed for the current ratio to be useful, which is why neither shipped with it.
 
+## Unreleased
+
+- **The analysis view's tree slot became the trajectory's eight views.** One recording can now be read
+  eight ways — state-snapshot sequence, material lineage, verification matrix, valves & loops, cost &
+  variance, counterfactual table, material lifeline, optimal timeline — replacing the old mechanical
+  "decision-tree" slot (the list view stays). The foundation is the **union of all main-line requests'
+  blocks** (deduplicated by tool_use id / tool_result id / text md5), not the single longest request:
+  autocompact trims the first half of the history, and only the union recovers it (measured on the
+  prototype: 190 → 377 tool_uses, start moved 69 minutes earlier). The layering is constitutional:
+  facts are computed (nodes, materials, lineage, verification levels, valves, debt, the necessary
+  closure BFS that produces the counterfactual), semantics are model-written (phase split from
+  program-generated candidate boundaries, state-snapshot quadrants, one-line node briefs), and the
+  program overwrites the factual quadrants at compute time — the model cannot touch facts. The
+  semantic layer runs as a resumable POST pipeline (split → snapshots → briefs, progress via the
+  existing analysis-progress channel) and is cached per snapshot (`<sid>.semantic.json`, now also
+  carried inside portable snapshot bundles). Recordings whose day was archived to `.ccwa` say so
+  honestly instead of rendering half a run. Verified on two real recordings end to end (34 and 138
+  nodes; 34/34 and 138/138 brief coverage, zero failed batches). One round of vision-model review
+  (8 view screenshots, P0×0 / P1×8) was verified item by item and fixed: the three conflicting
+  "model time" numbers turned out to be three true values at different calibers (all requests vs
+  node-only) — the cost card now splits them explicitly; GLM upstreams return signature-only
+  thinking blocks (44 blocks, 0 chars of plaintext), and the drill-down now says so instead of
+  "0 chars"; empty states, phase-label overlap on short phases, and a footer that asserted an
+  autocompact that never happened were all fixed.
+
 ## v0.4.18 - 2026-08-28
 
 - **The summariser never saw what you asked for, and never saw what any action returned.** Reading a long

@@ -803,6 +803,45 @@ def write_analysis(sid: str, data: dict) -> dict:
     return data
 
 
+# ===== 轨迹八视图语义层（与 analysis 同待遇：可重算的派生物，跟着快照走） =====
+
+def semantic_file(sid: str) -> Path:
+    _validate_sid(sid)
+    return SNAPSHOTS_DIR / f"{sid}.semantic.json"
+
+
+def read_semantic(sid: str) -> dict | None:
+    """轨迹八视图的语义层（阶段 phases + 步级简述 briefs）；没有则 None。
+
+    程序层（节点/物料/血统/必要闭包）每次现算——它只依赖录制本身，秒级；
+    语义层要花钱花时间，所以单独落盘复用。事实四格不存这里（compute 时程序现算盖掉）。
+    """
+    f = semantic_file(sid)
+    if not f.exists():
+        return None
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("semantic unreadable %s: %s", sid, e)
+        return None
+
+
+def write_semantic(sid: str, data: dict) -> dict:
+    """语义层落盘（原子替换）。重新归纳走同一条路径，直接覆盖。"""
+    _validate_sid(sid)
+    if not _snap_file(sid).exists():
+        raise SnapshotError("not_found", f"快照不存在：{sid}")
+    SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    with _LOCK:
+        try:
+            tmp = SNAPSHOTS_DIR / f".{sid}.semantic.writing"
+            tmp.write_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+            tmp.replace(semantic_file(sid))
+        except OSError as e:
+            raise SnapshotError("write_failed", f"语义层写入失败：{e}")
+    return data
+
+
 # ===== 分析对话（落盘，跟着快照走；写入由 app 侧调用） =====
 
 def chat_file(sid: str) -> Path:

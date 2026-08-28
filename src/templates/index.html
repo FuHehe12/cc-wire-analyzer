@@ -978,6 +978,13 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   padding-left:8px;border-left:2px solid var(--ok);}
 .an-got.bad{border-left-color:var(--err);}
 
+/* 八视图档：iframe 嵌独立单文件页（自带整套视觉体系，样式零冲突）。
+   给足高度——八视图是缩放画布，挤成矮条就只剩滚动了；右侧钻探抽屉在此档没交互，隐藏。 */
+.an-split.trajmode .an-drawer-grip,.an-split.trajmode .an-drawer{display:none;}
+.an-traj{height:calc(100vh - 170px);min-height:560px;}
+.an-traj iframe{width:100%;height:100%;border:1px solid var(--border);border-radius:10px;
+  background:#06121a;display:block;}
+
 /* 树视图：一条主干竖线，节点挂在上面 */
 .an-tree{position:relative;padding-left:20px;margin-top:8px;}
 .an-tree::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;
@@ -1939,7 +1946,14 @@ zh: {
   "an.ai.goal": "总目标", "an.ai.drift": "目标变过：",
   "an.ai.said": "你要的", "an.ai.solving": "在解决",
   "an.ai.doneWhen": "完成标准", "an.ai.outcome": "结果",
-  "an.viewList": "列表", "an.viewTree": "树",
+  "an.viewList": "列表", "an.viewTree": "八视图",
+  "an.trajHint": "轨迹八视图：状态换挡 / 物料血统 / 验证 / 阀门 / 能耗 / 反事实 / 生命线 / 时序图。地基是<b>全部主线请求的 blocks 并集</b>（不是单条最长请求——autocompact 剪掉的前半段会捞回来）。悬停节点看简述，点击看全文证据。",
+  "an.trajSemNone": "语义层未归纳：当前阶段是候选边界机械划分、节点简述是程序标签。点「AI 归纳」升级为模型语义（阶段名 / 状态快照 / 步级简述）。",
+  "an.trajSemOk": "语义层已归纳（阶段 + 状态快照 + 步级简述）。重新点「AI 归纳」补失败的部分。",
+  "an.trajLoadFailed": "八视图加载失败：{msg}",
+  "an.ai.runningTraj": "八视图语义层：切分阶段…",
+  "an.ai.runningTrajSnap": "八视图：填阶段快照 {d}/{t}…",
+  "an.ai.runningTrajBrief": "八视图：写步级简述 {d}/{t}…",
   "an.treeHint": "主干是步骤顺序；蓝点是出现分支或自我修正的地方，下面是命中的原句与该步实际执行的动作。**这些是机械识别的候选，不是结论**——模型并没有把决策树显式写出来。",
   "an.treeDid": "实际执行：", "an.treeNoTool": "（这一步没有调用工具）",
   "an.pickRec": "点一张贴纸分析这条录制",
@@ -2326,7 +2340,14 @@ en: {
   "an.aiVerdict": "AI verdict", "an.aiRedo": "Analyse again", "an.transOnlyPrompt": "Only prompt snapshots can be translated whole",
   "an.hiddenHint2": "Differences the eye cannot see: invisible characters and homoglyphs. Character watermarks look exactly like this \u2014 click a line number on the right to jump to where it occurs.",
   "an.hiddenLine": "line {n}", "an.hiddenNoLoc": "(outside the body)",
-  "an.viewList": "List", "an.viewTree": "Tree",
+  "an.viewList": "List", "an.viewTree": "8 Views",
+  "an.trajHint": "Trajectory in 8 views: state shifts / material lineage / verification / valves / cost / counterfactual / lifeline / timeline. Built on the <b>union of all main-line requests</b> (not the single longest one — the history autocompact trimmed away is recovered). Hover a node for its brief, click for full evidence.",
+  "an.trajSemNone": "Semantic layer not summarized yet: phases are mechanically split at candidate boundaries, briefs are program labels. Click \"AI Summary\" to upgrade.",
+  "an.trajSemOk": "Semantic layer summarized (phases + state snapshots + per-node briefs).",
+  "an.trajLoadFailed": "Failed to load 8 views: {msg}",
+  "an.ai.runningTraj": "8 views: splitting phases…",
+  "an.ai.runningTrajSnap": "8 views: filling snapshots {d}/{t}…",
+  "an.ai.runningTrajBrief": "8 views: writing briefs {d}/{t}…",
   "an.treeHint": "The spine is the step order; a blue dot marks a branch or self-correction, with the matching sentence and what the step actually did below it. **These are mechanically detected candidates, not conclusions** \u2014 the model never wrote its decision tree down.",
   "an.ai.goal": "Overall goal", "an.ai.drift": "Goal shifted: ",
   "an.ai.said": "You asked", "an.ai.solving": "Solving",
@@ -2718,7 +2739,14 @@ ja: {
   "an.aiVerdict": "AI の結論", "an.aiRedo": "再分析", "an.transOnlyPrompt": "全文翻訳はプロンプトのスナップショットのみです",
   "an.hiddenHint2": "肉眼では分からない差異：不可視文字と同形異字。文字透かしはまさにこの形です —— 右の行番号をクリックすると該当箇所へ飛びます。",
   "an.hiddenLine": "{n} 行目", "an.hiddenNoLoc": "（本文外）",
-  "an.viewList": "リスト", "an.viewTree": "ツリー",
+  "an.viewList": "リスト", "an.viewTree": "8ビュー",
+  "an.trajHint": "軌跡を8つのビューで：状態遷移 / 資材の系譜 / 検証 / バルブ / コスト / 反実仮想 / ライフライン / タイムライン。土台は<b>全主線リクエストの blocks 和集合</b>（最長1本ではない—autocompact に切り捨てられた前半も回収）。ノードをホバーで概要、クリックで全文証拠。",
+  "an.trajSemNone": "意味層は未要約：フェーズは機械的分割、概要はプログラムラベル。「AI 要約」でアップグレード。",
+  "an.trajSemOk": "意味層を要約済み（フェーズ＋状態スナップショット＋ステップ概要）。",
+  "an.trajLoadFailed": "8ビューの読み込みに失敗：{msg}",
+  "an.ai.runningTraj": "8ビュー：フェーズ分割中…",
+  "an.ai.runningTrajSnap": "8ビュー：スナップショット作成 {d}/{t}…",
+  "an.ai.runningTrajBrief": "8ビュー：概要作成 {d}/{t}…",
   "an.treeHint": "幹はステップ順。青い点は分岐や自己修正が現れた箇所で、その下に該当する原文とそのステップで実際に行った操作を示します。**これらは機械的に検出した候補であり結論ではありません** —— モデルは決定木を明示的に書いていません。",
   "an.ai.goal": "全体目標", "an.ai.drift": "目標が変化：",
   "an.ai.said": "依頼内容", "an.ai.solving": "解決対象",
@@ -5576,6 +5604,7 @@ const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
             selA: null, selB: null, recA: null, recB: null, pDiff: null,
             pendingDel: null, stepView: "list", recSources: [],
             recAnalysis: null, anaBusy: false, anaProg: null, anaTimer: 0,
+            recSid: null, recSem: null, trajError: "",   /* 八视图档（260828）*/
             openStep: null, openLane: "", stepFull: null,   /* 右侧钻探抽屉（260826） */
             subs: null,                          /* 子代理线（260826） */
             chat: [], chatBusy: false};
@@ -6126,14 +6155,17 @@ async function anRecLoad(){
   const sid = anSel("c")[0];
   AN.openStep = null; AN.openLane = ""; AN.stepFull = null;   /* 换录制＝换现场 */
   AN.subs = null;
+  AN.recSid = sid; AN.recSem = null; AN.trajError = "";
   if(!sid){ $("anRecOut").innerHTML = ""; return; }
   $("anRecOut").innerHTML = '<div class="card an-note">' + t18("an.loading") + '</div>';
   try{
-    const [tr, sr, br] = await Promise.all([
+    const [tr, sr, br, semr] = await Promise.all([
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/thinking?level=0"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/sources"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief"),
+      fetch("/api/snapshots/" + encodeURIComponent(sid) + "/semantic"),
       anAnalysisLoad(sid)]);   /* 已有的 AI 归纳一并取回：分析过的不该再花一次钱（260809）*/
+    try{ AN.recSem = !!(await semr.json()).exists; }catch(e){ /* 状态条降级，不挡主流程 */ }
     anSubsLoad(sid);          /* 子代理线：不 await——它要回原始录制里捞，慢一点不该拖住主线 */
     const tj = await tr.json(), sj = await sr.json();
     AN.brief = await br.text();
@@ -6199,22 +6231,25 @@ function renderRec(d, sources){
     '</span>' +
     '<button class="btn" id="anAnaBtn" onclick="anAnalyze()"' + (AN.anaBusy ? " disabled" : "") + '>' +
       esc(AN.anaBusy ? anAnaLabel()
-                     : (AN.recAnalysis
-                          ? (anFailedSteps().length
-                               ? t18("an.ai.fill", {n: anFailedSteps().length})
-                               : t18("an.ai.redo"))
-                          : t18("an.ai.analyze"))) +
+                     : (AN.stepView === "tree"
+                          ? (AN.recSem ? t18("an.ai.redo") : t18("an.ai.analyze"))
+                          : (AN.recAnalysis
+                               ? (anFailedSteps().length
+                                    ? t18("an.ai.fill", {n: anFailedSteps().length})
+                                    : t18("an.ai.redo"))
+                               : t18("an.ai.analyze")))) +
     '</button>' +
     /* 「全部重算」单独一个按钮，不藏在同一个里：两者花的钱差一个数量级，
        而"点了以为在补、其实重算了半小时"正是这个软件最不该有的意外。 */
-    (AN.recAnalysis && !AN.anaBusy
+    (AN.stepView !== "tree" && AN.recAnalysis && !AN.anaBusy
       ? '<button class="btn" onclick="anAnalyze(&quot;full&quot;)" title="' +
         esc(t18("an.ai.fullTip")) + '">' + esc(t18("an.ai.full")) + '</button>'
       : "") +
-    '</div>' + anAnalysisHead();
-  h += '<div class="an-split' + (AN.openStep ? " open" : "") + '">' +
+    '</div>' + (AN.stepView === "tree" ? anTrajHead() : anAnalysisHead());
+  h += '<div class="an-split' + (AN.openStep ? " open" : "") +
+    (AN.stepView === "tree" ? " trajmode" : "") + '">' +
     '<div class="an-splitmain">' +
-      (AN.stepView === "tree" ? anTreeHtml(d.steps || []) : anListHtml(d.steps || [])) +
+      (AN.stepView === "tree" ? anTrajHtml() : anListHtml(d.steps || [])) +
     '</div><div class="an-drawer-grip" id="anDrawerGrip" title="' + esc(t18("an.drawerDrag")) +
     '"></div><aside class="an-drawer" id="anDrawer">' + anDrawerHtml() + '</aside></div>';
   h += '</div>';
@@ -6434,6 +6469,9 @@ function anAnaLabel(){
   /* 并发之后「第几批」没有意义——几个线程同时在跑，报哪一个都是错的。改成完成数/总数。 */
   if(p.phase === "sub")
     return t18("an.ai.runningSub", {lane: p.lane, lanes: p.lanes, b: p.done || 0, batches: p.total || 0});
+  if(p.phase === "traj_split") return t18("an.ai.runningTraj");
+  if(p.phase === "traj_snaps") return t18("an.ai.runningTrajSnap", {d: p.done || 0, t: p.total || 0});
+  if(p.phase === "traj_briefs") return t18("an.ai.runningTrajBrief", {d: p.done || 0, t: p.total || 0});
   if(p.phase === "turns") return t18("an.ai.runningTurns", {b: p.done || 0, batches: p.total || 0});
   if(p.phase === "lanes") return t18("an.ai.runningLanes", {b: p.done || 0, batches: p.total || 0});
   if(!p.total) return t18("an.ai.running");
@@ -6461,15 +6499,25 @@ async function anAnalyze(mode){
   AN.anaBusy = true; AN.anaProg = null;
   if(AN.recData) renderRec(AN.recData, AN.recSources || []);   /* 按钮进入"分析中…" */
   anAnaPoll(sid);
+  /* 语义层管线按档分流（260828）：list 档归纳轮次骨架（turns/简报，挂步号），
+     八视图档归纳轨迹语义层（阶段/快照/简述，挂节点号）。两套步号体系不同，
+     产物不能互相喂——但进度轮询同一条通道（phase 前缀 traj_ 区分）。 */
+  const trajMode = AN.stepView === "tree";
   try{
-    /* resume（默认）只补缺口；full 全部重算。**默认不重算**：一次归纳是几十次调用、
-       几十分钟，而失败的往往只有一两批（260827 用户："我重新归纳还是失败"）。 */
     const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) +
-                          "/analysis?mode=" + (mode === "full" ? "full" : "resume"),
+                          (trajMode ? "/trajectory" : "/analysis") +
+                          "?mode=" + (mode === "full" ? "full" : "resume"),
                           {method: "POST"});
     const j = await r.json();
     if(!j.ok) throw new Error(j.error || "failed");
-    AN.recAnalysis = j.data;
+    if(trajMode){
+      AN.recSem = true;
+      /* 归纳完成后 iframe 重建才会带新语义层（src 相同浏览器会用缓存） */
+      const f = document.querySelector(".an-traj iframe");
+      if(f){ const s = f.src; f.src = s; }
+    }else{
+      AN.recAnalysis = j.data;
+    }
     toast(t18("an.ai.done"));
   }catch(e){
     toast(t18("an.ai.failed", {msg: e.message}), true);   /* 失败要说出来，不留空面板 */
@@ -6478,6 +6526,35 @@ async function anAnalyze(mode){
     clearInterval(AN.anaTimer);
     if(AN.recData) renderRec(AN.recData, AN.recSources || []);
   }
+}
+
+/* ---- 八视图档（260828）：tree 位置换成轨迹八视图 ----
+   独立单文件页走 iframe 嵌入——八视图自带整套暗色视觉体系（缩放画布/命中表/惰性渲染），
+   塞进 app 的 DOM 里样式必打架；iframe 让两边零冲突，也保留了"单独打开也能用"的特性。
+   语义层状态在这里说清：程序层（并集/节点/血统/反事实）永远是全的，缺的只是模型语义。 */
+function anTrajHead(){
+  return '<div class="an-hint">' + t18("an.trajHint") + '</div>' +
+    '<div class="an-hint">' + (AN.recSem ? t18("an.trajSemOk") : t18("an.trajSemNone")) + '</div>';
+}
+function anTrajHtml(){
+  if(!AN.recSid) return "";
+  if(AN.trajError) return '<div class="err-card">' +
+    esc(t18("an.trajLoadFailed", {msg: AN.trajError})) + '</div>';
+  return '<div class="an-traj"><iframe src="/api/snapshots/' + encodeURIComponent(AN.recSid) +
+    '/trajectory?format=html" title="' + esc(t18("an.viewTree")) +
+    '" onload="anTrajCheck(this)"></iframe></div>';
+}
+/* 错误页也是一次 load：同源 iframe 读得到内容，没渲染出八视图导航（#nav）
+   就是后端回了 JSON 错误——裸 JSON 留在 iframe 里没人读得懂，换成人话错误卡。 */
+function anTrajCheck(f){
+  try{
+    const doc = f.contentDocument;
+    if(!doc || doc.getElementById("nav")) return;
+    const txt = (doc.body && doc.body.innerText || "").slice(0, 400);
+    try{ AN.trajError = JSON.parse(txt).error || txt; }
+    catch(e){ AN.trajError = txt; }
+    if(AN.recData) renderRec(AN.recData, AN.recSources || []);
+  }catch(e){ /* 读不到就留着原样 */ }
 }
 
 function sigCls(k){

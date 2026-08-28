@@ -17,6 +17,7 @@ import re
 import sys
 import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 from flask import (Flask, Response, jsonify, render_template, request,
@@ -31,6 +32,7 @@ import snapshot_diff
 import snapshot_extract
 import snapshot_pack
 import snapshot_store
+import trajectory
 import updater
 import upstream_history
 
@@ -193,6 +195,8 @@ _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/snapshots/<sid>/analysis": ("snapshots", "snapAnalysis"),
     "/api/snapshots/<sid>/chat":    ("snapshots", "snapChat"),
     "/api/snapshots/<sid>/brief":   ("snapshots", "snapBrief"),
+    "/api/snapshots/<sid>/trajectory": ("snapshots", "snapTrajectory"),
+    "/api/snapshots/<sid>/semantic": ("snapshots", "snapSemantic"),
     "/api/proxy/status":            ("proxy", "proxyStatus"),
     "/api/config":                  ("proxy", "config"),
     "/api/settings/upstream-history": ("proxy", "upstreamHistory"),
@@ -1599,6 +1603,9 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/snapshots/diff?a=&b=&face=` | **精确对比**：先揭示不可见字符再比，同形异码打标 |
 | GET | `/api/snapshots/<id>/thinking?level=0/1/2` | 思考链分层（先读 level=0 骨架），无思考时给行为链 + 原因 |
 | GET | `/api/snapshots/<id>/sources` | 多源指令清单（上下文冲突的原料，重复注入已合并计数）|
+| GET | `/api/snapshots/<id>/trajectory` | **轨迹八视图** payload（状态快照/物料血统/验证/阀门/能耗/反事实/生命线/时序；地基是当日全量 blocks 并集，程序层现算，语义层有缓存带缓存、无则机械兜底标 `semantic:"degraded"`）；`?format=html` 出完整单文件页 |
+| POST | `/api/snapshots/<id>/trajectory` | 跑八视图语义层（阶段切分+状态快照+步级简述，`mode=resume` 补缺口 / `full` 重算；进度走 `/api/snapshots/<id>/analysis/progress`，phase 前缀 `traj_`）|
+| GET | `/api/snapshots/<id>/semantic` | 轻量探测：八视图语义层归纳过没有 |
 | GET | `/api/snapshots/<id>/chat` | 软件内 AI 对该快照的分析对话历史 |
 | POST | `/api/analyze/chat` | 让软件内低成本模型多轮分析某快照（SSE，问答落盘）|
 | POST | `/api/snapshots/clear` | 批量清理快照（`preview=true` 先看命中几条）|
@@ -2888,6 +2895,368 @@ def snapshots_sources(sid):
                             "error": f"{sid} 是提示词快照，没有多源清单"}), 400
         return jsonify({"ok": True,
                         "sources": snapshot_extract.instruction_sources(snap.get("payload") or {})})
+    except Exception as e:
+        return _snap_err(e)
+
+
+# ===== 轨迹八视图：数据端点 + 语义层管线（260828，issue 260828_分析页轮次骨架换八视图） =====
+#
+# 分层纪律与原型管线（prototypes/260828_工序轨迹原型-tools/，方法论见 research/）一致：
+#   事实程序算——节点/物料/血统/验证/必要闭包在 trajectory.py 每次现算，秒级不落盘；
+#   语义模型写——阶段切分 + 快照四格 + 步级简述，POST 触发，结果存 <sid>.semantic.json；
+#   程序校验覆盖——边界缝合/连续覆盖/简述全覆盖在这层查，事实四格（artifacts/pending/
+#   errors_detail/constraints）根本不落盘，compute 时由 _attach_phase_facts 现算盖掉。
+TRAJ_SPLIT_TASK = """下面是一段 AI agent 运行记录，程序已按状态跃迁的候选边界预切成若干「小段」，
+每段带程序算出的事实（做了什么、写了什么、验了什么、错了几次、人说了什么、有没有被拦截）。
+
+任务：把这些小段**合并**成 **6~10 个阶段**。
+
+阶段的判据是**状态真的换了一档**：拿到此前没有的关键事实 / 产出了下一阶段要消费的东西 /
+一个错误被定位或消除 / 交付物被验收 / 人给了新指令改变了方向。允许阶段大小悬殊。
+
+每个阶段输出：`from` / `to`（小段序号，从 0 开始）、`name`（≤10 字，动宾式）、
+`from_state` / `to_state`（各 ≤20 字，这一阶段开始与结束时**世界的样子**，
+用给你的文件名、错误、验证结果说，不要写"进行了分析"这种没有状态的话）。
+
+输出 JSON：{"phases":[{"from":0,"to":3,"name":"…","from_state":"…","to_state":"…"}]}
+必须从 0 开始连续覆盖全部小段、不重叠、不遗漏。只输出 JSON，不要解释。"""
+
+TRAJ_SNAP_TASK = """这是一个 AI agent 运行阶段的全部动作记录。
+
+写出这一阶段**结束时**的状态快照，四格：
+- `known`：已经确认的事实，2~4 条
+- `assumed`：**当前被当成真、但没验证过的假设**，0~3 条（这一格最重要，返工往往由它引起）
+- `unknown`：已经意识到但还没解决的未知，0~3 条
+- `decisions`：这一阶段做出的选择（在多个候选里选了一个），0~3 条
+
+每条 ≤ 20 字，用记录里的文件名、错误、结果说话。写不出来的格子给空数组，**不要编造**。
+
+输出 JSON：{"known":["…"],"assumed":["…"],"unknown":["…"],"decisions":["…"]}"""
+
+TRAJ_BRIEF_TASK = """下面是 AI agent 一次运行中若干「步骤节点」的机器摘要（动作/写出/读/验证/错误/
+思考开头/回复开头）。给每个节点写一句**人能看懂的简述**：这一步它大概做了什么、图什么。
+
+- ≤ 26 个字，动宾式开头（改 / 查 / 写 / 跑 / 看 / 派发 / 确认 / 收尾…）
+- 用证据里的真实文件名、命令、结果说话；这一步出错要带出错误
+- 「思考开头」是它当时的目的：优先把**目的 + 动作**拼成这一句，比罗列文件名好
+- 看不出目的就只写动作，**不要编造**
+- k 原样返回，每个输入节点都要有一条
+
+输出 JSON：{"briefs":[{"k":"main:36","t":"…"}]}，只输出 JSON。"""
+
+
+def _traj_segments(F: dict) -> list:
+    """程序出候选：按候选边界预切小段，只把段摘要交给切分模型。
+
+    直接喂全部节点会让上游把输出截断成空——模型要先复述才能分组，输入越大越容易在
+    输出侧撞上限。候选本身就是压缩（原型 snapshot_run 实测的教训，原样保留）。
+    """
+    nodes, cands, debt = F["nodes"], F.get("candidates") or [], F["debt"]
+    users = [u for u in F["user_events"] if u["kind"] == "user"]
+    blocked = [v for v in F["valves"] if v["kind"] == "security" and v.get("blocked")]
+    umap, bmap = {}, {}
+    for u in users:
+        nx = next((n["i"] for n in nodes if n["ts"] >= u["ts"]), len(nodes) - 1)
+        umap.setdefault(nx, []).append(u["text"][:220])
+    for b in blocked:
+        if b.get("node") is not None:
+            bmap.setdefault(b["node"], []).append((b.get("category") or "被拦截") + "：" + b["arg"][:60])
+    cuts = sorted({0} | {c["at"] for c in cands} | {len(nodes)})
+    segs = []
+    for a, b in zip(cuts, cuts[1:]):
+        ns = nodes[a:b]
+        if not ns:
+            continue
+        tgt = Counter(x["target"] for n in ns for x in n["acts"] if x["target"])
+        segs.append({
+            "s": len(segs), "nodes": [a, b - 1], "n": len(ns),
+            "kinds": {k: v for k, v in Counter(n["kind"] for n in ns).items()},
+            "wrote": sorted({t for n in ns for t in n["changes"]})[:6],
+            "verified": sorted({t for n in ns for t in n["verified"]})[:4],
+            "touched": [t for t, _ in tgt.most_common(6)],
+            "errors": [next((x["digest"][:60] for x in n["acts"] if x["error"]), "") for n in ns
+                       if n["error"]][:3],
+            "debt_end": debt[b - 1]["n"],
+            "minutes": round((datetime.datetime.fromisoformat(ns[-1]["ts"])
+                              - datetime.datetime.fromisoformat(ns[0]["ts"])).total_seconds() / 60),
+            "user_said": [t for i2 in range(a, b) for t in (umap.get(i2) or [])][:2],
+            "blocked": [t for i2 in range(a, b) for t in (bmap.get(i2) or [])][:3],
+            "why_cut": next((c["why"] for c in cands if c["at"] == a), ["起点"]),
+        })
+    return segs
+
+
+def _traj_split(F: dict, lang: str) -> list:
+    """阶段切分（一次调用）+ 缝合 + 连续覆盖校验。不合法直接抛 ValueError——
+    宁可如实失败，不静默回落到机械均分（那会让用户以为读到的是模型划分）。"""
+    nodes, cands = F["nodes"], F.get("candidates") or []
+    segs = _traj_segments(F)
+    system = _analysis_system(TURN_ROLLUP_GUARD_BASE, TRAJ_SPLIT_TASK, "", "trajectory", lang)
+    payload = {"total_nodes": len(nodes), "total_segments": len(segs), "segments": segs}
+
+    def call():
+        out = _llm_json(system, payload, "trajectory")
+        return out if isinstance(out, dict) and isinstance(out.get("phases"), list) else None
+
+    got, err = _retrying(call)
+    if not got:
+        raise ValueError(f"阶段切分调用失败：{err}")
+    ps = []
+    for p in got["phases"]:
+        try:
+            sa, sb = int(p.get("from")), int(p.get("to"))
+        except (TypeError, ValueError):
+            raise ValueError("模型给的阶段边界 from/to 不是整数")
+        sa, sb = max(0, min(sa, len(segs) - 1)), max(0, min(sb, len(segs) - 1))
+        a, b = segs[sa]["nodes"][0], segs[sb]["nodes"][1]      # 小段序号 → 节点号
+        ps.append({"from": a, "to": b, "name": str(p.get("name") or "")[:16],
+                   "from_state": str(p.get("from_state") or "")[:40],
+                   "to_state": str(p.get("to_state") or "")[:40],
+                   "known": [], "assumed": [], "unknown": [], "decisions": []})
+    ps.sort(key=lambda p: p["from"])
+    # **先修再校验**：模型普遍把边界当「共享节点」（差一）。缝合 ≤2 节点的重叠或缺口，
+    # 剩下的才算真违规；首尾补齐到 0 / N-1。
+    ps[0]["from"] = 0
+    for a, b in zip(ps, ps[1:]):
+        d = b["from"] - (a["to"] + 1)
+        if d and abs(d) <= 2:
+            b["from"] = a["to"] + 1
+    ps[-1]["to"] = len(nodes) - 1
+    pos = 0
+    for p in ps:
+        if p["from"] != pos or p["to"] < p["from"]:
+            raise ValueError(f"阶段划分不合法（断在 N{p['from']}-N{p['to']}，应从 N{pos} 起）")
+        pos = p["to"] + 1
+    if pos != len(nodes):
+        raise ValueError(f"阶段划分没覆盖到底（停在 N{pos}/{len(nodes) - 1}）")
+    off = [p for p in ps[1:] if p["from"] not in {c["at"] for c in cands}]
+    return ps, {"asked": "6~10", "got": len(ps), "candidates": len(cands),
+                "off_candidate": len(off), "off_list": [p["from"] for p in off][:10]}
+
+
+def _traj_snaps(F: dict, ps: list, lang: str, on_done=None) -> dict:
+    """每阶段一次小调用，填语义四格（known/assumed/unknown/decisions），并发。"""
+    nodes = F["nodes"]
+    users = [u for u in F["user_events"] if u["kind"] == "user"]
+    blocked = [v for v in F["valves"] if v["kind"] == "security" and v.get("blocked")]
+    umap, bmap = {}, {}
+    for u in users:
+        nx = next((n["i"] for n in nodes if n["ts"] >= u["ts"]), len(nodes) - 1)
+        umap.setdefault(nx, []).append(u["text"][:220])
+    for b in blocked:
+        if b.get("node") is not None:
+            bmap.setdefault(b["node"], []).append((b.get("category") or "被拦截") + "：" + b["arg"][:60])
+    system = _analysis_system(TURN_ROLLUP_GUARD_BASE, TRAJ_SNAP_TASK, "", "trajectory", lang)
+
+    def work(p):
+        ns = nodes[p["from"]:p["to"] + 1]
+        rows = []
+        for n in ns:
+            r = {"n": n["i"], "kind": n["kind"],
+                 "acts": [f"{a['op']} {a['target']}" for a in n["acts"] if a["target"]][:4]}
+            if n["error"]:
+                r["error"] = next((a["digest"][:60] for a in n["acts"] if a["error"]), "失败")
+            if n["verified"]:
+                r["verified"] = n["verified"][:3]
+            if umap.get(n["i"]):
+                r["user_said"] = umap[n["i"]]
+            if bmap.get(n["i"]):
+                r["blocked"] = bmap[n["i"]]
+            rows.append(r)
+        pay = {"phase": p["name"], "from_state": p["from_state"],
+               "to_state": p["to_state"], "nodes": rows}
+
+        def c():
+            out = _llm_json(system, pay, "trajectory")
+            return out if isinstance(out, dict) else None
+        try:
+            got, err = _retrying(c)
+        except Exception as e:                      # noqa: BLE001  _map_batches 的兜底形状不可控
+            got, err = None, str(e)
+        return (p, got, err)
+
+    results = _map_batches(ps, work, on_done)
+    fails = []
+    for p, g, e in results:
+        if not g:
+            p["snap_error"] = e
+            fails.append(p.get("name") or f"N{p['from']}")
+            continue
+        for k, cap in (("known", 4), ("assumed", 3), ("unknown", 3), ("decisions", 3)):
+            p[k] = [str(x)[:30] for x in (g.get(k) or []) if str(x).strip()][:cap]
+        p.pop("snap_error", None)
+        p["snap_done"] = True
+    return {"phases": len(ps), "failed": fails}
+
+
+def _traj_briefs(F: dict, DET: dict, lang: str, have: set | None = None, on_batch=None) -> tuple:
+    """步级一句话简述（并发批）。证据包程序拼（factors + details 的原文开头），
+    模型只写一句；`have` 是已有简述的 k 集合，续跑只补缺。"""
+    items = []
+    for n in F["nodes"]:
+        d = DET.get(f"main:{n['i']}") or {}
+        acts = [f"{a['tool']} {a['target'] or ''} → {a['digest'][:70]}"
+                for a in n["acts"][:5] if a.get("target") or a.get("digest")]
+        items.append({
+            "k": f"main:{n['i']}", "kind": n["kind"], "err": n["error"],
+            "changes": n["changes"][:3], "reads": n["reads"][:2], "verified": n["verified"][:2],
+            "acts": acts[:5],
+            "think": (d.get("think") or "")[:200], "reply": (d.get("reply") or "")[:150],
+        })
+    for L in F.get("subagents") or []:
+        for m in L["nodes"]:
+            d = DET.get(f"sub:{L['lane']}:{m['i']}") or {}
+            acts = [f"{a['tool']} {a.get('target') or ''}" for a in m["acts"][:4]]
+            items.append({
+                "k": f"sub:{L['lane']}:{m['i']}", "kind": m["kind"], "err": m["error"],
+                "task": L["task"][:40],
+                "changes": m["changes"][:3], "reads": m["reads"][:2],
+                "acts": acts[:4],
+                "think": (d.get("think") or "")[:180], "reply": (d.get("reply") or "")[:120],
+            })
+    todo = [it for it in items if not have or it["k"] not in have]
+    chunk = 30
+    batches = [todo[i:i + chunk] for i in range(0, len(todo), chunk)] if todo else []
+    system = _analysis_system(TURN_ROLLUP_GUARD_BASE, TRAJ_BRIEF_TASK, "", "trajectory", lang)
+    done = [0]
+    lock = threading.Lock()
+
+    def work(ch):
+        def c():
+            out = _llm_json(system, {"nodes": ch}, "trajectory")
+            return out if isinstance(out, dict) and isinstance(out.get("briefs"), list) else None
+        try:
+            r = _retrying(c)
+        except Exception as e:                      # noqa: BLE001  _map_batches 的兜底形状不可控
+            r = None, str(e)
+        finally:
+            # 进度按节点数计（total 是节点数）；批大小不一（末批 <30），
+            # on_done 无参拿不到批内容，所以在 work 内部按本批实际大小累加
+            with lock:
+                done[0] += len(ch)
+                if on_batch:
+                    on_batch(done[0], len(todo))
+        return r
+
+    results = _map_batches(batches, work, None)
+    briefs, failed_batches = {}, 0
+    for got, err in results:
+        if not got:
+            failed_batches += 1
+            continue
+        for b in got["briefs"]:
+            k, t = str(b.get("k") or ""), str(b.get("t") or "").strip()
+            if k and t:
+                briefs[k] = t[:40]
+    missing = [it["k"] for it in items if it["k"] not in briefs and (not have or it["k"] not in (have or set()))]
+    meta = {"items": len(items), "ran": len(todo), "batches": len(batches),
+            "failed_batches": failed_batches, "uncovered": missing[:30],
+            "uncovered_n": len(missing)}
+    return briefs, meta
+
+
+def _traj_semantic(sid: str, rec: dict, lang: str, mode: str = "resume") -> dict:
+    """八视图语义层编排：阶段切分 → 快照四格 → 步级简述，落盘 <sid>.semantic.json。
+
+    resume 只补缺口：已有 phases（含四格）不重切，已有简述的节点不重算——
+    失败的往往只有几批（与 analysis 的 resume 同一条设计）。
+    """
+    F, DET, session_id, mains_n, _think_raw = trajectory.factors_of(rec)
+    prev = snapshot_store.read_semantic(sid) if mode != "full" else None
+    prev = prev if isinstance(prev, dict) else {}
+    t0 = time.time()
+
+    # ① 阶段（含四格）——有缓存整段复用
+    ps = prev.get("phases") if isinstance(prev.get("phases"), list) and prev["phases"] else None
+    split_meta = dict(prev.get("split_meta") or {})
+    if ps is None:
+        _prog(sid, phase="traj_split", done=0, total=1)
+        ps, split_meta = _traj_split(F, lang)
+    # ② 四格——没填过的阶段补
+    need = [p for p in ps if not p.get("snap_done")]
+    if need:
+        _prog(sid, phase="traj_snaps", done=0, total=len(need))
+        done_n = [0]
+
+        def bump_snap():
+            done_n[0] += 1
+            _prog(sid, phase="traj_snaps", done=done_n[0], total=len(need))
+        snap_meta = _traj_snaps(F, need, lang, on_done=bump_snap)
+    else:
+        snap_meta = dict(prev.get("snap_meta") or {"phases": len(ps), "failed": []})
+    # 阶段落盘（与 analysis 的 _ana_save 同一条理由）：briefs 是最后也最容易失败的一段，
+    # 前面切分+四格不落盘，一次失败就把几分钟的模型调用全部丢掉。
+    snapshot_store.write_semantic(sid, {"phases": ps, "briefs": dict(prev.get("briefs") or {}),
+                                        "split_meta": split_meta, "snap_meta": snap_meta})
+    # ③ 简述——批级续跑
+    have = set((prev.get("briefs") or {}).keys())
+    todo_n = sum(1 for n in F["nodes"]
+                 if f"main:{n['i']}" not in have) + sum(
+        1 for L in F.get("subagents") or [] for m in L["nodes"]
+        if f"sub:{L['lane']}:{m['i']}" not in have)
+    _prog(sid, phase="traj_briefs", done=0, total=todo_n)
+    new_briefs, brief_meta = _traj_briefs(
+        F, DET, lang, have=have,
+        on_batch=lambda d, n: _prog(sid, phase="traj_briefs", done=d, total=n))
+    briefs = dict(prev.get("briefs") or {})
+    briefs.update(new_briefs)
+
+    state = {"phases": ps, "briefs": briefs,
+             "split_meta": split_meta, "snap_meta": snap_meta, "brief_meta": brief_meta,
+             "meta": {"seconds": round(time.time() - t0), "nodes": len(F["nodes"]),
+                      "session_id": session_id, "mode": mode,
+                      "brief_cover": sum(1 for n in F["nodes"] if briefs.get(f"main:{n['i']}"))
+                      + sum(1 for L in F.get("subagents") or [] for m in L["nodes"]
+                            if briefs.get(f"sub:{L['lane']}:{m['i']}"))}}
+    snapshot_store.write_semantic(sid, state)
+    return state
+
+
+@app.route("/api/snapshots/<sid>/trajectory", methods=["GET", "POST"])
+def snapshots_trajectory(sid):
+    """轨迹八视图。GET 出 payload（程序层现算 + 语义层缓存喂入，无则机械兜底标
+    degraded）；`?format=html` 出完整单文件页（与桌面 app 样式零冲突，可独立打开）。
+    POST 跑语义层（阶段 + 快照四格 + 步级简述），进度走 /analysis/progress 同一条通道。
+    """
+    try:
+        snap = snapshot_store.get_snapshot(sid)
+        if snap.get("kind") != "capture":
+            return jsonify({"ok": False, "error_code": "not_capture",
+                            "error": f"{sid} 是提示词快照，没有轨迹"}), 400
+        rec = snap.get("payload") or {}
+        if request.method == "POST":
+            mode = (request.args.get("mode")
+                    or (request.get_json(silent=True) or {}).get("mode") or "resume")
+            lang = CFG.get_config().get("ui_lang") or "zh"
+            _llm_request("preflight", "preflight")   # 配置先探一次，别让几十批各自失败
+            _ANALYSIS_PROGRESS[sid] = {"running": True, "phase": "traj_split"}
+            state = _traj_semantic(sid, rec, lang, mode)
+            return jsonify({"ok": True, "data": state})
+        semantic = snapshot_store.read_semantic(sid)
+        payload = trajectory.compute(sid, rec, semantic)
+        if request.args.get("format") == "html":
+            return Response(trajectory.render_html(payload), mimetype="text/html")
+        return jsonify({"ok": True, "exists": True,
+                        "semantic_exists": semantic is not None, "data": payload})
+    except LlmConfigError as e:
+        return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 200
+    except trajectory.TrajectoryError as e:
+        return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 200
+    except ValueError as e:
+        return jsonify({"ok": False, "error_code": "bad_model_output",
+                        "error": str(e)}), 200
+    except Exception as e:
+        return _snap_err(e)
+    finally:
+        if request.method == "POST":
+            _ANALYSIS_PROGRESS.pop(sid, None)
+
+
+@app.route("/api/snapshots/<sid>/semantic")
+def snapshots_semantic_exists(sid):
+    """轻量探测：八视图语义层归纳过没有（前端状态条用，不拉 payload）。"""
+    try:
+        return jsonify({"ok": True, "exists": snapshot_store.read_semantic(sid) is not None})
     except Exception as e:
         return _snap_err(e)
 

@@ -608,6 +608,8 @@ SS.write_analysis(_p1["sid"], {"turns": [{"turn": 1, "steps": [1], "title": "轮
                                "steps": [{"step": 1, "title": "标题", "detail": "细节"}],
                                "sub_summary": {"lane-x": {"task": "干活", "outcome": "成了"}},
                                "summary": "整段总结"})
+SS.write_semantic(_p1["sid"], {"phases": [{"from": 0, "to": 0, "name": "唯一阶段"}],
+                               "briefs": {"main:0": "起步"}})
 SS.chat_append(_p1["sid"], "user", "这条问答也该跟着走")
 
 _pkg = TMP / "snapshots-e2e.ccwa"
@@ -615,6 +617,7 @@ _man = SP.export_snapshots([_p1["sid"]], _pkg)
 ok(_pkg.exists() and _man["count"] == 1, "导出产出单文件包")
 ok(_man["items"][0]["has_analysis"] and _man["items"][0]["has_chat"],
    "manifest 上就能看出带没带归纳与问答（不解包就该看得清——这正是它存在的理由）")
+ok(_man["items"][0]["has_semantic"], "八视图语义层也在 manifest 上（260828：它和归纳一样是花钱算的）")
 ok(_man["host"] and _man["tool_version"] and _man["tool_version"] != "",
    "签名非空：哪台机器、哪个版本产出的（空 = 答不上来，260826 为此查了一整轮）")
 ok("\\" not in json.dumps(_man["host"]) and "/" not in _man["host"],
@@ -637,6 +640,9 @@ ok(_ana and len(_ana["steps"]) == 1 and _ana["sid"] == _new,
 ok(_ana.get("sub_summary", {}).get("lane-x", {}).get("outcome") == "成了",
    "子代理线级结论也在包里——原始录制在对面机器上捞不到，它是唯一还能读到的部分")
 ok(SS.chat_file(_new).exists(), "问答记录跟着搬")
+_sem = SS.read_semantic(_new)
+ok(_sem and _sem["briefs"].get("main:0") == "起步",
+   "八视图语义层跟着搬（丢了就得在对面机器重跑一遍模型）")
 _env = SS.get_snapshot(_new)
 ok((_env.get("imported_from") or {}).get("sid") == _p1["sid"]
    and (_env.get("imported_from") or {}).get("host"),

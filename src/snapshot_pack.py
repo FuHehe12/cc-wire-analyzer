@@ -45,10 +45,11 @@ class SnapPackError(RuntimeError):
 
 
 def _members(sid: str) -> list[tuple[str, Path]]:
-    """一个快照的三份文件：信封 / AI 归纳 / 问答记录。后两份可以不存在。"""
+    """一个快照的四份文件：信封 / AI 归纳 / 八视图语义层 / 问答记录。后三份可以不存在。"""
     return [
         (f"{sid}.json", snapshot_store._snap_file(sid)),
         (f"{sid}.analysis.json", snapshot_store.analysis_file(sid)),
+        (f"{sid}.semantic.json", snapshot_store.semantic_file(sid)),
         (f"{sid}.chat.jsonl", snapshot_store.chat_file(sid)),
     ]
 
@@ -76,6 +77,7 @@ def export_snapshots(sids: list, dst: Path, *, note: str = "") -> dict:
             "created": snap.get("created") or "",
             # 归纳是这个包最值钱的东西，摆在 manifest 上——不解包就能看清它带没带
             "has_analysis": ana.exists(),
+            "has_semantic": snapshot_store.semantic_file(sid).exists(),
             "has_chat": snapshot_store.chat_file(sid).exists(),
             "bytes": snapshot_store.size_of(sid),
         })
@@ -180,7 +182,8 @@ def import_snapshots(src: Path) -> dict:
                     "at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
                 }
                 snapshot_store._write(snap)
-                # 旁挂两份：归纳里也记着 sid，跟着改，否则界面拿它去对快照会对不上
+                # 旁挂三份：归纳里也记着 sid，跟着改，否则界面拿它去对快照会对不上；
+                # 语义层不带 sid（按文件名挂快照），原样落盘即可
                 ana_name = _DIR + f"{sid}.analysis.json"
                 if ana_name in names:
                     try:
@@ -190,6 +193,14 @@ def import_snapshots(src: Path) -> dict:
                             snapshot_store.write_analysis(new_sid, ana)
                     except (KeyError, ValueError) as e:
                         log.warning("导入的归纳读不出来 %s：%s", sid, e)
+                sem_name = _DIR + f"{sid}.semantic.json"
+                if sem_name in names:
+                    try:
+                        sem = json.loads(zf.read(sem_name).decode("utf-8"))
+                        if isinstance(sem, dict):
+                            snapshot_store.write_semantic(new_sid, sem)
+                    except (KeyError, ValueError) as e:
+                        log.warning("导入的语义层读不出来 %s：%s", sid, e)
                 chat_name = _DIR + f"{sid}.chat.jsonl"
                 if chat_name in names:
                     try:

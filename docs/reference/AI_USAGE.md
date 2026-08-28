@@ -213,6 +213,9 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 | POST | `/api/snapshots` | 备份一条录制或其中一段提示词：`{kind:"capture"\|"prompt", record_id, date?, where?}` |
 | GET | `/api/snapshots/<id>/thinking?level=0` | **思考链骨架**：整条对话每一步的思考量/工具/机械信号。分析一段录制**从这里开始**，再按需要 `level=1`（摘要）/ `level=2&step=N`（某步原文）|
 | GET | `/api/snapshots/<id>/sources` | **多源指令清单**：这条请求里到底有几处在下指令（system 各块 + 注入的 CLAUDE.md + 会话中 system 消息 + 工具描述），重复注入已合并计数。上下文冲突分析的原料 |
+| GET | `/api/snapshots/<id>/trajectory` | **轨迹八视图**：状态快照序列/物料血统/验证矩阵/阀门回路/能耗方差/最优轨迹/物料生命线/最优时序图。地基是**当日全量 blocks 并集**（不是单条最长请求），程序层每次现算；语义层有缓存带缓存、无则机械兜底并标 `semantic:"degraded"`。加 `?format=html` 出完整单文件可视化页 |
+| POST | `/api/snapshots/<id>/trajectory` | 跑八视图语义层（阶段切分 + 状态快照四格 + 步级简述；`mode=resume` 补缺口，`full` 全重算）。进度走 `/api/snapshots/<id>/analysis/progress`，phase 前缀 `traj_` |
+| GET | `/api/snapshots/<id>/semantic` | 轻量探测：该录制的八视图语义层归纳过没有（`{exists: bool}`）|
 | GET | `/api/snapshots/diff?a=&b=&face=` | **精确对比**两个快照：先把零宽字符/NBSP/CRLF 换成可见记号再比，同形异码（撇号、连字符、全半角）单独打标 |
 | GET | `/api/snapshots/<id>/chat` | **软件内 AI 已经分析出什么**：该快照的分析对话历史。开工前读一眼，别从零重来 |
 | POST | `/api/snapshots/clear` | 批量清理快照：`{kind?, tags?, before?, sids?, preview?}`，条件是「与」。**先 `preview:true` 看命中谁**——删除不可撤销 |
