@@ -10,6 +10,50 @@
 > Those two pull in opposite directions, so the history moved here.
 
 
+## v0.4.18 - 2026-08-28
+
+- **The summariser never saw what you asked for, and never saw what any action returned.** Reading a long
+  session back, the step briefs could not answer the one question they exist for — what did the AI actually
+  do. That was not a wording problem. Three fields were missing from the model's input entirely. `trigger`
+  was passed as a bare kind (`"user"` / `"tool_result"`), so **not one character of your instruction reached
+  the model**; tools were passed as names only, with no target and no result. Measured on three real
+  recordings from one day: 572 tool calls produced 572 results totalling **6.8 MB**, of which **0 bytes**
+  ever reached the summariser, and 11%–37% of steps (the pure-execution ones — precisely the steps that
+  change reality) were dropped from the input wholesale. A model that can see the motive but neither the
+  object nor the outcome of an action has one move left: paraphrase the thinking. That is why the old
+  `detail` ran long and said little. Now every tool call carries a **program-extracted result digest**
+  (≤90 chars, type-aware: images are counted, never inlined — one PNG read came back as 33,768 characters
+  of base64), a normalised **verb** (read / search / write / exec / fetch / delegate) and a **target**
+  (the file, script or command it acted on). Pure-execution steps are no longer thrown away: their actions
+  and results are folded into the preceding step that made the decision, so the model reads the whole
+  consequence of a decision **without costing one extra call**. The instruction cap rose from 200
+  characters to a head-and-tail budget of 2,000 — on one multi-agent session, 26 of 46 turns had been
+  hitting that 200-character wall, and a teammate report is 1,838 characters.
+
+- **Step briefs are now three parts, and shorter for it.** `title` (≤20 chars, what it did) / `why`
+  (one line, only when the thinking really weighed something) / `got` (one line, the result — which
+  simply could not be written before, because the result was not in the input). `got` is encouraged to
+  quote a short fragment of the actual output (`CE=0`, `Traceback`, `572 devices`), which makes it both
+  shorter than a paraphrase and **checkable**: the quoted fragment has to exist verbatim in that step's
+  recorded `tool_result`. Concision comes from the schema, not from telling the model to be brief.
+  All three generations of the format (single `brief`, two-part, three-part) still render — a published
+  `steps_prompt` contract must not be invalidated by a schema change.
+
+- **Turn headings now separate the overall goal from what this turn is solving.** Reading a list of turns,
+  you could not tell whether the run was drifting, because every heading answered the same question.
+  A turn now answers five: `said` (what you asked — **compressed into one line, not quoted verbatim**),
+  `solving` (which part of the whole task this turn eliminates), `done_when` (only when you actually
+  stated a completion condition — the model is forbidden to invent one), `outcome` (what came of it) and
+  `risk`. Above them sits a session-level `goal` and `drift`, produced by the one call that ever sees the
+  whole run. Two of the inputs are **computed, not asked**: which materials a turn touched, and whether
+  what it wrote was ever read back or run again — "changed five files, verified none" is a fact, not a
+  judgement, so the program answers it.
+
+- Verified end to end on a real 199-step / 30-turn recording: 124 briefs in 17 batches, 0 failures, and
+  turn coverage 199/199 steps. Command-line target parsing was hardened against four shapes found in
+  real traffic that all used to collapse into one useless material name (`cd "…" && uv run python x.py`,
+  `uv run python x.py`, `python -c`, and a quoted absolute path to an executable).
+
 ## v0.4.17 - 2026-08-27
 
 - **After an auto-update restart, the version number was new and the app was not.** The user pressed "Install and restart", Settings duly showed the new version, and the app still behaved like the old one — closing the window and reopening it fixed it. `run.log` had the whole scene: the new process announced `version=0.4.15`, and one second later `GET /static/fonts/Inter.ttf` returned 404 and `marked.min.js` returned 500, both pointing into `Temp\_MEI76282` — **the previous process's extraction directory**. The cause is that `Popen` inherits the whole environment, and a frozen build's environment carries the PyInstaller onefile bootloader's private variables (`_PYI_PARENT_PROCESS_LEVEL` / `_PYI_APPLICATION_HOME_DIR` / `_PYI_ARCHIVE_FILE`). The new executable's bootloader reads them, concludes "I am the already-extracted child process", **skips extraction and reuses the old directory — which the dying process is busy deleting**. Hence the precise mismatch: Python code came from the **new exe** (so the version was new) while templates, static assets and fonts came from the **old directory** (so the UI was old and half its assets 404'd). The symptom also drifts, because it races the old bootloader's cleanup — whatever it had deleted is what goes missing — so "try it again" can never tell you whether it is fixed. The relaunch now strips `_PYI_*` and `_MEIPASS2` from the child's environment and passes everything else through untouched (PATH, TEMP and proxy settings are still needed), with a self-test that fails if any of them leak. One related thing was measured and **deliberately left alone**: after a restart the port drifts from 5051 to 5052, because the old process's SSE connections sit in TIME_WAIT and the free-port probe's bare `bind` is stricter than the criterion werkzeug itself uses. All three fixes are worse than the problem — `SO_REUSEADDR` would break "find a free port" outright (on Windows it permits binding to a *live* listener), waiting out TIME_WAIT costs 120 seconds, and the actual harm is zero because `port.txt` is updated. It is written down so the next person who sees 5052 does not investigate it again.
