@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+- **The one "AI Summary" button became two, one per slot.** It used to branch on which slot you were
+  looking at: the same label ran `/analysis` in the List slot and `/trajectory` in the 8-views slot —
+  two different jobs at two different prices behind one word. There are now two buttons, both always
+  present, each showing its own state ("Summarise list" / "Re-run list" / "Fill N steps" vs
+  "Summarise 8 views" / "Re-run 8 views"), so you can see whether the *other* slot has been
+  summarised without switching to it. Only one may run at a time — both pipelines call the same model
+  endpoint, and running them together only multiplies the failure and rate-limit surface. "Recompute
+  from scratch" now names its target too, and stays list-only: the customisable summariser prompts
+  apply to that pipeline, the trajectory's task descriptions are built in.
+
 - **Clicking the eight-view slot now changes the screen in the same frame.** Making the iframe
   transparent with a content-driven height had an unintended consequence: until the child document
   loads, nothing moves at all — and a 138-node recording takes 5.3 seconds and 1.2 MB to produce, so

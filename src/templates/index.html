@@ -1947,7 +1947,7 @@ zh: {
   "an.clearSel": "取消选择", "an.tidy": "整理贴纸",
   "an.del": "删除这张贴纸", "an.delConfirm": "删除这张贴纸？", "an.delYes": "删除", "an.delNo": "取消",
   "an.deleted": "已删除", "an.delFailed": "删除失败：{msg}", "an.tidied": "已按时间整理 {n} 张贴纸",
-  "an.ai.analyze": "AI 归纳", "an.ai.redo": "重新归纳", "an.ai.running": "分析中…",
+  "an.ai.running": "分析中…",
   "an.ai.badge": "AI 归纳", "an.ai.intent": "意图：", "an.ai.risk": "注意：",
   "an.ai.none": "骨架由程序抽取（步骤与轮次来自录制原文，可复算）。点「AI 归纳」让模型在此之上补两层语义：每轮在做什么（轮头），以及每步一行简报（做了什么、为什么、发现了什么问题）。",
   "an.ai.meta": "{model} · {time}",
@@ -2036,7 +2036,11 @@ zh: {
   "an.ai.runningTurns": "分析中… 轮级 {b}/{batches} 批", "an.ai.runningLanes": "分析中… 子代理结论 {b}/{batches}",
   "an.ai.partialSteps": "{n} 步没归纳成（第 {steps} 步），点「补齐」再试",
   "an.ai.turnCover": "轮级覆盖 {n}/{total} 步",
-  "an.ai.fill": "补齐 {n} 步", "an.ai.full": "全部重算",
+  "an.ai.fill": "补齐 {n} 步", 
+  "an.ai.doList": "归纳列表", "an.ai.redoList": "重跑列表", "an.ai.fullList": "列表全部重算",
+  "an.ai.doTraj": "归纳八视图", "an.ai.redoTraj": "重跑八视图",
+  "an.ai.listTip": "让模型在程序骨架之上补两层语义：每轮在做什么（轮头）+ 每步一行简报。只作用于「列表」档。",
+  "an.ai.trajTip": "让模型给轨迹补语义层：阶段切分 + 每阶段的状态快照四格 + 每个节点一句话简述。只作用于「八视图」档，与列表那份各算各的钱。",
   "an.ai.fullTip": "忽略已有结果，从头重算一遍（改了归纳提示词之后用这个；花费与第一次相同）",
   "an.sub.task": "任务", "an.sub.problems": "遇到的问题", "an.sub.resolution": "怎么解决",
   "an.sub.outcome": "最终结果", "an.sub.sumFail": "这条线的结论没生成成功，点「补齐」再试",
@@ -2346,7 +2350,7 @@ en: {
   "an.clearSel": "Clear selection", "an.tidy": "Tidy up",
   "an.del": "Delete this sticker", "an.delConfirm": "Delete this sticker?", "an.delYes": "Delete", "an.delNo": "Cancel",
   "an.deleted": "Deleted", "an.delFailed": "Delete failed: {msg}", "an.tidied": "Tidied {n} stickers by time",
-  "an.ai.analyze": "AI summary", "an.ai.redo": "Summarise again", "an.ai.running": "Analysing…",
+  "an.ai.running": "Analysing…",
   "an.ai.badge": "AI", "an.ai.intent": "Intent: ", "an.ai.risk": "Watch: ",
   "an.ai.none": "The skeleton is extracted by code — steps and turns come from the recording itself and can be recomputed. Click \"AI summary\" to add two semantic layers on top: what each turn is doing (turn headers), and a one-line brief per step (what was done, why, what turned up).",
   "an.ai.meta": "{model} · {time}",
@@ -2440,7 +2444,11 @@ en: {
   "an.ai.runningTurns": "Analysing… turns {b}/{batches}", "an.ai.runningLanes": "Analysing… subagent verdicts {b}/{batches}",
   "an.ai.partialSteps": "{n} step(s) not summarised (step {steps}) — hit “Fill gaps” to retry",
   "an.ai.turnCover": "turn level covers {n}/{total} steps",
-  "an.ai.fill": "Fill {n} gap(s)", "an.ai.full": "Recompute all",
+  "an.ai.fill": "Fill {n} gap(s)", 
+  "an.ai.doList": "Summarise list", "an.ai.redoList": "Re-run list", "an.ai.fullList": "Recompute list from scratch",
+  "an.ai.doTraj": "Summarise 8 views", "an.ai.redoTraj": "Re-run 8 views",
+  "an.ai.listTip": "Adds two semantic layers on top of the program skeleton: what each turn was doing, and a one-line brief per step. Applies to the List slot only.",
+  "an.ai.trajTip": "Adds the trajectory's semantic layer: phase split, the four state-snapshot cells per phase, and a one-line brief per node. Applies to the 8-views slot only, and is billed separately from the list.",
   "an.ai.fullTip": "Ignore what is cached and redo everything (use this after changing the analysis prompt; costs the same as the first run)",
   "an.sub.task": "Task", "an.sub.problems": "Problems hit", "an.sub.resolution": "How it was resolved",
   "an.sub.outcome": "Outcome", "an.sub.sumFail": "This lane’s verdict failed to generate — hit “Fill gaps” to retry",
@@ -2747,7 +2755,7 @@ ja: {
   "an.clearSel": "選択解除", "an.tidy": "付箋を整列",
   "an.del": "この付箋を削除", "an.delConfirm": "この付箋を削除しますか？", "an.delYes": "削除", "an.delNo": "キャンセル",
   "an.deleted": "削除しました", "an.delFailed": "削除に失敗：{msg}", "an.tidied": "{n} 枚を時刻順に整列しました",
-  "an.ai.analyze": "AI で要約", "an.ai.redo": "再度要約", "an.ai.running": "分析中…",
+  "an.ai.running": "分析中…",
   "an.ai.badge": "AI 要約", "an.ai.intent": "意図：", "an.ai.risk": "注意：",
   "an.ai.none": "スケルトンはプログラムが抽出したものです（ステップとターンは記録原文由来で再計算可能）。「AI で要約」を押すと、その上に二層の意味を重ねます：各ターンの要約（ターン見出し）と、各ステップ一行のブリーフ（何をしたか・なぜ・何が分かったか）。",
   "an.ai.meta": "{model} · {time}",
@@ -2840,7 +2848,11 @@ ja: {
   "an.ai.runningTurns": "分析中… ターン {b}/{batches} バッチ", "an.ai.runningLanes": "分析中… サブエージェント結論 {b}/{batches}",
   "an.ai.partialSteps": "{n} ステップが要約できませんでした（ステップ {steps}）。「不足を補う」で再試行",
   "an.ai.turnCover": "ターン要約のカバー率 {n}/{total} ステップ",
-  "an.ai.fill": "不足 {n} 件を補う", "an.ai.full": "全部再計算",
+  "an.ai.fill": "不足 {n} 件を補う", 
+  "an.ai.doList": "リストを要約", "an.ai.redoList": "リストを再実行", "an.ai.fullList": "リストを全再計算",
+  "an.ai.doTraj": "8ビューを要約", "an.ai.redoTraj": "8ビューを再実行",
+  "an.ai.listTip": "プログラム骨格の上に意味層を二つ足します：各ターンが何をしていたか、そして各ステップ一行の概要。「リスト」タブのみに作用します。",
+  "an.ai.trajTip": "軌跡に意味層を足します：フェーズ分割、フェーズごとの状態スナップショット四格、ノードごとの一行概要。「8ビュー」タブのみに作用し、リスト分とは別勘定です。",
   "an.ai.fullTip": "キャッシュを無視して最初からやり直します（要約プロンプトを変更した後に使用。費用は初回と同じ）",
   "an.sub.task": "タスク", "an.sub.problems": "遭遇した問題", "an.sub.resolution": "どう解決したか",
   "an.sub.outcome": "最終結果", "an.sub.sumFail": "この系列の結論は生成に失敗しました。「不足を補う」で再試行",
@@ -5628,6 +5640,7 @@ const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
             selA: null, selB: null, recA: null, recB: null, pDiff: null,
             pendingDel: null, stepView: "list", recSources: [],
             recAnalysis: null, anaBusy: false, anaProg: null, anaTimer: 0,
+            anaTarget: null,   /* 这次点的是哪个归纳按钮：list / traj（260829）*/
             recSid: null, recSem: null, trajError: "",   /* 八视图档（260828）*/
             openStep: null, openLane: "", stepFull: null,   /* 右侧钻探抽屉（260826） */
             subs: null,                          /* 子代理线（260826） */
@@ -6257,22 +6270,33 @@ function renderRec(d, sources){
       '<button class="an-vbtn' + (AN.stepView === "tree" ? " active" : "") +
         '" onclick="anStepView(\'tree\')">' + t18("an.viewTree") + '</button>' +
     '</span>' +
-    '<button class="btn" id="anAnaBtn" onclick="anAnalyze()"' + (AN.anaBusy ? " disabled" : "") + '>' +
-      esc(AN.anaBusy ? anAnaLabel()
-                     : (AN.stepView === "tree"
-                          ? (AN.recSem ? t18("an.ai.redo") : t18("an.ai.analyze"))
-                          : (AN.recAnalysis
-                               ? (anFailedSteps().length
-                                    ? t18("an.ai.fill", {n: anFailedSteps().length})
-                                    : t18("an.ai.redo"))
-                               : t18("an.ai.analyze")))) +
+    /* 两个归纳按钮**常驻**，不随档位显隐（260829 用户拍板）。此前是同一个按钮按档分流：
+       同样的字面，在列表档跑 /analysis、在八视图档跑 /trajectory，花两份不同的钱。
+       常驻的另一半价值是「不切过去也知道那边归纳过没有」。
+       只允许同时跑一条：两条打的是同一个模型端点，并行只会把失败率和限流风险乘起来。 */
+    '<button class="btn" id="anAnaBtn" onclick="anAnalyze(null,&quot;list&quot;)"' +
+      (AN.anaBusy ? " disabled" : "") + ' title="' + esc(t18("an.ai.listTip")) + '">' +
+      esc(AN.anaBusy && AN.anaTarget === "list" ? anAnaLabel()
+            : (AN.recAnalysis
+                 ? (anFailedSteps().length
+                      ? t18("an.ai.fill", {n: anFailedSteps().length})
+                      : t18("an.ai.redoList"))
+                 : t18("an.ai.doList"))) +
     '</button>' +
     /* 「全部重算」单独一个按钮，不藏在同一个里：两者花的钱差一个数量级，
-       而"点了以为在补、其实重算了半小时"正是这个软件最不该有的意外。 */
-    (AN.stepView !== "tree" && AN.recAnalysis && !AN.anaBusy
-      ? '<button class="btn" onclick="anAnalyze(&quot;full&quot;)" title="' +
-        esc(t18("an.ai.fullTip")) + '">' + esc(t18("an.ai.full")) + '</button>'
+       而"点了以为在补、其实重算了半小时"正是这个软件最不该有的意外。
+       字面要写明目标——两个归纳按钮并存之后，「全部」指谁不明。
+       八视图不给这个按钮：可自定义的归纳提示词只作用于列表那条管线，
+       轨迹的任务描述是内置的，给它一个没有用武之地的按钮只会让人以为两边对称。 */
+    (AN.recAnalysis && !AN.anaBusy
+      ? '<button class="btn" onclick="anAnalyze(&quot;full&quot;,&quot;list&quot;)" title="' +
+        esc(t18("an.ai.fullTip")) + '">' + esc(t18("an.ai.fullList")) + '</button>'
       : "") +
+    '<button class="btn" onclick="anAnalyze(null,&quot;traj&quot;)"' +
+      (AN.anaBusy ? " disabled" : "") + ' title="' + esc(t18("an.ai.trajTip")) + '">' +
+      esc(AN.anaBusy && AN.anaTarget === "traj" ? anAnaLabel()
+            : (AN.recSem ? t18("an.ai.redoTraj") : t18("an.ai.doTraj"))) +
+    '</button>' +
     '</div>' + (AN.stepView === "tree" ? anTrajHead() : anAnalysisHead());
   h += '<div class="an-split' + (AN.openStep ? " open" : "") +
     (AN.stepView === "tree" ? " trajmode" : "") + '">' +
@@ -6521,16 +6545,19 @@ function anAnaPoll(sid){
     }catch(e){ /* 进度取不到不影响归纳本身，安静退回"分析中…" */ }
   }, 2000);
 }
-async function anAnalyze(mode){
+async function anAnalyze(mode, target){
   const sid = anSel("c")[0];
   if(!sid || AN.anaBusy) return;
-  AN.anaBusy = true; AN.anaProg = null;
+  /* target 是**显式参数**，不再从 AN.stepView 推——按档推断正是 260829 拆掉的东西，
+     留着它，下一个人加第三档时会再犯一次。 */
+  const trajMode = target === "traj";
+  AN.anaBusy = true; AN.anaProg = null; AN.anaTarget = trajMode ? "traj" : "list";
   if(AN.recData) renderRec(AN.recData, AN.recSources || []);   /* 按钮进入"分析中…" */
   anAnaPoll(sid);
-  /* 语义层管线按档分流（260828）：list 档归纳轮次骨架（turns/简报，挂步号），
-     八视图档归纳轨迹语义层（阶段/快照/简述，挂节点号）。两套步号体系不同，
-     产物不能互相喂——但进度轮询同一条通道（phase 前缀 traj_ 区分）。 */
-  const trajMode = AN.stepView === "tree";
+  /* 两条管线各归各的：列表档归纳轮次骨架（turns/简报，挂步号），八视图档归纳轨迹语义层
+     （阶段/快照/简述，挂节点号）。**两套步号体系不同，产物不能互相喂**——地基也不同
+     （列表是快照那一条 record，八视图是当日全部主线请求的并集）。进度轮询共用一条通道，
+     phase 前缀 traj_ 区分。 */
   try{
     const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) +
                           (trajMode ? "/trajectory" : "/analysis") +
@@ -6550,7 +6577,7 @@ async function anAnalyze(mode){
   }catch(e){
     toast(t18("an.ai.failed", {msg: e.message}), true);   /* 失败要说出来，不留空面板 */
   }finally{
-    AN.anaBusy = false; AN.anaProg = null;
+    AN.anaBusy = false; AN.anaProg = null; AN.anaTarget = null;
     clearInterval(AN.anaTimer);
     if(AN.recData) renderRec(AN.recData, AN.recSources || []);
   }
