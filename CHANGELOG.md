@@ -14,6 +14,18 @@
   3. The recording-blind-spot audit (protocol side and capability side) closed across v0.4.3–v0.4.6; method in `docs/reference/开发约定.md` §2.5 and unit 0 of `docs/methodology/同类工具构建手册.md`.
   4. **Storage follow-ups now that compaction exists.** Two are measured and deliberately deferred: the skeleton's pointer lists are a prefix-extension of the previous request's in the same lane, so delta-encoding them should roughly halve a pack again (estimated 477 MB → ~10 MB); and retention still only deletes — it could compact first and delete much later, which changes what "keep 30 days" costs. Neither is needed for the current ratio to be useful, which is why neither shipped with it.
 
+## Unreleased
+
+- **Clicking the eight-view slot now changes the screen in the same frame.** Making the iframe
+  transparent with a content-driven height had an unintended consequence: until the child document
+  loads, nothing moves at all — and a 138-node recording takes 5.3 seconds and 1.2 MB to produce, so
+  the only feedback was "I clicked and nothing happened". A skeleton card now renders with the click
+  (measured at 53ms) and says why a long recording takes a few seconds.
+- **The same recording is no longer recomputed every time you open it.** `trajectory.compute` ran on
+  every request for a snapshot that cannot change; a two-entry in-process cache of the rendered HTML,
+  keyed by snapshot plus semantic-layer fingerprint and dropped when the semantic pipeline writes,
+  takes the 138-node recording from **5.18s to 0.03s** on reopen.
+
 ## v0.4.19 - 2026-08-29
 
 - **The eight views stopped looking like a different piece of software.** They shipped as the
