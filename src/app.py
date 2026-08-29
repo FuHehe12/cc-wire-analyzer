@@ -1603,7 +1603,7 @@ _AI_GUIDE_FALLBACK = """# CC Wire Analyzer —— 最小速查（完整文档缺
 | GET | `/api/snapshots/diff?a=&b=&face=` | **精确对比**：先揭示不可见字符再比，同形异码打标 |
 | GET | `/api/snapshots/<id>/thinking?level=0/1/2` | 思考链分层（先读 level=0 骨架），无思考时给行为链 + 原因 |
 | GET | `/api/snapshots/<id>/sources` | 多源指令清单（上下文冲突的原料，重复注入已合并计数）|
-| GET | `/api/snapshots/<id>/trajectory` | **轨迹八视图** payload（状态快照/物料血统/验证/阀门/能耗/反事实/生命线/时序；地基是当日全量 blocks 并集，程序层现算，语义层有缓存带缓存、无则机械兜底标 `semantic:"degraded"`）；`?format=html` 出完整单文件页 |
+| GET | `/api/snapshots/<id>/trajectory` | **轨迹八视图** payload（状态快照/物料血统/验证/阀门/能耗/反事实/生命线/时序；地基是当日全量 blocks 并集，程序层现算，语义层有缓存带缓存、无则机械兜底标 `semantic:"degraded"`）；`?format=html` 出完整单文件页，另认 `theme=dark|classic|light` 与 `embed=1`；出不了图时 html 档也给同款外观的错误页，不是 JSON |
 | POST | `/api/snapshots/<id>/trajectory` | 跑八视图语义层（阶段切分+状态快照+步级简述，`mode=resume` 补缺口 / `full` 重算；进度走 `/api/snapshots/<id>/analysis/progress`，phase 前缀 `traj_`）|
 | GET | `/api/snapshots/<id>/semantic` | 轻量探测：八视图语义层归纳过没有 |
 | GET | `/api/snapshots/<id>/chat` | 软件内 AI 对该快照的分析对话历史 |
@@ -3221,8 +3221,11 @@ def snapshots_trajectory(sid):
     try:
         snap = snapshot_store.get_snapshot(sid)
         if snap.get("kind") != "capture":
-            return jsonify({"ok": False, "error_code": "not_capture",
-                            "error": f"{sid} 是提示词快照，没有轨迹"}), 400
+            msg = f"{sid} 是提示词快照，没有轨迹"
+            if request.args.get("format") == "html" and request.method == "GET":
+                return Response(trajectory.render_error_html(msg, "not_capture"),
+                                mimetype="text/html")
+            return jsonify({"ok": False, "error_code": "not_capture", "error": msg}), 400
         rec = snap.get("payload") or {}
         if request.method == "POST":
             mode = (request.args.get("mode")
@@ -3241,6 +3244,10 @@ def snapshots_trajectory(sid):
     except LlmConfigError as e:
         return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 200
     except trajectory.TrajectoryError as e:
+        # `?format=html` 下走同一套外观的错误页。走 jsonify 的话，浏览面会把它渲染成
+        # 一整页「API 响应」，嵌在分析页里就是一块完全不相干的界面（260829 真机踩到）。
+        if request.args.get("format") == "html" and request.method == "GET":
+            return Response(trajectory.render_error_html(str(e), e.code), mimetype="text/html")
         return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 200
     except ValueError as e:
         return jsonify({"ok": False, "error_code": "bad_model_output",

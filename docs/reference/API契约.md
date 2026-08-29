@@ -1234,6 +1234,34 @@ user），挂到哪一步则是同一条判据、只是拿快照自己那一步�
 - `lane=<lane_id>&step=N`：那条线单步的思考原文，与主线 `thinking?level=2` 同义（同样的
   `level2` 产物），只是换了条记录。线不在了返回 404 `lane_not_found`。
 
+### `GET /api/snapshots/<id>/trajectory` — 轨迹八视图（260828，仅录制快照）
+
+程序层即时算（~20s/条录制），语义层有缓存就带上、没有就机械兜底并标 `semantic:"degraded"`。
+
+- 不带参数 → `{ok, exists, semantic_exists, data}`。`data` 是八视图 payload：
+  节点 / 动作 / 物料 / 血统 / 验证等级 / 阀门 / 未验债 / 成本 / 子代理线 / 必要闭包 / 阶段。
+- `?format=html` → **完整的八视图单文件页**（payload 内嵌，零外部依赖，单独打开也能用）。
+  另认两个外观参数：
+  - `theme=dark|classic|light` —— 不给则读 `ccwa_ui_theme` cookie，跟随主界面；
+  - `embed=1` —— 嵌入模式：背景透明、去掉自己的顶栏与滚动条，高度与可视区通过
+    `postMessage` 与父页协商（父页那半边见 `index.html` 的 `anTrajViewport()`）。
+    页面同时暴露 `window.ccwaTrajTheme(t)` 供父页即时换肤——**不能用 reload 换肤**，
+    payload 内嵌在页面里，reload 等于让服务端重算一遍。
+
+地基是**全部主线请求的 blocks 并集**（`tool_use` id / `tool_result` id / 文本 md5 三键去重），
+不是单条最长请求——autocompact 剪掉的前半段只有并集能捞回来。当日数据已归档成 `.ccwa` 时
+如实回 `archived_or_missing`，而不是渲染半截 run。
+
+### `GET|POST /api/snapshots/<id>/semantic` — 八视图的语义层（260828，仅录制快照）
+
+`GET` 只探测有没有缓存（**不调模型**）。`POST` 跑一条可续跑的三段流水线：
+阶段切分（程序候选边界喂模型）→ 状态快照四格（每阶段一次，并发）→ 步级简述（分批并发）。
+进度走既有的 `analysis/progress` 通道，phase 前缀 `traj_`。
+
+结果存 `<sid>.semantic.json`（与 `analysis.json` 同待遇的可重算派生物：随快照删除清理、
+计入 `size_of`、跟着便携包搬）。**事实四格不落盘**：`artifacts/pending/errors/constraints`
+在 compute 时由 `_attach_phase_facts()` 现算盖掉——模型改不了事实。
+
 ### `GET /api/snapshots/<id>/sources` — 多源指令清单（仅录制快照）
 
 上下文冲突分析的原料。实测一条主线请求有五处在下指令（system 三块 + 用户 CLAUDE.md 注入 +

@@ -978,12 +978,13 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
   padding-left:8px;border-left:2px solid var(--ok);}
 .an-got.bad{border-left-color:var(--err);}
 
-/* 八视图档：iframe 嵌独立单文件页（自带整套视觉体系，样式零冲突）。
-   给足高度——八视图是缩放画布，挤成矮条就只剩滚动了；右侧钻探抽屉在此档没交互，隐藏。 */
+/* 八视图档：iframe 嵌独立单文件页（保留"单独打开也能用"），但要**看不出是 iframe**。
+   260829：此前它是一块带边框、带自己滚动条、纯黑底的面板嵌在暖色纸面上——
+   现在背景透明（母体画布透出来）、无边框、**高度跟着内容走**（子页报 scrollHeight），
+   于是全页只剩一条滚动条。右侧钻探抽屉在此档没交互，隐藏。 */
 .an-split.trajmode .an-drawer-grip,.an-split.trajmode .an-drawer{display:none;}
-.an-traj{height:calc(100vh - 170px);min-height:560px;}
-.an-traj iframe{width:100%;height:100%;border:1px solid var(--border);border-radius:10px;
-  background:#06121a;display:block;}
+.an-traj{min-height:420px;}
+.an-traj iframe{width:100%;height:620px;border:0;background:transparent;display:block;}
 
 /* 树视图：一条主干竖线，节点挂在上面 */
 .an-tree{position:relative;padding-left:20px;margin-top:8px;}
@@ -1992,6 +1993,7 @@ zh: {
   "an.hgTip": "同形异码（{name}）：{a} → {b}",
   "an.tier.A": "有完整思考链", "an.tier.B": "没有思考链", "an.tier.C": "思考被上游加密",
   "an.tierStats": "{steps} 步 · 其中 {think} 步有思考 · 共 {chars} 字 · {model}",
+  "an.tierStatsNoPlain": "{steps} 步 · 其中 {think} 步带思考块，但明文未回传（上游只回签名）· {model}",
   "an.partialRedacted": "注意：有部分思考被上游加密读不到——「它没考虑过 X」可能只是那段恰好不可读。",
   "an.srcTitle": "多源指令清单",
   "an.srcCount": "· {n} 处",
@@ -2393,6 +2395,7 @@ en: {
   "an.tier.A": "Full reasoning chain", "an.tier.B": "No reasoning chain",
   "an.tier.C": "Reasoning encrypted upstream",
   "an.tierStats": "{steps} steps \u00b7 {think} with reasoning \u00b7 {chars} chars \u00b7 {model}",
+  "an.tierStatsNoPlain": "{steps} steps \u00b7 {think} carry a reasoning block, but no plaintext came back (signature only) \u00b7 {model}",
   "an.partialRedacted": "Note: part of the reasoning is encrypted upstream \u2014 \u201cit never considered X\u201d may just mean that part is unreadable.",
   "an.srcTitle": "Instruction sources",
   "an.srcCount": "· {n} sources",
@@ -2791,6 +2794,7 @@ ja: {
   "an.tier.A": "思考チェーンあり", "an.tier.B": "思考チェーンなし",
   "an.tier.C": "思考は上流で暗号化",
   "an.tierStats": "{steps} ステップ · うち思考あり {think} · 計 {chars} 文字 · {model}",
+  "an.tierStatsNoPlain": "{steps} ステップ · うち {think} に思考ブロックあり、ただし平文は返らず（署名のみ）· {model}",
   "an.partialRedacted": "注意：一部の思考は上流で暗号化され読めません。「X を検討しなかった」は、単にその部分が読めないだけの可能性があります。",
   "an.srcTitle": "指示ソース一覧",
   "an.srcCount": "· {n} 箇所",
@@ -3145,6 +3149,7 @@ function setTheme(theme, announce=true){
   }catch(e){}
   syncThemePicker();
   if(S.view === "dag") loadDag();  /* 泳道色板随主题变化，重新取现有数据并重绘。 */
+  anTrajTheme(theme);  /* 八视图子页的颜色是取值内联进 SVG 的，必须让它重渲一遍 */
   if(announce) toast(t18("toast.themeChanged", {name:t18("theme." + theme)}));
 }
 function toggleSwitch(btn){
@@ -6186,7 +6191,11 @@ function renderRec(d, sources){
   const tierCls = av.tier === "A" ? "ok" : (av.tier === "C" ? "warn" : "warn");
   h += '<div class="card an-tier ' + tierCls + '"><b>' + t18("an.tier." + (av.tier || "B")) + '</b>' +
     (av.reason ? '<div class="an-hint">' + esc(av.reason) + '</div>' : "") +
-    '<div class="an-counts">' + t18("an.tierStats", {
+    /* 「26 步有思考 · 共 0 字」是句自相矛盾的话：块确实在，只是上游（经网关的 GLM）
+       只回签名不回明文。两种情况分开说，别让用户以为是这边把字弄丢了。 */
+    '<div class="an-counts">' + t18(
+      ((av.steps_with_thinking || 0) > 0 && !(av.thinking_chars || 0))
+        ? "an.tierStatsNoPlain" : "an.tierStats", {
       steps: av.steps || 0, think: av.steps_with_thinking || 0,
       chars: fmtTok(av.thinking_chars || 0), model: esc(av.model || "?")}) + '</div>' +
     (av.partial_redacted ? '<div class="an-hint">' + t18("an.partialRedacted") + '</div>' : "") +
@@ -6540,16 +6549,57 @@ function anTrajHtml(){
   if(!AN.recSid) return "";
   if(AN.trajError) return '<div class="err-card">' +
     esc(t18("an.trajLoadFailed", {msg: AN.trajError})) + '</div>';
+  /* 外观随 URL 一起交给子页：首屏就是对的颜色，不会先闪一下深色。
+     之后切外观走 anTrajTheme()——**不能重新 load**，payload 内嵌在那份 HTML 里，
+     reload 等于让服务端重算一遍（~20s）。 */
   return '<div class="an-traj"><iframe src="/api/snapshots/' + encodeURIComponent(AN.recSid) +
-    '/trajectory?format=html" title="' + esc(t18("an.viewTree")) +
+    '/trajectory?format=html&embed=1&theme=' + encodeURIComponent(currentTheme()) +
+    '" title="' + esc(t18("an.viewTree")) +
     '" onload="anTrajCheck(this)"></iframe></div>';
 }
-/* 错误页也是一次 load：同源 iframe 读得到内容，没渲染出八视图导航（#nav）
-   就是后端回了 JSON 错误——裸 JSON 留在 iframe 里没人读得懂，换成人话错误卡。 */
+function anTrajFrame(){ return document.querySelector(".an-traj iframe"); }
+/* 把当前外观推给八视图子页（同源直调，postMessage 兜底） */
+function anTrajTheme(t){
+  const f = anTrajFrame(); if(!f) return;
+  try{
+    if(f.contentWindow && f.contentWindow.ccwaTrajTheme){ f.contentWindow.ccwaTrajTheme(t); return; }
+  }catch(e){}
+  try{ f.contentWindow.postMessage({t: "ccwa-traj-theme", theme: t}, "*"); }catch(e){}
+}
+/* 嵌入桥（父页这半边）：收子页报来的高度 → 设 iframe 高（消灭第二条滚动条）；
+   把**可视区**（相对子页文档的 top/height）喂回去 → 子页据此定位钻取抽屉与画布高度。 */
+function anTrajViewport(){
+  const f = anTrajFrame(); if(!f) return;
+  const r = f.getBoundingClientRect();
+  /* 可视区的上沿不是 0，是**吸顶头部的下沿**——否则子页的抽屉会顶到头部底下，
+     标题栏与关闭按钮被盖住（真机可见）。 */
+  const hd = document.querySelector(".app-header");
+  const topEdge = hd ? hd.getBoundingClientRect().bottom : 0;
+  const vis = Math.max(r.top, topEdge);
+  const top = Math.max(0, vis - r.top);
+  const height = Math.max(0, Math.min(r.bottom, innerHeight) - vis);
+  if(!height) return;
+  try{ f.contentWindow.postMessage({t: "ccwa-traj-viewport", top: top, height: height}, "*"); }catch(e){}
+}
+window.addEventListener("message", function(e){
+  const d = e.data || {};
+  if(d.t === "ccwa-traj-height"){
+    const f = anTrajFrame();
+    if(f && d.h > 0){ f.style.height = Math.max(420, d.h) + "px"; anTrajViewport(); }
+  }else if(d.t === "ccwa-traj-top"){
+    const f = anTrajFrame();
+    if(f) f.scrollIntoView({behavior: "smooth", block: "start"});
+  }
+});
+window.addEventListener("scroll", anTrajViewport, {passive: true});
+window.addEventListener("resize", anTrajViewport);
+/* 错误页也是一次 load：同源 iframe 读得到内容。#nav 是八视图、#trajerr 是后端出的
+   同款外观错误页（当日数据已归档之类），两者都算渲染成功；都没有才说明回的是裸 JSON，
+   那种东西留在 iframe 里没人读得懂，换成人话错误卡。 */
 function anTrajCheck(f){
   try{
     const doc = f.contentDocument;
-    if(!doc || doc.getElementById("nav")) return;
+    if(!doc || doc.getElementById("nav") || doc.getElementById("trajerr")) return;
     const txt = (doc.body && doc.body.innerText || "").slice(0, 400);
     try{ AN.trajError = JSON.parse(txt).error || txt; }
     catch(e){ AN.trajError = txt; }

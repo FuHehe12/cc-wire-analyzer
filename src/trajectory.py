@@ -25,6 +25,11 @@ import capture_store
 import classifier
 import snapshot_extract as SE
 
+try:                       # 与 app.py 同一条取版本的路子（打包/源码两种形态都能取到）
+    from _version import VERSION
+except Exception:          # pragma: no cover
+    VERSION = "dev"
+
 _V = os.environ.get("CCWA_TRAJ_VERBOSE") == "1"
 
 
@@ -735,9 +740,15 @@ def build_factors(mains, subs, secs, others, _sid, _date):
                          "other": len(others)},
             "union": {"steps": len(steps), "actions": len(actions), "nodes": len(nodes),
                       "thinking_blocks": sum(1 for s in steps if s["thinking"].strip()),
-                      "results": len(results)},
+                      "results": len(results),
+                      # 「并集比单条最长请求多捞回多少」要算出来。此前页脚写死 190——
+                      # 那是原型那条录制的数，换一条录制就是一句假话。
+                      "longest_actions": max(
+                          (sum(1 for _r, _bl in _msg_iter(rec) for _b in _bl
+                               if _b.get("type") == "tool_use")
+                           for _t, rec, _i, _k in mains), default=0)},
             "compact_at": compact_summary_at,
-            "generated_by": "build_factors.py",
+            "generated_by": f"cc-wire-analyzer {VERSION}",
         },
         "nodes": [{k: v for k, v in n.items() if k != "acts"} | {
             "acts": [{kk: vv for kk, vv in a.items() if kk not in ("prompt",)} for a in n["acts"]]}
@@ -1099,7 +1110,11 @@ def compute(sid: str, rec: dict, semantic: dict | None = None) -> dict:
     _attach_phase_facts(F, ph_cache)   # 事实格程序算完盖掉（两条路径统一走这里）
     F["phases"] = ph_cache
     F["phase_meta"] = {"source": "model" if not degraded else "fallback",
-                       "candidates": len(F.get("candidates") or [])}
+                       "candidates": len(F.get("candidates") or []),
+                       # 语义层管线自己记了耗时（semantic.meta.seconds）。此前页脚读的是
+                       # 一个根本不存在的字段，于是每条录制的页脚都写着「undefined 秒」。
+                       "seconds": ((sem.get("meta") or {}).get("seconds")
+                                   if isinstance(sem.get("meta"), dict) else None)}
     briefs = sem.get("briefs") or {}
     for n in F["nodes"]:
         b = (briefs.get(f"main:{n['i']}") or briefs.get(str(n["i"]))
@@ -1422,128 +1437,230 @@ HTML = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>轨迹观测 · 八视图</title>
+<script>
+/* 外观与嵌入形态必须在首屏绘制前定下来，否则会先闪一下深色再变浅。
+   来源优先级：URL 参数（父页嵌入时带上）> cookie（独立打开时跟随主界面）> 深色。
+   cookie 与主界面同一把钥匙 ccwa_ui_theme——外观只属于 UI，绝不进后端 config.json。 */
+(function(){
+  var q=new URLSearchParams(location.search);
+  var ok={classic:1,dark:1,light:1}, t=q.get('theme')||'';
+  if(!ok[t]){
+    try{var m=document.cookie.match(/(?:^|;\s*)ccwa_ui_theme=([^;]+)/);
+        t=m?decodeURIComponent(m[1]):'';}catch(e){}
+  }
+  if(!ok[t]) t='dark';
+  var r=document.documentElement;
+  r.dataset.theme=t;
+  r.style.colorScheme=(t==='dark')?'dark':'light';
+  if(q.get('embed')==='1') r.dataset.embed='1';
+})();
+</script>
 <style>
+/* ===== 打包字体：与主界面同一份文件、同一套栈（均 SIL OFL，见根 LICENSE）=====
+   此前这页用的是系统字体栈（YaHei / Consolas），等于绕过了「字体打包进产物保证
+   跨平台视觉一致」这条前端约定——嵌在主界面里两套字形并排，一眼就是两个软件。 */
+@font-face{font-family:'Inter';src:url('/static/fonts/Inter.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url('/static/fonts/JetBrainsMono.ttf') format('truetype');font-weight:100 800;font-style:normal;font-display:swap}
+@font-face{font-family:'Noto Sans SC';src:url('/static/fonts/NotoSansSC.ttf') format('truetype');font-weight:100 900;font-style:normal;font-display:swap}
+
+/* ===== 主题无关 token（三套外观共用）=====
+   软底一律由基色 color-mix 派生：换外观只换基色，所有软底自动跟着换，
+   不用三份各写一遍——也就没有「改了深色忘了改浅色」这种腐化面。 */
+:root{
+  --mono:"JetBrains Mono","SF Mono",Menlo,"Courier New",monospace;
+  --body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;
+  --r:8px;--r2:12px;
+  --agent-t1:color-mix(in srgb,var(--agent) 7%,transparent);
+  --agent-t2:color-mix(in srgb,var(--agent) 15%,transparent);
+  --agent-t3:color-mix(in srgb,var(--agent) 32%,transparent);
+  --mat-t1:color-mix(in srgb,var(--material) 10%,transparent);
+  --mat-t2:color-mix(in srgb,var(--material) 45%,transparent);
+  --art-t1:color-mix(in srgb,var(--artifact) 12%,transparent);
+  --art-t2:color-mix(in srgb,var(--artifact) 40%,transparent);
+  --err-t1:color-mix(in srgb,var(--error) 9%,transparent);
+  --err-t2:color-mix(in srgb,var(--error) 38%,transparent);
+  --ok-t1:color-mix(in srgb,var(--ok) 12%,transparent);
+  --ok-t2:color-mix(in srgb,var(--ok) 45%,transparent);
+  --dele-t1:color-mix(in srgb,var(--dele) 12%,transparent);
+  --dele-t2:color-mix(in srgb,var(--dele) 42%,transparent);
+  --advance:var(--material);--verify:var(--ok);
+}
+/* ===== 深色（默认外观，取值与主界面 dark 同源：#131318 炭底 + 驼金）===== */
 :root{
   color-scheme:dark;
-  --void:#06121a;--deep:#0a1e28;--surf:#0d2731;--surf2:#113039;--panel:rgba(9,28,36,.96);
-  --line:#22424e;--line2:#173039;--ink:#e9f2f1;--muted:#8fa7ad;--dim:#66808a;
-  --agent:#3fc7b4;--agent2:#7fe3d5;--material:#f0a05a;--artifact:#ffd166;
-  --error:#e8604c;--focus:#6cb6ff;--dele:#c2a4ff;--ok:#5fd39a;--gap:#4e646d;
-  --advance:#ffd166;--perceive:#6ca8c2;--verify:#3fc7b4;--think:#6b7f87;
-  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;
-  --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
-  --body:"Noto Sans SC","Microsoft YaHei UI","Segoe UI",sans-serif;
-  --r:3px;
+  --void:#131318;--deep:#25252F;--surf:#1E1E26;--surf2:#2A2A35;
+  --sheet:rgba(19,19,24,.86);--grid:rgba(255,255,255,.10);
+  --panel:rgba(30,30,38,.97);--top-bg:rgba(19,19,24,.90);--tip-bg:rgba(30,30,38,.98);
+  --line:#2E2E38;--line2:#262630;
+  --ink:#F5F5F7;--muted:#C8C8D0;--dim:#9797A0;
+  --agent:#E8B855;--agent2:#F2D08C;
+  --material:#F0A05A;--artifact:#FBBF24;--error:#F87171;--ok:#4ADE80;
+  --focus:#60A5FA;--dele:#C2A4FF;--evid:#5FD3C0;--perceive:#7FB6D8;
+  --gap:#74747F;--think:#8A8A95;
+  --shadow-card:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.30);
+  --shadow-panel:0 16px 44px rgba(0,0,0,.55),0 6px 16px rgba(0,0,0,.40);
+  --canvas-pattern:none;--canvas-pattern-size:auto;
+}
+/* 经典暖灰 */
+html[data-theme="classic"]{
+  color-scheme:light;
+  --void:#DED8CC;--deep:#F4F2EF;--surf:#FFFFFF;--surf2:#FBFAF8;
+  --sheet:#FFFFFF;--grid:rgba(91,72,45,.22);
+  --panel:rgba(255,255,255,.98);--top-bg:rgba(255,255,255,.90);--tip-bg:rgba(255,255,255,.99);
+  --line:#E1DBD0;--line2:#EDE7DC;
+  --ink:#1A1A1A;--muted:#5C564C;--dim:#5E5748;
+  --agent:#C98A25;--agent2:#6B4A12;
+  --material:#A9591A;--artifact:#6D5016;--error:#A83C2A;--ok:#356A2B;
+  --focus:#2B5488;--dele:#61409A;--evid:#1F6F7A;--perceive:#356585;
+  --gap:#6E675C;--think:#6E675C;
+  --shadow-card:0 3px 12px rgba(45,35,20,.08),0 1px 3px rgba(45,35,20,.07);
+  --shadow-panel:0 14px 36px rgba(45,35,20,.14),0 4px 10px rgba(45,35,20,.10);
+  --canvas-pattern:none;--canvas-pattern-size:auto;
+}
+/* 实验室日光：与主界面同一块冷矿物纸面，连 24px 网格都保留——嵌进去才不像贴片 */
+html[data-theme="light"]{
+  color-scheme:light;
+  --void:#E8EEF0;--deep:#EDF3F5;--surf:#FFFFFF;--surf2:#F7FAFB;
+  --sheet:#FFFFFF;--grid:rgba(55,85,96,.22);
+  --panel:rgba(255,255,255,.98);--top-bg:rgba(247,250,251,.90);--tip-bg:rgba(255,255,255,.99);
+  --line:#C7D4D9;--line2:#DEE7EA;
+  --ink:#17212B;--muted:#3D4C57;--dim:#46545D;
+  --agent:#1E6972;--agent2:#12474E;
+  --material:#9C5518;--artifact:#7A5B13;--error:#A93635;--ok:#237A53;
+  --focus:#1F5490;--dele:#5C3E96;--evid:#0E6F84;--perceive:#31627E;
+  --gap:#5F6E77;--think:#5F6E77;
+  --shadow-card:0 8px 22px rgba(31,57,66,.11),0 2px 6px rgba(31,57,66,.07);
+  --shadow-panel:0 18px 42px rgba(31,57,66,.17),0 6px 14px rgba(31,57,66,.09);
+  --canvas-pattern:
+    linear-gradient(rgba(30,105,114,0.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,105,114,0.045) 1px,transparent 1px);
+  --canvas-pattern-size:24px 24px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--void);color:var(--ink);font-family:var(--body);
   -webkit-font-smoothing:antialiased}
-body{background:
-   radial-gradient(1200px 600px at 78% -8%,rgba(63,199,180,.10),transparent 60%),
-   radial-gradient(900px 500px at 8% 4%,rgba(108,182,255,.07),transparent 55%),var(--void);
+body{background-image:var(--canvas-pattern);background-size:var(--canvas-pattern-size);
   padding-bottom:var(--s7)}
 button{font:inherit;color:inherit;background:none;border:0}
-::selection{background:rgba(63,199,180,.3)}
+::selection{background:var(--agent-t3)}
+/* ── 嵌入模式：母体画布透出来，不再是「页中页」 ──
+   背景透明 + 去掉自己的 sticky 顶栏 + 高度交给父页（见页尾 embed 桥）， */
+html[data-embed="1"],html[data-embed="1"] body{background:transparent}
+html[data-embed="1"] body{padding-bottom:var(--s4)}
+html[data-embed="1"] .top{position:static;height:auto;padding:0 0 var(--s3);
+  border-bottom:1px solid var(--line2);background:transparent;backdrop-filter:none}
+html[data-embed="1"] .brand b{display:none}
+html[data-embed="1"] .view{padding:var(--s4) 0 0}
+html[data-embed="1"] footer.foot{margin-left:0;margin-right:0}
 /* ── 顶栏 ── */
 .top{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:var(--s4);
   padding:0 var(--s4);height:54px;border-bottom:1px solid var(--line);
-  background:rgba(5,15,21,.94);backdrop-filter:blur(10px)}
-.brand{display:flex;align-items:baseline;gap:10px;flex-shrink:0}
+  background:var(--top-bg);backdrop-filter:blur(10px)}
+.brand{display:flex;align-items:baseline;gap:10px;flex-shrink:0;min-width:0}
 .brand b{font-family:var(--mono);font-size:12.5px;letter-spacing:.12em}
-.brand span{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.08em}
-nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
-.tab{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;padding:7px 12px;
-  border:1px solid transparent;cursor:pointer;color:var(--muted);transition:.13s}
-.tab:hover{color:var(--ink);background:rgba(63,199,180,.07)}
-.tab[aria-selected="true"]{color:#bff0e7;border-color:var(--agent);
-  background:linear-gradient(180deg,rgba(63,199,180,.20),rgba(63,199,180,.07))}
+.brand span{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.06em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 单行不折：宽度不够就横向滚，绝不把导航折成两行（嵌入时宽度比独立打开窄） */
+nav{display:flex;gap:2px;margin-left:auto;flex-wrap:nowrap;overflow-x:auto;
+  scrollbar-width:none;justify-content:flex-end}
+nav::-webkit-scrollbar{display:none}
+.tab{font-family:var(--mono);font-size:11px;letter-spacing:.03em;padding:6px 11px;
+  border:1px solid transparent;border-radius:var(--r);cursor:pointer;color:var(--muted);
+  transition:.13s;white-space:nowrap;flex-shrink:0}
+.tab:hover{color:var(--ink);background:var(--agent-t1)}
+.tab[aria-selected="true"]{color:var(--agent2);border-color:var(--agent-t3);
+  background:var(--agent-t2)}
 .tab i{font-style:normal;color:var(--dim);margin-right:6px}
-.tab[aria-selected="true"] i{color:var(--agent)}
+.tab[aria-selected="true"] i{color:var(--agent2)}
 /* ── 视图头 ── */
 .view{display:none;padding:var(--s5) var(--s5) 0;max-width:1760px}
 /* V7/V8 全高画布：SVG 必须显式 width/height 100%（inset:0 对替换元素不生效，
    这是第九代整页空白的教训） */
-.zstage{position:relative;height:calc(100vh - 168px);min-height:540px;margin-top:var(--s4);
- border:1px solid var(--line);border-radius:10px;overflow:hidden;
- background:radial-gradient(1100px 480px at 72% -8%,rgba(63,199,180,.07),transparent 60%),var(--void)}
+.zstage{position:relative;height:var(--stage-h,calc(100vh - 168px));min-height:420px;margin-top:var(--s4);
+ border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;
+ background:radial-gradient(1100px 480px at 72% -8%,var(--agent-t1),transparent 60%),var(--surf2)}
 .zscene{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
 .zscene.pan{cursor:grabbing}
 .zbar{position:absolute;top:10px;right:12px;display:flex;gap:6px;z-index:5}
 .zbtn{border:1px solid var(--line);padding:4px 9px;cursor:pointer;font-family:var(--mono);
- font-size:9.5px;background:rgba(9,28,36,.9);color:var(--muted)}
+ font-size:10.5px;background:var(--surf);color:var(--muted)}
 .zbtn:hover{border-color:var(--agent);color:var(--ink)}
-.zbtn[aria-pressed="true"]{background:rgba(63,199,180,.18);border-color:var(--agent);color:#bff0e7}
+.zbtn[aria-pressed="true"]{background:var(--agent-t2);border-color:var(--agent);color:var(--agent2)}
 /* V8 画布常驻统计/图例（原时序图形态：全览时也在画布角落） */
 .zstats{position:absolute;top:46px;right:12px;display:flex;gap:6px;z-index:4;
  pointer-events:none;flex-wrap:wrap;justify-content:flex-end;max-width:58%}
-.zstats .st{border:1px solid var(--line);background:rgba(9,28,36,.85);padding:5px 9px;text-align:right}
+.zstats .st{border:1px solid var(--line);background:var(--surf);padding:5px 9px;text-align:right}
 .zstats .st b{display:block;font-family:var(--mono);font-size:13px}
-.zstats .st span{font-family:var(--mono);font-size:8.5px;color:var(--dim)}
+.zstats .st span{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
 .zstats .st.bad b{color:var(--error)}.zstats .st.ok b{color:var(--ok)}
 .zstats .st.warn b{color:var(--artifact)}.zstats .st.dele b{color:var(--dele)}
 .zlegend{position:absolute;right:14px;bottom:34px;z-index:4;display:flex;flex-direction:column;gap:3px;
- font-family:var(--mono);font-size:9px;color:var(--muted);pointer-events:none;
- background:rgba(6,18,24,.72);border:1px solid var(--line2);padding:8px 10px;max-width:240px}
+ font-family:var(--mono);font-size:10px;color:var(--muted);pointer-events:none;
+ background:var(--surf);border:1px solid var(--line2);padding:8px 10px;max-width:240px}
 /* V7 STATE A/B 起终点面板（原 2D 版解释层） */
 .s7ab{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:var(--s3) 0}
 .s7ab .sb{border:1px solid var(--line);border-radius:8px;padding:10px 13px;background:var(--deep)}
-.s7ab h4{margin:0 0 6px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--agent)}
+.s7ab h4{margin:0 0 6px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--agent2)}
 .s7ab .s7g{margin:0 0 8px;font-size:12px;color:var(--ink);line-height:1.55}
 .s7c{display:inline-flex;flex-direction:column;border:1px solid var(--line2);border-radius:5px;
- padding:4px 9px;margin:0 6px 6px 0;background:rgba(6,18,24,.5)}
+ padding:4px 9px;margin:0 6px 6px 0;background:var(--surf2)}
 .s7c b{font-family:var(--mono);font-size:13px;color:var(--muted)}
 .s7c.ok b{color:var(--ok)} .s7c.bad b{color:var(--error)}
 .s7f{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
-.s7f span{font-family:var(--mono);font-size:9px;color:var(--muted);border:1px solid var(--line2);
+.s7f span{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--line2);
  padding:2px 7px;border-radius:4px}
-.s7f.warn span{border-color:rgba(232,96,76,.45);color:#f3a396}
+.s7f.warn span{border-color:var(--err-t2);color:var(--error)}
 .zhint{position:absolute;left:14px;bottom:10px;z-index:5;color:var(--dim);font-family:var(--mono);
- font-size:9px;pointer-events:none}
-.zmm{position:absolute;left:14px;bottom:30px;z-index:5;background:rgba(5,18,23,.86);
- border:1px solid var(--line);padding:3px 5px;cursor:pointer}
+ font-size:10px;pointer-events:none}
+.zmm{position:absolute;left:14px;bottom:30px;z-index:5;background:var(--panel);
+ border:1px solid var(--line);border-radius:var(--r);padding:4px;cursor:pointer;
+ box-shadow:var(--shadow-card);opacity:.92}
+.zmm:hover{opacity:1}
 text{font-family:var(--mono)}
 .view.on{display:block}
-.eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--agent);
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--agent2);
   text-transform:uppercase}
 h1{font-size:24px;line-height:1.15;margin:7px 0 9px;font-weight:660;letter-spacing:-.01em}
 .lede{margin:0;color:var(--muted);font-size:12.5px;line-height:1.7;max-width:1000px}
 .lede b{color:var(--ink);font-weight:600}
 .lede code{font-family:var(--mono);font-size:11.5px;color:var(--artifact)}
 .stats{display:flex;flex-wrap:wrap;gap:var(--s2);margin:var(--s4) 0 var(--s5)}
-.stat{border:1px solid var(--line);background:linear-gradient(180deg,var(--surf),rgba(10,30,40,.4));
+.stat{border:1px solid var(--line);border-radius:var(--r);
+  background-color:var(--surf);background-image:linear-gradient(180deg,var(--surf),var(--surf2));
   padding:9px 13px;min-width:104px}
 .stat .v{font-family:var(--mono);font-size:17px;line-height:1.1;color:var(--ink)}
-.stat .k{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.06em;margin-top:3px}
+.stat .k{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.06em;margin-top:3px}
 .stat.warn .v{color:var(--artifact)} .stat.bad .v{color:var(--error)} .stat.ok .v{color:var(--ok)}
 .note{border-left:2px solid var(--artifact);padding:2px 0 2px 10px;margin:var(--s3) 0 0;
   font-family:var(--mono);font-size:10.5px;line-height:1.6;color:var(--artifact);max-width:1000px}
-.sub{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.06em;
+.sub{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.06em;
   margin:var(--s5) 0 var(--s2);text-transform:uppercase}
 /* ── 通用图容器 ── */
-.frame{border:1px solid var(--line);background:rgba(8,24,31,.5);margin-bottom:var(--s4)}
+.frame{border:1px solid var(--line);background:var(--surf);margin-bottom:var(--s4)}
 .scroll{overflow-x:auto}
 .scroll::-webkit-scrollbar{height:9px}
-.scroll::-webkit-scrollbar-thumb{background:#1b3d48;border:2px solid var(--void)}
+.scroll::-webkit-scrollbar-thumb{background:var(--line);border:2px solid var(--void)}
 svg{display:block}
 text{font-family:var(--mono);fill:var(--muted)}
 /* ── V1 快照卡 ── */
-.snap.sel{border-color:var(--agent);box-shadow:0 0 0 1px var(--agent),0 12px 30px rgba(0,0,0,.45)}
+.snap.sel{border-color:var(--agent);box-shadow:0 0 0 1px var(--agent),var(--shadow-card)}
 .drillwrap{padding:0 var(--s3) var(--s2)}
 .drill{border:1px solid var(--agent);border-left:3px solid var(--agent);background:var(--deep);
   border-radius:6px;overflow:hidden;animation:drillin .18s ease-out}
 @keyframes drillin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .drill>header{display:flex;justify-content:space-between;align-items:center;gap:12px;
-  padding:10px 14px;border-bottom:1px solid var(--line);background:rgba(63,199,180,.06)}
+  padding:10px 14px;border-bottom:1px solid var(--line);background:var(--agent-t1)}
 .drill>header b{font-size:14px}
-.drill>header span{display:block;font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:3px}
+.drill>header span{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
 /* 节点横向流：N51→N52 从左到右（**左右视图**），每块底部色条=类别（一眼区分推进）；
    点块在下方展开证据 */
 .nflow{display:flex;flex-wrap:wrap;gap:7px;padding:12px 14px}
 .ditem{flex:0 0 auto;width:158px;padding:5px 9px 7px;cursor:pointer;
  border:1px solid var(--line2);border-bottom:4px solid var(--dim);border-radius:5px;
- background:rgba(6,18,24,.45)}
+ background:var(--surf2)}
 .ditem:hover{border-color:var(--agent);transform:translateY(-1px)}
-.ditem.sel{border-color:var(--agent);background:rgba(63,199,180,.10);
+.ditem.sel{border-color:var(--agent);background:var(--agent-t2);
  box-shadow:0 0 0 1px var(--agent)}
 .ditem[data-k="advance"]{border-bottom-color:var(--material)}
 .ditem[data-k="verify"]{border-bottom-color:var(--ok)}
@@ -1551,87 +1668,89 @@ text{font-family:var(--mono);fill:var(--muted)}
 .ditem[data-k="delegate"]{border-bottom-color:var(--dele)}
 .ditem[data-k="think"]{border-bottom-color:var(--dim)}
 .drow1{display:flex;align-items:baseline;gap:7px}
-.drow2{font-size:11px;color:var(--ink);line-height:1.45;margin-top:2px;
+.drow2{font-size:11.5px;color:var(--ink);line-height:1.45;margin-top:2px;
  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.dch{display:block;font-family:var(--mono);font-size:8.5px;color:var(--artifact);
+.dch{display:block;font-family:var(--mono);font-size:10px;color:var(--artifact);
  margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nt{font-family:var(--mono);font-size:10.5px;color:var(--focus);flex-shrink:0}
-.nts{font-family:var(--mono);font-size:9px;color:var(--dim);flex-shrink:0}
+.nts{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex-shrink:0}
 .nerr{color:var(--error);font-size:11px}
-.nout{font-family:var(--mono);font-size:8.5px;color:var(--dim);margin-left:auto}
+.nout{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-left:auto}
 .ddetail{max-height:520px;overflow-y:auto;padding:12px 16px;border-top:1px solid var(--line)}
 .ddh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;
  border-bottom:1px solid var(--line2);padding-bottom:8px}
 .ddh .dn{font-family:var(--mono);font-size:12px;color:var(--focus)}
 .ddh .db{font-size:12.5px;color:var(--ink);flex:1;min-width:200px}
-.dlegend{display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:9px;
+.dlegend{display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;
  color:var(--muted);margin-top:5px}
 .dlegend i{display:inline-block;width:14px;height:4px;margin-right:5px;vertical-align:2px}
-.actd{border:1px solid var(--line2);border-radius:4px;margin:4px 0;background:rgba(6,18,24,.5)}
+.actd{border:1px solid var(--line2);border-radius:4px;margin:4px 0;background:var(--surf2)}
 .actd summary{display:flex;gap:10px;align-items:baseline;padding:5px 10px;cursor:pointer;
   font-family:var(--mono);font-size:10px;color:var(--muted);list-style:none}
 .actd summary::-webkit-details-marker{display:none}
-.actd summary::before{content:'▸';color:var(--agent)}
+.actd summary::before{content:'▸';color:var(--agent2)}
 .actd[open] summary::before{content:'▾'}
 .actd summary:hover{color:var(--ink)}
-.actd .ai{color:var(--agent);min-width:30px}
+.actd .ai{color:var(--agent2);min-width:30px}
 .actd .at{color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .actd .ae{color:var(--error)}
 .actd .al{color:var(--dim)}
 .actd pre{margin:0;border-top:1px solid var(--line2)}
 .snaps{display:flex;gap:0;overflow-x:auto;padding:var(--s3);align-items:stretch}
 .snapcol{display:flex;align-items:stretch;flex:0 0 auto}
-.snap{flex:0 0 320px;width:320px;min-width:0;border:1px solid var(--line);background:linear-gradient(180deg,var(--surf),rgba(9,26,34,.55));
+.snap{flex:0 0 320px;width:320px;min-width:0;border:1px solid var(--line);
+  background-color:var(--surf);background-image:linear-gradient(180deg,var(--surf),var(--surf2));
   display:flex;flex-direction:column;cursor:pointer;transition:.14s}
 .snap:hover{border-color:var(--agent);transform:translateY(-2px)}
 .snap header{padding:10px 12px;border-bottom:1px solid var(--line2);display:flex;
   justify-content:space-between;align-items:baseline;gap:8px}
 .snap header b{font-size:13.5px;font-weight:640}
-.snap header span{font-family:var(--mono);font-size:9px;color:var(--dim);white-space:nowrap}
+.snap header span{font-family:var(--mono);font-size:10.5px;color:var(--dim);white-space:nowrap}
 .states{padding:9px 12px;border-bottom:1px solid var(--line2);font-size:11px;line-height:1.55}
 .states .from{color:var(--dim)} .states .to{color:var(--ink)}
-.states .arr{color:var(--agent);margin:0 5px}
+.states .arr{color:var(--agent2);margin:0 5px}
 .grid8{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line2);flex:1;min-width:0}
 .cell{background:var(--surf);padding:8px 10px;min-height:62px;min-width:0;overflow:hidden}
-.cell h5{margin:0 0 5px;font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;
+.cell h5{margin:0 0 5px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
   color:var(--dim);display:flex;align-items:center;gap:5px}
-.cell h5 em{font-style:normal;font-size:7.5px;padding:1px 4px;border:1px solid var(--line);color:var(--dim)}
-.cell.sem h5{color:var(--agent2)} .cell.fact h5{color:var(--material)}
-.cell li{font-size:10.5px;line-height:1.5;color:var(--ink);list-style:none;margin:0 0 2px;
-  padding-left:9px;position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell h5 em{font-style:normal;font-size:9px;padding:1px 4px;border:1px solid var(--line);color:var(--dim)}
+.cell.sem h5{color:var(--agent2)} .cell.fact h5{color:var(--focus)}
+.cell li{font-size:11.5px;line-height:1.5;color:var(--ink);list-style:none;margin:0 0 3px;
+  padding-left:9px;position:relative;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .cell li:before{content:"·";position:absolute;left:1px;color:var(--dim)}
 .cell ul{margin:0;padding:0}
-.cell .empty{font-size:10px;color:var(--dim)}
+.cell .empty{font-size:10.5px;color:var(--dim)}
 .snap footer{padding:7px 12px;border-top:1px solid var(--line2);display:flex;gap:10px;
-  font-family:var(--mono);font-size:9px;color:var(--dim);flex-wrap:wrap}
+  font-family:var(--mono);font-size:10.5px;color:var(--dim);flex-wrap:wrap}
 .diff{flex:0 0 78px;width:78px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:4px;font-family:var(--mono);font-size:9px;color:var(--dim);flex-shrink:0}
+  gap:4px;font-family:var(--mono);font-size:10.5px;color:var(--dim);flex-shrink:0}
 .diff .line{width:100%;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent)}
 .diff .up{color:var(--artifact)} .diff .down{color:var(--ok)} .diff .err{color:var(--error)}
 /* ── V3 验证矩阵 ── */
-table{border-collapse:collapse;width:100%;font-size:11.5px}
-th{font-family:var(--mono);font-size:9px;letter-spacing:.07em;color:var(--dim);text-align:left;
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.07em;color:var(--dim);text-align:left;
   padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
-  background:rgba(7,20,27,.97)}
+  background:var(--surf)}
 td{padding:7px 10px;border-bottom:1px solid var(--line2);vertical-align:middle}
-tr:hover td{background:rgba(63,199,180,.05)}
+tr:hover td{background:var(--agent-t1)}
 .lv{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px}
 .lvbar{display:flex;gap:2px}
 .lvbar i{width:12px;height:9px;background:var(--line);display:block}
 .lvbar i.on{background:var(--agent)}
 .lvbar i.on0{background:var(--error)}
-.mono{font-family:var(--mono);font-size:10.5px}
-.tag{display:inline-block;font-family:var(--mono);font-size:9px;padding:1px 6px;border:1px solid var(--line);
+.mono{font-family:var(--mono);font-size:11.5px}
+.tag{display:inline-block;font-family:var(--mono);font-size:10px;padding:1px 6px;border:1px solid var(--line);
   color:var(--muted);margin-right:4px}
-.tag.bad{border-color:rgba(232,96,76,.55);color:#f3a396}
-.tag.warn{border-color:rgba(255,209,102,.5);color:var(--artifact)}
-.tag.ok{border-color:rgba(95,211,154,.5);color:var(--ok)}
+.tag.bad{border-color:var(--err-t2);color:var(--error)}
+.tag.warn{border-color:var(--art-t2);color:var(--artifact)}
+.tag.ok{border-color:var(--ok-t2);color:var(--ok)}
 /* ── V4 阀门 ── */
 .lanes{padding:var(--s3) 0}
 .lane{display:grid;grid-template-columns:120px 1fr;align-items:center;
   border-bottom:1px solid var(--line2)}
 .lane .nm{font-family:var(--mono);font-size:10px;color:var(--muted);padding:0 10px}
-.blocked{border:1px solid rgba(232,96,76,.4);background:rgba(232,96,76,.07);padding:var(--s3);
+.blocked{border:1px solid var(--err-t2);background:var(--err-t1);padding:var(--s3);
   margin-bottom:var(--s3)}
 .blocked ol{margin:6px 0 0;padding-left:20px}
 .blocked li{font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--ink)}
@@ -1639,39 +1758,45 @@ tr:hover td{background:rgba(63,199,180,.05)}
 /* ── 侧栏 ── */
 #panel{position:fixed;top:62px;right:12px;bottom:12px;width:430px;max-width:calc(100% - 24px);
   background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--agent);
-  backdrop-filter:blur(16px);overflow-y:auto;z-index:70;display:none;
-  box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  border-radius:var(--r2);backdrop-filter:blur(16px);overflow-y:auto;z-index:70;display:none;
+  box-shadow:var(--shadow-panel)}
+/* 嵌入时页面自己不滚（高度=内容高度），fixed 会把抽屉钉在文档顶端。
+   改成 absolute + 父页喂来的可视区，抽屉才像原生抽屉一样浮在眼前那一屏。 */
+html[data-embed="1"] #panel{position:absolute;top:var(--panel-top,12px);bottom:auto;
+  height:auto;max-height:var(--panel-h,70vh)}   /* 内容短就短，别撑成一根空柱子 */
 #panel.open{display:block}
 .phead{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;
-  border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(8,24,31,.98)}
-.pk{font-family:var(--mono);font-size:8.5px;color:var(--agent);letter-spacing:.09em;display:block}
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surf)}
+.pk{font-family:var(--mono);font-size:10px;color:var(--agent2);letter-spacing:.09em;display:block}
 .pt{margin:5px 0 0;font-size:15px;line-height:1.3}
 .pclose{border:1px solid var(--line);width:26px;height:26px;cursor:pointer;flex-shrink:0}
 .pclose:hover{border-color:var(--error);color:var(--error)}
 .pb{padding:12px 14px 24px;font-size:12px;line-height:1.65}
-.pb h4{margin:15px 0 6px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--agent)}
+.pb h4{margin:15px 0 6px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--agent2)}
 .pb h4:first-child{margin-top:0}
 .kv{display:grid;grid-template-columns:80px 1fr;gap:3px 10px;font-size:11px}
-.kv dt{color:var(--dim);font-family:var(--mono);font-size:9.5px}
+.kv dt{color:var(--dim);font-family:var(--mono);font-size:10.5px}
 .kv dd{margin:0}
-.ev{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(23,48,57,.7);
-  font-family:var(--mono);font-size:10.5px}
+.ev{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--line2);
+  font-family:var(--mono);font-size:11.5px}
 .ev .i{color:var(--dim);width:44px;flex-shrink:0}
 .ev .r{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .jump{border:1px solid var(--line);padding:3px 8px;cursor:pointer;font-family:var(--mono);
-  font-size:9.5px;margin:5px 5px 0 0}
+  font-size:10.5px;margin:5px 5px 0 0}
 .jump:hover{border-color:var(--agent)}
-pre.raw{font-family:var(--mono);font-size:10.5px;line-height:1.6;white-space:pre-wrap;
+pre.raw{font-family:var(--mono);font-size:11.5px;line-height:1.6;white-space:pre-wrap;
   word-break:break-word;color:var(--muted);margin:0;max-height:230px;overflow:auto}
 /* ── tooltip ── */
-.tip{position:fixed;z-index:90;pointer-events:none;background:rgba(5,17,23,.98);
+.tip{position:fixed;z-index:90;pointer-events:none;background:var(--tip-bg);
   border:1px solid var(--agent);padding:7px 9px;font-family:var(--mono);font-size:10px;
-  line-height:1.6;max-width:340px;display:none;box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  line-height:1.6;max-width:340px;display:none;box-shadow:var(--shadow-card)}
 .tip b{color:var(--artifact)}
-.legend{display:flex;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:9.5px;
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:10.5px;
   color:var(--muted);margin:var(--s3) 0}
-.legend i{display:inline-block;width:9px;height:9px;margin-right:5px;vertical-align:-1px}
-footer.foot{margin:var(--s6) var(--s5) 0;color:var(--dim);font-family:var(--mono);font-size:9.5px;
+.legend i,.zlegend i{display:inline-block;width:9px;height:9px;margin-right:5px;
+  vertical-align:-1px;border-radius:2px;flex-shrink:0}
+.zlegend span{display:flex;align-items:center}
+footer.foot{margin:var(--s6) var(--s5) 0;color:var(--dim);font-family:var(--mono);font-size:10.5px;
   line-height:1.8;max-width:1100px;border-top:1px solid var(--line2);padding-top:var(--s3)}
 </style></head>
 <body>
@@ -1700,6 +1825,24 @@ const D = JSON.parse(document.getElementById('data').textContent);
 const N = D.nodes.length, PH = D.phases;
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+/* SVG 的**呈现属性不解析 var()**（Chrome/WebView2 既有限制，写进去既不报错也不生效），
+   所以画布上的颜色一律在 JS 里取值：实色走 cssv()，软底走 tint(基色, alpha)。
+   反过来说，颜色是被**取值内联**进 DOM 的——换外观必须整页重渲才会跟着变。 */
+function tint(name,a){
+  const c=cssv(name);
+  if(c.charAt(0)==='#'){
+    const h=c.slice(1), n6=h.length===3?h[0]+h[0]+h[1]+h[1]+h[2]+h[2]:h.slice(0,6);
+    const v=parseInt(n6,16);
+    return 'rgba('+((v>>16)&255)+','+((v>>8)&255)+','+(v&255)+','+a+')';
+  }
+  const m=c.match(/-?[\d.]+/g);
+  return (m&&m.length>=3)?'rgba('+m[0]+','+m[1]+','+m[2]+','+a+')':c;
+}
+/* 嵌入桥：本页在主界面里是 iframe。高度报给父页（父页照着设 iframe 高，
+   于是全页只剩一条滚动条），父页把**可视区**喂回来（用来定位钻取抽屉与画布高度，
+   否则 fixed 抽屉会钉在一张几千像素高的文档顶端、滚下去就看不见了）。 */
+const EMBED = document.documentElement.dataset.embed==='1';
+const VIEW = {top:0,height:0};
 const fmtS = s => s<60?s+'秒':s<3600?Math.round(s/60)+'分':(s/3600).toFixed(1)+'小时';
 const fmtN = n => n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n);
 const hhmm = t => t?t.slice(11,16):'—';
@@ -1717,8 +1860,11 @@ function h(tag,cls,html){const e=document.createElement(tag); if(cls)e.className
 const tipEl=document.getElementById('tip');
 function tip(e,html){tipEl.innerHTML=html;tipEl.style.display='block';
   const r=tipEl.getBoundingClientRect();
+  // 嵌入时 iframe 高度=内容高度、页面自己不滚，clientY 就是文档坐标；
+  // 下边界要按**父页的可视区**夹，否则提示框会掉到看不见的地方。
+  const bot=(EMBED&&VIEW.height)?(VIEW.top+VIEW.height):innerHeight;
   tipEl.style.left=Math.min(e.clientX+14,innerWidth-r.width-10)+'px';
-  tipEl.style.top=Math.min(e.clientY+14,innerHeight-r.height-10)+'px';}
+  tipEl.style.top=Math.max(8,Math.min(e.clientY+14,bot-r.height-10))+'px';}
 function hideTip(){tipEl.style.display='none';}
 function bind(node,html){node.addEventListener('mousemove',e=>tip(e,html));
   node.addEventListener('mouseleave',hideTip);}
@@ -1739,7 +1885,7 @@ function openNode(i){
   const n=D.nodes[i], p=phaseOf(i);
   const acts=n.acts.map(a=>'<div class="ev"><span class="i">'+(OPZH[a.op]||a.op)+'</span>'+
     '<span class="r" title="'+esc(a.digest)+'">'+esc(a.target||a.tool||'—')+
-    (a.error?' <span style="color:#e8604c">✖</span>':'')+(a.assertive?' <span style="color:#5fd39a">判定</span>':'')+
+    (a.error?' <span style="color:var(--error)">✖</span>':'')+(a.assertive?' <span style="color:var(--ok)">判定</span>':'')+
     '</span></div>').join('');
   open('N'+i+' · '+KINDZH[n.kind]+' · '+hhmm(n.ts)+' · '+p.id+' '+p.name, n.reply?n.reply.slice(0,40):('节点 '+i),
     '<dl class="kv"><dt>动作</dt><dd>'+n.acts.length+' 个</dd>'+
@@ -1779,6 +1925,7 @@ const VIEWS=[['v1','状态快照','世界变成了什么样'],['v2','物料血�
              ['v7','物料生命线','一件物料的一生与未验债'],
              ['v8','最优时序图','节点—连线的反事实时序']];
 const nav=document.getElementById('nav');
+let curView=0;
 VIEWS.forEach(([id,name,desc],k)=>{
   const b=h('button','tab','<i>V'+(k+1)+'</i>'+name);
   b.setAttribute('aria-selected', k===0?'true':'false');
@@ -1786,25 +1933,34 @@ VIEWS.forEach(([id,name,desc],k)=>{
   b.onclick=()=>{VIEWS.forEach(([i2],k2)=>{
       document.getElementById(i2).classList.toggle('on',k2===k);
       nav.children[k2].setAttribute('aria-selected',k2===k?'true':'false');});
+    curView=k;
     // **显示之后再画**：视图隐藏时 clientWidth 是 0，首屏一次性渲染会让所有图
     // 退到 900px 兜底宽度（实测 V5 只用了一半画布）。
     redrawView(k);
-    scrollTo({top:0,behavior:'smooth'});};
+    // 嵌入时自己滚不动（高度=内容高度），要请父页把这块滚到顶上
+    if(EMBED) parent.postMessage({t:'ccwa-traj-top'},'*');
+    else scrollTo({top:0,behavior:'smooth'});};
   nav.appendChild(b);
 });
 document.getElementById('bmeta').textContent =
   D.meta.sid+' · '+D.meta.union.actions+' 动作 · '+N+' 节点 · '+PH.length+' 阶段 · '+fmtS(D.meta.wall_seconds);
+const PM=D.phase_meta||{}, LONG=D.meta.union.longest_actions;
 document.getElementById('foot').innerHTML =
   '数据：会话 '+D.meta.sid+'（'+D.meta.date+'）· 主线 '+D.meta.requests.main+' 请求 + 子代理 '+
-  D.meta.requests.subagent+' + 安检 '+D.meta.requests.security+'。'+
+  D.meta.requests.subagent+' + 安检 '+D.meta.requests.security+
+  '。由 '+esc(D.meta.generated_by||'cc-wire-analyzer')+' 算出。'+
   (D.meta.compact_at
     ? '<br>本页地基是<b style="color:var(--ink)">全部主线请求的 blocks 并集</b>，不是单条最长请求：autocompact 于 '+
-      hhmm(D.meta.compact_at)+' 剪掉了前半段历史，只看最长请求会丢掉一半（工具 190 vs '+D.meta.union.actions+'）。'
+      hhmm(D.meta.compact_at)+' 剪掉了前半段历史'+
+      (LONG?'，只看最长请求只剩 '+LONG+' 个工具调用（并集 '+D.meta.union.actions+'）':'')+'。'
     : '<br>本页地基是<b style="color:var(--ink)">全部主线请求的 blocks 并集</b>（本会话未发生 autocompact，最长请求即全史）。')+
-  '<br>事实层（动作/物料/血统/验证等级/阀门/成本）全部程序算；语义层只有阶段名与状态快照的'+
-  ' known/assumed/unknown/decisions 四格由模型产出（'+D.phase_meta.candidates+
-  ' 个程序候选边界里取舍，'+D.phase_meta.seconds+' 秒，程序校验覆盖），'+
-  'artifacts/pending/errors/constraints 四格由程序覆盖模型输出。';
+  '<br>事实层（动作/物料/血统/验证等级/阀门/成本）全部程序算；'+
+  (PM.source==='model'
+    ? '语义层只有阶段名与状态快照的 known/assumed/unknown/decisions 四格由模型产出（'+
+      PM.candidates+' 个程序候选边界里取舍'+(PM.seconds?'，用时 '+PM.seconds+' 秒':'')+
+      '，程序校验覆盖），artifacts/pending/errors/constraints 四格由程序覆盖模型输出。'
+    : '<b style="color:var(--artifact)">语义层尚未归纳</b>：阶段是 '+PM.candidates+
+      ' 个候选边界的机械划分、节点简述是程序标签，八元组里的语义四格为空。点「AI 归纳」升级。');
 renderAll();
 function redrawView(k){
   if(k===1) drawDag();
@@ -1814,8 +1970,47 @@ function redrawView(k){
   else if(k===6 && !v7done){ renderV7(); v7done=true; }
   else if(k===7 && !v8done){ renderV8(); v8done=true; }
 }
-addEventListener('resize',()=>{const k=[...nav.children].findIndex(b=>b.getAttribute('aria-selected')==='true');
-  redrawView(k);});
+addEventListener('resize',()=>{redrawView(curView);});
+
+/* ── 外观即时切换 ──
+   父页同源直接调 ccwaTrajTheme(t)，或 postMessage 过来。**不能 reload**：
+   payload 内嵌在本页里，reload 等于让服务端重算一遍（~20s）。
+   必须整页重渲：颜色被 cssv()/tint() 取值内联进了 DOM 与 SVG 属性，
+   光换 data-theme 只改到 CSS 变量那一半，图上的颜色不会动。 */
+window.ccwaTrajTheme=function(t){
+  if(!/^(dark|classic|light)$/.test(t||'')) return;
+  const r=document.documentElement;
+  if(r.dataset.theme===t) return;
+  r.dataset.theme=t; r.style.colorScheme=(t==='dark')?'dark':'light';
+  document.getElementById('panel').classList.remove('open');
+  drillOpen=null; v7done=false; v8done=false;
+  renderAll(); redrawView(curView); applyViewport();
+};
+/* ── 嵌入桥的另一半：报高度 / 收可视区 ── */
+function postHeight(){
+  if(!EMBED) return;
+  parent.postMessage({t:'ccwa-traj-height',
+    h:Math.ceil(document.documentElement.scrollHeight)},'*');
+}
+function applyViewport(){
+  if(!EMBED||!VIEW.height) return;
+  const r=document.documentElement.style;
+  r.setProperty('--panel-top',(VIEW.top+12)+'px');
+  r.setProperty('--panel-h',Math.max(VIEW.height-24,260)+'px');
+  r.setProperty('--stage-h',Math.max(Math.min(VIEW.height-140,780),380)+'px');
+}
+if(EMBED){
+  addEventListener('message',e=>{
+    const d=e.data||{};
+    if(d.t==='ccwa-traj-viewport'){
+      VIEW.top=d.top||0; VIEW.height=d.height||0;
+      applyViewport();
+    }else if(d.t==='ccwa-traj-theme'){ window.ccwaTrajTheme(d.theme); }
+  });
+  try{ new ResizeObserver(postHeight).observe(document.documentElement); }
+  catch(_){ addEventListener('resize',postHeight); }
+  postHeight();
+}
 </script></body></html>
 """
 
@@ -1839,7 +2034,7 @@ function renderV1(){
     '<div class="frame"><div class="snaps" id="snaps"></div></div>'+
     '<div class="drillwrap" id="drillwrap"></div>'+
     '<div class="legend">'+
-      lg('--agent2','语义格：模型读出来的')+lg('--material','事实格：程序算出来的')+
+      lg('--agent2','语义格：模型读出来的')+lg('--focus','事实格：程序算出来的')+
       lg('--artifact','债增加')+lg('--ok','债清偿')+lg('--error','失败')+'</div>';
   const host=document.getElementById('snaps');
   PH.forEach((p,k)=>{
@@ -1861,7 +2056,7 @@ function renderV1(){
         cell('已知','sem',p.known)+cell('假设','sem',p.assumed)+
         cell('未知','sem',p.unknown)+cell('决策','sem',p.decisions)+
         cell('产物','fact',p.artifacts,'程序')+cell('未验','fact',p.pending,'程序')+
-        cell('失败','fact',p.errors_detail,'程序')+cell('约束/发话','fact',p.user_said.map(s=>s.slice(0,28)),'程序')+
+        cell('失败','fact',p.errors_detail,'程序')+cell('约束/发话','fact',p.user_said.map(s=>s.slice(0,60)),'程序')+
       '</div>'+
       '<footer><span>out '+fmtN(p.cost.out)+'</span><span>在途 '+fmtS(Math.round(p.cost.model_ms/1000))+'</span>'+
         '<span>债 '+p.debt_in+'→'+p.debt_out+'</span>'+(p.blocked.length?'<span style="color:var(--error)">拦截 '+p.blocked.length+'</span>':'')+
@@ -1961,7 +2156,7 @@ function openPhase(p){
     '<dt>未验债</dt><dd>'+p.debt_in+' → '+p.debt_out+'</dd>'+
     '<dt>构成</dt><dd>'+Object.entries(p.kinds).filter(([,c])=>c).map(([k,c])=>KINDZH[k]+' '+c).join(' · ')+'</dd></dl>'+
     (p.user_said.length?'<h4>这一阶段人说了什么</h4>'+p.user_said.map(s=>'<pre class="raw">'+esc(s)+'</pre>').join(''):'')+
-    (p.blocked.length?'<h4>被拦截</h4>'+p.blocked.map(s=>'<div class="ev"><span class="r" style="color:#f3a396">'+esc(s)+'</span></div>').join(''):'')+
+    (p.blocked.length?'<h4>被拦截</h4>'+p.blocked.map(s=>'<div class="ev"><span class="r" style="color:var(--error)">'+esc(s)+'</span></div>').join(''):'')+
     (p.errors_detail.length?'<h4>失败</h4>'+p.errors_detail.map(s=>'<div class="ev"><span class="r">'+esc(s)+'</span></div>').join(''):'')+
     '<h4>产物</h4>'+(p.artifacts.map(t=>'<span class="tag warn" data-mat="'+esc(t)+'">'+esc(t)+'</span>').join('')||'—')+
     '<h4>节点</h4>'+ns.map(n=>'<button class="jump" data-node="'+n.i+'">N'+n.i+' '+KINDZH[n.kind]+'</button>').join(''));
@@ -2011,8 +2206,8 @@ function drawDag(){
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   PH.forEach((p,k)=>{
     el('line',{x1:PADX+k*COLW-9,y1:8,x2:PADX+k*COLW-9,y2:H-8,
-      stroke:'rgba(34,66,78,.8)','stroke-dasharray':'2 4'},svg);
-    el('text',{x:PADX+k*COLW,y:16,'font-size':9,fill:cssv('--agent')},svg).textContent=p.id+' '+p.name;
+      stroke:cssv('--grid'),'stroke-dasharray':'2 4'},svg);
+    el('text',{x:PADX+k*COLW,y:16,'font-size':10,fill:cssv('--agent')},svg).textContent=p.id+' '+p.name;
   });
   const seen=new Set();
   D.provenance.forEach(e=>{
@@ -2020,7 +2215,7 @@ function drawDag(){
     const key=e.from+'>'+e.to; if(seen.has(key)) return; seen.add(key);
     const x1=a.x+150, y1=a.y+10, x2=b.x, y2=b.y+10;
     el('path',{d:'M '+x1+' '+y1+' C '+(x1+38)+' '+y1+' '+(x2-38)+' '+y2+' '+x2+' '+y2,
-      fill:'none',stroke:'rgba(240,160,90,.55)','stroke-width':1,'stroke-opacity':.30,
+      fill:'none',stroke:tint('--material',.45),'stroke-width':1,'stroke-opacity':.45,
       'data-from':e.from,'data-to':e.to,class:'pedge'},svg);
   });
   const sourceless=new Set(D.sourceless.map(s=>s.target));
@@ -2031,25 +2226,25 @@ function drawDag(){
     g.onclick=()=>openMat(m.name);
     const col=sourceless.has(m.name)?cssv('--error'):m.writes?cssv('--material'):
               orphan.has(m.name)?cssv('--dim'):cssv('--perceive');
-    el('rect',{x:p.x,y:p.y,width:150,height:20,rx:2,fill:'rgba(13,39,49,.9)',
+    el('rect',{x:p.x,y:p.y,width:150,height:20,rx:2,fill:cssv('--sheet'),
       stroke:col,'stroke-width':sourceless.has(m.name)?1.6:1},g);
-    const t=el('text',{x:p.x+6,y:p.y+14,'font-size':9.5,fill:cssv('--ink')},g);
-    t.textContent=(m.name.length>21?m.name.slice(0,20)+'…':m.name);
-    if(v) el('text',{x:p.x+144,y:p.y+14,'font-size':8.5,'text-anchor':'end',
+    const t=el('text',{x:p.x+6,y:p.y+14,'font-size':10.5,fill:cssv('--ink')},g);
+    t.textContent=fitText(m.name,(v?116:138),10.5);   /* 有 L0 徽标时给它留出 22px */
+    if(v) el('text',{x:p.x+144,y:p.y+14,'font-size':10,'text-anchor':'end',
       fill:v.level>=2?cssv('--ok'):cssv('--artifact')},g).textContent='L'+v.level;
     g.addEventListener('mouseenter',()=>hiEdges(m.name));
     g.addEventListener('mouseleave',()=>hiEdges(null));
     bind(g,'<b>'+esc(m.name)+'</b><br>写 '+m.writes+' · 读 '+m.reads+' · 跑 '+m.runs+
       (v?'<br>验证 L'+v.level+' '+esc(v.why):'')+
-      (sourceless.has(m.name)?'<br><span style="color:#e8604c">无源产物</span>':'')+
-      (orphan.has(m.name)?'<br><span style="color:#66808a">孤儿证据：没喂给任何产出</span>':''));
+      (sourceless.has(m.name)?'<br><span style="color:var(--error)">无源产物</span>':'')+
+      (orphan.has(m.name)?'<br><span style="color:var(--dim)">孤儿证据：没喂给任何产出</span>':''));
   });
 }
 
 function hiEdges(name){
   document.querySelectorAll('#dag .pedge').forEach(e=>{
     const hit = !name || e.dataset.from===name || e.dataset.to===name;
-    e.setAttribute('stroke-opacity', name ? (hit?.95:.05) : .30);
+    e.setAttribute('stroke-opacity', name ? (hit?.95:.06) : .45);
     e.setAttribute('stroke-width', name && hit ? 1.8 : 1);
   });
 }
@@ -2116,8 +2311,10 @@ function renderV4(){
       '<ol>'+blocked.map(b=>'<li><span>'+hhmm(b.ts)+'</span> '+esc(b.arg.slice(0,110))+'</li>').join('')+'</ol>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">'+
       esc(blocked.find(b=>b.reason)?.reason||'')+'</div>'+
-      '<div style="font-size:11px;color:var(--artifact);margin-top:8px">⚠ 这一整段发生在 '+
-      hhmm(D.meta.compact_at)+' 的 compact 之前——只看单条最长请求的视图（第七代）完全看不到它。</div></div>':'')+
+      (D.meta.compact_at
+        ? '<div style="font-size:11px;color:var(--artifact);margin-top:8px">⚠ 这一整段发生在 '+
+          hhmm(D.meta.compact_at)+' 的 compact 之前——只看单条最长请求的话，它整段都不在。</div>'
+        : '')+'</div>':'')+
     '<div class="sub">阀门时间轴 · 横轴真实时间</div>'+
     '<div class="frame scroll" id="valveWrap"><svg id="valves"></svg></div>'+
     '<div class="sub">返工回路 · 同一物料被反复重写</div>'+
@@ -2129,17 +2326,19 @@ function drawValves(){
   const wrap=document.getElementById('valveWrap');
   clear(svg);
   const W=Math.max(wrap.clientWidth-2, 900), LANES=[
-    ['user','人工介入','--focus'],['security','安检','--dele'],['tool_error','工具失败','--error'],
-    ['delegate','委派','--agent'],['compact','上下文','--artifact'],['status','状态通知','--dim']];
+    ['user','人工介入','--focus'],['security','安检','--perceive'],['tool_error','工具失败','--error'],
+    ['delegate','委派','--dele'],['compact','上下文','--artifact'],['status','状态通知','--dim']];
   const RH=30, H=LANES.length*RH+30, PADL=104, PADR=14;
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   const T0=new Date(D.meta.span[0]).getTime(), T1=new Date(D.meta.span[1]).getTime();
   const X=t=>PADL+((new Date(t).getTime()-T0)/(T1-T0))*(W-PADL-PADR);
   LANES.forEach(([kind,name,col],li)=>{
     const y=14+li*RH+RH/2;
-    el('line',{x1:PADL,y1:y,x2:W-PADR,y2:y,stroke:'rgba(23,48,57,.9)'},svg);
-    el('text',{x:PADL-10,y:y+3.5,'font-size':9.5,'text-anchor':'end'},svg).textContent=name;
+    el('line',{x1:PADL,y1:y,x2:W-PADR,y2:y,stroke:cssv('--line2')},svg);
+    el('text',{x:PADL-10,y:y+3.5,'font-size':10.5,'text-anchor':'end'},svg).textContent=name;
     const evs=D.valves.filter(x=>x.kind===kind);
+    if(!evs.length) el('text',{x:PADL+8,y:y+3.5,'font-size':10,fill:cssv('--dim'),
+      'fill-opacity':.75},svg).textContent='本次运行没有这一类阀门';
     evs.forEach(e=>{
       const x=X(e.ts), blocked=e.kind==='security'&&e.blocked;
       const g=el('g',{},svg); g.style.cursor='pointer';
@@ -2152,7 +2351,7 @@ function drawValves(){
         el('circle',{cx:x,cy:y,r:kind==='status'?1.4:3,fill:cssv(col),
           'fill-opacity':kind==='security'?.5:.95},g);
       }
-      bind(g,'<b>'+name+'</b> '+hhmm(e.ts)+(blocked?' <span style="color:#e8604c">拦截</span>':'')+
+      bind(g,'<b>'+name+'</b> '+hhmm(e.ts)+(blocked?' <span style="color:var(--error)">拦截</span>':'')+
         (e.category?'<br>'+esc(e.category):'')+
         (e.arg?'<br>'+esc(e.arg.slice(0,120)):'')+(e.detail?'<br>'+esc(String(e.detail).slice(0,150)):'')+
         (e.ms?'<br>闸口耗时 '+(e.ms/1000).toFixed(1)+'s':''));
@@ -2162,32 +2361,32 @@ function drawValves(){
   // 阶段分隔
   PH.forEach((p,k)=>{ if(!k) return;
     const x=X(p.ts[0]);
-    el('line',{x1:x,y1:8,x2:x,y2:H-16,stroke:'rgba(63,199,180,.25)','stroke-dasharray':'2 3'},svg);
-    el('text',{x:x+3,y:H-6,'font-size':8.5,fill:cssv('--agent')},svg).textContent=p.id;
+    el('line',{x1:x,y1:8,x2:x,y2:H-16,stroke:tint('--agent',.32),'stroke-dasharray':'2 3'},svg);
+    el('text',{x:x+3,y:H-6,'font-size':10,fill:cssv('--agent')},svg).textContent=p.id;
   });
-  el('text',{x:PADL,y:H-6,'font-size':8.5},svg).textContent=hhmm(D.meta.span[0]);
-  el('text',{x:W-PADR,y:H-6,'font-size':8.5,'text-anchor':'end'},svg).textContent=hhmm(D.meta.span[1]);
+  el('text',{x:PADL,y:H-6,'font-size':10},svg).textContent=hhmm(D.meta.span[0]);
+  el('text',{x:W-PADR,y:H-6,'font-size':10,'text-anchor':'end'},svg).textContent=hhmm(D.meta.span[1]);
 }
 function drawLoops(){
   const svg=document.getElementById('loops');
   const wrap=document.getElementById('loopWrap');
   clear(svg);
   const loops=D.loops.filter(l=>l.from!=null).sort((a,b)=>a.from-b.from);
-  const W=Math.max(wrap.clientWidth-2,900), RH=26, H=loops.length*RH+34, PADL=190, PADR=16;
+  const W=Math.max(wrap.clientWidth-2,900), RH=26, H=loops.length*RH+46, PADL=190, PADR=16;
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   const X=i=>PADL+(i/(N-1))*(W-PADL-PADR);
   loops.forEach((l,k)=>{
-    const y=16+k*RH;
-    el('text',{x:PADL-10,y:y+4,'font-size':9.5,'text-anchor':'end'},svg).textContent=
-      (l.target.length>24?l.target.slice(0,23)+'…':l.target);
+    const y=26+k*RH;   // 顶部留够：曲线与标注要画在 y-16 上
+    el('text',{x:PADL-10,y:y+4,'font-size':10.5,'text-anchor':'end'},svg).textContent=
+      fitText(l.target,PADL-18,10.5);
     const x1=X(l.from), x2=X(l.to);
-    el('line',{x1:PADL,y1:y,x2:W-PADR,y2:y,stroke:'rgba(23,48,57,.7)'},svg);
+    el('line',{x1:PADL,y1:y,x2:W-PADR,y2:y,stroke:cssv('--line2')},svg);
     const g=el('g',{},svg); g.style.cursor='pointer';
     const span=l.to-l.from, tight=span<=25;
     el('path',{d:'M '+x1+' '+y+' Q '+((x1+x2)/2)+' '+(y-(tight?13:8))+' '+x2+' '+y,fill:'none',
       stroke:l.kind==='rework_open'?cssv('--error'):cssv('--artifact'),'stroke-width':tight?1.8:1,
       'stroke-dasharray':tight?'':'3 3'},g);
-    el('text',{x:(x1+x2)/2,y:y-(tight?16:11),'font-size':8.5,'text-anchor':'middle',
+    el('text',{x:(x1+x2)/2,y:y-(tight?16:11),'font-size':10,'text-anchor':'middle',
       fill:tight?cssv('--artifact'):cssv('--dim')},g).textContent=
       '×'+l.writes+' 写'+(tight?'':' · 跨 '+span+' 节点');
     el('circle',{cx:x1,cy:y,r:3,fill:cssv('--material')},g);
@@ -2195,11 +2394,11 @@ function drawLoops(){
     if(l.exit!=null) el('path',{d:'M '+X(l.exit)+' '+(y-5)+' L '+(X(l.exit)+4)+' '+y+' L '+X(l.exit)+' '+(y+5)+' Z',
       fill:cssv('--ok')},g);
     bind(g,'<b>'+esc(l.target)+'</b><br>N'+l.from+'→N'+l.to+' 连写 '+l.writes+' 次'+
-      (l.exit!=null?'<br>在 N'+l.exit+' 被读回/跑过（回路闭合）':'<br><span style="color:#e8604c">回路未闭合：最后一次写之后再没验过</span>'));
+      (l.exit!=null?'<br>在 N'+l.exit+' 被读回/跑过（回路闭合）':'<br><span style="color:var(--error)">回路未闭合：最后一次写之后再没验过</span>'));
     g.onclick=()=>openMat(l.target);
   });
-  el('text',{x:PADL,y:H-6,'font-size':8.5},svg).textContent='N0';
-  el('text',{x:W-PADR,y:H-6,'font-size':8.5,'text-anchor':'end'},svg).textContent='N'+(N-1);
+  el('text',{x:PADL,y:H-6,'font-size':10},svg).textContent='N0';
+  el('text',{x:W-PADR,y:H-6,'font-size':10,'text-anchor':'end'},svg).textContent='N'+(N-1);
 }
 
 /* ══════════ V5 能耗与方差 ══════════ */
@@ -2207,6 +2406,9 @@ function renderV5(){
   const v=document.getElementById('v5');
   const c=D.cost, reqs=D.requests;
   const modelS=Math.round(c.model_ms/1000), wall=D.meta.wall_seconds;
+  // 三个量算一次就定下来，卡片/引言/脚注共用——此前各处自己取整，同一个量出现两个数
+  const nodeS=Math.round(c.nodes_model_ms/1000), auxS=Math.max(modelS-nodeS,0),
+        offS=Math.max(wall-modelS,0);
   const ttft=reqs.map(r=>r.ttft).filter(Boolean).sort((a,b)=>a-b);
   const tot=reqs.map(r=>r.total_ms).filter(Boolean).sort((a,b)=>a-b);
   const q=(a,p)=>a.length?a[Math.floor(a.length*p)]:0;
@@ -2216,14 +2418,14 @@ function renderV5(){
     '关键不是总量，是<b>分布</b>：平均 '+(q(tot,.5)/1000).toFixed(1)+' 秒但最长 '+
     (tot[tot.length-1]/1000).toFixed(0)+' 秒的请求，比稳定 20 秒的更值得查。'+
     '时间去向也一样——会话跨度 '+fmtS(wall)+'，其中进入轨迹节点的模型在途 '+
-    fmtS(c.nodes_model_ms/1000)+'（与 V1 阶段标注、V6 归因表同一口径），'+
-    '另有 '+fmtS((c.model_ms-c.nodes_model_ms)/1000)+' 在安检/标题等辅助请求上。</p>'+
+    fmtS(nodeS)+'（与 V1 阶段标注、V6 归因表同一口径），'+
+    '另有 '+fmtS(auxS)+' 在安检/标题等辅助请求上。</p>'+
     '<div class="stats">'+
       stat(fmtN(c.main_out),'主线 output')+stat(fmtN(c.sub_out),'子代理 output')+
       stat(fmtN(c.main_in),'主线 input')+stat(fmtN(c.cache_read),'cache 读取','ok')+
-      stat(fmtS(c.nodes_model_ms/1000),'模型在途（节点）')+
-      stat(fmtS(c.model_ms-c.nodes_model_ms),'辅助请求在途','warn')+
-      stat(fmtS(wall-modelS),'不在模型上')+
+      stat(fmtS(nodeS),'模型在途（节点）')+
+      stat(fmtS(auxS),'辅助请求在途','warn')+
+      stat(fmtS(offS),'不在模型上')+
     '</div>'+
     '<div class="sub">按阶段分解 · 每阶段的 output token 与模型在途时间</div>'+
     '<div class="frame" id="phBarWrap"><svg id="phBar"></svg></div>'+
@@ -2231,10 +2433,9 @@ function renderV5(){
     '<div class="frame" id="latWrap"><svg id="lat"></svg></div>'+
     '<div class="legend">'+lg('--artifact','output token')+lg('--focus','模型在途')+
       lg('--dele','ttft')+lg('--error','最慢 5%')+'</div>'+
-    '<p class="note">时间去向：'+fmtS(wall)+' 里 '+fmtS(modelS)+'（'+
-      Math.round(modelS/wall*100)+'%）在模型侧 = 节点 '+fmtS(Math.round(c.nodes_model_ms/1000))+
-      ' + 辅助 '+fmtS(Math.round((c.model_ms-c.nodes_model_ms)/1000))+
-      '，其余是工具执行、子代理在跑、以及人在看图。'+
+    '<p class="note">时间去向：'+fmtS(wall)+' 里 '+
+      Math.round(modelS/wall*100)+'% 在模型侧（节点 + 辅助两块，见上面的卡片），'+
+      '其余是工具执行、子代理在跑、以及人在看图。'+
       'cache 读取 '+fmtN(c.cache_read)+' token —— 每一轮都要把整段历史重新喂一遍，这就是自增长流水线的固定开销。</p>';
   drawPhaseBars(); drawLatency();
 }
@@ -2253,11 +2454,11 @@ function drawPhaseBars(){
       'fill-opacity':.85},g);
     el('rect',{x:x+bw*0.52,y:H-PADB-hMs,width:bw*0.34,height:hMs,fill:cssv('--focus'),
       'fill-opacity':.7},g);
-    el('text',{x:x+bw/2,y:H-PADB+13,'font-size':9,'text-anchor':'middle',fill:cssv('--ink')},g)
+    el('text',{x:x+bw/2,y:H-PADB+13,'font-size':10,'text-anchor':'middle',fill:cssv('--ink')},g)
       .textContent=p.id;
-    el('text',{x:x+bw/2,y:H-PADB+25,'font-size':8.5,'text-anchor':'middle'},g)
+    el('text',{x:x+bw/2,y:H-PADB+25,'font-size':10,'text-anchor':'middle'},g)
       .textContent=(p.name.length>9?p.name.slice(0,8)+'…':p.name);
-    el('text',{x:x+bw/2,y:H-PADB+36,'font-size':8,'text-anchor':'middle',fill:cssv('--dim')},g)
+    el('text',{x:x+bw/2,y:H-PADB+36,'font-size':9.5,'text-anchor':'middle',fill:cssv('--dim')},g)
       .textContent=fmtN(p.cost.out)+' / '+fmtS(Math.round(p.cost.model_ms/1000));
     bind(g,'<b>'+esc(p.id+' '+p.name)+'</b><br>output '+fmtN(p.cost.out)+' token<br>'+
       '模型在途 '+fmtS(Math.round(p.cost.model_ms/1000))+'<br>节点 '+p.nodes_n+' · 失败 '+p.errors);
@@ -2272,8 +2473,8 @@ function drawLatency(){
   const max=rs[rs.length-1].total_ms, min=Math.max(rs[0].total_ms,50);
   const y=v=>H-PADB-(Math.log(Math.max(v,min))-Math.log(min))/(Math.log(max)-Math.log(min))*(H-PADT-PADB);
   [min,1000,10000,60000,240000].filter(v=>v<=max&&v>=min).forEach(v=>{
-    el('line',{x1:PADL,y1:y(v),x2:W-8,y2:y(v),stroke:'rgba(23,48,57,.9)','stroke-dasharray':'2 4'},svg);
-    el('text',{x:PADL-6,y:y(v)+3,'font-size':8.5,'text-anchor':'end'},svg)
+    el('line',{x1:PADL,y1:y(v),x2:W-8,y2:y(v),stroke:cssv('--line2'),'stroke-dasharray':'2 4'},svg);
+    el('text',{x:PADL-6,y:y(v)+3,'font-size':10,'text-anchor':'end'},svg)
       .textContent=v>=1000?(v/1000)+'s':v+'ms';
   });
   const bw=Math.max((W-PADL-10)/rs.length,.6);
@@ -2288,13 +2489,13 @@ function drawLatency(){
       r.ttft+'ms<br>out '+fmtN(r.out)+' · in '+fmtN(r['in'])+' · cache '+fmtN(r.cache_read));
   });
   const md=rs[Math.floor(rs.length/2)].total_ms;
-  el('text',{x:W-14,y:13,'font-size':9,'text-anchor':'end',fill:cssv('--muted')},svg)
+  el('text',{x:W-14,y:13,'font-size':10,'text-anchor':'end',fill:cssv('--muted')},svg)
     .textContent='中位 '+(md/1000).toFixed(1)+'s · 最长 '+(max/1000).toFixed(0)+'s · '+rs.length+' 条请求';
 }
 
 
 /* ══════════ V6 最优轨迹对照 ══════════ */
-const KCOL={necessary:'--ok',evidence:'--agent',orientation:'--perceive',
+const KCOL={necessary:'--ok',evidence:'--evid',orientation:'--perceive',
   external_research:'--focus',delegate:'--dele',rework:'--artifact',
   dead_end:'--material',blocked_retry:'--error',redundant:'--artifact',
   think_only:'--think',unattributed:'--dim'};
@@ -2307,7 +2508,10 @@ const EXANTE={rework:1,redundant:1,blocked_retry:1};
 const KEEP={necessary:1,evidence:1};
 function renderV6(){
   const v=document.getElementById('v6'), O=D.optimal;
-  if(!O){ v.innerHTML='<p class="lede">缺 optimal.json，先跑 optimal.py</p>'; return; }
+  if(!O){ v.innerHTML='<div class="eyebrow">VIEW 6 · COUNTERFACTUAL</div>'+
+    '<h1>最优轨迹：这一趟本可以怎么走</h1>'+
+    '<p class="lede">这条录制算不出反事实骨架——通常是节点太少或没有可追溯的物料。'+
+    '其余七个视图不受影响。</p>'; return; }
   const T=O.totals, L=O.lower_bound;
   const sum=(ks,f)=>ks.reduce((a,k)=>a+((O.by_class[k]||{})[f]||0),0);
   const exAnte=sum(['rework','redundant','blocked_retry'],'out');
@@ -2344,16 +2548,16 @@ function renderV6(){
     '<b>ex-post 不算错误</b>，但它有一个可测的量：<b>迟滞</b>——第一条否定性证据出现之后，'+
     '这条分支还跑了多久。</p>'+
     (O.B && O.B.length ? '' :
-      '<div class="frame" style="border-color:#5a4a1e;background:rgba(240,160,90,.08);padding:var(--s3) var(--s4)">'+
+      '<div class="frame" style="border-color:var(--art-t2);background:var(--mat-t1);padding:var(--s3) var(--s4)">'+
       '<b style="color:var(--material)">⚠ 本录制未识别出文件级终态交付物</b>——最后两阶段没有仍在被写或被读的文件，'+
       'B 为空集，必要闭包退化为 0、下界也按 0 计。这<b>不代表</b>「这趟本可以什么都不做」：'+
       '此会话的产出可能是纯对话/诊断（结论留在回复里而非文件），反事实表仅当归因参考，勿读压缩比。</div>')+
     '<div class="stats">'+
       stat(T.nodes+' → '+L.nodes,'节点（实际→下界）')+
       stat(fmtN(T.out)+' → '+fmtN(L.out),'out token','warn')+
-      stat(Math.round(T.model_ms/60000)+' → '+Math.round(L.model_ms/60000)+' 分','模型在途')+
+      stat(fmtS(Math.round(T.model_ms/1000))+' → '+fmtS(Math.round(L.model_ms/1000)),'模型在途')+
       stat(Math.round(L.out/T.out*100)+'%','压缩到','ok')+
-      stat(exAnteN+' 节点 / '+fmtN(exAnte),'当时就能避免','bad')+
+      stat(exAnteN+' 节点 / '+fmtN(exAnte)+' out','当时就能避免','bad')+
       stat(fmtN(exPost),'探索代价（事后）','warn')+
       stat(O.missing_verify.length,'件必要产物没验','bad')+
     '</div>'+
@@ -2370,22 +2574,32 @@ function renderV6(){
     '<div class="sub">ex-ante 的三笔：当时手里的信息就够避免</div>'+
     '<div class="frame" style="padding:var(--s3)">'+
       '<div class="ev"><span class="i">返工</span><span class="r">'+
-        ((O.by_class.rework||{}).nodes||0)+' 个节点写的是中间版本、之后被覆盖，而中间'+
-        '<b style="color:var(--error)">一次都没验证</b>——写完就验的话，这些节点大部分不会存在（'+
-        fmtN((O.by_class.rework||{}).out||0)+' out）</span></div>'+
+        (((O.by_class.rework||{}).nodes||0)
+          ? (O.by_class.rework||{}).nodes+' 个节点写的是中间版本、之后被覆盖，而中间'+
+            '<b style="color:var(--error)">一次都没验证</b>——写完就验的话，这些节点大部分不会存在（'+
+            fmtN((O.by_class.rework||{}).out||0)+' out）'
+          : '<span style="color:var(--dim)">没有被覆盖的中间版本</span>')+'</span></div>'+
       '<div class="ev"><span class="i">重复读</span><span class="r">'+
-        O.redundant.length+' 次重复读同一物料，其中若干次工具已经明说 '+
-        '<code>Wasted call — file unchanged since your last Read</code></span></div>'+
+        (O.redundant.length
+          ? O.redundant.length+' 次重复读同一物料，其中若干次工具已经明说 '+
+            '<code>Wasted call — file unchanged since your last Read</code>'
+          : '<span style="color:var(--dim)">没有重复读</span>')+'</span></div>'+
       '<div class="ev"><span class="i">被拦重试</span><span class="r">'+
-        O.blocked.length+' 次拦截里，第 1 次就给出了完整理由（'+esc(reason.slice(0,70))+
-        '…），其后 '+(O.blocked.length-1)+' 次是同类重试</span></div>'+
+        (O.blocked.length
+          ? O.blocked.length+' 次拦截'+
+            (reason?'，第 1 次就给出了完整理由（'+esc(reason.slice(0,70))+'…）':'')+
+            (O.blocked.length>1?'，其后 '+(O.blocked.length-1)+' 次是同类重试':'')
+          : '<span style="color:var(--dim)">没有被拦截过</span>')+'</span></div>'+
       '<div class="ev"><span class="i">缺验证</span><span class="r">'+
-        O.missing_verify.map(function(m){return esc(m.name);}).join('、')+
-        ' —— 这不是浪费，是<b>缺失的工作</b>：最优轨迹要<b style="color:var(--ok)">加</b>上这 '+
-        O.missing_verify.length+' 个验证节点</span></div>'+
+        (O.missing_verify.length
+          ? O.missing_verify.map(function(m){return esc(m.name);}).join('、')+
+            ' —— 这不是浪费，是<b>缺失的工作</b>：最优轨迹要<b style="color:var(--ok)">加</b>上这 '+
+            O.missing_verify.length+' 个验证节点'
+          : '<span style="color:var(--ok)">必要产物都验过了</span>')+'</span></div>'+
     '</div>'+
     '<div class="sub">阶段级：必要占比与可省 out</div>'+
     '<div class="frame" id="phNecWrap"><svg id="phNec"></svg></div>'+
+    '<div class="legend">'+lg('--ok','必要占比（左条）')+lg('--material','可省 out（右条）')+'</div>'+
     '<p class="note">读法：下界 '+L.nodes+' 节点是<b>松的</b>——「取证」那 '+
       ((O.by_class.evidence||{}).nodes||0)+' 个节点里必然还有可压的（同一份证据被反复读），'+
       '但判定「读几次才够」需要跨 run 比较，单条录制上不做。所以结论只到这一句：'+
@@ -2411,7 +2625,7 @@ function drawCompare(){
   const W=Math.max(wrap.clientWidth-2,900), PADL=86, PADR=14, H=132;
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   const cw=(W-PADL-PADR)/N;
-  el('text',{x:PADL-10,y:34,'font-size':9.5,'text-anchor':'end'},svg).textContent='实际 '+N;
+  el('text',{x:PADL-10,y:34,'font-size':10.5,'text-anchor':'end'},svg).textContent='实际 '+N;
   D.nodes.forEach(function(n){
     const k=O.klass[String(n.i)]||'unattributed';
     const g=el('g',{},svg); g.style.cursor='pointer'; g.onclick=function(){openNode(n.i);};
@@ -2421,7 +2635,7 @@ function drawCompare(){
       '<br>out '+fmtN(n.cost.out)+' · '+hhmm(n.ts));
   });
   const keep=D.nodes.filter(function(n){return KEEP[O.klass[String(n.i)]];});
-  el('text',{x:PADL-10,y:82,'font-size':9.5,'text-anchor':'end'},svg).textContent='骨架 '+keep.length;
+  el('text',{x:PADL-10,y:82,'font-size':10.5,'text-anchor':'end'},svg).textContent='骨架 '+keep.length;
   keep.forEach(function(n,j){
     const g=el('g',{},svg); g.style.cursor='pointer'; g.onclick=function(){openNode(n.i);};
     el('rect',{x:PADL+j*cw,y:68,width:Math.max(cw-.5,1),height:22,
@@ -2432,15 +2646,15 @@ function drawCompare(){
     el('rect',{x:PADL+(keep.length+j)*cw,y:68,width:Math.max(cw-.5,1),height:22,
       fill:cssv('--ok'),'fill-opacity':.45,stroke:cssv('--ok'),'stroke-dasharray':'2 2'},svg);
   });
-  el('text',{x:PADL+(keep.length+O.missing_verify.length)*cw+8,y:83,'font-size':9,
+  el('text',{x:PADL+(keep.length+O.missing_verify.length)*cw+8,y:83,'font-size':10,
     fill:cssv('--ok')},svg).textContent='+'+O.missing_verify.length+' 补验证';
   PH.forEach(function(p){
     el('line',{x1:PADL+p.from*cw,y1:14,x2:PADL+p.from*cw,y2:96,
-      stroke:'rgba(63,199,180,.22)','stroke-dasharray':'2 3'},svg);
-    el('text',{x:PADL+p.from*cw+3,y:110,'font-size':8.5,fill:cssv('--agent')},svg).textContent=p.id;
+      stroke:tint('--agent',.32),'stroke-dasharray':'2 3'},svg);
+    el('text',{x:PADL+p.from*cw+3,y:110,'font-size':10,fill:cssv('--agent')},svg).textContent=p.id;
   });
-  el('text',{x:PADL,y:126,'font-size':8.5},svg).textContent='N0';
-  el('text',{x:W-PADR,y:126,'font-size':8.5,'text-anchor':'end'},svg).textContent='N'+(N-1);
+  el('text',{x:PADL,y:126,'font-size':10},svg).textContent='N0';
+  el('text',{x:W-PADR,y:126,'font-size':10,'text-anchor':'end'},svg).textContent='N'+(N-1);
 }
 function drawPhaseNec(){
   const O=D.optimal;
@@ -2457,10 +2671,10 @@ function drawPhaseNec(){
     const g=el('g',{},svg);
     el('rect',{x:x+bw*.14,y:H-PADB-hN,width:bw*.34,height:hN,fill:cssv('--ok'),'fill-opacity':.8},g);
     el('rect',{x:x+bw*.52,y:H-PADB-hW,width:bw*.34,height:hW,fill:cssv('--material'),'fill-opacity':.75},g);
-    el('text',{x:x+bw/2,y:H-PADB+13,'font-size':9,'text-anchor':'middle',fill:cssv('--ink')},g).textContent=p.id;
-    el('text',{x:x+bw/2,y:H-PADB+25,'font-size':8.5,'text-anchor':'middle'},g)
-      .textContent=fitText(p.name,bw-6,8.5);
-    el('text',{x:x+bw/2,y:H-PADB+37,'font-size':8,'text-anchor':'middle',fill:cssv('--dim')},g)
+    el('text',{x:x+bw/2,y:H-PADB+13,'font-size':10,'text-anchor':'middle',fill:cssv('--ink')},g).textContent=p.id;
+    el('text',{x:x+bw/2,y:H-PADB+25,'font-size':10,'text-anchor':'middle'},g)
+      .textContent=fitText(p.name,bw-6,10);
+    el('text',{x:x+bw/2,y:H-PADB+37,'font-size':9.5,'text-anchor':'middle',fill:cssv('--dim')},g)
       .textContent='必要 '+p.necessary_share+'% · 废 '+fmtN(p.waste_out);
     bind(g,'<b>'+esc(p.id+' '+p.name)+'</b><br>必要占比 '+p.necessary_share+'%<br>可省 out '+
       fmtN(p.waste_out)+' / 共 '+fmtN(p.out)+'<br>'+
@@ -2483,7 +2697,12 @@ function makeStage(host, W, H, withMM){
   const apply=()=>gW.setAttribute('transform','translate('+S.tx+','+S.ty+') scale('+S.s+')');
   const zoomAt=(mx,my,f)=>{const ns=Math.min(4,Math.max(.12,S.s*f));
     S.tx=mx-(mx-S.tx)*ns/S.s;S.ty=my-(my-S.ty)*ns/S.s;S.s=ns;apply();};
-  svg.addEventListener('wheel',e=>{e.preventDefault();const r=svg.getBoundingClientRect();
+  /* 嵌入时整页只有一条滚动条，画布若照单全收滚轮，用户就滚不过这块画布了。
+     所以嵌入下滚轮缩放要按住 Ctrl/⌘，裸滚轮留给页面；独立打开时维持原行为。
+     两种模式都另有 ＋/－ 按钮，不依赖修饰键也能缩放。 */
+  svg.addEventListener('wheel',e=>{
+    if(EMBED&&!(e.ctrlKey||e.metaKey)) return;
+    e.preventDefault();const r=svg.getBoundingClientRect();
     zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*.0013));},{passive:false});
   let drag=null,dragged=0;
   svg.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,tx:S.tx,ty:S.ty};dragged=0;
@@ -2519,11 +2738,14 @@ function makeStage(host, W, H, withMM){
     S.tx=(wrap.clientWidth-W*S.s)/2;S.ty=(wrap.clientHeight-H*S.s)/2;apply();};
   const home=()=>{S.s=Math.min(wrap.clientHeight/H*.92,1.1);S.tx=24;
     S.ty=(wrap.clientHeight-H*S.s)/2;apply();};
+  const zoomCenter=f=>zoomAt(wrap.clientWidth/2,wrap.clientHeight/2,f);
+  mkbtn('－',()=>zoomCenter(1/1.25)); mkbtn('＋',()=>zoomCenter(1.25));
   mkbtn('全览',fit); mkbtn('复位',home);
   let mm=null;
   if(withMM){
     mm=h('div','zmm'); const ms=el('svg',{},null); mm.appendChild(ms); wrap.appendChild(mm);
-    const hint=h('div','zhint','滚轮缩放 · 拖拽平移 · 悬停看简述 · 点击看证据 · 点小地图跳转');
+    const hint=h('div','zhint',(EMBED?'Ctrl+滚轮缩放':'滚轮缩放')+
+      ' · 拖拽平移 · 悬停看简述 · 点击看证据 · 点小地图跳转');
     wrap.appendChild(hint);
     mm._init=(draw)=>{const MW=240,MH=Math.round(MW*H/W);
       ms.setAttribute('width',MW);ms.setAttribute('height',MH);ms._sx=MW/W;ms._sy=MH/H;draw(ms);};
@@ -2537,7 +2759,7 @@ function makeStage(host, W, H, withMM){
   const enableCross=()=>{
     crossEl=document.createElementNS(svgns,'line');
     crossEl.setAttribute('y1',0);crossEl.setAttribute('y2',H);
-    crossEl.setAttribute('stroke','rgba(63,199,180,.35)');crossEl.setAttribute('stroke-dasharray','2 4');
+    crossEl.setAttribute('stroke',tint('--agent',.32));crossEl.setAttribute('stroke-dasharray','2 4');
     gW.appendChild(crossEl);
     svg.addEventListener('pointermove',e=>{
       if(drag)return;
@@ -2594,7 +2816,7 @@ function renderV7(){
       stat(Q.gaps.length,'次长停顿')+
     '</div>'+stateAB()+
     '<div class="legend">'+
-      lg('--material','▲ 写')+lg('--perceive','● 读')+lg('--agent','■ 跑')+
+      lg('--material','▲ 写')+lg('--perceive','● 读')+lg('--evid','■ 跑')+
       lg('--ok','亮边=清偿')+lg('--error','红点=出错')+lg('--dele','子代理泳道')+
       lg('--artifact','未验债曲线')+lg('--error','红竖带=停顿')+'</div>';
   const st=makeStage(v,Q.W,800,false);
@@ -2620,9 +2842,11 @@ function renderV7(){
     D.phases.forEach((p,k)=>{
       const x0=X(p.from)-Q.PITCH/2, x1=X(p.to)+Q.PITCH/2;
       el('rect',{x:Math.min(x0,x1),y:96,width:Math.max(Math.abs(x1-x0),2),height:H-96-96,
-        fill:k%2?'rgba(63,199,180,.030)':'rgba(63,199,180,.055)'},g);
-      el('line',{x1:x0,y1:96,x2:x0,y2:H-96,stroke:'rgba(63,199,180,.30)','stroke-dasharray':'3 4'},g);
-      el('text',{x:x0+6,y:88,'font-size':9.5,fill:cssv('--agent')},g).textContent=p.id+' '+fitText(p.name,150,9.5);
+        fill:k%2?tint('--agent',.035):tint('--agent',.065)},g);
+      el('line',{x1:x0,y1:96,x2:x0,y2:H-96,stroke:tint('--agent',.32),'stroke-dasharray':'3 4'},g);
+      const bw7=Math.abs(x1-x0);
+      el('text',{x:Math.min(x0,x1)+6,y:88,'font-size':10.5,fill:cssv('--agent')},g)
+        .textContent=bw7<70?p.id:p.id+' '+fitText(p.name,Math.min(bw7-30,150),10.5);
     });
     // 顶部节点类别色条（橙=推进）
     D.nodes.forEach(n=>{
@@ -2634,22 +2858,22 @@ function renderV7(){
       st.hitC(x,70,8,2,'<b>N'+n.i+'</b> '+esc(n.brief||KINDZH[n.kind])+'<br>'+hhmm(n.ts),
         ()=>openV8Node('main',n.i));
     });
-    el('text',{x:Q.X0-158,y:73,'font-size':9,fill:cssv('--dim')},g).textContent='节点类别';
+    el('text',{x:Q.X0-158,y:73,'font-size':10,fill:cssv('--dim')},g).textContent='节点类别';
     // 物料行
     rows.forEach(r0=>{
-      el('line',{x1:Q.X0,y1:r0.y,x2:Q.W-90,y2:r0.y,stroke:'rgba(23,48,57,.85)'},g);
-      el('text',{x:Q.X0-10,y:r0.y+3.5,'font-size':9.5,'text-anchor':'end',
-        fill:r0.in_B?cssv('--artifact'):cssv('--muted')},g).textContent=fitText(r0.name,150,9.5);
+      el('line',{x1:Q.X0,y1:r0.y,x2:Q.W-90,y2:r0.y,stroke:cssv('--line2')},g);
+      el('text',{x:Q.X0-10,y:r0.y+3.5,'font-size':10.5,'text-anchor':'end',
+        fill:r0.in_B?cssv('--artifact'):cssv('--muted')},g).textContent=fitText(r0.name,150,10.5);
       if(r0.level!=null&&r0.level<2&&r0.writes>0)
         el('text',{x:Q.W-72,y:r0.y+4,'font-size':10,fill:cssv('--error')},g).textContent='⚠L'+r0.level;
       st.hitR(Q.X0-160,r0.y-9,Q.X0,r0.y+9,1,
         '<b>'+esc(r0.name)+'</b><br>写 '+r0.writes+' · 读 '+r0.reads+' · 跑 '+r0.runs+
-        (r0.level!=null?'<br>验证 L'+r0.level:'')+(r0.in_B?'<br><span style="color:#ffd166">终态交付物</span>':''),
+        (r0.level!=null?'<br>验证 L'+r0.level:'')+(r0.in_B?'<br><span style="color:var(--artifact)">终态交付物</span>':''),
         ()=>openMat(r0.name));
       r0.marks.forEach(mk=>{
         const x=X(mk.i);
         if(x<Q.X0-4||x>Q.W-88) return;
-        const col=mk.op==='write'?'--material':mk.op==='run'?'--agent':'--perceive';
+        const col=mk.op==='write'?'--material':mk.op==='run'?'--evid':'--perceive';
         const a={fill:cssv(col),'fill-opacity':.9};
         if(mk.clears){a.stroke=cssv('--ok');a['stroke-width']=1.4;}
         if(mk.op==='write') el('rect',{x:x-3.5,y:r0.y-7,width:7,height:14,...a},g);
@@ -2658,8 +2882,8 @@ function renderV7(){
         if(mk.error) el('circle',{cx:x,cy:r0.y-10,r:1.8,fill:cssv('--error')},g);
         st.hitC(x,r0.y,7,2,
           '<b>'+(OPZH[mk.op]||mk.op)+' '+esc(mk.tool||'')+'</b> · N'+mk.i+' · '+hhmm(mk.ts)+
-          (mk.clears?'<br><span style="color:#5fd39a">清偿未验债</span>':'')+
-          (mk.error?'<br><span style="color:#e8604c">出错</span>':'')+
+          (mk.clears?'<br><span style="color:var(--ok)">清偿未验债</span>':'')+
+          (mk.error?'<br><span style="color:var(--error)">出错</span>':'')+
           (mk.d?'<br>'+esc(mk.d.slice(0,90)):''),
           ()=>openV8Node('main',mk.i));
       });
@@ -2669,11 +2893,11 @@ function renderV7(){
     Q.subs.forEach((sb,k)=>{
       const y=SWY0+k*24, x0=X(sb.disp), x1=Math.max(X(sb.endn),x0+10);
       el('rect',{x:x0,y:y-8,width:Math.max(x1-x0,10),height:16,rx:3,
-        fill:'rgba(194,164,255,.16)',stroke:'rgba(194,164,255,.5)'},g);
+        fill:tint('--dele',.12),stroke:tint('--dele',.42)},g);
       el('line',{x1:x0,y1:y,x2:x1,y2:y,stroke:cssv('--dele'),'stroke-width':1.6},g);
       const lab=sb.task+' · '+fmtS(sb.seconds)+' · '+sb.requests+' 请求';
       const lx=v7mode==='time'&&x1-x0>lab.length*6.2?x0+6:x1+8;
-      el('text',{x:lx,y:y+3.5,'font-size':9,fill:cssv('--dele')},g).textContent=lab;
+      el('text',{x:lx,y:y+3.5,'font-size':10,fill:cssv('--dele')},g).textContent=lab;
       st.hitR(x0,y-10,Math.max(x1,x0+80),y+10,1,
         '<b>'+esc(sb.task)+'</b><br>'+hhmm(sb.start)+' → '+hhmm(sb.end)+' · '+fmtS(sb.seconds)+
         '<br>'+sb.requests+' 请求 · out '+fmtN(sb.out)+(sb.errors?' · 失败 '+sb.errors:'')+
@@ -2683,32 +2907,32 @@ function renderV7(){
     // 停顿带（time 模式看得见宽度）
     Q.gaps.forEach(gp=>{
       const x0=X(gp.from), x1=X(gp.to), w=Math.max(v7mode==='time'?x1-x0:4,3);
-      el('rect',{x:x0,y:96,width:w,height:H-96-96,fill:'rgba(232,96,76,.06)',
-        stroke:'rgba(232,96,76,.3)','stroke-dasharray':'2 4'},g);
-      el('text',{x:x0+w/2,y:112,'font-size':8.5,'text-anchor':'middle',fill:cssv('--error')},g)
+      el('rect',{x:x0,y:96,width:w,height:H-96-96,fill:tint('--error',.09),
+        stroke:tint('--error',.38),'stroke-dasharray':'2 4'},g);
+      el('text',{x:x0+w/2,y:112,'font-size':10,'text-anchor':'middle',fill:cssv('--error')},g)
         .textContent=fmtS(gp.sec);
       st.hitC(x0+w/2,104,8,2,'<b>停顿 '+fmtS(gp.sec)+'</b>（N'+gp.from+'–'+gp.to+'）',null);
     });
     // 未验债曲线
     const DY=H-46, DSCALE=(DY-96)/Math.max(peak,1);
-    el('line',{x1:Q.X0,y1:DY,x2:Q.W-90,y2:DY,stroke:'rgba(255,209,102,.3)'},g);
+    el('line',{x1:Q.X0,y1:DY,x2:Q.W-90,y2:DY,stroke:tint('--artifact',.40)},g);
     el('polyline',{points:Q.debt.map(d=>X(d.i)+','+(DY-d.n*DSCALE)).join(' '),fill:'none',
       stroke:cssv('--artifact'),'stroke-width':1.6,'stroke-opacity':.9},g);
     Q.debt.filter(d=>d.n===peak).slice(0,1).forEach(d=>{
       el('circle',{cx:X(d.i),cy:DY-d.n*DSCALE,r:3,fill:cssv('--artifact')},g);
-      el('text',{x:X(d.i)+8,y:DY-d.n*DSCALE+13,'font-size':9,fill:cssv('--artifact')},g)
+      el('text',{x:X(d.i)+8,y:DY-d.n*DSCALE+13,'font-size':10,fill:cssv('--artifact')},g)
         .textContent='峰 '+peak+'（N'+d.i+'）';
     });
     Q.debt.forEach((d,di)=>{ if(di%8) return;
       st.hitC(X(d.i),DY-d.n*DSCALE,9,2,
         '<b>未验债 '+d.n+' 件</b> · N'+d.i+' · '+hhmm(D.nodes[d.i].ts),()=>openV8Node('main',d.i));
     });
-    el('text',{x:Q.X0-158,y:DY+4,'font-size':9,fill:cssv('--artifact')},g).textContent='未验债';
+    el('text',{x:Q.X0-158,y:DY+4,'font-size':10,fill:cssv('--artifact')},g).textContent='未验债';
     // 刻度
     for(let i=0;i<N;i+=30){
       const x=X(i);
-      el('line',{x1:x,y1:H-96,x2:x,y2:H-90,stroke:'rgba(34,66,78,.9)'},g);
-      el('text',{x,y:H-78,'font-size':8.5,'text-anchor':'middle',fill:cssv('--dim')},g)
+      el('line',{x1:x,y1:H-96,x2:x,y2:H-90,stroke:cssv('--grid')},g);
+      el('text',{x,y:H-78,'font-size':10,'text-anchor':'middle',fill:cssv('--dim')},g)
         .textContent=v7mode==='seq'?('N'+i):hhmm(D.nodes[i].ts);
     }
     st.home();   // 默认纵向占满、左起——fit 全览会把 6919 宽世界压成一条 390px 的带子
@@ -2737,7 +2961,7 @@ function renderV8(){
     '挂在下面的是没进链的工作，按归因分泳道。紫色条带是<b>子代理</b>——主线在派发处留出空档'+
     '（当时确实在等），带内是它自己的时序。<b>悬停任意节点看简述，点击看全文证据</b>。</p>'+
     (V.skeleton_n ? '' :
-      '<div class="frame" style="border-color:#5a4a1e;background:rgba(240,160,90,.08);padding:var(--s3) var(--s4)">'+
+      '<div class="frame" style="border-color:var(--art-t2);background:var(--mat-t1);padding:var(--s3) var(--s4)">'+
       '<b style="color:var(--material)">⚠ 本录制未识别出文件级终态交付物</b>——骨架为空（同 V6 提示），'+
       '下图只有实际时序与归因泳道，下界轨线与压缩比勿读。</div>')+
     '';
@@ -2752,10 +2976,10 @@ function renderV8(){
     '<div class="st bad"><b>'+V.missing.length+'</b><span>件缺验证</span></div>');
   st.wrap.appendChild(zs);
   st.wrap.appendChild(h('div','zlegend',
-    lg('--ok','必要（终版写入/验证）')+lg('--agent','取证（喂给了交付物）')+
+    lg('--ok','必要（终版写入/验证）')+lg('--evid','取证（喂给了交付物）')+
     lg('--artifact','返工 / 重复读 — 当时就能避免')+lg('--material','死胡同 — 事后才知道')+
     lg('--error','被拦重试 / 迟滞段')+lg('--perceive','摸情况')+lg('--focus','查外部资料')+
-    lg('--think','纯思考')+'<span style="color:#c2a4ff">┈ 子代理条带（紫）</span>'));
+    lg('--think','纯思考')+'<span style="color:var(--dele)">┈ 子代理条带（紫）</span>'));
   const gPh=el('g',{},st.gW), gMat=el('g',{},st.gW), gEdge=el('g',{},st.gW),
         gBranch=el('g',{},st.gW), gMain=el('g',{},st.gW), gLag=el('g',{},st.gW),
         gSub=el('g',{},st.gW), gTop=el('g',{},st.gW);
@@ -2767,12 +2991,12 @@ function renderV8(){
   st.hitC; let cg=gPh;
   V.phases.forEach((p,k)=>{
     const x0=p.x0-M.PITCH/2, w=p.x1-p.x0+M.PITCH;
-    el('rect',{x:x0,y:150,width:w,height:M.H-210,fill:k%2?'rgba(63,199,180,.030)':'rgba(63,199,180,.055)'},gPh);
-    el('line',{x1:x0,y1:150,x2:x0,y2:M.H-60,stroke:'rgba(63,199,180,.30)','stroke-dasharray':'3 4'},gPh);
+    el('rect',{x:x0,y:150,width:w,height:M.H-210,fill:k%2?tint('--agent',.035):tint('--agent',.065)},gPh);
+    el('line',{x1:x0,y1:150,x2:x0,y2:M.H-60,stroke:tint('--agent',.32),'stroke-dasharray':'3 4'},gPh);
     const dy=k%2?0:22, short=w<110;   // 阶段太窄画不下全名：只留 P 号（悬停 hit 区仍给全名）
     el('text',{x:x0+8,y:168-dy,'font-size':10,fill:cssv('--agent')},gPh)
       .textContent=short?p.id:p.id+' '+p.name;
-    if(!short) el('text',{x:x0+8,y:181-dy,'font-size':8.5,fill:cssv('--dim')},gPh)
+    if(!short) el('text',{x:x0+8,y:181-dy,'font-size':10,fill:cssv('--dim')},gPh)
       .textContent='N'+p.from+'–'+p.to+' · '+fmtS(p.seconds)+' · 债 '+p.debt_in+'→'+p.debt_out;
     st.hitR(x0,146,x0+w,190,0,'<b>'+esc(p.id+' '+p.name)+'</b><br>'+esc(p.from_state)+'<br>→ '+esc(p.to_state),
       ()=>open('阶段 '+p.id+' · N'+p.from+'–'+p.to,p.name,'',
@@ -2782,19 +3006,19 @@ function renderV8(){
   // 物料轨
   cg=gMat;
   V.mats.forEach(m=>{
-    const label=fitText(m.name,150,9.5);
+    const label=fitText(m.name,148,10.5);
     const w=Math.max(label.length*7.2+56,118);
     const col=m.in_B?cssv('--artifact'):cssv('--material');
-    el('rect',{x:m.x-w/2,y:M.MAT_Y-11,width:w,height:22,rx:3,fill:'rgba(13,39,49,.94)',
+    el('rect',{x:m.x-w/2,y:M.MAT_Y-11,width:w,height:22,rx:3,fill:cssv('--sheet'),
       stroke:col,'stroke-width':m.in_B?1.4:1},gMat);
-    el('text',{x:m.x-w/2+8,y:M.MAT_Y+4,'font-size':9.5,fill:cssv('--ink')},gMat).textContent=label;
-    if(m.level!=null) el('text',{x:m.x+w/2-7,y:M.MAT_Y+4,'font-size':8.5,'text-anchor':'end',
+    el('text',{x:m.x-w/2+8,y:M.MAT_Y+4,'font-size':10.5,fill:cssv('--ink')},gMat).textContent=label;
+    if(m.level!=null) el('text',{x:m.x+w/2-7,y:M.MAT_Y+4,'font-size':10,'text-anchor':'end',
       fill:m.level>=2?cssv('--ok'):cssv('--error')},gMat).textContent='L'+m.level;
     el('path',{d:'M '+m.x_src+' '+(YM-14)+' C '+m.x_src+' '+(YM-90)+', '+m.x+' '+(M.MAT_Y+92)+', '+m.x+' '+(M.MAT_Y+13),
       fill:'none',stroke:col,'stroke-opacity':.34,'stroke-width':1},gEdge);
     st.hitR(m.x-w/2,M.MAT_Y-11,m.x+w/2,M.MAT_Y+11,1,
       '<b>'+esc(m.name)+'</b><br>写 '+m.writes+' · 读 '+m.reads+' · 跑 '+m.runs+
-      (m.level!=null?'<br>验证 L'+m.level:'')+(m.in_B?'<br><span style="color:#ffd166">终态交付物</span>':''),
+      (m.level!=null?'<br>验证 L'+m.level:'')+(m.in_B?'<br><span style="color:var(--artifact)">终态交付物</span>':''),
       ()=>openMat(m.name));
   });
   // 主线
@@ -2802,11 +3026,11 @@ function renderV8(){
   const sk=V.nodes.filter(n=>n.sk).sort((a,b)=>a.x-b.x);
   for(let j=0;j<sk.length-1;j++){
     const a=sk[j].x, b=sk[j+1].x, gap=b-a>M.PITCH*1.6;
-    el('line',{x1:a,y1:YM,x2:b,y2:YM,stroke:gap?'rgba(63,199,180,.28)':'rgba(63,199,180,.75)',
+    el('line',{x1:a,y1:YM,x2:b,y2:YM,stroke:gap?tint('--agent',.32):cssv('--agent'),
       'stroke-width':gap?1:2.2,'stroke-dasharray':gap?'3 4':''},gMain);
   }
   el('text',{x:M.X0-158,y:YM+4,'font-size':11,fill:cssv('--ok')},gMain).textContent='骨架 '+sk.length+' 节点';
-  el('text',{x:M.X0-158,y:YM+18,'font-size':8.5,fill:cssv('--dim')},gMain).textContent='= 这趟的下界轨迹';
+  el('text',{x:M.X0-158,y:YM+18,'font-size':10,fill:cssv('--dim')},gMain).textContent='= 这趟的下界轨迹';
   sk.forEach(n=>{
     const col=cssv(KCOL8[n.k]);
     el('rect',{x:n.x-6,y:YM-8,width:12,height:16,rx:2,fill:col,
@@ -2822,7 +3046,7 @@ function renderV8(){
   V.missing.forEach(mv=>{
     const x=mv.x;
     el('path',{d:'M '+x+' '+(YM-11)+' L '+(x+8)+' '+YM+' L '+x+' '+(YM+11)+' L '+(x-8)+' '+YM+' Z',
-      fill:'rgba(95,211,154,.16)',stroke:cssv('--ok'),'stroke-dasharray':'2 2','stroke-width':1.2},gMain);
+      fill:tint('--ok',.12),stroke:cssv('--ok'),'stroke-dasharray':'2 2','stroke-width':1.2},gMain);
     st.hitC(x,YM,10,2,
       '<b>本应有一次验证</b><br>'+esc(mv.name)+'<br>它在 N'+mv.node+' 最后一次被写之后，再没有被读回或跑过',
       ()=>open('MISSING · 缺一次验证',mv.name,'',
@@ -2833,8 +3057,8 @@ function renderV8(){
   cg=gBranch;
   const gLaneLab=el('g',{},gBranch);
   M.lanes.forEach(([k,y])=>{
-    el('line',{x1:M.X0-30,y1:y,x2:M.W-260,y2:y,stroke:'rgba(23,48,57,.75)'},gLaneLab);
-    el('text',{x:M.X0-40,y:y+3.5,'font-size':9,fill:cssv('--dim')},gLaneLab).textContent=
+    el('line',{x1:M.X0-30,y1:y,x2:M.W-260,y2:y,stroke:cssv('--line2')},gLaneLab);
+    el('text',{x:M.X0-40,y:y+3.5,'font-size':10,fill:cssv('--dim')},gLaneLab).textContent=
       {rework:'返工',dead_end:'死胡同',blocked_retry:'被拦重试',redundant:'重复读',
        orientation:'摸情况',external_research:'查资料',delegate:'派发',think_only:'纯思考'}[k]||k;
   });
@@ -2857,7 +3081,7 @@ function renderV8(){
     el('circle',{cx:l.x_neg,cy:y,r:3.4,fill:cssv('--error')},gLag);
     el('line',{x1:l.x_neg,y1:y+10,x2:l.x_end,y2:y+10,stroke:cssv('--error'),
       'stroke-width':2,'stroke-dasharray':'4 3'},gLag);
-    el('text',{x:(l.x_neg+l.x_end)/2,y:y+22+(li%2)*11,'font-size':8.5,'text-anchor':'middle',
+    el('text',{x:(l.x_neg+l.x_end)/2,y:y+22+(li%2)*11,'font-size':10,'text-anchor':'middle',
       fill:cssv('--error')},gLag).textContent='迟滞 '+l.lag_nodes+' 节点 / '+fmtS(l.lag_seconds);
     st.hitC((l.x_neg+l.x_end)/2,y+10,12,2,
       '<b>迟滞</b><br>第一条否定性证据在 N'+l.neg+'，这条分支到 N'+l.to+' 才停<br>多跑了 '+
@@ -2870,8 +3094,8 @@ function renderV8(){
     if(id.x2!=null&&id.x2>id.x){
       el('line',{x1:id.x+8,y1:y,x2:id.x2-8,y2:y,stroke:cssv('--dele'),'stroke-opacity':.5,
         'stroke-width':1.4,'stroke-dasharray':'1 4'},gSub);
-      el('text',{x:(id.x+id.x2)/2,y:y-6,'font-size':8.5,'text-anchor':'middle',fill:cssv('--dele'),
-        'stroke':'rgba(6,18,24,.9)','stroke-width':3,'paint-order':'stroke'},gSub)
+      el('text',{x:(id.x+id.x2)/2,y:y-6,'font-size':10,'text-anchor':'middle',fill:cssv('--dele'),
+        'stroke':cssv('--surf2'),'stroke-width':3,'paint-order':'stroke'},gSub)
         .textContent='idle '+fmtS(id.seconds)+'（等 SendMessage 唤醒）';
     }
     st.hitC(id.x,YM,10,2,'<b>N'+id.node+' 派发未开工</b><br>dsh 异步 agent：launch 之后 idle，<br>直到 N'+
@@ -2890,16 +3114,16 @@ function renderV8(){
         el('path',{d:'M '+rx+' '+(YM+12)+' l -3 -6 l 6 0 z',fill:cssv('--ok')},gSub);
       }
     }
-    el('rect',{x:b.x0-14,y:y-11,width:b.w+28,height:22,rx:4,fill:'rgba(194,164,255,.05)',
-      stroke:'rgba(194,164,255,.28)','stroke-dasharray':'3 3'},gSub);
-    el('line',{x1:b.x0,y1:y,x2:b.x1,y2:y,stroke:'rgba(194,164,255,.45)','stroke-width':1.2},gSub);
-    el('text',{x:b.x0-14,y:y-17,'font-size':9.5,fill:cssv('--dele')},gSub)
+    el('rect',{x:b.x0-14,y:y-11,width:b.w+28,height:22,rx:4,fill:tint('--dele',.12),
+      stroke:tint('--dele',.42),'stroke-dasharray':'3 3'},gSub);
+    el('line',{x1:b.x0,y1:y,x2:b.x1,y2:y,stroke:tint('--dele',.42),'stroke-width':1.2},gSub);
+    el('text',{x:b.x0-14,y:y-17,'font-size':10.5,fill:cssv('--dele')},gSub)
       .textContent='lane'+b.lane+' · '+b.task+' · '+fmtS(b.seconds)+' · '+b.requests+' 请求 · out '+fmtN(b.out);
     st.hitR(b.x0-14,y-22,b.x1+14,y-6,1,
       '<b>'+esc(b.task)+'</b>（lane'+b.lane+'）<br>'+hhmm(b.start)+' → '+hhmm(b.end)+' · '+fmtS(b.seconds)+
       '<br>'+b.nodes.length+' 节点 · '+b.requests+' 请求 · out '+fmtN(b.out)+
       (b.errors?' · 失败 '+b.errors:'')+(b.wrote.length?'<br>写出：'+esc(b.wrote.join('、')):'')+
-      '<br><span style="color:#c2a4ff">点节点看它每一步</span>',()=>openV8Sub(b));
+      '<br><span style="color:var(--dele)">点节点看它每一步</span>',()=>openV8Sub(b));
     b.nodes.forEach(m=>{
       const col=cssv(SKCOL8[m.kind]||'--perceive');
       el(m.changes.length?'rect':'circle',
@@ -2909,7 +3133,7 @@ function renderV8(){
       st.hitC(m.x,y,9,2,
         '<b>lane'+b.lane+'·'+m.i+'</b> '+esc(m.brief||(m.changes.length?('写 '+m.changes.join('、')):
         (m.reads.length?('读 '+m.reads[0]):SKZH8[m.kind])))+'<br>'+SKZH8[m.kind]+' · '+hhmm(m.ts)+
-        ' · '+m.nacts+' 个动作'+(m.err?' · <span style="color:#e8604c">出错</span>':''),
+        ' · '+m.nacts+' 个动作'+(m.err?' · <span style="color:var(--error)">出错</span>':''),
         ()=>openV8Node('sub',m.i,b.lane));
     });
   });
@@ -2917,22 +3141,22 @@ function renderV8(){
   cg=gTop;
   const YC=V.ycomp, CP=V.comp_pitch;
   el('line',{x1:M.X0-14,y1:YC,x2:M.X0+(V.skeleton_n+V.missing.length)*CP,y2:YC,
-    stroke:'rgba(95,211,154,.6)','stroke-width':2},gTop);
+    stroke:tint('--ok',.45),'stroke-width':2},gTop);
   el('text',{x:M.X0-158,y:YC+4,'font-size':11,fill:cssv('--ok')},gTop)
     .textContent='最优轨迹 '+(V.skeleton_n+V.missing.length);
-  el('text',{x:M.X0-158,y:YC+18,'font-size':8.5,fill:cssv('--dim')},gTop).textContent='骨架压实 + 补验证';
+  el('text',{x:M.X0-158,y:YC+18,'font-size':10,fill:cssv('--dim')},gTop).textContent='骨架压实 + 补验证';
   sk.forEach(n=>{
     const cx=V.comp[String(n.i)]; if(cx==null) return;
     el('rect',{x:cx-Math.min(CP*.42,7),y:YC-7,width:Math.min(CP*.84,14),height:14,rx:2,
       fill:cssv(KCOL8[n.k]),'fill-opacity':n.k==='necessary'?.98:.6},gTop);
-    el('line',{x1:n.x,y1:YM+16,x2:cx,y2:YC-9,stroke:'rgba(95,211,154,.10)','stroke-width':.6},gTop);
+    el('line',{x1:n.x,y1:YM+16,x2:cx,y2:YC-9,stroke:tint('--ok',.12),'stroke-width':.6},gTop);
     st.hitC(cx,YC,9,2,'<b>N'+n.i+'</b> '+esc(n.lab)+'<br>在最优轨迹上的位置<br>'+KZH8[n.k],
       ()=>openV8Node('main',n.i));
   });
   V.missing.forEach((mv,j)=>{
     const cx=M.X0+(V.skeleton_n+j)*CP;
     el('path',{d:'M '+cx+' '+(YC-9)+' L '+(cx+7)+' '+YC+' L '+cx+' '+(YC+9)+' L '+(cx-7)+' '+YC+' Z',
-      fill:'rgba(95,211,154,.18)',stroke:cssv('--ok'),'stroke-dasharray':'2 2'},gTop);
+      fill:tint('--ok',.12),stroke:cssv('--ok'),'stroke-dasharray':'2 2'},gTop);
     st.hitC(cx,YC,9,2,'<b>补一次验证</b><br>'+esc(mv.name),null);
   });
   // 图层开关
@@ -2949,9 +3173,9 @@ function renderV8(){
   if(st.mm){
     st.mm._init(ms=>{
       const sx=ms._sx, sy=ms._sy;
-      el('rect',{x:0,y:0,width:240,height:Math.round(240*M.H/M.W),fill:'rgba(6,18,24,.9)'},ms);
+      el('rect',{x:0,y:0,width:240,height:Math.round(240*M.H/M.W),fill:cssv('--surf2')},ms);
       V.phases.forEach((p,k)=>el('rect',{x:p.x0*sx,y:150*sy,width:(p.x1-p.x0)*sx,height:(M.H-210)*sy,
-        fill:k%2?'rgba(63,199,180,.06)':'rgba(63,199,180,.12)'},ms));
+        fill:k%2?tint('--agent',.07):tint('--agent',.15)},ms));
       V.nodes.forEach(n=>el('rect',{x:n.x*sx-.6,y:(n.sk?YM:(laneY[n.k]||YM))*sy-1,width:1.4,height:2.4,
         fill:cssv(KCOL8[n.k]),'fill-opacity':n.sk?.95:.6},ms));
       V.subs.forEach(b=>el('rect',{x:b.x0*sx,y:b.y*sy-1,width:Math.max((b.x1-b.x0)*sx,2),height:2.2,
@@ -3025,6 +3249,64 @@ function renderAll(){ renderV1(); renderV2(); renderV3(); renderV4(); renderV5()
 let v7done=false, v8done=false;
 """
 
+
+
+ERR_HTML = r"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>轨迹观测 · 这条录制没法出图</title>
+<script>
+(function(){
+  var q=new URLSearchParams(location.search);
+  var ok={classic:1,dark:1,light:1}, t=q.get('theme')||'';
+  if(!ok[t]){try{var m=document.cookie.match(/(?:^|;\s*)ccwa_ui_theme=([^;]+)/);
+    t=m?decodeURIComponent(m[1]):'';}catch(e){}}
+  if(!ok[t]) t='dark';
+  var r=document.documentElement; r.dataset.theme=t;
+  r.style.colorScheme=(t==='dark')?'dark':'light';
+  if(q.get('embed')==='1') r.dataset.embed='1';
+})();
+</script>
+<style>
+@font-face{font-family:'Inter';src:url('/static/fonts/Inter.ttf') format('truetype');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Noto Sans SC';src:url('/static/fonts/NotoSansSC.ttf') format('truetype');font-weight:100 900;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url('/static/fonts/JetBrainsMono.ttf') format('truetype');font-weight:100 800;font-display:swap}
+:root{--void:#131318;--surf:#1E1E26;--line:#2E2E38;--ink:#F5F5F7;--muted:#C8C8D0;--artifact:#FBBF24;color-scheme:dark}
+html[data-theme="classic"]{--void:#DED8CC;--surf:#FFFFFF;--line:#E1DBD0;--ink:#1A1A1A;--muted:#5C564C;--artifact:#6D5016;color-scheme:light}
+html[data-theme="light"]{--void:#E8EEF0;--surf:#FFFFFF;--line:#C7D4D9;--ink:#17212B;--muted:#3D4C57;--artifact:#7A5B13;color-scheme:light}
+html,body{margin:0;background:var(--void);color:var(--ink);
+  font-family:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+html[data-embed="1"],html[data-embed="1"] body{background:transparent}
+.box{margin:24px;padding:18px 20px;border:1px solid var(--line);border-left:3px solid var(--artifact);
+  border-radius:12px;background:var(--surf);max-width:820px}
+html[data-embed="1"] .box{margin:16px 0}
+h1{margin:0 0 8px;font-size:15px;font-weight:640}
+p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.75}
+code{font-family:"JetBrains Mono","SF Mono",Menlo,monospace;font-size:11.5px;color:var(--artifact)}
+</style></head><body>
+<div class="box" id="trajerr"><h1>__TITLE__</h1><p>__MSG__<br><code>__CODE__</code></p></div>
+<script>
+if(document.documentElement.dataset.embed==='1'){
+  var post=function(){parent.postMessage({t:'ccwa-traj-height',
+    h:Math.ceil(document.documentElement.scrollHeight)},'*');};
+  try{ new ResizeObserver(post).observe(document.documentElement); }catch(e){ addEventListener('resize',post); }
+  post();
+}
+</script></body></html>
+"""
+
+
+def render_error_html(msg: str, code: str) -> str:
+    """出不了图时也给一张**同一套外观**的页，而不是把 JSON 丢进 API 浏览面。
+
+    260829 真机踩到：错误走 jsonify，而 `?format=html` 会被浏览面接管渲染成一整页
+    「API 响应」，嵌在分析页里就是一块完全不相干的界面，前端再去抓它的 innerText
+    拼错误卡，抓出来的是「全部展开 / 复制 / 原始 JSON」这类按钮文案。
+    """
+    esc = (lambda t: str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    return (ERR_HTML.replace("__TITLE__", "这条录制出不了八视图")
+                    .replace("__MSG__", esc(msg))
+                    .replace("__CODE__", esc(code)))
 
 
 def render_html(payload: dict) -> str:

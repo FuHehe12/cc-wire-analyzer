@@ -90,7 +90,7 @@
       anPick('p', p[1].sid); await sleep(3500);
       return 'ok';
     }],
-    ['分析·录制（含抽屉/子代理/树视图）', async () => {
+    ['分析·录制（含抽屉/子代理/八视图）', async () => {
       anShow('rec'); await sleep(700);
       const c = (AN.items || []).filter(x => x.kind === 'capture');
       if (!c.length) return 'skip:没有录制快照';
@@ -99,16 +99,42 @@
       await sleep(600);
       const step = document.querySelector('.an-step[data-step]');
       if (step) { step.click(); await sleep(2000); }
-      anStepView('tree'); await sleep(1200);
+      /* 八视图档：iframe 嵌入 + 高度桥。**光看没报错不够**——桥断了页面照样安静，
+         只是那块变成一条 620px 的默认高度。所以这里断言父页真收到了子页报的高度。 */
+      anStepView('tree'); await sleep(6000);
+      const fr = document.querySelector('.an-traj iframe');
+      if (!fr) return 'fail:八视图档没渲染出 iframe';
+      const doc = fr.contentDocument;
+      if (!doc) return 'fail:读不到八视图页';
+      if (doc.documentElement.dataset.theme !== currentTheme())
+        return 'fail:八视图外观没跟上主界面';
+      /* 当日数据已归档的录制出不了图，后端给的是同款外观的错误页——那是**对的行为**，
+         不是失败。但**只测到错误页等于没测八视图**：往下换一条录制再试，
+         最多试三条（新机器上可能确实一条都出不了图，那才 skip）。 */
+      let d2 = doc, tried = 1;
+      while (d2 && d2.getElementById('trajerr') && tried < Math.min(c.length, 3)) {
+        anPick('c', c[tried].sid); await sleep(5000);
+        anStepView('tree'); await sleep(6000);
+        const f2 = document.querySelector('.an-traj iframe');
+        d2 = f2 && f2.contentDocument; tried++;
+      }
+      if (!d2) return 'fail:换录制后读不到八视图页';
+      if (d2.getElementById('trajerr')) return 'skip:试过的录制当日数据都已归档';
+      if (!d2.getElementById('nav')) return 'fail:八视图页既没导航也没错误页（后端多半回了裸 JSON）';
+      const fr2 = document.querySelector('.an-traj iframe');
+      if (parseInt(fr2.style.height || '0', 10) < 421) return 'fail:高度桥没生效（iframe 高度还是默认值）';
+      d2.querySelectorAll('.tab').forEach((t, i) => { if (i === 7) t.click(); });
+      await sleep(1500);
       anStepView('list'); await sleep(800);
       return 'ok';
     }],
     ['设置', async () => { showView('settings'); await sleep(1800); return 'ok'; }],
     ['三套外观切换', async () => {
-      const root = document.documentElement;
-      const was = root.getAttribute('data-theme');
-      for (const t of ['dark', 'classic', 'light']) { root.setAttribute('data-theme', t); await sleep(400); }
-      if (was) root.setAttribute('data-theme', was); else root.removeAttribute('data-theme');
+      /* 走 setTheme 而不是直接改 data-theme：换肤要连带重渲的东西（泳道色板、
+         八视图子页的取值内联色）都挂在它上面，绕过它等于没测那一半。 */
+      const was = currentTheme();
+      for (const t of ['dark', 'classic', 'light']) { setTheme(t, false); await sleep(500); }
+      setTheme(was, false);
       return 'ok';
     }],
     ['三语切换', async () => {
