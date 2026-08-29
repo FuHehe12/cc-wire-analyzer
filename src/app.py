@@ -17,7 +17,7 @@ import re
 import sys
 import threading
 import time
-from collections import Counter
+from collections import Counter, OrderedDict
 from pathlib import Path
 
 from flask import (Flask, Response, jsonify, render_template, request,
@@ -3212,6 +3212,43 @@ def _traj_semantic(sid: str, rec: dict, lang: str, mode: str = "resume") -> dict
     return state
 
 
+# 八视图 HTML 的进程内小缓存（260829）。compute 的输入是 (rec, semantic)，而**录制快照
+# 是不可变的**——同一条录制来回切档却在反复重算：实测 138 节点那条要 5.3 秒、产出 1.2 MB，
+# 算与序列化各占一半。所以缓存的是**渲染好的 HTML 字符串**，不是 payload。
+# 容量写死 2：它是加速器不是存储（1.2 MB × 2 ≈ 2.4 MB）。语义层跑完必须失效对应键。
+# 不落盘：落盘就要管清理、管版本、管跟着快照删除，为省 5 秒引入一整套生命周期不划算；
+# 桌面 app 的进程生命周期就是用户的一次使用，够了。
+_TRAJ_HTML_CACHE: "OrderedDict[tuple, str]" = OrderedDict()
+_TRAJ_HTML_CACHE_MAX = 2
+
+
+def _traj_html_key(sid: str, semantic, theme: str, embed: str) -> tuple:
+    # 语义层指纹：没有就是 None，有就取三个规模量——它们一变，页面内容就变了
+    fp = None
+    if isinstance(semantic, dict):
+        meta = semantic.get("meta") or {}
+        fp = (len(semantic.get("phases") or []), len(semantic.get("briefs") or {}),
+              meta.get("seconds"))
+    return (sid, fp, theme, embed)
+
+
+def _traj_html_cached(key: tuple, build) -> str:
+    hit = _TRAJ_HTML_CACHE.get(key)
+    if hit is not None:
+        _TRAJ_HTML_CACHE.move_to_end(key)
+        return hit
+    html = build()
+    _TRAJ_HTML_CACHE[key] = html
+    while len(_TRAJ_HTML_CACHE) > _TRAJ_HTML_CACHE_MAX:
+        _TRAJ_HTML_CACHE.popitem(last=False)
+    return html
+
+
+def _traj_cache_drop(sid: str) -> None:
+    for k in [k for k in _TRAJ_HTML_CACHE if k[0] == sid]:
+        _TRAJ_HTML_CACHE.pop(k, None)
+
+
 @app.route("/api/snapshots/<sid>/trajectory", methods=["GET", "POST"])
 def snapshots_trajectory(sid):
     """轨迹八视图。GET 出 payload（程序层现算 + 语义层缓存喂入，无则机械兜底标
@@ -3234,11 +3271,16 @@ def snapshots_trajectory(sid):
             _llm_request("preflight", "preflight")   # 配置先探一次，别让几十批各自失败
             _ANALYSIS_PROGRESS[sid] = {"running": True, "phase": "traj_split"}
             state = _traj_semantic(sid, rec, lang, mode)
+            _traj_cache_drop(sid)   # 语义层变了，缓存的那份 HTML 就过时了
             return jsonify({"ok": True, "data": state})
         semantic = snapshot_store.read_semantic(sid)
-        payload = trajectory.compute(sid, rec, semantic)
         if request.args.get("format") == "html":
-            return Response(trajectory.render_html(payload), mimetype="text/html")
+            key = _traj_html_key(sid, semantic, request.args.get("theme") or "",
+                                 request.args.get("embed") or "")
+            html = _traj_html_cached(
+                key, lambda: trajectory.render_html(trajectory.compute(sid, rec, semantic)))
+            return Response(html, mimetype="text/html")
+        payload = trajectory.compute(sid, rec, semantic)
         return jsonify({"ok": True, "exists": True,
                         "semantic_exists": semantic is not None, "data": payload})
     except LlmConfigError as e:

@@ -983,8 +983,24 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
    现在背景透明（母体画布透出来）、无边框、**高度跟着内容走**（子页报 scrollHeight），
    于是全页只剩一条滚动条。右侧钻探抽屉在此档没交互，隐藏。 */
 .an-split.trajmode .an-drawer-grip,.an-split.trajmode .an-drawer{display:none;}
-.an-traj{min-height:420px;}
+.an-traj{min-height:420px;position:relative;}
 .an-traj iframe{width:100%;height:620px;border:0;background:transparent;display:block;}
+/* 加载期占位：融合改造把 iframe 改成透明 + 高度跟内容走之后，子页 load 之前屏幕上
+   一个像素都不变——用户唯一的反馈是「点了没反应」。判据不是"有个转圈"，
+   是**从点击到屏幕出现变化 ≤ 一帧**，所以它跟 iframe 同时渲染、由 onload 摘掉。 */
+.an-traj.loading iframe{visibility:hidden;}
+.traj-skel{position:absolute;inset:0;border:1px solid var(--border);border-radius:12px;
+  background:var(--bg-card);display:flex;flex-direction:column;gap:14px;padding:22px 24px;}
+.traj-skel .sk-line{height:12px;border-radius:6px;
+  background:linear-gradient(90deg,var(--bg-soft),var(--bg-softer),var(--bg-soft));
+  background-size:200% 100%;animation:skshine 1.4s ease-in-out infinite;}
+.traj-skel .sk-line.w1{width:38%;} .traj-skel .sk-line.w2{width:72%;}
+.traj-skel .sk-row{display:flex;gap:10px;}
+.traj-skel .sk-card{flex:1;height:78px;border-radius:10px;
+  background:linear-gradient(90deg,var(--bg-soft),var(--bg-softer),var(--bg-soft));
+  background-size:200% 100%;animation:skshine 1.4s ease-in-out infinite;}
+.traj-skel .sk-note{margin-top:2px;font-size:12px;color:var(--text-dim);line-height:1.7;}
+@keyframes skshine{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
 
 /* 树视图：一条主干竖线，节点挂在上面 */
 .an-tree{position:relative;padding-left:20px;margin-top:8px;}
@@ -1952,6 +1968,7 @@ zh: {
   "an.trajSemNone": "语义层未归纳：当前阶段是候选边界机械划分、节点简述是程序标签。点「AI 归纳」升级为模型语义（阶段名 / 状态快照 / 步级简述）。",
   "an.trajSemOk": "语义层已归纳（阶段 + 状态快照 + 步级简述）。重新点「AI 归纳」补失败的部分。",
   "an.trajLoadFailed": "八视图加载失败：{msg}",
+  "an.trajLoading": "正在计算轨迹——地基是当日全部主线请求的并集，长录制首次打开要几秒；算过之后再打开就很快了。",
   "an.ai.runningTraj": "八视图语义层：切分阶段…",
   "an.ai.runningTrajSnap": "八视图：填阶段快照 {d}/{t}…",
   "an.ai.runningTrajBrief": "八视图：写步级简述 {d}/{t}…",
@@ -2347,6 +2364,7 @@ en: {
   "an.trajSemNone": "Semantic layer not summarized yet: phases are mechanically split at candidate boundaries, briefs are program labels. Click \"AI Summary\" to upgrade.",
   "an.trajSemOk": "Semantic layer summarized (phases + state snapshots + per-node briefs).",
   "an.trajLoadFailed": "Failed to load 8 views: {msg}",
+  "an.trajLoading": "Computing the trajectory — the foundation is the union of all main-line requests of that day, so a long recording takes a few seconds the first time. Later opens are fast.",
   "an.ai.runningTraj": "8 views: splitting phases…",
   "an.ai.runningTrajSnap": "8 views: filling snapshots {d}/{t}…",
   "an.ai.runningTrajBrief": "8 views: writing briefs {d}/{t}…",
@@ -2747,6 +2765,7 @@ ja: {
   "an.trajSemNone": "意味層は未要約：フェーズは機械的分割、概要はプログラムラベル。「AI 要約」でアップグレード。",
   "an.trajSemOk": "意味層を要約済み（フェーズ＋状態スナップショット＋ステップ概要）。",
   "an.trajLoadFailed": "8ビューの読み込みに失敗：{msg}",
+  "an.trajLoading": "軌跡を計算中——土台はその日の全主線リクエストの和集合なので、長い録画は初回に数秒かかります。二回目以降は高速です。",
   "an.ai.runningTraj": "8ビュー：フェーズ分割中…",
   "an.ai.runningTrajSnap": "8ビュー：スナップショット作成 {d}/{t}…",
   "an.ai.runningTrajBrief": "8ビュー：概要作成 {d}/{t}…",
@@ -6552,7 +6571,12 @@ function anTrajHtml(){
   /* 外观随 URL 一起交给子页：首屏就是对的颜色，不会先闪一下深色。
      之后切外观走 anTrajTheme()——**不能重新 load**，payload 内嵌在那份 HTML 里，
      reload 等于让服务端重算一遍（~20s）。 */
-  return '<div class="an-traj"><iframe src="/api/snapshots/' + encodeURIComponent(AN.recSid) +
+  return '<div class="an-traj loading">' +
+    '<div class="traj-skel"><div class="sk-line w1"></div><div class="sk-line w2"></div>' +
+    '<div class="sk-row"><div class="sk-card"></div><div class="sk-card"></div>' +
+    '<div class="sk-card"></div><div class="sk-card"></div></div>' +
+    '<div class="sk-note">' + t18("an.trajLoading") + '</div></div>' +
+    '<iframe src="/api/snapshots/' + encodeURIComponent(AN.recSid) +
     '/trajectory?format=html&embed=1&theme=' + encodeURIComponent(currentTheme()) +
     '" title="' + esc(t18("an.viewTree")) +
     '" onload="anTrajCheck(this)"></iframe></div>';
@@ -6597,6 +6621,8 @@ window.addEventListener("resize", anTrajViewport);
    同款外观错误页（当日数据已归档之类），两者都算渲染成功；都没有才说明回的是裸 JSON，
    那种东西留在 iframe 里没人读得懂，换成人话错误卡。 */
 function anTrajCheck(f){
+  const host = f.closest(".an-traj");
+  if(host){ host.classList.remove("loading"); const sk = host.querySelector(".traj-skel"); if(sk) sk.remove(); }
   try{
     const doc = f.contentDocument;
     if(!doc || doc.getElementById("nav") || doc.getElementById("trajerr")) return;
