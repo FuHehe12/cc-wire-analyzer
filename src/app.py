@@ -2901,7 +2901,7 @@ def snapshots_sources(sid):
 
 # ===== 轨迹八视图：数据端点 + 语义层管线（260828，issue 260828_分析页轮次骨架换八视图） =====
 #
-# 分层纪律与原型管线（prototypes/260828_工序轨迹原型-tools/，方法论见 research/）一致：
+# 分层纪律与原型管线（已收官，见 research/原型演进史.md；判据见 research/判据与算法.md）一致：
 #   事实程序算——节点/物料/血统/验证/必要闭包在 trajectory.py 每次现算，秒级不落盘；
 #   语义模型写——阶段切分 + 快照四格 + 步级简述，POST 触发，结果存 <sid>.semantic.json；
 #   程序校验覆盖——边界缝合/连续覆盖/简述全覆盖在这层查，事实四格（artifacts/pending/

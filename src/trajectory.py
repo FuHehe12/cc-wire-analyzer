@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """轨迹八视图数据层：一条录制快照 → 八视图 payload（程序层全量 + 语义层可选）。
 
-自 260828 原型管线产品化（prototypes/260828_工序轨迹原型-tools/ 的
-build_factors.py + optimal.py + build_eight.py；方法论见 research/）。
+自 260828 原型管线产品化（原型的 build_factors.py + optimal.py + build_eight.py 三件；
+原型目录已于 260829 收官删除——十一代演进与脚本对应关系见 research/原型演进史.md，
+方法论与判据见 research/判据与算法.md）。
 
 分层纪律（与原型一致）：
   事实层（节点/物料/血统/验证/阀门/债/子代理线/必要闭包）——本文件全程序算；
@@ -1032,7 +1033,7 @@ def build_optimal(F):
               f"废 out {r['waste_out']:,}")
 
     out = {
-        "meta": {"nodes": N, "generated_by": "optimal.py",
+        "meta": {"nodes": N, "generated_by": "trajectory.build_optimal",
                  "definition": "必要 = 从终态交付集沿血统边反向可达；其余按四类浪费归类",
                  "caveat": "这是事后可复算的下界，不是当时能走出来的路；"
                            "ex-post 的探索代价不算错误，ex-ante 的才算"},
