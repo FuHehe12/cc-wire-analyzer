@@ -14,7 +14,7 @@
   3. The recording-blind-spot audit (protocol side and capability side) closed across v0.4.3–v0.4.6; method in `docs/reference/开发约定.md` §2.5 and unit 0 of `docs/methodology/同类工具构建手册.md`.
   4. **Storage follow-ups now that compaction exists.** Two are measured and deliberately deferred: the skeleton's pointer lists are a prefix-extension of the previous request's in the same lane, so delta-encoding them should roughly halve a pack again (estimated 477 MB → ~10 MB); and retention still only deletes — it could compact first and delete much later, which changes what "keep 30 days" costs. Neither is needed for the current ratio to be useful, which is why neither shipped with it.
 
-## Unreleased
+## v0.4.19 - 2026-08-29
 
 - **The eight views stopped looking like a different piece of software.** They shipped as the
   prototype had them: a private near-black teal palette, their own font stack, 8.5px labels, their
