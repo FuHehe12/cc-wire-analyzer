@@ -1581,6 +1581,19 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
           <div><label class="lbl" for="cfgRetention" data-i18n="set.retention">保留天数</label><div class="sub" data-i18n="set.retentionSub">超过天数的 captures 自动清理</div></div>
           <input type="number" id="cfgRetention" min="1" max="365" value="30">
         </div>
+        <!-- 滚动压实（260831）。为什么要有它：compact_date 拒绝碰今天（append 只写今天，
+             压实它就要和写盘热路径抢同一个文件），于是 28x 的压缩比在当天一秒都享受不到，
+             而实测单日 500~860MB 是常态。切段走「锁内瞬时改名 → 锁外逐字节校验 → 锁内就位」，
+             「校验通过才删源文件」那条硬线一分没让。 -->
+        <div class="srow">
+          <div><div class="lbl" id="lblRolling" data-i18n="set.rolling">当天滚动压缩</div><div class="sub" data-i18n="set.rollingSub">录到阈值就压缩已写完的部分，不必等到第二天</div></div>
+          <button class="toggle" id="cfgRolling" type="button" role="switch" aria-checked="false"
+            aria-labelledby="lblRolling" onclick="toggleSwitch(this)"></button>
+        </div>
+        <div class="srow">
+          <div><label class="lbl" for="cfgRollingMb" data-i18n="set.rollingMb">压缩阈值 (MB)</label><div class="sub" data-i18n="set.rollingMbSub">写到这么大就压一段 · 太小会切出很多段，去重率反而下降</div></div>
+          <input type="number" id="cfgRollingMb" min="20" max="2000" step="10" value="200">
+        </div>
         <!-- 曾有个「Headers 脱敏」开关：它是假的（proxy._redact() 一直无条件调用，从不看配置）。
              260713 连开关一起删掉，脱敏恒开——真让它可关 = 提供把 API key 明文写进 jsonl 的选项，
              而录制现在可被 AI 经 CLI 读取（docs/reference/AI_USAGE.md），等于给 key 修一条直通 AI 上下文的路。 -->
@@ -1836,7 +1849,8 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
     <div id="anPaneRec" hidden>
       <div class="an-boardbar">
         <span class="an-sel-state" id="anRecState"></span>
-        <button class="btn" onclick="anCopyBrief(this)" data-i18n="an.copyBrief">复制 agent 指令</button>
+        <button class="btn" onclick="anCopyBrief(this)" data-i18n="an.copyBrief">复制指令·审计</button>
+        <button class="btn" onclick="anCopyFlow(this)" data-i18n="an.copyFlow">复制指令·流程图</button>
         <button class="btn" onclick="anCopyPrompt(this)" data-i18n="an.copyPrompt">复制分析提示词</button>
         <button class="btn" onclick="anExportPack(this)" data-i18n="an.export"
                 data-i18n-title="an.exportTip"
@@ -1984,7 +1998,8 @@ zh: {
   "an.bodyTitle": "正文差异", "an.bodyLegend": "左列行号 = 左/右；⟨⟩ 内是被揭示的不可见字符，波浪下划线是同形异码",
   "an.sideA": "左", "an.sideB": "右", "an.swap": "对调",
   "an.diffEmpty": "还没有快照。在捕获详情页右键，选择「备份这段提示词」或「备份当前录制」。",
-  "an.recPick": "录制快照", "an.copyBrief": "复制 agent 指令", "an.copyPrompt": "复制分析提示词",
+  "an.recPick": "录制快照", "an.copyBrief": "复制指令·审计", "an.copyFlow": "复制指令·流程图",
+  "an.copyPrompt": "复制分析提示词",
   "an.recEmpty": "还没有录制快照。在捕获详情页右键，选择「备份当前录制」。",
   "ctx.snapPrompt": "备份这段提示词", "ctx.snapSelection": "备份选中文字",
   "ctx.snapCapture": "备份当前录制",
@@ -2268,6 +2283,8 @@ zh: {
   "set.fixFail": "修复失败：{msg}",
   "set.autostart": "自动启动代理", "set.autostartSub": "打开软件时自动开始捕获",
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
+  "set.rolling": "当天滚动压缩", "set.rollingSub": "录到阈值就压缩已写完的部分，不必等到第二天",
+  "set.rollingMb": "压缩阈值 (MB)", "set.rollingMbSub": "写到这么大就压一段 · 太小会切出很多段，去重率反而下降",
   "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）。上游模型自身也有输出上限，填得再大也不会超过它",
   "set.inputMax": "最大输入字符", "set.inputMaxSub": "翻译 / AI 解读单次发送的原文上限（字符）。超了会截断并有提示——录制里单条 system prompt 40K+ 常见，默认 20K 会砍掉一半",
   "set.chatCtxMax": "分析对话上下文上限", "set.chatCtxSub": "分析页多轮对话每轮注入的快照摘要上限（字符）。调大能问得更细，代价是每轮花费",
@@ -2387,7 +2404,8 @@ en: {
   "an.bodyTitle": "Text differences", "an.bodyLegend": "Line numbers are left/right; ⟨⟩ marks a revealed invisible character, a wavy underline marks a homoglyph",
   "an.sideA": "Left", "an.sideB": "Right", "an.swap": "Swap",
   "an.diffEmpty": "No snapshots yet. Right-click in a capture's detail view and choose \u201cSnapshot this prompt\u201d or \u201cSnapshot this recording\u201d.",
-  "an.recPick": "Recording snapshot", "an.copyBrief": "Copy agent instructions",
+  "an.recPick": "Recording snapshot", "an.copyBrief": "Copy brief · audit",
+  "an.copyFlow": "Copy brief · flowchart",
   "an.copyPrompt": "Copy analysis prompt",
   "an.recEmpty": "No recording snapshots yet. Right-click in a capture's detail view and choose \u201cSnapshot this recording\u201d.",
   "ctx.snapPrompt": "Snapshot this prompt", "ctx.snapSelection": "Snapshot selection",
@@ -2673,6 +2691,8 @@ en: {
   "set.fixFail": "Restore failed: {msg}",
   "set.autostart": "Auto-start proxy", "set.autostartSub": "Start capturing when the app opens",
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
+  "set.rolling": "Compact today as it records", "set.rollingSub": "Compact the finished part once it hits the threshold, instead of waiting for tomorrow",
+  "set.rollingMb": "Compaction threshold (MB)", "set.rollingMbSub": "Seal a segment at this size · too small cuts many segments and the dedup ratio drops",
   "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default). The upstream model has its own ceiling — a larger value here cannot exceed it",
   "set.inputMax": "Max input characters", "set.inputMaxSub": "Cap on the source text sent per translate / AI-explain call (characters). Longer text is cut with a notice — single system prompts of 40K+ are common in recordings, so the 20K default cuts them in half",
   "set.chatCtxMax": "Analysis chat context cap", "set.chatCtxSub": "Snapshot digest injected each analysis-chat turn (characters). Raising it buys finer questions at the cost of each turn",
@@ -2792,7 +2812,8 @@ ja: {
   "an.bodyTitle": "本文の差異", "an.bodyLegend": "行番号は左/右。⟨⟩ は可視化された不可視文字、波線は同形異字",
   "an.sideA": "左", "an.sideB": "右", "an.swap": "入れ替え",
   "an.diffEmpty": "スナップショットがありません。キャプチャ詳細で右クリックし「このプロンプトを保存」または「この記録を保存」を選んでください。",
-  "an.recPick": "記録スナップショット", "an.copyBrief": "agent 用の指示をコピー",
+  "an.recPick": "記録スナップショット", "an.copyBrief": "指示をコピー・監査",
+  "an.copyFlow": "指示をコピー・フロー図",
   "an.copyPrompt": "分析プロンプトをコピー",
   "an.recEmpty": "記録スナップショットがありません。キャプチャ詳細で右クリックし「この記録を保存」を選んでください。",
   "ctx.snapPrompt": "このプロンプトを保存", "ctx.snapSelection": "選択範囲を保存",
@@ -3077,6 +3098,8 @@ ja: {
   "set.fixFail": "修復に失敗：{msg}",
   "set.autostart": "プロキシ自動開始", "set.autostartSub": "アプリ起動時にキャプチャを開始",
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
+  "set.rolling": "当日ローリング圧縮", "set.rollingSub": "しきい値に達したら書き終えた分を圧縮 · 翌日を待たない",
+  "set.rollingMb": "圧縮しきい値 (MB)", "set.rollingMbSub": "この大きさで 1 区間を封じる · 小さすぎると区間が増え重複除去率が下がる",
   "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上流のデフォルト）。上流モデル自体にも出力上限があり、これを超えることはできません",
   "set.inputMax": "最大入力文字数", "set.inputMaxSub": "翻訳・AI 解釈で 1 回に送る原文の上限（文字）。超えると切り詰めとその旨の表示が出ます——録画内の単一 system prompt は 40K+ も珍しくなく、既定 20K では半分落ちます",
   "set.chatCtxMax": "分析対話のコンテキスト上限", "set.chatCtxSub": "分析タブの対話で毎ターン注入するスナップショット要約の上限（文字）。大きくすれば細かく聞けますが、ターンごとの費用が増えます",
@@ -6196,16 +6219,18 @@ async function anRecLoad(){
   if(!sid){ $("anRecOut").innerHTML = ""; return; }
   $("anRecOut").innerHTML = '<div class="card an-note">' + t18("an.loading") + '</div>';
   try{
-    const [tr, sr, br, semr] = await Promise.all([
+    const [tr, sr, br, bfr, semr] = await Promise.all([
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/thinking?level=0"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/sources"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief"),
+      fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief?task=flow"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/semantic"),
       anAnalysisLoad(sid)]);   /* 已有的 AI 归纳一并取回：分析过的不该再花一次钱（260809）*/
     try{ AN.recSem = !!(await semr.json()).exists; }catch(e){ /* 状态条降级，不挡主流程 */ }
     anSubsLoad(sid);          /* 子代理线：不 await——它要回原始录制里捞，慢一点不该拖住主线 */
     const tj = await tr.json(), sj = await sr.json();
     AN.brief = await br.text();
+    AN.briefFlow = await bfr.text();
     if(!tj.ok) throw new Error(tj.error || "failed");
     AN.recData = tj.data;
     AN.recSources = sj.ok ? (sj.sources || []) : [];
@@ -6889,10 +6914,18 @@ function anDrawerPaint(){
   }
 }
 
-/* 复制给外部 agent 的指令（后端生成：端点清单是后端的事实，抄到前端就会分叉） */
+/* 复制给外部 agent 的指令（后端生成：端点清单是后端的事实，抄到前端就会分叉）。
+   两份、两个按钮：审计问的是"哪里疑惑/冲突/腐烂"，流程图要的是"实际执行拓扑"，
+   产出形状完全不同。**不做一个按钮按状态分叉**——v0.4.20 刚为这个形状返工过
+   （一个"AI 摘要"按钮在两个槽位跑两种任务两种价钱），同一个仓库里不该再合回去。 */
 function anCopyBrief(btn){
   if(!AN.brief){ toast(t18("an.pickFirst"), true); return; }
   return copyAndReport(AN.brief, btn);
+}
+
+function anCopyFlow(btn){
+  if(!AN.briefFlow){ toast(t18("an.pickFirst"), true); return; }
+  return copyAndReport(AN.briefFlow, btn);
 }
 
 /* 便携包（260827，issue 260827_快照便携包导出导入）：把选中的贴纸连同 AI 归纳打成一个文件。
@@ -7184,6 +7217,9 @@ async function loadConfig(){
     $("cfgAutoStart").classList.toggle("on", !!cfg.auto_start_proxy);
     $("cfgAutoStart").setAttribute("aria-checked", cfg.auto_start_proxy ? "true" : "false");
     $("cfgRetention").value = cfg.retention_days ?? 30;
+    $("cfgRolling").classList.toggle("on", !!cfg.rolling_compact);
+    $("cfgRolling").setAttribute("aria-checked", cfg.rolling_compact ? "true" : "false");
+    $("cfgRollingMb").value = cfg.rolling_compact_mb ?? 200;
     const tr = cfg.translate || {};
     $("cfgTransKey").value = tr.api_key || "";
     $("cfgTransBase").value = tr.base_url || "";
@@ -7521,6 +7557,9 @@ async function saveConfig(){
   const payload = {
     auto_start_proxy: $("cfgAutoStart").classList.contains("on"),
     retention_days: parseInt($("cfgRetention").value, 10) || 30,
+    rolling_compact: $("cfgRolling").classList.contains("on"),
+    /* 两侧都夹（后端 _clamp_seg_mb 也夹）：0 会让每条记录都触发一次切段 */
+    rolling_compact_mb: Math.min(2000, Math.max(20, parseInt($("cfgRollingMb").value, 10) || 200)),
     translate: {
       api_key: $("cfgTransKey").value,
       base_url: $("cfgTransBase").value.trim(),
