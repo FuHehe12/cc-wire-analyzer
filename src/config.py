@@ -39,6 +39,13 @@ _DEFAULTS = {
     "ui_scale": 100,
     "auto_start_proxy": False,
     "retention_days": 30,
+    # 滚动压实（260831）：今天的录制写到阈值就把已写完的前缀封存成分片，不必等跨天。
+    # 动机是**当天磁盘峰值**——实测单日 500~860MB 是常态，而 compact_date 拒绝碰今天，
+    # 于是 28x 的压缩比在当天一秒都享受不到。
+    # 默认关：这是新形态，先让它在真流量上跑几天再考虑默认开。
+    "rolling_compact": False,
+    # 切段阈值（MB），读写两侧夹到 20~2000（见 _clamp_seg_mb）。
+    "rolling_compact_mb": 200,
     "translate": {
         "api_key": "",
         "base_url": "",
@@ -99,7 +106,21 @@ def get_config() -> dict:
     tr["chat_context_max_chars"] = _clamp_chars(tr.get("chat_context_max_chars"))
     an = merged.get("analysis") or {}
     an["concurrency"] = _clamp_workers(an.get("concurrency"))
+    merged["rolling_compact_mb"] = _clamp_seg_mb(merged.get("rolling_compact_mb"))
     return merged
+
+
+def _clamp_seg_mb(v, default: int = 200) -> int:
+    """滚动压实的切段阈值夹到 20~2000 MB。
+
+    下限防「填 0 或很小的数 → 每条记录都触发一次切段」，那会把一天切成几十个分片，
+    而每个分片一份独立 blob 池，去重率反而掉下来；上限防手滑填个天文数字，
+    那等于把开关关掉却以为它开着——比明确关掉更糟，因为它看起来是开的。
+    """
+    try:
+        return max(20, min(2000, int(v) or default))
+    except (TypeError, ValueError):
+        return default
 
 
 def _clamp_scale(v) -> int:
