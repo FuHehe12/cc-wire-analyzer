@@ -49,28 +49,6 @@
 - **The brief was half-translated.** Its endpoint annotations and metadata line were hard-coded
   Chinese, so `lang=en` returned an English task wrapped in Chinese labels.
 
-## v0.4.20 - 2026-08-29
-
-- **The one "AI Summary" button became two, one per slot.** It used to branch on which slot you were
-  looking at: the same label ran `/analysis` in the List slot and `/trajectory` in the 8-views slot —
-  two different jobs at two different prices behind one word. There are now two buttons, both always
-  present, each showing its own state ("Summarise list" / "Re-run list" / "Fill N steps" vs
-  "Summarise 8 views" / "Re-run 8 views"), so you can see whether the *other* slot has been
-  summarised without switching to it. Only one may run at a time — both pipelines call the same model
-  endpoint, and running them together only multiplies the failure and rate-limit surface. "Recompute
-  from scratch" now names its target too, and stays list-only: the customisable summariser prompts
-  apply to that pipeline, the trajectory's task descriptions are built in.
-
-- **Clicking the eight-view slot now changes the screen in the same frame.** Making the iframe
-  transparent with a content-driven height had an unintended consequence: until the child document
-  loads, nothing moves at all — and a 138-node recording takes 5.3 seconds and 1.2 MB to produce, so
-  the only feedback was "I clicked and nothing happened". A skeleton card now renders with the click
-  (measured at 53ms) and says why a long recording takes a few seconds.
-- **The same recording is no longer recomputed every time you open it.** `trajectory.compute` ran on
-  every request for a snapshot that cannot change; a two-entry in-process cache of the rendered HTML,
-  keyed by snapshot plus semantic-layer fingerprint and dropped when the semantic pipeline writes,
-  takes the 138-node recording from **5.18s to 0.03s** on reopen.
-
 ## Earlier versions
 
 v0.4.19 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the [GitHub Releases page](https://github.com/FuHehe12/cc-wire-analyzer/releases), which carries the same notes per version.
