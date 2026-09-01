@@ -1,6 +1,6 @@
 # Changelog — released versions
 
-> Full notes for every released version, v0.4.16 and earlier. The current version and the
+> Full notes for every released version, v0.4.21 and earlier. The current version and the
 > unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
 > to build a release's notes. Each version below is also published, unchanged, on its
 > [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
@@ -9,6 +9,24 @@
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
 
+
+## v0.4.21 - 2026-08-31
+
+### Improved
+
+- Today's recording is compacted as it goes: the finished prefix is sealed into segments once it
+  crosses a threshold and merged back into one pack the next day. Off by default; the settings page
+  has the switch and the threshold (20–2000 MB, default 200). Measured 701 KB → 36.8 KB (19.1x),
+  byte-identical on unpack.
+- The agent-facing brief now exposes the analysis the app has already computed: its endpoint list
+  went from 3 to 8 and names the fields `trajectory` holds. A second task (`?task=flow`) asks for a
+  diagram of how the run actually went.
+
+### Fixed
+
+- Archiving a day that had been rolled kept only its last segment.
+- The agent-facing brief was half-translated: `lang=en` returned an English task wrapped in Chinese
+  labels.
 
 ## v0.4.20 - 2026-08-29
 

@@ -52,26 +52,8 @@
 
 - `IDX_SCHEMA` 15 → 17; the index rebuilds itself.
 
-## v0.4.21 - 2026-08-31
-
-### Improved
-
-- Today's recording is compacted as it goes: the finished prefix is sealed into segments once it
-  crosses a threshold and merged back into one pack the next day. Off by default; the settings page
-  has the switch and the threshold (20–2000 MB, default 200). Measured 701 KB → 36.8 KB (19.1x),
-  byte-identical on unpack.
-- The agent-facing brief now exposes the analysis the app has already computed: its endpoint list
-  went from 3 to 8 and names the fields `trajectory` holds. A second task (`?task=flow`) asks for a
-  diagram of how the run actually went.
-
-### Fixed
-
-- Archiving a day that had been rolled kept only its last segment.
-- The agent-facing brief was half-translated: `lang=en` returned an English task wrapped in Chinese
-  labels.
-
 ## Earlier versions
 
-v0.4.20 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the
+v0.4.21 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the
 [GitHub Releases page](https://github.com/FuHehe12/cc-wire-analyzer/releases), which carries the
 same notes per version.

@@ -38,18 +38,6 @@
 
 - `IDX_SCHEMA` 15 → 17，索引会自行重建。
 
-## v0.4.21 - 2026-08-31
-
-### 改进
-
-- 当天的录制边录边压：录到阈值就把已写完的前缀封存成分片，跨天再合并回单个 pack。默认关闭，设置页有开关与阈值（20~2000MB，默认 200）。实测 701KB → 36.8KB（19.1 倍），unpack 后逐字节一致。
-- 给外部 agent 的指令开放了软件已经算好的分析：端点清单从 3 条扩到 8 条，并点名 `trajectory` 里有哪些字段。新增第二种任务（`?task=flow`）要一张「这一趟实际怎么跑的」流程图。
-
-### 修复
-
-- 归档一个被切过段的日子，只会留下最后一截。
-- 给 agent 的指令只翻译了一半：`lang=en` 拿到的是英文任务配中文标注。
-
 ## 更早的版本
 
-v0.4.20 及更早：[CHANGELOG-history.zh.md](CHANGELOG-history.zh.md)，或 [GitHub Releases 页](https://github.com/Fuhehe12/cc-wire-analyzer/releases)（同一份说明）。
+v0.4.21 及更早：[CHANGELOG-history.zh.md](CHANGELOG-history.zh.md)，或 [GitHub Releases 页](https://github.com/Fuhehe12/cc-wire-analyzer/releases)（同一份说明）。
