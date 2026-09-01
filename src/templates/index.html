@@ -2233,6 +2233,7 @@ zh: {
   "dag.auxAggTurn": "轮 {n} · 辅助", "dag.auxFold": "点击展开本轮辅助", "dag.auxOpen": "已展开，点击收起本轮辅助",
   "kind.main": "主线", "kind.subagent": "子代理", "kind.title": "标题", "kind.compact": "压缩",
   "kind.security": "安全", "kind.count_tokens": "计数", "kind.other": "其他",
+  "kind.quota_probe": "配额探测", "kind.hook_eval": "钩子判定", "kind.notify_eval": "通知判定",
   "sysRole.billing": "计费头", "sysRole.security": "安全审查指令", "sysRole.identity": "身份声明", "sysRole.title": "标题指令",
   "sec.title": "安全审查", "sec.action": "待判定动作", "sec.verdict": "判定结果", "sec.sent": "本次审查发送了",
   "sec.reviewing": "审查：{a}", "sec.allow": "放行", "sec.block": "拦截",
@@ -2641,6 +2642,7 @@ en: {
   "dag.auxAggTurn": "turn {n} · aux", "dag.auxFold": "click to expand this turn's aux", "dag.auxOpen": "expanded — click to fold this turn's aux",
   "kind.main": "main", "kind.subagent": "agent", "kind.title": "title", "kind.compact": "compact",
   "kind.security": "security", "kind.count_tokens": "count", "kind.other": "other",
+  "kind.quota_probe": "quota", "kind.hook_eval": "hook", "kind.notify_eval": "notify",
   "sysRole.billing": "Billing", "sysRole.security": "Security rules", "sysRole.identity": "Identity", "sysRole.title": "Title",
   "sec.title": "Security review", "sec.action": "Action under review", "sec.verdict": "Verdict", "sec.sent": "What this review sent",
   "sec.reviewing": "reviewing {a}", "sec.allow": "allow", "sec.block": "block",
@@ -3048,6 +3050,7 @@ ja: {
   "dag.auxAggTurn": "ターン {n} · 補助", "dag.auxFold": "このターンの補助を展開", "dag.auxOpen": "展開中 — クリックでこのターンの補助を折りたたむ",
   "kind.main": "メイン", "kind.subagent": "エージェント", "kind.title": "タイトル", "kind.compact": "圧縮",
   "kind.security": "安全", "kind.count_tokens": "カウント", "kind.other": "その他",
+  "kind.quota_probe": "クォータ探査", "kind.hook_eval": "フック判定", "kind.notify_eval": "通知判定",
   "sysRole.billing": "課金ヘッダ", "sysRole.security": "セキュリティ判定", "sysRole.identity": "身分", "sysRole.title": "タイトル指示",
   "sec.title": "セキュリティ審査", "sec.action": "判定対象の操作", "sec.verdict": "判定結果", "sec.sent": "この審査が送ったもの",
   "sec.reviewing": "審査：{a}", "sec.allow": "許可", "sec.block": "ブロック",
@@ -4794,8 +4797,8 @@ const KIND_FG = {
 /* kind/lane 显示名走 i18n：kindLabel() / laneLabel()（I18N 的 kind.* / lane.* 键） */
 const LANE_COLOR = { main: "var(--accent)", subagent: "var(--info)", aux: "var(--apple-secondary)" };
 /* 辅助 kind 的展示顺序与图标：轮卡徽章与辅助聚合卡共用（260802 聚合卡落地时提升为模块级）。 */
-const AUX_ORDER = ["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "other"];
-const AUX_ICON = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", other: "•" };
+const AUX_ORDER = ["title", "security", "compact", "count_tokens", "quota_probe", "hook_eval", "notify_eval", "other"];
+const AUX_ICON = { title: "🏷", security: "🛡", compact: "🗜", count_tokens: "🔢", quota_probe: "📊", hook_eval: "🪝", notify_eval: "🔔", other: "•" };
 /* 主线泳道分类色板按主题校准：dark 提亮第 6 色，light/classic 用深色线条落在浅卡上。
    按 lane 首见顺序取色，LIVE 新增 lane 只追加、已有色不变。 */
 const LANE_PALETTES = {

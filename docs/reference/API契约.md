@@ -245,7 +245,7 @@ data: {...}
 
 ```json
 {
-  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|quota_probe|hook_eval|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false,"turn":"s-<hash>#3","user_text":"（仅轮首）你这轮说了什么"}],
+  "nodes": [{"id":"req_…","ts_start":"…","kind":"main|subagent|title|compact|security|count_tokens|quota_probe|hook_eval|notify_eval|other","lane":"s-<hash>|agent-<hash>|aux","model":"glm-5.2","status":200,"total_ms":4521,"usage":{...},"has_error":false,"summary":"…","turn_start":true,"tool_uses":2,"pure_chat":false,"turn":"s-<hash>#3","user_text":"（仅轮首）你这轮说了什么"}],
   "edges": [{"from":"req_…","to":"req_…","type":"seq|trigger|near"}],
   "lanes": [{"lane_id":"s-…","kind":"main|subagent|aux","first_ts":"…","count":3}],
   "turns": [{"turn_id":"s-<hash>#3","lane":"s-<hash>","head":"req_…","index":4,
@@ -1042,7 +1042,7 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 | `degraded` | **本工具自己的降级标记**（`_input_raw` / `input_raw_fallback`，见 `classifier.CAPTURE_ARTIFACT_KEYS`）| 性质与其余维度不同：那是 SSE 在 `content_block_stop` 前断了 / 工具入参拼不出 JSON，说明**这条录制的正文是残的**，要查代理侧不是上游。混在 `block_keys` 里会双向坏事——真协议信号被自己的噪声顶掉，而录制降级又被埋在"协议演进"的语境里没人管 |
 | `betas.new` / `betas.known` | 分别是不在 / 在 `classifier.KNOWN_BETAS` 基线里的 | `new` 才是"CC 启用了新能力"的信号。原先全量按频次升序、称"长尾即信号"——实测每天把同样几个**结构性**低频的已知特性顶在最前（`structured-outputs` 只在标题请求带、`token-counting` 只在 count_tokens 探针带），低频与新出现是两回事 |
 | `totals.with_unknowns` / `degraded` | 分开计数 | 否则 `with_unknowns` 会被本工具自己的噪声撑起来 |
-| `other_kind_samples` | 固化 `quota_probe`/`hook_eval` 后仍落 `other` 的真未知（理想为空）| — |
+| `other_kind_samples` | 固化 `quota_probe`/`hook_eval`/`notify_eval` 后仍落 `other` 的真未知（理想为空）| — |
 | `known` | 当前已知集合基准（真源 `classifier.KNOWN_*` + `KNOWN_BETAS`）| 让 AI 判断「什么算未知」 |
 
 **`KNOWN_BETAS` 的真源在 `classifier.py`**，前端由 `render_template(known_betas=…)` 注入消费——
@@ -1398,8 +1398,8 @@ GET /api/ai-guide?format=html                            → 排好版的说明�
 - **lane_id 命名规则**：
   - 主线泳道：`s-<md5(session_id)[:8]>`（session_id 来自 `X-Claude-Code-Session-Id` 头，回落 `metadata.user_id` 内 session_id）
   - 子代理泳道：`agent-<md5(派生者id + 派生prompt前200字)[:8]>`（对齐命中时）或 `agent-<agent_fp>`（对齐未命中回落，agent_fp = system block[2] md5 短码）
-  - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/quota_probe/hook_eval/other 合一列）
-- **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `quota_probe` / `hook_eval` / `other`。`quota_probe`（CC 配额嗅探：`user="quota"`+maxtok=1）与 `hook_eval`（StopConditions hook 评估）260802 前落 `other`，现固化；其余未知形状仍落 `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
+  - 辅助调用：`aux`（所有会话的 title/security/count_tokens/compact/quota_probe/hook_eval/notify_eval/other 合一列）
+- **kind 枚举**（真源 `src/classifier.py` 的 `KIND_ORDER`）：`main` / `subagent` / `title` / `compact` / `security` / `count_tokens` / `quota_probe` / `hook_eval` / `notify_eval` / `other`。`quota_probe`（CC 配额嗅探：`user="quota"`+maxtok=1）与 `hook_eval`（StopConditions hook 评估）260802 前落 `other`、`notify_eval`（走开通知的状态判定：无工具 + system 含 `whether to notify the user`）260902 前落 `other`，现均固化；其余未知形状仍落 `other`。完整语义见 [架构总览.md](架构总览.md) "2.1 分类与 DAG"。
 - **err_kind 枚举**（真源 `src/proxy.py` 错误分类段）：`connect` / `timeout` / `http_error` / `upstream_4xx` / `upstream_5xx` / `stream_error`（HTTP 200 但 SSE 流内报错，260731 补）。
 - **harness 声明面字段**（索引项，`IDX_SCHEMA=6` 起）：`beta`（`anthropic-beta` 拆成的特性数组——CC 声明启用了哪些协议扩展）/ `agent_id`（`x-claude-code-agent-id`，CC 给的子代理实例 ID）/ `ctx_mgmt` / `diagnostics` / `stop_seqs_n` / `thinking_budget`。这些是**发现录制盲区的信号源**，不是判别位——子代理判别仍以 system block[0] 计费头的 `cc_is_subagent` 为准（见 [开发约定.md](开发约定.md) 子代理判别定案）。
 - **大字段**：`request.body` / `response.content_blocks` 可能很大（MB 级），详情接口一次性返回；前端用虚拟滚动/折叠渲染。

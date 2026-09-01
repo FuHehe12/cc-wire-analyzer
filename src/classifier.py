@@ -70,6 +70,19 @@ SECURITY_HINTS = (
     "security monitor",            # 260712 实测：CC autonomous 安全监控（glm-5.2, maxtok 2112）
     "you are a security",
 )
+# 通知判定器（260902 实测）：用户走开后 CC 周期性地把「刚才这段尾巴」发给模型，判
+# done/working/blocked，据此决定要不要推手机通知。轮首是 CC 拼的固定模板
+# （`Current state: …` / `Tool calls so far: …` / `Assistant message tail (last N chars): …`），
+# 响应是一行 JSON（`{"state":…,"detail":…,"tempo":…}`）。**同一轮工作期间会反复发**
+# （实测 for 0m/1m/2m/…/22m，越久越稀），所以它在 aux 里是数量最大的新家族。
+# 跨版本稳定性：2.1.251 与 2.1.258 两版 system 都是 16,683 字、逐字相似度 0.9998，
+# 唯一差异是计费头里的 cc_version。
+# **措辞在这里只用来给辅助起名字，不用来判主线归属**（260901 issue §五·A 定的降级用途）——
+# 真正挡住它进主线的是「无工具不判主线」那道结构门，措辞漏了只会退回 `other`。
+NOTIFY_EVAL_HINTS = (
+    "whether to notify the user",
+    "decide which of four states it's in",
+)
 PROMPT_MATCH_LEN = 1000      # 派生 prompt 取样长度（lane 实例键用，260726 从 200 加长以区分模板化并行派生）
 PROMPT_MATCH_MIN = 40        # 太短的派生 prompt 不参与子串匹配（防误命中）
 PROMPT_PROBE_LEN = 300       # 拿派生 prompt 的前多少字去子代理首条 user 里搜（260726 从 120 加长——前 120 字相同的模板化并行派生会让 N 个子代理挤到同一条 lane）
@@ -132,7 +145,7 @@ KNOWN_BETAS = {
 }
 
 KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens",
-              "quota_probe", "hook_eval", "other")
+              "quota_probe", "hook_eval", "notify_eval", "other")
 
 # 索引记录 schema 版本。**改动 index_record 的字段集必须 bump 它**：
 # capture_store._read_idx_entries 只校验 off/len，字段集变了它照样把旧索引当有效，
@@ -600,7 +613,12 @@ def _is_turn_start(body: dict) -> bool:
 # 所以这份前缀清单是启发式而非真值；命中不了的新形态一律落回 user（宁可把伪轮当真轮，不能把
 # 真人消息弱化）。真值层在 ROADMAP 0.6.x：jsonl 在场时用 request-id join 取 origin.kind 覆盖。
 TURN_ORIGIN_SYNTHETIC = (
-    "[SUGGESTION MODE",           # CC 建议补全（实测六会话 24 次，全判带外）
+    # ⚠️ 这四族**现在都判 main、进主线泳道**，只是 origin 降档成 synthetic。jsonl 侧的真值是
+    # 「CC 根本没把它们写进对话记录」（260902 复测：以 `[SUGGESTION MODE` 开头的 jsonl 消息
+    # 行 0 条；T1 归属对账 09-01 的 main absent 2 条全是它）。没改判不是漏，是「一轮的边界是
+    # 对话单位还是成本单位」这个前置问题还没论证完——见 issues/open/260902_synthetic族判主线
+    # 的归属论证.md。**别在这里顺手改判**，先把那份论证做完。
+    "[SUGGESTION MODE",           # CC 建议补全（38 条，判 main）
     "The user stepped away",      # CC 离开回顾
     "Perform a web search for the query:",   # CC 内部检索
     "[SYSTEM NOTIFICATION",       # 后台任务通知（会带出真工作，故只弱化不隐藏）
@@ -929,6 +947,11 @@ def classify_idx(idx: dict) -> str:
     # **260901 上移**：它无工具，若留在 main 兜底之后，会被下面那条「无工具不判主线」先截走。
     if "stop-condition hook" in sys_low or "stopping condition" in sys_low:
         return "hook_eval"
+    # 通知判定（260902）：CC 判「用户该不该被叫回来」的辅助调用，见 NOTIFY_EVAL_HINTS。
+    # 与 hook_eval 同样无工具，**必须排在下面那道「无工具不判主线」的门之前**，否则被截成 other。
+    # 合取无工具：CC 将来若在带工具的请求里引用同样措辞（如让主线自己判状态），那仍是主线。
+    if not tools_n and any(h in sys_low for h in NOTIFY_EVAL_HINTS):
+        return "notify_eval"
     # 结构位：**对话形状但没带工具清单 → 不是主线**（260901）。
     # CC 每次真对话请求都把全量 tools 发一遍，实测 3,352/3,352 条真主线带工具；反过来，
     # 15 条无工具却被判成 main 的**全部**是辅助（命名 11 / WebFetch 正文提炼 4）。

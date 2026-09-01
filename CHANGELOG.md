@@ -31,6 +31,13 @@
   4. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's
      pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
+## Unreleased
+
+### Added
+
+- New request kind `notify_eval`: the check Claude Code runs while you are away to decide whether
+  to notify you. It used to show up as `other`.
+
 ## v0.4.22 - 2026-09-01
 
 ### Fixed
