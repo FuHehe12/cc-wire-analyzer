@@ -5055,12 +5055,15 @@ function dagNodeHtml(n){
   const chat = tier === "chat" ? '💬 ' : "";
   /* 安全节点摘要与列表行一致（260730）：后端 _node_summary 给 security 节点带了 sec_action */
   const sum = (n.kind === "security" ? secReviewText(n, 46) : "") || n.summary || "";
+  /* 判定结果 chip（260901）：此前时序图只显示「在审什么」，看不出「判了什么」，
+     而列表行两样都有。compact 形态——DAG 卡只有 260px，规则名会挤爆。 */
+  const secChip = n.kind === "security" ? secVerdictChip(n.sec_verdict, true) : "";
   return '<div class="dag-node' + (tier === "chat" ? " chat" : "") +
     '" role="button" tabindex="0" onkeydown="activateClick(event)" data-nid="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' +
     p.y + 'px;border-left-color:' + border + '" onclick="openDetail(\'' + esc(n.id) + '\',\'dag\')">' +
     '<div class="dn-r1"><span class="dn-time">' + timePart(n.ts_start) + '</span>' +
     '<span class="dn-tags">' + collapse + assoc +
-    '<span class="chip" style="background:' + color + ';color:' + chipFg + '">' + esc(kindLabel(n.kind)) + '</span></span></div>' +
+    '<span class="chip" style="background:' + color + ';color:' + chipFg + '">' + esc(kindLabel(n.kind)) + '</span>' + secChip + '</span></div>' +
     '<div class="dn-meta">' + esc(n.model || "?") + ' · ' + fmtMs(n.total_ms) +
     (u.input != null ? ' · ' + fmtTok(u.input) + '→' + fmtTok(u.output) : "") +
     (n.has_error ? ' · <b style="color:var(--err)">ERR</b>' : "") + '</div>' +

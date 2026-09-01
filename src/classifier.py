@@ -183,7 +183,10 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     WebFetch 正文、打断标记）不再算轮起点。字段集没变，但 turn_start 的语义
 #                     变了，旧索引不重建就会新旧两套切分混在一起看不出来（惯犯②「静默降级」
 #                     同型）。判据单份在 user_text_kind/opens_turn。
-IDX_SCHEMA = 16
+#   v16 → v17（260901）：sec_action 改用双格式 transcript 解析。CC 2.1.238 起 transcript 从
+#                     一行一对象换成文本条目（续行缩进两格），旧解析在这种录制上 100% 取错
+#                     待判定动作、动作数按物理行虚增。字段集没变，值变了，必须重建。
+IDX_SCHEMA = 17
 
 
 # ===== 请求体取文本 =====
@@ -217,15 +220,75 @@ def _user_texts(body: dict) -> list[str]:
 SEC_ACTION_MAX = 400      # 待判定动作留多长（进索引，要控体积）
 SEC_REASON_MAX = 300
 
+# transcript 的两种渲染格式——**这是 CC 自己在安全提示词里声明的**，不是我们猜的：
+#   「Assistant-role entries (keyed `assistant` in JSONL format, or prefixed `Assistant:`
+#     in text format)」
+# 格式 A（JSONL）：一行一个单键对象 `{"Bash":"…"}` / `{"user":"…"}`，参数里的换行是转义的，
+#   所以一个条目永远只占一行。
+# 格式 B（文本）：条目顶格写 `工具名 参数` 或 `User: 文本`，参数的续行**缩进两格**，
+#   参数里带真换行（heredoc、多行脚本、Agent 提示词）时一个条目横跨几十行。
+# 260901 实测：本机 684 条全是格式 A，两个导入源 560 条全是格式 B（CC 2.1.238 起）。
+# 旧解析只认格式 A、且拿最后一个物理行当动作，格式 B 上 560/560 全错——取到的是末条动作的
+# 续行残尾（`  "`、`  EOF`、说明文字的最后一句），界面上「待判定动作」就只剩一个引号；
+# 「历史动作」数的也是物理行，把 42 条动作报成 1846 条。
+_SEC_HEAD = re.compile(
+    r'^(User|Assistant|System):\s*(.*)$'
+    r'|^([A-Z][A-Za-z0-9_]*|mcp__[A-Za-z0-9_-]+)\s+(\S.*)$')
+# 顶格 ≠ 条目起始：Agent 提示词与 teammate 消息的正文也顶格（实测 `##`、`1.`、
+# `<teammate-message` 都出现在列 0）。所以还要求首 token 形似工具名，并排掉英文散文的句首词。
+# 两道加起来在 560 条格式 B 上把末条目判成了干净的工具集（Bash 359 / PowerShell 132 /
+# SendMessage 32 / Agent 21 / Edit 11 / ScheduleWakeup 1），另 4 条末条目是 user 角色——
+# 那是子代理交还控制权后的复查，属真实形态，不是解析失败。
+_SEC_TOOLISH = re.compile(r'^(?:[A-Z][a-z0-9]+){1,4}$|^mcp__[A-Za-z0-9_-]+$')
+_SEC_PROSE_STARTERS = {
+    "This", "That", "These", "Those", "The", "Do", "If", "When", "While", "Note", "Then",
+    "You", "Your", "It", "Its", "All", "No", "Yes", "For", "And", "But", "So", "Now", "Use",
+    "Read", "Write", "Only", "Also", "Each", "Every", "Any", "Some", "Where", "What", "Which",
+    "Who", "How", "Why", "Return", "Report", "Output", "Make", "Keep", "Check", "Run", "Give",
+    "Take", "Let", "Please", "First", "Second", "Third", "Finally", "Before", "After",
+    "Here", "There", "We", "I",
+}
+
+
+def _sec_entries(inner: str) -> list[tuple[str, str]]:
+    """transcript 正文 → [(工具名, 参数)]，两种格式统一走这里。
+
+    **认不出的行归给上一个条目**，不另起一条——续行归错位置只是参数少一截，另起一条
+    会让「动作数」虚增，那正是旧实现数物理行闯的祸。
+    """
+    out: list[list] = []
+    for line in inner.split("\n"):
+        tok = rest = None
+        try:                                   # 格式 A：整行是一个单键 JSON 对象
+            obj = json.loads(line.strip())
+            if isinstance(obj, dict) and len(obj) == 1:
+                k, v = next(iter(obj.items()))
+                tok = str(k)
+                rest = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+        except Exception:
+            pass
+        if tok is None:                        # 格式 B：顶格 + 工具名/角色名
+            m = _SEC_HEAD.match(line)
+            if m and m.group(1):
+                tok, rest = m.group(1).lower(), m.group(2)
+            elif m and m.group(3) and _SEC_TOOLISH.match(m.group(3))                     and m.group(3) not in _SEC_PROSE_STARTERS:
+                tok, rest = m.group(3), m.group(4)
+        if tok is not None:
+            out.append([tok, [rest]])
+        elif out:                              # 续行：去掉 CC 加的两格缩进
+            out[-1][1].append(line[2:] if line.startswith("  ") else line)
+        elif line.strip():                     # 开头就不是已知形状：原样留着，别丢
+            out.append(["", [line]])
+    return [(t, "\n".join(v).strip()) for t, v in out]
+
 
 def sec_request(body: dict) -> dict | None:
     """安全审查请求 → {待判定动作, 本次审查的发送量}；不是安全审查则 None。
 
-    实测形状（issues/open/260729_安全审查可读性.md 有完整报文）：
-      system[1] 是 ~108K 的规则库，messages[0] 是用户 CLAUDE.md（意图上下文），
-      messages[-1] 是 `<transcript>` + N 块动作 + `</transcript>` + 判定指令。
-    **判定对象是 transcript 的最后一块**（CC 正要执行的那个动作），前面 170 多块都是历史。
-    每块形如 `{"工具名":"参数"}` 或 `{"user":"消息"}`。
+    实测形状（issues 里有完整报文）：system[1] 是 ~114K 的规则库，messages[0] 是用户
+    CLAUDE.md（意图上下文），messages[-1] 是 `<transcript>` + N 条动作 + `</transcript>`
+    + 判定指令。**判定对象是 transcript 的最后一条**（CC 正要执行的那个动作），
+    前面几十上百条都是历史。条目的两种渲染格式见 `_sec_entries`。
     """
     if not isinstance(body, dict):
         return None
@@ -245,25 +308,13 @@ def sec_request(body: dict) -> dict | None:
     start = inner.find("<transcript>")
     if start >= 0:
         inner = inner[start + len("<transcript>"):]
-    lines = [ln for ln in inner.split("\n") if ln.strip()]
-    tool, arg = "", ""
-    if lines:
-        last = lines[-1].strip()
-        try:                                  # 每块是一个单键 JSON 对象
-            obj = json.loads(last)
-            if isinstance(obj, dict) and len(obj) == 1:
-                k, v = next(iter(obj.items()))
-                tool = str(k)
-                arg = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
-        except Exception:
-            pass
-        if not tool:                          # 不是预期形状：原样给出，别假装解析成功
-            arg = last
+    entries = _sec_entries(inner)
+    tool, arg = entries[-1] if entries else ("", "")
     return {
         "action_tool": tool,
         "action_arg": arg[:SEC_ACTION_MAX],
         "action_truncated": len(arg) > SEC_ACTION_MAX,
-        "n_actions": len(lines),
+        "n_actions": len(entries),
         "rules_chars": rules_chars,
         # 意图上下文（实测是用户 CLAUDE.md 全文）——本次审查连它一起发了出去
         "ctx_chars": len(users[0]) if len(users) > 1 else 0,
@@ -1004,8 +1055,14 @@ def _node_summary(idx: dict, kind: str, lane: str) -> dict:
     # 安全审查节点带上待判定动作（260730）：security 的响应正文是 `<severity>8` 这种残片，
     # 拿它当摘要等于什么都没说（列表行 v0.4.1 已改，DAG 当时漏了）。只给 security 带，
     # 其余 kind 不背这个恒 null 的字段——一天几千个节点，每个都带一次不划算。
-    if kind == "security" and idx.get("sec_action"):
-        node["sec_action"] = idx["sec_action"]
+    # 判定结果一起带（260901）：只带动作不带判定，时序图就只能看出「在审什么」，
+    # 看不出「判了什么」——列表行两样都有，两个视图信息量不一致。这是 260730 那次
+    # 「列表行改了、DAG 漏了」的同型复发，改一处消费方时把同族字段一次带齐。
+    if kind == "security":
+        if idx.get("sec_action"):
+            node["sec_action"] = idx["sec_action"]
+        if idx.get("sec_verdict"):
+            node["sec_verdict"] = idx["sec_verdict"]
     return node
 
 
