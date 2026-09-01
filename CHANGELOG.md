@@ -17,8 +17,8 @@
   inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed.
 - **Current status**: **v0.4.21 (2026-08-31)** — today's recording compacts as it goes instead of
   waiting for the next day, and the analysis the app has already computed is now exposed to external
-  agents. Unreleased since: request classification and turn boundaries now follow bits Claude Code
-  declares itself.
+  agents. Unreleased since: request classification, turn boundaries and security-review parsing now
+  follow what Claude Code declares itself.
 - **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
@@ -38,27 +38,21 @@
 ### Fixed
 
 - Session-naming requests (title, kebab-case slug) are classified as auxiliary again, not main line.
-  Claude Code 2.1.238 rewrote the prompt and every wording fingerprint missed it; the classifier now
-  reads `output_config.format.type`, which Claude Code declares itself (26/26 hit, 0 false positives
-  across 3,349 main-line requests).
-- A dialog-shaped request that carries no tool list is no longer classified as main line.
-- Text that a tool returned alongside its result — an image note, fetched page content, an interrupt
-  marker — no longer starts a new turn. One recorded day went from 17 turns to 9; measured against
-  Claude Code's own `promptId`, turn counts went from +70% to +56% over truth.
-- The turn-boundary rule had three separate implementations that disagreed, so the timeline view and
-  the analysis view reported different turn numbers. They now share one.
-- `tools/origin_probe.py` read raw `{date}.jsonl` only, so it silently covered nothing once
-  recordings were compacted into `.pack` (7 of 8 local days).
+- Dialog-shaped requests that carry no tool list are no longer classified as main line.
+- Text a tool returns alongside its result — image notes, fetched page content, interrupt markers — no longer starts a new turn.
+- Turn boundaries had three inconsistent implementations; the timeline and analysis views now share one.
+- Security reviews recorded from Claude Code 2.1.238 onward show the right action under review again, and an honest count of prior actions.
+- Security nodes in the timeline now show the verdict, not only the action under review.
+- `tools/origin_probe.py` covered nothing once a day had been compacted into a `.pack`.
 
 ### Added
 
-- Blind-spot radar reports a `mainline_suspect` dimension: requests classified as main line that
-  lack the structural marks of one. Computed at aggregation time, so no index rebuild is needed.
+- Blind-spot radar gained a `mainline_suspect` dimension: requests classified as main line that lack main-line structure.
 - `tools/origin_probe.py` gained three reconciliation modes (`--mode belong | turns | origin`).
 
 ### Other
 
-- `IDX_SCHEMA` 15 → 16 (turn-boundary semantics changed; indexes rebuild themselves).
+- `IDX_SCHEMA` 15 → 17; the index rebuilds itself.
 
 ## v0.4.21 - 2026-08-31
 
