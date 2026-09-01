@@ -134,14 +134,23 @@ def main() -> None:
             {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
         ]
         f.write(json.dumps(mid, ensure_ascii=False) + "\n")
-        # CC 合成的伪 user 消息（建议补全）→ turn_start=true 但 origin 应判 synthetic，
-        # 不能跟真人消息画成同一种卡（260809 A，前缀白名单经 jsonl 真值验证）
+        # CC 合成的伪 user 消息（建议补全）→ 260902 起判 `self_prompt` 落 aux，**不再开轮**。
+        # 真值是 CC 自己的记录：这一族在 jsonl 里没有 promptId、一行都不写（T1 归属对账
+        # 31/31 absent）。它带全量工具 + 主线 system 指纹，靠结构位分不出来，只能靠轮首措辞。
         synth = _fake_record("req_eee5555", "main")
         synth["ts_start"] = "2026-07-12T22:05:00.000"
         synth["request"]["body"]["messages"] = [
             {"role": "user", "content": "[SUGGESTION MODE: Suggest what the user might naturally type next]"},
         ]
         f.write(json.dumps(synth, ensure_ascii=False) + "\n")
+        # 反例，必须同时守住：后台任务通知**是真轮**——jsonl 给它 promptId（实测 201 行）。
+        # 不能按「机器发起的都不算主线」一刀切；它仍判 main、仍开轮，只由 origin 降档成 synthetic。
+        notif = _fake_record("req_fff6666", "main")
+        notif["ts_start"] = "2026-07-12T22:10:00.000"
+        notif["request"]["body"]["messages"] = [
+            {"role": "user", "content": "[SYSTEM NOTIFICATION] Background task finished: build ok"},
+        ]
+        f.write(json.dumps(notif, ensure_ascii=False) + "\n")
 
     env = {**os.environ, "CCWA_HOME": str(tmp), "CCWA_CLAUDE_SETTINGS": str(settings)}
 
@@ -157,9 +166,9 @@ def main() -> None:
         o = run(env, "paths")
         check("paths 走 CCWA_HOME", str(tmp) in o.get("captures_dir", ""))
         o = run(env, "stats", "--date", "2026-07-12")
-        check("stats 记录数", o.get("records") == 5, str(o.get("kinds")))
-        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 5,
-              f"input={o.get('tokens', {}).get('input')}（5 条 × 24001；SSE 给的是 input_tokens 全名）")
+        check("stats 记录数", o.get("records") == 6, str(o.get("kinds")))
+        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 6,
+              f"input={o.get('tokens', {}).get('input')}（6 条 × 24001；SSE 给的是 input_tokens 全名）")
         o = run(env, "list", "--date", "2026-07-12", "--kind", "main")
         check("list --kind 过滤", len(o.get("items", [])) == 4)
         o = run(env, "get", "req_aaa1111", "--date", "2026-07-12", "--part", "system", "--max-chars", "200")
@@ -173,7 +182,8 @@ def main() -> None:
         check("dag 出泳道", len(o.get("lanes", [])) >= 1)
         # 轮聚合（260802）：DAG 按轮折叠的全部依据。三条 main（其中一条是工具循环中间步）
         # + 一条 security → 主线两轮，中间步并进前一轮，security 归到它所属的那一轮。
-        # 260809 再加一条 SUGGESTION MODE 伪 user → 独立第三轮，origin 应判 synthetic。
+        # 260902：SUGGESTION MODE 那条改判 self_prompt 落 aux、不再开轮；
+        # SYSTEM NOTIFICATION 那条仍是主线轮（origin=synthetic）。仍是三轮，但构成变了。
         turns = o.get("turns") or []
         check("dag 出轮", len(turns) == 3, f"turns={len(turns)}")
         t0 = turns[0] if turns else {}
@@ -191,8 +201,13 @@ def main() -> None:
               any(t.get("origin") == "user" and t.get("user_text") == "帮我查一下泳道判别的问题"
                   for t in turns),
               str([(t.get("origin"), (t.get("user_text") or "")[:12]) for t in turns]))
-        check("CC 合成的伪 user 消息判 synthetic，不混进真人轮",
-              any(t.get("origin") == "synthetic" for t in turns),
+        check("CC 自发的一轮（建议补全）判 self_prompt，不开主线轮",
+              all("SUGGESTION MODE" not in (t.get("user_text") or "") for t in turns)
+              and any(n["kind"] == "self_prompt" and n["lane"] == "aux" for n in o.get("nodes", [])),
+              str([(n["kind"], n["lane"]) for n in o.get("nodes", []) if n["kind"] == "self_prompt"]))
+        check("后台任务通知仍是主线轮，只降档成 synthetic（不能一刀切）",
+              any(t.get("origin") == "synthetic" and "SYSTEM NOTIFICATION" in (t.get("user_text") or "")
+                  for t in turns),
               str([(t.get("origin"), (t.get("user_text") or "")[:24]) for t in turns]))
         check("每个主线/子代理节点都有归属轮",
               all(n.get("turn") for n in o.get("nodes", []) if n["kind"] in ("main", "subagent")))

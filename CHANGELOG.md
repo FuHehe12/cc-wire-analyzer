@@ -40,6 +40,11 @@
 
 ### Fixed
 
+- The turns Claude Code starts by itself — suggestion completion, away review, internal search
+  dispatch — are no longer counted as mainline; they now sit with the auxiliary calls. Claude Code
+  does not record them in its own conversation log either, and turn counts now line up with that
+  log (they used to be 70% too high). Background task notifications are not in this group: Claude
+  Code does treat those as real turns.
 - The `quota_probe` and `hook_eval` labels in the aux lane showed their raw English values; they
   now have Chinese and Japanese translations.
 - The kind-dispatch order table in the message-anatomy guide was stuck at 260802 and missing two

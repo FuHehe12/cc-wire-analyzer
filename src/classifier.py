@@ -79,6 +79,25 @@ SECURITY_HINTS = (
 # 唯一差异是计费头里的 cc_version。
 # **措辞在这里只用来给辅助起名字，不用来判主线归属**（260901 issue §五·A 定的降级用途）——
 # 真正挡住它进主线的是「无工具不判主线」那道结构门，措辞漏了只会退回 `other`。
+# CC 自发的整轮调用（260902 拍板：判辅助）。CC 合成一条伪 user 消息触发一整轮对话，
+# 请求在 wire 上与主线**完全同构**——带全量工具清单（建议补全与离开回顾是主对话的 fork，
+# 工具清单原样继承）、同一 session、同样的主线 system 指纹，所以两道结构门都拦不住它。
+# 真值在 CC 自己的记录里：这三族在 jsonl 里**没有 promptId**，建议补全更是一行都不写
+# （260902 扫全部 364 个 jsonl，以该标记开头的消息 0 行）。判辅助之后轮数从 161 回到
+# jsonl 真值 102，且 CC 自发的 token 落 aux 泳道，与用户那一轮的成本天然分开。
+#
+# ⚠️ **这里的 fail 方向与 §二·六 相反，是有意的**：那条 fail-safe 说「宁可把伪轮当真轮，
+# 不能把真人消息弱化」，而判辅助正是弱化。接受的理由——这些前缀是 CC 注入的模板，真人不会
+# 原样打出来；且只在 `turn_start` 且剥 reminder 之后**严格前缀**匹配才命中。
+# 见 issues/open/260902_CC自发调用的归属与分类.md。
+#
+# **`[SYSTEM NOTIFICATION` 不在这里**：jsonl 给它 promptId、CC 认它是真轮（实测 201 行），
+# 所以它仍判主线、只由 origin 降档。别按「机器发起的都不算主线」一刀切。
+SELF_PROMPT_PREFIXES = (
+    "[SUGGESTION MODE",                        # 建议补全（38 条）
+    "The user stepped away",                   # 离开回顾（8 条）
+    "Perform a web search for the query:",     # 内部检索派发（9 条，实测恒 tools_n=1）
+)
 NOTIFY_EVAL_HINTS = (
     "whether to notify the user",
     "decide which of four states it's in",
@@ -145,7 +164,7 @@ KNOWN_BETAS = {
 }
 
 KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens",
-              "quota_probe", "hook_eval", "notify_eval", "other")
+              "quota_probe", "hook_eval", "notify_eval", "self_prompt", "other")
 
 # 索引记录 schema 版本。**改动 index_record 的字段集必须 bump 它**：
 # capture_store._read_idx_entries 只校验 off/len，字段集变了它照样把旧索引当有效，
@@ -947,6 +966,12 @@ def classify_idx(idx: dict) -> str:
     # **260901 上移**：它无工具，若留在 main 兜底之后，会被下面那条「无工具不判主线」先截走。
     if "stop-condition hook" in sys_low or "stopping condition" in sys_low:
         return "hook_eval"
+    # CC 自发的整轮调用（260902）：判辅助，判据见 SELF_PROMPT_PREFIXES。
+    # 排在 main 指纹之前——它们带着主线 system 与全量工具，排在后面就会被主线一口吞掉
+    # （这正是 title/security 必须前置的同一个理由）。用 `turn_user` 而不是 `last_user`：
+    # 前者是**剥掉 system-reminder 后的轮首文本**，reminder 会把真正的开头推到后面去。
+    if idx.get("turn_start") and (idx.get("turn_user") or "").lstrip().startswith(SELF_PROMPT_PREFIXES):
+        return "self_prompt"
     # 通知判定（260902）：CC 判「用户该不该被叫回来」的辅助调用，见 NOTIFY_EVAL_HINTS。
     # 与 hook_eval 同样无工具，**必须排在下面那道「无工具不判主线」的门之前**，否则被截成 other。
     # 合取无工具：CC 将来若在带工具的请求里引用同样措辞（如让主线自己判状态），那仍是主线。
