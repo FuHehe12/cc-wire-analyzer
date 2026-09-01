@@ -15,8 +15,8 @@
   and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand exposing a
   headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships
   inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed.
-- **Current status**: **v0.4.22 (2026-09-01)** — request classification, turn boundaries and
-  security-review parsing now follow the bits and formats Claude Code declares itself.
+- **Current status**: **v0.4.23 (2026-09-02)** — the turns Claude Code starts by itself no longer
+  count as mainline; turn counts now line up with Claude Code's own conversation log.
 - **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
@@ -31,7 +31,7 @@
   4. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's
      pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
-## Unreleased
+## v0.4.23 - 2026-09-02
 
 ### Added
 
