@@ -40,6 +40,18 @@ _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 #      该模式 block[1] 是 "You are a Claude agent…"，不含上一条指纹 →
 #      260725 前 5 条 sdk-cli 主线全落 fallback 被判成 subagent（准确率 10/15 的全部错项）
 MAIN_SYSTEM_FPS = ("you are claude code", "you are an interactive agent")
+# 命名类辅助的**官方位**（260901）：`output_config.format.type == "json_schema"`
+# （`structured-outputs-2025-12-15` beta）。CC 让模型给会话起名字时要一个结构化回包，所以它
+# 声明了 schema；真的对话请求从不声明。实测全语料 5,032 条：
+#   命名类（title 15 + 被措辞漏判成 main 的 11）  26 条 **全部**带 json_schema
+#   真主线 3,349 条 / security 1,204 / compact 5 / count_tokens 84 / subagent 372  **零**带
+# 跨 CC 2.1.220~2.1.251 五个版本稳定。这是 §二·五「官方标识符优先」第三次复现同一教训——
+# 前两次是 `cc_is_subagent`（L1 子代理）与 `cc_entrypoint`（L2 sdk 起源）：答案一直在 CC 自己
+# 声明的字段里，而我们在猜措辞（2.1.238 把标题提示词整段重写，七条 TITLE_HINTS 全数失效，
+# 从那天起**每一条**标题请求都被判成主线）。
+# **合取「且无工具」**：CC 将来可能在别处用 structured outputs，带工具的对话请求即便声明了
+# schema 也仍是主线；单看 format 会把那种情形误降级。
+NAMING_FORMAT = "json_schema"
 TITLE_HINTS = (
     "5-10 word title",
     "write a short title",
@@ -767,9 +779,13 @@ def classify_idx(idx: dict) -> str:
     # 安全分类器（system 含 security monitor，260712 实测）
     if any(h in blob for h in SECURITY_HINTS):
         return "security"
-    # title 生成：靠 system title 措辞，必须在 main 之前判（title system 开头也是
-    # "You are Claude Code"，会被主线指纹抢）。不再用 maxtok 硬阈值——
-    # 实测 title max_tokens=32000，旧的 TITLE_MAX_TOKENS=1024 约束反而漏判。
+    # 命名类辅助（标题 / kebab-case slug）——**官方位优先于措辞**，见 NAMING_FORMAT。
+    # 必须排在 title 措辞与 main 指纹之前：命名请求的 system 开头同样是 "You are Claude Code"，
+    # 措辞一漏就被主线指纹抢走（2.1.238 起实测 10/10 全漏）。
+    if idx.get("format") == NAMING_FORMAT and not tools_n:
+        return "title"
+    # title 生成：措辞作**兜底**（官方位没带时，如老录制、或未来换回非结构化回包）。
+    # 不再用 maxtok 硬阈值——实测 title max_tokens=32000，旧的 TITLE_MAX_TOKENS=1024 反而漏判。
     if any(h in blob for h in TITLE_HINTS):
         return "title"
     if any(h in blob for h in COMPACT_HINTS):
@@ -778,6 +794,19 @@ def classify_idx(idx: dict) -> str:
     # 靠措辞判必错——这正是「误判成 main = 终身 main」的老根因）
     if idx.get("is_subagent"):
         return "subagent"
+    # StopConditions hook 评估（260802）：用户配的 stop hook，让模型判停止条件是否满足。
+    # **260901 上移**：它无工具，若留在 main 兜底之后，会被下面那条「无工具不判主线」先截走。
+    if "stop-condition hook" in sys_low or "stopping condition" in sys_low:
+        return "hook_eval"
+    # 结构位：**对话形状但没带工具清单 → 不是主线**（260901）。
+    # CC 每次真对话请求都把全量 tools 发一遍，实测 3,352/3,352 条真主线带工具；反过来，
+    # 15 条无工具却被判成 main 的**全部**是辅助（命名 11 / WebFetch 正文提炼 4）。
+    # 判成 `other` 而不是猜它是哪种辅助：这是 §二·五 的 KNOWN_* 循环——先落 `other` 进雷达
+    # （/api/unknowns 的 other_kind_samples），形状稳定了再固化成独立 kind，像 quota_probe /
+    # hook_eval 当初那样。**别在这里堆措辞去猜**。
+    # fail 方向也在这里翻正：漏判的代价从「混进主线、污染轮与分析地基」降为「显示成 other」。
+    if not tools_n and sys_text.strip():
+        return "other"
     if any(fp in sys_low for fp in MAIN_SYSTEM_FPS):
         return "main"
     # fallback（260725 方向反转）：带工具的对话请求，既没有子代理权威位、又不含已知主线指纹
@@ -792,10 +821,41 @@ def classify_idx(idx: dict) -> str:
     if (fu == "quota" and (idx.get("max_tokens") or 0) <= 1
             and not (idx.get("tools_n") or 0) and not sys_text.strip()):
         return "quota_probe"
-    # StopConditions hook 评估（260802）：用户配的 stop hook，让模型判停止条件是否满足。
-    if "stop-condition hook" in sys_low or "stopping condition" in sys_low:
-        return "hook_eval"
     return "other"
+
+
+# ===== L6 雷达 · 主线可疑（260901）=====
+# 理念来自 260901 用户定调：**主线的判据不该由我们在 wire 侧拍，要看 CC 自己怎么定义**——
+# 「把这个环节拿开，整个上下文仍然是连贯的，那它就不是主线」。CC 的实现字面如此：标题写成
+# `type:"ai-title"` 一行（无 uuid/parentUuid/promptId，根本不在对话 DAG 上），安全审查 /
+# count_tokens / 配额探测 / 压缩一条都不写进对话记录。
+#
+# **但 jsonl 不过 wire，运行时读不到**（§二·五 260810 拍板：jsonl 只作开发期真值源）。所以这里
+# 走雷达路子而不是分类器路子：运行时**不改判**，只把「判成主线、却缺少主线结构特征」的请求
+# 报给 AI（`/api/unknowns` 的 `mainline_suspect` 维度），精确对账留给 `tools/origin_probe.py
+# --mode belong`。这与 L6 的定位一致——**雷达不是分类器，是发现"我可能判错了"的信号**。
+#
+# 当前只有一条判据，因为只有它在实测里零反例：
+#   `tools_n == 0` —— 3,360 条判成 main 的请求里 15 条无工具，**15/15 全是辅助误判**
+#   （2.1.238 起改了措辞的标题 10 条、kebab 命名 1 条、WebFetch 正文提炼 4 条）。
+#   真主线恒带全量工具清单，CC 每次请求都把 tools 全发一遍。
+# **别往这里堆措辞前缀**：措辞白名单该待在 classify_idx 里（那是分类），雷达要的是结构信号——
+# 措辞会被 CC 改（2.1.238 就改过一次），结构不会。
+MAINLINE_DOUBT_REASONS = {
+    "no_tools": "判成主线但没带工具清单；实测 3,360 条 main 里 15 条无工具、15/15 是辅助误判",
+}
+
+
+def mainline_doubt(idx: dict, kind: str) -> str | None:
+    """这条被判成主线的请求，有没有「其实不是主线」的结构疑点。返回原因码或 None。
+
+    判据单份放这里：雷达（capture_store.unknowns）与将来任何消费方都调它，不各自再写一份
+    ——`usage_norm` 键名归一被抄三份、同一个 bug 犯两次的教训。"""
+    if kind not in ("main", "subagent"):
+        return None
+    if not (idx.get("tools_n") or 0):
+        return "no_tools"
+    return None
 
 
 def classify(record: dict) -> str:

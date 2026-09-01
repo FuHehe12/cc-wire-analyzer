@@ -28,6 +28,7 @@ import argparse
 import collections
 import json
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Windows 默认控制台是 GBK，编不出中文/符号 → print 抛 UnicodeEncodeError，脚本以非零码退出，
@@ -38,6 +39,7 @@ except Exception:
     pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import capture_store  # noqa: E402
 import classifier  # noqa: E402
 import config as CFG  # noqa: E402
 
@@ -73,12 +75,25 @@ def _msg_text(rec: dict) -> str:
 
 
 def _is_turn_head(rec: dict) -> bool:
-    """这行是不是「一轮的开头」——user 且带真实文本。
+    """这行是不是「一轮的开头」——**按 CC 自己的定义判，不用 wire 侧那套启发式**。
 
-    与 wire 侧 `classifier._is_turn_start` 是同一个判据的 jsonl 版本：工具循环回传的 user 消息
-    只有 tool_result 块，不算轮首。
+    官方判据（260901 实测，349 个 jsonl / 70,267 行）：
+      · `promptId`     —— 「轮」的官方 ID，一次发起及它引发的一切共享同一个（14,971 行带）
+      · `promptSource` —— typed / queued / suggestion_accepted / system / sdk（718 行带）
+      · `origin.kind`  —— human / task-notification / peer（716 行带）
+    三者齐备的 user 行才是轮首；工具回传、图片说明、attachment 都只带 `promptId`，
+    **共享发起者的那个 id**，CC 不给它们轮首标记。
+
+    ⚠️ **这里原先写的是「user 且带真实文本」——与被测的 `classifier._is_turn_start` 是同一套
+    启发式，等于拿被测对象当尺子。** 后果实测存在：CC 把「读图后的 `[Image: original …]` 说明」
+    记成一条 `type:user` + `isMeta:true` 的行（文本非空、不是 reminder），旧判据会把它当轮首，
+    于是 wire 侧同款误判在对账里**互相抵消**、落进 `unjoined` 而不是被报出来——260810 那次
+    99.8% 一致率就是在这个前提下测出来的（它测的是「在我们自己切出来的轮上起源判得对不对」，
+    切分本身没进对账）。改用官方位后，切分错误才会现形。
     """
-    return rec.get("type") == "user" and bool(_msg_text(rec).strip())
+    if rec.get("type") != "user" or not rec.get("promptId"):
+        return False
+    return bool(rec.get("promptSource") or rec.get("origin"))
 
 
 def load_jsonl_side() -> dict:
@@ -90,6 +105,7 @@ def load_jsonl_side() -> dict:
     """
     by_uuid, by_request = {}, {}
     by_session = collections.defaultdict(list)
+    heads = collections.defaultdict(list)      # sessionId -> [轮首行的关键字段]（新三档对账用）
     files = 0
     for f in CC_PROJECTS.rglob("*.jsonl"):
         try:
@@ -112,8 +128,15 @@ def load_jsonl_side() -> dict:
             if _is_turn_head(rec) and rec.get("sessionId"):
                 by_session[rec["sessionId"]].append(
                     (rec.get("promptSource"), _msg_text(rec).strip()))
+                heads[rec["sessionId"]].append({
+                    "prompt_id": rec.get("promptId"),
+                    "source": rec.get("promptSource"),
+                    "origin": (rec.get("origin") or {}).get("kind"),
+                    "ts": rec.get("timestamp") or "",
+                    "text": _msg_text(rec).strip()[:120],
+                })
     return {"by_uuid": by_uuid, "by_request": by_request,
-            "by_session": by_session, "files": files}
+            "by_session": by_session, "heads": heads, "files": files}
 
 
 def climb_to_turn_head(rec: dict, by_uuid: dict, max_hops: int = 500):
@@ -143,32 +166,195 @@ def load_wire_day(date: str) -> tuple[dict, dict, dict]:
     而它正是 JOIN 2 的主键。顺带用 `classifier.index_record` 现算索引，保证与运行时同一份判据。
     session_id 也在这里单独收一份：`build_dag` 的节点只留渲染要用的字段，不透出它。
     """
-    f = CAPTURES / f"{date}.jsonl"
     entries, rid_of, sess_of = [], {}, {}
-    if not f.exists():
-        return {"turns": [], "nodes": []}, rid_of, sess_of
-    with f.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            entry = classifier.index_record(rec)
-            entries.append(entry)
-            if entry.get("session_id"):
-                sess_of[rec.get("id")] = entry["session_id"]
-            headers = (rec.get("response") or {}).get("headers_safe") or {}
-            for k, v in headers.items():
-                if k.lower() == "request-id" and v:
-                    rid_of[rec.get("id")] = v
-                    break
+    for entry, rid, rec in _iter_day(date):
+        entries.append(entry)
+        if entry.get("session_id"):
+            sess_of[rec.get("id")] = entry["session_id"]
+        if rid:
+            rid_of[rec.get("id")] = rid
     return classifier.build_dag(entries), rid_of, sess_of
 
 
-# ===== 对账 =====
+# ===== 三档对账共用的小工具 =====
+# 轮首形状的归类前缀。**这不是判据，是给人看的归类**——判据在 jsonl 侧（promptId 有没有）。
+# 放这里的唯一理由是把「多切出来的轮」按形状分组，好判下一步该动哪条规则。
+PAYLOAD_PREFIXES = (
+    ("[Image:", "工具回传的图片说明（Read 读图 / MCP 截图）"),
+    ("Web page content:", "WebFetch 正文提炼"),
+    ("[SUGGESTION MODE", "建议补全（CC 自发，jsonl 无 promptId）"),
+    ("The user stepped away", "离开回顾（CC 自发）"),
+    ("Perform a web search", "内部检索派发（CC 自发）"),
+    ("[SYSTEM NOTIFICATION", "后台任务通知（jsonl 里**有** promptId，是真轮）"),
+    ("<session>", "标题/命名请求（jsonl 记成 ai-title，不在对话 DAG）"),
+    ("<local-command-caveat>", "斜杠命令（jsonl 不给 promptId）"),
+    ("<command-", "斜杠命令（jsonl 不给 promptId）"),
+    ("[Request interrupted by user", "打断标记"),
+)
+
+
+def _payload_bucket(text: str) -> str:
+    t = (text or "").lstrip()
+    for prefix, label in PAYLOAD_PREFIXES:
+        if t.startswith(prefix):
+            return f"{prefix} → {label}"
+    return "(其它)"
+
+
+def _extra_bucket(turn: dict) -> str:
+    return _payload_bucket(turn.get("user_text") or "")
+
+
+def _to_local(ts: str):
+    """jsonl 时间戳是 UTC（`…Z`），wire 侧记的是本地朴素时间。不换算就永远对不上窗口。"""
+    if not ts:
+        return datetime.min
+    try:
+        t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min
+    if t.tzinfo is None:
+        return t
+    return t.astimezone().replace(tzinfo=None)
+
+
+def _window(turns: list) -> tuple:
+    """一条泳道的录制时间窗，两头各放 30 秒——**必须放宽**：轮首请求与 jsonl 落盘有毫秒级到
+    数秒的差，卡死边界会把首尾两轮切掉，差值看起来就凭空多两条。"""
+    lo = min(datetime.fromisoformat(t["first_ts"]) for t in turns)
+    hi = max(datetime.fromisoformat(t["last_ts"]) for t in turns)
+    return lo - timedelta(seconds=30), hi + timedelta(seconds=30)
+
+
+def _iter_day(date: str):
+    """一天的录制 → (索引记录, request-id, 原始 record)。归属对账要 request-id，它只在响应头里。
+
+    ⚠️ **走 `capture_store.iter_records` 而不是自己开 `{date}.jsonl`**：v0.4.15 起录制会被压实成
+    `{date}.pack`，直接开裸文件的代码在压实之后**静默读到零条**——不报错、不为空提示，只是对账
+    面积悄悄缩到"今天"一天。这正是 §二·五 记过的「全仓六处各自拼路径，压实之后各自失效」，
+    探针也是那六处之一。
+    """
+    for rec in capture_store.iter_records(date):
+        entry = classifier.index_record(rec)
+        resp = rec.get("response") or {}
+        headers = resp.get("headers_safe") or resp.get("headers") or {}
+        rid = ""
+        for k, v in headers.items():
+            if k.lower() == "request-id" and v:
+                rid = v
+                break
+        yield entry, rid, rec
+
+
+# ===== 对账 A：归属（这条 wire 请求算不算主线）=====
+# 判据来源不是我们自己定的结构位，是 CC 自己的行为：**它有没有把这条请求写进对话记录**。
+# 用户 260901 的说法是「把这个环节拿开，整个上下文仍然是连贯的」——CC 的实现就是字面这样：
+# 标题写成 `type:"ai-title"` 一行（无 uuid / parentUuid / promptId，根本不在对话 DAG 上），
+# 安全审查 / count_tokens / 配额探测 / 压缩一条都不写。拿开它们，链是连的。
+#
+# ⚠️ 三类「jsonl 里没有」不是辅助信号，必须单列，否则会把主线报成辅助：
+#   · 请求失败（429/5xx）—— CC 没等到响应，自然没得写（实测 84 条未命中里 51 条是这个）
+#   · `decode_error` —— 我们自己的 gzip 截断，录制侧问题
+#   · 子代理 —— 写在 `<session>/subagents/agent-<id>.jsonl`，`isSidechain=true`，不是"没写"
+
+def reconcile_belong(dates: list, js: dict, samples: int) -> None:
+    matrix = collections.Counter()          # (wire kind, 归属) -> 数
+    orphans = collections.Counter()         # 判 main 但 jsonl 无 -> 轮首措辞归类
+    orphan_ids = collections.defaultdict(list)
+    joinable = 0
+    for date in dates:
+        for entry, rid, rec in _iter_day(date):
+            if not rid:
+                continue                    # 第三方网关不回 request-id，T1 join 不了，不入分母
+            joinable += 1
+            kind = classifier.classify_idx(entry)
+            row = js["by_request"].get(rid)
+            if row is not None:
+                where = "sidechain" if row.get("isSidechain") else "dialog"
+            elif entry.get("status") not in (200, None) or entry.get("has_error"):
+                where = "req_failed"        # 失败，CC 无从记 —— 不是辅助证据
+            elif entry.get("decode_error"):
+                where = "decode_err"      # 我们自己的录制降级 —— 同上
+            else:
+                where = "absent"            # 真信号：请求成功了，CC 却没写进对话
+            matrix[(kind, where)] += 1
+            if kind in ("main", "subagent") and where == "absent":
+                bucket = _payload_bucket(entry.get("last_user") or "")
+                orphans[bucket] += 1
+                if len(orphan_ids[bucket]) < samples:
+                    orphan_ids[bucket].append((date, entry.get("id")))
+
+    print(f"=== A. 归属对账（T1 request-id join，{joinable} 条可 join）===")
+    print("    问的是：这条 wire 请求，CC 有没有把它写进对话记录？")
+    cols = ("dialog", "sidechain", "absent", "req_failed", "decode_err")
+    print(f"  {'wire kind':13s}" + "".join(f"{c:>12s}" for c in cols) + "   判定")
+    for kind in classifier.KIND_ORDER:
+        row = [matrix[(kind, c)] for c in cols]
+        if not any(row):
+            continue
+        real = row[0] + row[1]
+        verdict = "主线/子代理线" if real else ("辅助（不进对话）" if row[2] else "证据不足")
+        print(f"  {kind:13s}" + "".join(f"{v:12d}" for v in row) + f"   {verdict}")
+    if orphans:
+        print(f"\n判 main/subagent 但 CC 没写进对话的（扣掉失败与解码错之后，**这里应该是 0**）：")
+        for bucket, n in orphans.most_common():
+            print(f"    {n:5d}  {bucket}")
+            for date, rid_ in orphan_ids[bucket][:2]:
+                print(f"           样本 {date} {rid_}")
+    else:
+        print("\n判 main/subagent 且成功的请求全部在 jsonl 对话记录里 —— 归属判据没有漏")
+
+
+# ===== 对账 B：轮边界（这是不是新的一轮）=====
+# 真值是 `promptId`：CC 只给「一次发起」分配它，工具回传/图片说明/插队消息共享发起者的那个 id。
+# 所以「轮数」= 该时间窗内不同 promptId 的个数，不是「带文本的 user 消息条数」。
+
+def reconcile_turns(dates: list, js: dict, samples: int) -> None:
+    print("\n=== B. 轮边界对账（jsonl promptId × wire turns）===")
+    print("    问的是：CC 给这一轮分配 promptId 了吗？没有 = 它不认为这是新的一轮。")
+    tot_j = tot_w = 0
+    rows, extra = [], collections.Counter()
+    for date in dates:
+        dag, rid_of, sess_of = load_wire_day(date)
+        node_of = {n["id"]: n for n in dag.get("nodes", [])}
+        lanes = collections.defaultdict(list)
+        for t in dag.get("turns", []):
+            lane = node_of.get(t["head"], {}).get("lane", "")
+            if lane.startswith("agent-") or lane == "aux":
+                continue
+            lanes[lane].append(t)
+        for lane, turns in lanes.items():
+            sid = next((sess_of.get(t["head"]) for t in turns if sess_of.get(t["head"])), "")
+            if not sid or sid not in js["heads"]:
+                continue
+            lo, hi = _window(turns)
+            n_j = len({h["prompt_id"] for h in js["heads"][sid]
+                       if lo <= _to_local(h["ts"]) <= hi})
+            rows.append((date, lane, n_j, len(turns), sid))
+            tot_j += n_j
+            tot_w += len(turns)
+            if len(turns) > n_j:
+                # ⚠️ 这是**形状分布，不是逐条归因**：差值是泳道级的，wire 轮与 jsonl 轮没有
+                # 1:1 的键可对（wire 侧没有 promptId）。所以只列"非真人形状"的轮首，
+                # 真人形状的轮（`(其它)`）不进这张表——把它们算进来会让人误以为真人轮也多切了。
+                for t in turns:
+                    bucket = _extra_bucket(t)
+                    if not bucket.startswith("(其它)"):
+                        extra[bucket] += 1
+    print(f"  {'日期':11s} {'泳道':12s} {'jsonl轮':>7s} {'wire轮':>7s} {'差':>5s}")
+    for date, lane, n_j, n_w, sid in rows:
+        flag = "" if n_w == n_j else ("  ←" if n_w > n_j else "  （录制窗口截断）")
+        print(f"  {date:11s} {lane:12s} {n_j:7d} {n_w:7d} {n_w - n_j:+5d}{flag}")
+    if rows:
+        print(f"  {'合计':11s} {'':12s} {tot_j:7d} {tot_w:7d} {tot_w - tot_j:+5d}"
+              f"   （{(tot_w - tot_j) / tot_j:+.0%}）" if tot_j else "")
+    if extra:
+        print("\nwire 多切出来的轮，按轮首形状归类：")
+        for bucket, n in extra.most_common():
+            if n:
+                print(f"    {n:5d}  {bucket}")
+
+# ===== 对账 C：轮起源（L2 启发式 × jsonl 真值）=====
 
 def _norm(text: str) -> str:
     """压空白。两侧对同一句话的换行/缩进记法不同，不归一会整片对不上。"""
@@ -230,9 +416,12 @@ def verdict_for_turn(turn: dict, session: str, rid: str, js: dict) -> tuple[str,
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="轮起源（L2）启发式 × CC jsonl 真值对账")
+    ap = argparse.ArgumentParser(
+        description="识别体系 × CC jsonl 真值对账（三档：归属 / 轮边界 / 轮起源）")
     ap.add_argument("--date", help="只查某天 YYYY-MM-DD（默认全部录制日）")
     ap.add_argument("--samples", type=int, default=12, help="每类样本最多列几条")
+    ap.add_argument("--mode", default="all", choices=("all", "belong", "turns", "origin"),
+                    help="belong=这条请求算不算主线 / turns=轮边界 / origin=轮起源 / all=全跑")
     args = ap.parse_args()
 
     if not CC_PROJECTS.exists():
@@ -244,9 +433,18 @@ def main() -> None:
     print(f"jsonl: {js['files']} 个文件 / {len(js['by_uuid'])} 行带 uuid / "
           f"{len(js['by_request'])} 个 requestId / {len(js['by_session'])} 个会话有轮首\n")
 
-    dates = ([args.date] if args.date
-             else sorted(p.name[:-6] for p in CAPTURES.glob("*.jsonl")
-                         if ".idx." not in p.name))
+    # 日期清单同理走 capture_store —— 自己 glob `*.jsonl` 会漏掉所有已压实的天
+    dates = [args.date] if args.date else sorted(capture_store.list_dates())
+
+    if args.mode in ("all", "belong"):
+        reconcile_belong(dates, js, args.samples)
+        print()
+    if args.mode in ("all", "turns"):
+        reconcile_turns(dates, js, args.samples)
+        print()
+    if args.mode not in ("all", "origin"):
+        return
+
     matrix = collections.Counter()          # (wire origin, 真值) → 数
     how = collections.Counter()             # join 方式 → 数
     share = collections.Counter()           # origin → 数（只统计轮首成功的轮，见下）
@@ -298,7 +496,7 @@ def main() -> None:
                 unjoined[method] += 1
 
     ok_turns = sum(share.values())
-    print(f"=== 0. 起源分布（{ok_turns} 个轮首成功的主线轮；"
+    print(f"=== C. 轮起源 · 0 分布（{ok_turns} 个轮首成功的主线轮；"
           f"另有 {failed_head} 轮轮首失败，多为重试风暴，不入分母）===")
     for origin, n in share.most_common():
         print(f"  {n:6d}  {origin:10s} {n / ok_turns:6.1%}" if ok_turns else "")

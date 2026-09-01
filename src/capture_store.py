@@ -1029,6 +1029,7 @@ def unknowns(date: str | None = None, exclude_session: str = "",
     SAMPLE_MAX = 5
     blocks, block_keys, body_fields, degraded = Counter(), Counter(), Counter(), Counter()
     stop_reasons, thinking_types, betas = Counter(), Counter(), Counter()
+    mainline_suspect = Counter()        # 主线可疑（260901，见 classifier.mainline_doubt）
     samples = defaultdict(list)
     snippets = {}                       # dim:value -> 内容片段（首次见到的作样例）
     beta_assoc = defaultdict(Counter)   # dim:value -> 该值出现的请求的 beta Counter
@@ -1074,8 +1075,17 @@ def unknowns(date: str | None = None, exclude_session: str = "",
                 _tally(dim, val, val, r)
         for b in (r.get("beta") or []):
             betas[b] += 1
-        if classifier.classify_idx(r) == "other":
+        kind = classifier.classify_idx(r)
+        if kind == "other":
             other_ids.append(r.get("id"))
+        # 主线可疑（260901）：判成主线但缺主线的结构特征。**在这里算而不是写时算**——
+        # 它由 kind + tools_n 两个已有字段现推，不需要新索引字段，因此**不必 bump IDX_SCHEMA**，
+        # 老录制不用重建就能进雷达。判据本身在 classifier.mainline_doubt（单份）。
+        doubt = classifier.mainline_doubt(r, kind)
+        if doubt:
+            mainline_suspect[doubt] += 1
+            _tally("mainline_suspect", doubt,
+                   classifier._snippet(r.get("sys_head") or r.get("last_user") or ""), r)
 
     def _lift_betas(key: str, group_n: int) -> list:
         """与该未知特异相关的 beta：提升度 = 组内出现率 / 全体基线出现率。"""
@@ -1119,6 +1129,10 @@ def unknowns(date: str | None = None, exclude_session: str = "",
         "thinking_type": _agg(thinking_types, "thinking_type"),
         # 本工具自己的降级（SSE 截断 / 工具入参拼不出 JSON）——不是协议未知，单列。
         "degraded": _agg(degraded, "degraded"),
+        # 主线可疑（260901）：性质是第三种——既不是"上游给了不认识的东西"，也不是本工具降级，
+        # 而是**我们自己的分类可能判错了**。留在雷达而不是改判：wire 上没有"是不是主线"的官方位，
+        # 精确真值在 CC 本地 jsonl（不过 wire），只在开发期用。
+        "mainline_suspect": _agg(mainline_suspect, "mainline_suspect"),
         # new = 不在基线里的 beta（真信号）；known = 已收录的（看用量分布用）。
         # 均按频次升序；不取 samples——高频特性上千条无意义，查具体特性用 grep <beta-name>。
         "betas": {"new": _beta_rows(False), "known": _beta_rows(True)},
@@ -1130,13 +1144,19 @@ def unknowns(date: str | None = None, exclude_session: str = "",
             "stop_reasons": sorted(classifier.KNOWN_STOP_REASONS),
             "thinking_types": sorted(classifier.KNOWN_THINKING_TYPES),
             "betas": sorted(classifier.KNOWN_BETAS),
+            "mainline_doubt_reasons": classifier.MAINLINE_DOUBT_REASONS,
         },
         "note": ("已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。**判读顺序**："
                  "① 先看 hosts——单一第三方 host 独占 = 那个网关的形状差异，不是 CC 协议演进，"
                  "并入 KNOWN_* 会让官方链路的同名异构块从此哑掉；② betas 是提升度筛过的特异关联，"
                  "空表示没有显著来源；③ 取 samples id 调 /api/captures/{id} 看完整上下文。"
                  "degraded 段性质不同——那是本工具录制降级（SSE 截断 / 入参拼不出 JSON），"
-                 "要查的是代理侧不是上游。确认是标准字段的未知并入 KNOWN_* + bump IDX_SCHEMA。"),
+                 "要查的是代理侧不是上游。确认是标准字段的未知并入 KNOWN_* + bump IDX_SCHEMA。"
+                 " **mainline_suspect 段是第三种性质**：不是上游给了怪东西，是**我们自己可能把"
+                 "辅助调用判成了主线**。判主线在 wire 上没有官方位——CC 自己的答案在它本地的"
+                 "对话记录里（标题写成独立的 ai-title 行，安全审查/压缩/配额探测一条都不写进"
+                 "对话），而那份记录不过 wire，只在开发期可用。所以这里只报可疑、不改判；"
+                 "要精确结论跑 tools/origin_probe.py --mode belong 做 request-id 对账。"),
     }
 
 
