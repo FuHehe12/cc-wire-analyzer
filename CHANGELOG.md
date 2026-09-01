@@ -38,6 +38,14 @@
 - New request kind `notify_eval`: the check Claude Code runs while you are away to decide whether
   to notify you. It used to show up as `other`.
 
+### Fixed
+
+- The `quota_probe` and `hook_eval` labels in the aux lane showed their raw English values; they
+  now have Chinese and Japanese translations.
+- The kind-dispatch order table in the message-anatomy guide was stuck at 260802 and missing two
+  v0.4.22 rules (the `json_schema` official bit for titles, and the "no tools, not mainline"
+  structural gate); it now matches what the code actually does.
+
 ## v0.4.22 - 2026-09-01
 
 ### Fixed
