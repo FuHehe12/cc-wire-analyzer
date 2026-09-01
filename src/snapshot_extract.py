@@ -332,11 +332,18 @@ def _trigger_of(msgs: list, i: int) -> dict:
         if not isinstance(c, list):
             continue
         has_tool_result = any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c)
-        txt = classifier.strip_reminders(_text_of(c)).strip()
-        if has_tool_result and not txt:
+        # 「有 tool_result 且无文本才算回传」——**260901 证伪**：带图片的工具回传会在
+        # tool_result 之后附一个 `[Image: original …]` 文本块，于是这一步被判成"用户新消息"、
+        # `turn` 号跟着 +1。实测 08-08 一条会话被切成 8 个假轮次，而 CC 自己在 jsonl 里是把它
+        # 归到发起者的 `promptId` 下并标 `isMeta:true`。判据统一到 classifier.opens_turn。
+        opening = [b.get("text") or "" for b in c
+                   if isinstance(b, dict) and b.get("type") == "text"
+                   and classifier.opens_turn(b.get("text") or "")]
+        if has_tool_result and not opening:
             n_err = sum(1 for b in c if isinstance(b, dict) and b.get("type") == "tool_result"
                         and b.get("is_error"))
             return {"kind": "tool_result", "text": "", "index": j, "errors": n_err}
+        txt = classifier.strip_reminders("\n".join(opening) if opening else _text_of(c)).strip()
         return {"kind": "user", "text": _trig_clip(txt), "index": j}
     return {"kind": "none", "text": "", "index": -1}
 

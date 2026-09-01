@@ -156,28 +156,13 @@ def build_factors(mains, subs, secs, others, _sid, _date):
                         # user 角色下的文本块绝大多数**不是人说的话**：状态通知、注入的规则、
                         # 本地命令回显、WebFetch 正文、图片标注、harness 提醒都挂在 user 名下。
                         # 实测 192 段里真人只有约 30 段，`<total_tokens>` 一项就占 158 段。
-                        if norm.startswith("<total_tokens>"):
-                            kind = "status"
-                        elif norm.startswith("<system-reminder"):
-                            kind = "reminder"
-                        elif norm.startswith("This session is being continued"):
-                            kind = "compact_summary"
-                        elif norm.startswith("<local-command") or norm.startswith("<command-"):
-                            kind = "harness"
-                        elif norm.startswith("Web page content:") or norm.startswith("[Image:"):
-                            kind = "payload"
-                        elif (norm.startswith("Available agent types")
-                              or norm.startswith("The task tools haven't been used")
-                              or norm.startswith("This is a reminder")
-                              or norm.startswith("[SYSTEM NOTIFICATION")
-                              or norm.startswith("Note: ")):
-                            kind = "harness"
-                        else:
-                            kind = "user"
-                        # harness 把「打断插话」包了一层，剥掉之后它就是一句真发言
-                        m_int = re.match(r"^The user sent a new message while you were working:\s*", norm)
-                        if m_int:
-                            norm, kind = norm[m_int.end():], "user"
+                        #
+                        # **判据不在这里**（260901 收口）：同一份分类此前在仓里有三份实现、
+                        # 三份判错两份（时序图的轮、步级简报的 turn 号各错各的）。现在统一调
+                        # `classifier.user_text_kind`，它顺带剥掉「打断插话」的那层包装。
+                        kind, norm = classifier.user_text_kind(norm)
+                        if kind == "empty":
+                            continue
                         # 同一句话的包装版与裸版（328 字 / 137 字）前缀不同、哈希不同，
                         # 用首 80 字包含关系再去一次重，否则一次发话被算两次。
                         if kind == "user":

@@ -179,7 +179,11 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v14 → v15（260802）：新增 turn_user（轮首用户消息，剥 reminder 后取 160 字），供 DAG 按轮
 #                     折叠的轮卡当检索键。必须写时算——last_user 只存 2000 字，而 reminder 可达
 #                     9960 字，读时现剥剥不出东西（详见该字段注释）。
-IDX_SCHEMA = 15
+#   v15 → v16（260901）：turn_start 判据收口——工具回传的附属文本（`[Image: …]` 图片说明、
+#                     WebFetch 正文、打断标记）不再算轮起点。字段集没变，但 turn_start 的语义
+#                     变了，旧索引不重建就会新旧两套切分混在一起看不出来（惯犯②「静默降级」
+#                     同型）。判据单份在 user_text_kind/opens_turn。
+IDX_SCHEMA = 16
 
 
 # ===== 请求体取文本 =====
@@ -439,11 +443,88 @@ def _agent_fp(blocks: list[str]) -> str:
     return hashlib.md5(blocks[2].encode("utf-8", "replace")).hexdigest()[:8]
 
 
+# ===== user 侧文本块的分类（**判据单份**，260901）=====
+# user 角色下的 text 块绝大多数**不是人说的话**：状态通知、注入的规则、本地命令回显、
+# WebFetch 正文、图片说明、harness 提醒都挂在 user 名下。实测一天 192 段里真人只有约 30 段。
+#
+# 这份判据此前在仓里有**三份互不相同的实现**，三份判错两份（260901 审计）：
+#   1. `classifier._is_turn_start`      —— 只排除 `<system-reminder>`，`[Image:]` 判成新轮
+#   2. `trajectory.py` 的 user_events   —— 有完整前缀清单，判对
+#   3. `snapshot_extract._trigger_of`   —— 有 tool_result 且无 text 才算回传，`[Image:]` 判成新轮
+# 后果不是三个 bug，是同一个 bug 的三份拷贝：时序图的轮、八视图的阶段、步级简报的 `turn` 号
+# 各错各的，还互相矛盾。（同型教训：`usage_norm` 键名归一被抄三份、同一个 bug 犯两次。）
+#
+# CC 自己怎么做的（jsonl 实测，260901）：图片说明记成一条 `type:user` + **`isMeta:true`** 的行，
+# 且**沿用发起者的 `promptId`**——归位 + 标记，既不新开轮也不丢弃。下面这份分类就是 wire 侧
+# 能拿到的最接近的等价物（`isMeta` 不过 wire）。
+TEXT_KIND_PREFIXES = (
+    # (前缀, 类别)。**顺序敏感**：先匹配到的赢，长前缀放前面。
+    ("<system-reminder", "reminder"),          # CC 注入的上下文块
+    ("<total_tokens>", "status"),              # 预算状态通知
+    ("This session is being continued", "compact_summary"),   # 压缩后的续接摘要
+    ("[Image:", "payload"),                    # **工具回传的图片说明**（Read 读图 / MCP 截图）
+    ("Web page content:", "payload"),          # WebFetch 抓回的正文
+    ("[Request interrupted by user", "payload"),   # 打断标记本身（真人的话另在别的块里）
+    ("<local-command", "harness"),
+    ("<command-", "harness"),
+    ("[SYSTEM NOTIFICATION", "harness"),
+    ("Available agent types", "harness"),
+    ("The task tools haven't been used", "harness"),
+    ("This is a reminder", "harness"),
+    ("Note: ", "harness"),
+)
+# harness 把「打断插话」包了一层，剥掉之后它就是一句真发言。
+INTERRUPT_WRAPPER = "The user sent a new message while you were working:"
+# **不开新轮的类别**。故意只有这三类，别往里加：
+#   · reminder / status —— 注入物，从来不是一次发起
+#   · payload           —— 工具回传的附属文本，CC 自己给它 `isMeta:true` 并沿用原 promptId
+# `harness` **不在**这里，两条各自的理由：
+#   · `[SYSTEM NOTIFICATION`（后台任务通知）在 jsonl 里**有 promptId**（实测 201 行
+#     `origin.kind=task-notification`）——CC 认它是一轮，我们不能比 CC 更严。
+#   · 斜杠命令在 jsonl 里没有 promptId，但它是**真人动作**，只是前缀被 CC 改写过；
+#     §二·六 的 fail-safe 方向是「宁可把伪轮当真轮，不能把真人消息弱化」。
+#   · `compact_summary` 在这里（不开轮）：它是压缩后的续接，不是一次新的发起，
+#     CC 用 `system/subtype=compact_boundary` 单独标这件事。本语料 0 例，行为不变。
+NON_OPENING_KINDS = {"reminder", "status", "payload", "compact_summary"}
+
+
+def user_text_kind(text: str) -> tuple[str, str]:
+    """user 角色下的一个 text 块 → (类别, 剥掉包装后的正文)。
+
+    类别 ∈ reminder / status / compact_summary / payload / harness / user。
+    **这是这件事的唯一判据**——`_is_turn_start`、`trajectory` 的 user_events、
+    `snapshot_extract._trigger_of` 全都调它，不各自再写一份。
+    """
+    norm = (text or "").strip()
+    if not norm:
+        return "empty", ""
+    stripped = norm.lstrip()
+    if stripped.startswith(INTERRUPT_WRAPPER):
+        return "user", stripped[len(INTERRUPT_WRAPPER):].lstrip()
+    for prefix, kind in TEXT_KIND_PREFIXES:
+        if stripped.startswith(prefix):
+            return kind, norm
+    return "user", norm
+
+
+def opens_turn(text: str) -> bool:
+    """这个 text 块能不能开启新的一轮。"""
+    kind, _ = user_text_kind(text)
+    return kind not in NON_OPENING_KINDS and kind != "empty"
+
+
 def _is_turn_start(body: dict) -> bool:
-    """轮次起点判据（260717，三天真实录制验证）：最后一条 user 消息含「真实 text」
-    （string content，或非 <system-reminder> 开头的 text 块）→ 用户新消息触发的请求。
-    全是 tool_result（工具循环回传）→ 中间步。实测型态干净：工具回传就是纯 tool_result 块，
-    system-reminder 不混入；reminder+text 型是用户新消息被注入 reminder，正确判起点。"""
+    """轮次起点判据：最后一条 user 消息里存在一个「能开启新一轮」的 text 块。
+
+    260717 首版写的是「非 <system-reminder> 开头的 text 块即算真人」，当时的实测结论是
+    「工具回传就是纯 tool_result 块，不混文本」。**260901 证伪**：带图片的工具回传（Read 读图、
+    MCP 截图）会在 tool_result 之后附一个 `[Image: original …]` 文本块，WebFetch 的正文也走
+    user 文本块。实测 359 个主线轮起点里 21 个因此被切错，最坏的一天 08-08 是 17 切成 9（47%）；
+    拿 CC 本地 jsonl 的 `promptId` 当真值对账，21 个泳道合计 jsonl 102 轮 vs wire 173 轮（+70%）。
+
+    判据改走 `opens_turn()`（单份，见上）。**不是"识别假轮并丢弃"**——那些请求是真流量、有真
+    成本，CC 自己的做法是把它们归到发起者的 `promptId` 下并标 `isMeta`，我们对应的做法是让它们
+    留在原轮里当中间步，节点一个不少。"""
     last_u = None
     for m in body.get("messages") or []:
         if m.get("role") == "user":
@@ -452,12 +533,11 @@ def _is_turn_start(body: dict) -> bool:
         return False
     c = last_u.get("content")
     if isinstance(c, str):
-        return bool(c.strip())
+        return opens_turn(c)
     if isinstance(c, list):
         for b in c:
-            if isinstance(b, dict) and b.get("type") == "text":
-                if not (b.get("text") or "").lstrip().startswith("<system-reminder>"):
-                    return True
+            if isinstance(b, dict) and b.get("type") == "text" and opens_turn(b.get("text") or ""):
+                return True
     return False
 
 
