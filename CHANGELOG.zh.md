@@ -32,27 +32,6 @@
 - 《报文解读》的 kind 判别顺序表停在 260802，缺 v0.4.22 的两条判据（标题的 `json_schema` 官方位、
   「无工具不判主线」结构门），现与代码实际顺序一致。
 
-## v0.4.22 - 2026-09-01
-
-### 修复
-
-- 会话命名类请求（标题、kebab-case slug）重新判为辅助，不再算主线。
-- 对话形状但不带工具清单的请求不再判成主线。
-- 工具连同结果一起返回的文本——图片说明、抓回的网页正文、打断标记——不再开启新的一轮。
-- 轮边界此前有三份互不一致的实现，时序视图与分析视图现在共用一份。
-- Claude Code 2.1.238 起录到的安全审查重新显示正确的待判定动作，历史动作数也不再虚增。
-- 时序图的安全节点补上判定结果，此前只显示在审什么。
-- `tools/origin_probe.py` 在录制压实成 `.pack` 之后静默覆盖不到。
-
-### 新增
-
-- 盲区雷达新增 `mainline_suspect` 维度：判成主线、却缺少主线结构特征的请求。
-- `tools/origin_probe.py` 新增三档对账（`--mode belong | turns | origin`）。
-
-### 其他
-
-- `IDX_SCHEMA` 15 → 17，索引会自行重建。
-
 ## 更早的版本
 
-v0.4.21 及更早：[CHANGELOG-history.zh.md](CHANGELOG-history.zh.md)，或 [GitHub Releases 页](https://github.com/Fuhehe12/cc-wire-analyzer/releases)（同一份说明）。
+v0.4.22 及更早：[CHANGELOG-history.zh.md](CHANGELOG-history.zh.md)，或 [GitHub Releases 页](https://github.com/Fuhehe12/cc-wire-analyzer/releases)（同一份说明）。

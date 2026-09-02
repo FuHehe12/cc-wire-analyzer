@@ -51,29 +51,8 @@
   v0.4.22 rules (the `json_schema` official bit for titles, and the "no tools, not mainline"
   structural gate); it now matches what the code actually does.
 
-## v0.4.22 - 2026-09-01
-
-### Fixed
-
-- Session-naming requests (title, kebab-case slug) are classified as auxiliary again, not main line.
-- Dialog-shaped requests that carry no tool list are no longer classified as main line.
-- Text a tool returns alongside its result — image notes, fetched page content, interrupt markers — no longer starts a new turn.
-- Turn boundaries had three inconsistent implementations; the timeline and analysis views now share one.
-- Security reviews recorded from Claude Code 2.1.238 onward show the right action under review again, and an honest count of prior actions.
-- Security nodes in the timeline now show the verdict, not only the action under review.
-- `tools/origin_probe.py` covered nothing once a day had been compacted into a `.pack`.
-
-### Added
-
-- Blind-spot radar gained a `mainline_suspect` dimension: requests classified as main line that lack main-line structure.
-- `tools/origin_probe.py` gained three reconciliation modes (`--mode belong | turns | origin`).
-
-### Other
-
-- `IDX_SCHEMA` 15 → 17; the index rebuilds itself.
-
 ## Earlier versions
 
-v0.4.21 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the
+v0.4.22 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the
 [GitHub Releases page](https://github.com/FuHehe12/cc-wire-analyzer/releases), which carries the
 same notes per version.
