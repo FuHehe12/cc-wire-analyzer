@@ -1,6 +1,6 @@
 # Changelog — released versions
 
-> Full notes for every released version, v0.4.21 and earlier. The current version and the
+> Full notes for every released version, v0.4.23 and earlier. The current version and the
 > unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
 > to build a release's notes. Each version below is also published, unchanged, on its
 > [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
@@ -9,6 +9,26 @@
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
 
+
+## v0.4.23 - 2026-09-02
+
+### Added
+
+- New request kind `notify_eval`: the check Claude Code runs while you are away to decide whether
+  to notify you. It used to show up as `other`.
+
+### Fixed
+
+- The turns Claude Code starts by itself — suggestion completion, away review, internal search
+  dispatch — are no longer counted as mainline; they now sit with the auxiliary calls. Claude Code
+  does not record them in its own conversation log either, and turn counts now line up with that
+  log (they used to be 70% too high). Background task notifications are not in this group: Claude
+  Code does treat those as real turns.
+- The `quota_probe` and `hook_eval` labels in the aux lane showed their raw English values; they
+  now have Chinese and Japanese translations.
+- The kind-dispatch order table in the message-anatomy guide was stuck at 260802 and missing two
+  v0.4.22 rules (the `json_schema` official bit for titles, and the "no tools, not mainline"
+  structural gate); it now matches what the code actually does.
 
 ## v0.4.22 - 2026-09-01
 

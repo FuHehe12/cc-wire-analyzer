@@ -49,26 +49,6 @@
   closings dropped, patched-in section numbers renumbered (the agent manual shipped in the binary
   included).
 
-## v0.4.23 - 2026-09-02
-
-### Added
-
-- New request kind `notify_eval`: the check Claude Code runs while you are away to decide whether
-  to notify you. It used to show up as `other`.
-
-### Fixed
-
-- The turns Claude Code starts by itself — suggestion completion, away review, internal search
-  dispatch — are no longer counted as mainline; they now sit with the auxiliary calls. Claude Code
-  does not record them in its own conversation log either, and turn counts now line up with that
-  log (they used to be 70% too high). Background task notifications are not in this group: Claude
-  Code does treat those as real turns.
-- The `quota_probe` and `hook_eval` labels in the aux lane showed their raw English values; they
-  now have Chinese and Japanese translations.
-- The kind-dispatch order table in the message-anatomy guide was stuck at 260802 and missing two
-  v0.4.22 rules (the `json_schema` official bit for titles, and the "no tools, not mainline"
-  structural gate); it now matches what the code actually does.
-
 ## Earlier versions
 
 v0.4.22 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the
