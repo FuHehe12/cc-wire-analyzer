@@ -41,6 +41,11 @@
   from the same anchor already used for sub-agent lanes. Across 7 days: 28 of 556 security reviews
   belong to a sub-agent (40% on days with heavy sub-agent use), and no other auxiliary kind ever
   does. Turn cards, cascade hiding and token costs follow the corrected owner.
+- Index rebuilds after a schema bump now actually replace the old index file on Windows instead of
+  appending to it. The old file could not be deleted while the same process still held it open for
+  reading, so every read re-appended a whole day: one local day had 196 records stored as 3,955 index
+  lines across four schema generations. Reads always returned correct data, which is why it went
+  unnoticed. The bloated files are cleaned up on first read.
 - Reference docs: audited all five end to end, fixed what they contradicted about themselves and
   about each other, dropped the essay-style openings and closings, and renumbered the patched-in
   section numbers into a straight sequence. The agent manual shipped in the binary (`--help`,

@@ -236,23 +236,35 @@ class _Day:
 
     # -- 索引读写（两种形态的差异全部收在这三个方法里）--
     def idx_lines(self):
-        """索引的原始行（bytes）。pack 形态整体解压后按行切——它本来就是一次全读进内存的。"""
+        """索引的原始行（bytes）。**两种形态都整体读进内存再按行切**，句柄不跨 yield 存活。
+
+        jsonl 分支原先是 `with open(...) as fh: for raw in fh: yield raw`——生成器在 yield 处
+        挂起时那个句柄还开着。消费方 `_read_idx_entries` 恰恰会在循环体内判到 schema 过期后
+        调 `drop_idx()`，于是在 Windows 上**本进程自己占着这个文件，unlink 直接 WinError 32**：
+        旧条目删不掉 → `_backfill_index` 是 append 写 → 下次读第一行仍是旧版本 → 再判过期 →
+        每读一次追加一整天。实测本机 2026-09-01：196 条记录堆成 3,955 行、单条最重复 21 次、
+        v15~v18 四代混在一个文件里，而读出来的数据一直是对的，所以没人发现（惯犯 ③ 的变种——
+        异常没被吞，只是它的后果没有任何出口）。
+
+        体量：索引一条 1~2KB，最大的一天 2,993 条 ≈ 5MB；而消费方本来就要把它们全 parse 成
+        dict，峰值内存没有实质变化。**别为了省这点内存改回流式**——那等于把上面那个病放回来。
+        更一般的一条：**任何跨 yield 持文件句柄的读取器，都会在 Windows 上挡住同一进程后续的
+        删除/改名**（压实、归档、清理路径都有 unlink/rename）。
+        """
         if self.is_pack:
             data = pack.read_idx_bytes(self.pack_dir)
-            for raw in data.splitlines():
-                if raw.strip():
-                    yield raw
-            return
-        fi = self.idx
-        if not fi.exists():
-            return
-        try:
-            with fi.open("rb") as fh:
-                for raw in fh:
-                    if raw.strip():
-                        yield raw
-        except OSError as e:
-            log.error("索引读失败 %s：%s", fi.name, e)
+        else:
+            fi = self.idx
+            if not fi.exists():
+                return
+            try:
+                data = fi.read_bytes()
+            except OSError as e:
+                log.error("索引读失败 %s：%s", fi.name, e)
+                return
+        for raw in data.splitlines():
+            if raw.strip():
+                yield raw
 
     def drop_idx(self) -> None:
         """丢弃索引（schema 过期 / 主文件消失）。索引是缓存，丢了会重建。"""
