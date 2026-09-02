@@ -34,7 +34,7 @@ uv run python src/dev_seed.py         # seed demo captures to exercise the UI
 
 > **Template edits need a dev-server restart** — `app.run(debug=False)` caches Jinja templates, so
 > editing `index.html` and refreshing still shows the old page. Why this happens and how to verify
-> a change took effect: see [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §5.
+> a change took effect: see [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §8.
 
 ## Building
 
@@ -57,7 +57,7 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 ## Before submitting a PR
 
 1. **Run all seven self-tests.** The commands are listed in
-   [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §5 — copy them from there rather than from memory,
+   [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §8 — copy them from there rather than from memory,
    since the set has grown over time.
 2. If you touched the frontend, exercise the affected UI in a browser (open the port from the
    startup log or `~/.cc-wire-analyzer/port.txt`) — **restart the dev server first** (see the

@@ -385,11 +385,18 @@ truth 实测，2026-07）：
 
 ### 真人轮 vs CC 自己跟自己说话（读 `/api/dag` 前必看）
 
-**别把 `turns` 全当成用户提的问题。** CC 会自己合成 user 消息触发一整轮：建议补全
-（`[SUGGESTION MODE`）、离开回顾（`The user stepped away`）、内部检索派发
-（`Perform a web search for the query:`）、后台任务通知（`[SYSTEM NOTIFICATION`）。8 天真录制
-实测：**轮首成功的主线轮里 45% 是 CC 在跟自己说话，真人轮只占 50.3%**——统计"用户今天问了
-多少次"时不去掉它们，结论直接偏掉一半。
+**别把 `turns` 全当成用户提的问题。** CC 会自己合成 user 消息去发起一整轮请求，它们在 wire
+上与真人轮同构（带全量工具、同一会话），但 CC 自己的对话记录里根本没有它们。这批伪轮分两类，
+**处理方式不同**：
+
+| 族 | 例子 | 现在怎么处理 |
+|---|---|---|
+| CC 记都不记的 | 建议补全（`[SUGGESTION MODE`）、离开回顾（`The user stepped away`）、内部检索派发（`Perform a web search for the query:`）| **260902 起判 `self_prompt` 落 aux 泳道，不再开轮**——它们在 CC 的 jsonl 里一行都没有（扫全部 364 个 jsonl，归属对账 31/31 absent） |
+| CC 认它是真轮的 | 后台任务通知（`[SYSTEM NOTIFICATION`）| 仍是主线轮（CC 给了它 `promptId`），只由 `origin` 降档成 `synthetic` |
+
+所以现在 `turns` 里剩下的伪轮只有后一类。改判前 wire 比 jsonl 多切 70% 的轮，改判后 +3%。
+**「45% 的轮是 CC 在跟自己说话」那个数是改判前的口径**，别再拿它当现值——现在那 45% 里的大头
+已经不在 `turns` 里，而在 aux 泳道上（成本仍然真实，见下面第三条）。
 
 判据在 `turns[].origin`，五个取值：
 
@@ -410,8 +417,9 @@ truth 实测，2026-07）：
 - **误差已经量过。** 拿 CC 本地对话记录做过 2,339 轮离线对账：一致率 99.8%，且"把真人轮
   判成 synthetic"**0 例**。所以看到 `synthetic` 可以放心当机器轮用；看到 `user` 则有极小
   概率是漏网的机器轮。
-- **`synthetic` 不等于噪声。** 伪轮会带出真实工作和真实 token 成本，做成本归因时**要算进去**，
-  只是别把它算成"用户的提问"。同理，一天的"轮数"里可能混着**失败重试**——上游 504/429 时
+- **`synthetic` 与 `self_prompt` 都不等于噪声。** 它们带出真实工作和真实 token 成本，
+  做成本归因时**要算进去**，只是别把它算成"用户的提问"。落 aux 的那一族尤其容易漏——
+  它不在 `turns` 里，只在 `nodes` 里（`kind=self_prompt`）。同理，一天的"轮数"里可能混着**失败重试**——上游 504/429 时
   同一句话会被重发几百次，每次都是一个新轮（实测某天 2,049 轮里 2,000 轮的轮首是 504）。
   数轮数之前先按 `errors`/节点 `status` 滤一遍。
 
@@ -516,7 +524,7 @@ headers 存的时候 `Authorization` 已脱敏，但 body 原样存——假设 
   （`input_tokens` / `cache_read_input_tokens` …），和上游返回的一模一样；`/api/captures` 列表
   和 `/api/dag` 端点归一成短名（`input` / `output` / `cache_read` / `cache_creation`），经
   `classifier.usage_norm`（单一真源）。在这里提到 `usage` 时，说清楚你指哪一侧。权威表述见
-  [API契约.md §4](API契约.md)。
+  [API契约.md 的「约定」一节](API契约.md)。
 - **兄弟文档**（改这份时一起对齐）：[API契约.md](API契约.md)（端点/字段规格真源）、
   [架构总览.md](架构总览.md)（软件怎么搭起来的，含 `kind` / `err_kind` 枚举和上面那些规则的
   设计理据）、[界面导览.md](界面导览.md)（人看到什么）、[文档维护策略.md](../文档维护策略.md)

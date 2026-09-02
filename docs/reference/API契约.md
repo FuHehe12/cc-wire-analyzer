@@ -1,6 +1,11 @@
-# 前端 API 契约（cc-wire-analyzer）
+# API 契约（cc-wire-analyzer）
 
-> 给 Fable 接手前端设计时的后端接口契约。后端按此实现，前端按此调用。变更需双方同步。
+> 读者：改前端、写 agent 脚本、或对接这个工具的人和 AI。**触发时机：要调某个端点之前**。
+> 本篇是**端点 / 字段 / 枚举的真源**——后端按此实现，前端与 agent 按此调用，改一侧要改两侧。
+> `tools/doc_audit.py` 机器对账「代码里有的端点这里有没有」。
+> 配套：[AI_USAGE.md](AI_USAGE.md)（怎么用 agent 驱动它，比本篇更新得勤）/
+> [界面导览.md](界面导览.md)（这些数据在界面上长什么样）/
+> [开发约定.md](开发约定.md)（改代码时不能破什么）。
 
 所有 UI 路由前缀 `/api/`（代理 catch-all 不碰这个前缀）。返回 JSON，UTF-8。
 
@@ -309,7 +314,7 @@ data: {...}
 
 ---
 
-## 2.5 存储形态：压实 / 归档 / 导入（260825）
+## 3. 存储形态：压实 / 归档 / 导入
 
 一天有两种形态：`captures/<date>.jsonl`（今天，格式未变）与 `captures/<date>.pack/`（过去某天，
 已压实）。**所有读取端点对两种形态行为一致**——同一天压实前后 `/api/captures`、`/api/dag`、
@@ -399,7 +404,7 @@ CLI 对应 `--source`。
 
 ---
 
-## 3. 配置
+## 4. 配置
 
 ### `GET /api/config`
 
@@ -438,7 +443,7 @@ CLI 对应 `--source`。
 
 ---
 
-## 3.5 LLM 服务（翻译 / AI 解读，共用 `config.translate` 配置）
+## 5. LLM 服务（翻译 / AI 解读，共用 `config.translate` 配置）
 
 错误返回统一含 `error_code`（供前端 i18n 映射：`no_api_key` / `no_base_url` / `empty_text`）+ `error`（原始诊断串）。
 
@@ -682,7 +687,7 @@ body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, man
 
 ---
 
-## 3.55 就地更新（260808）
+## 6. 就地更新
 
 **"点一下就换好"，不是"自动升级"**：没有定时检查、没有静默安装，每个端点都对应界面上的
 一次点击。安全边界见 [开发约定.md](开发约定.md) 不变量 10（来源硬编码 / 逐跳 host 白名单 /
@@ -758,7 +763,7 @@ settings.json）。macOS 返回 `in_place:false, restart:false` + 解压出的 `
 
 ---
 
-## 3.6 配置体检（260718 方向 B / 260725 落地）
+## 7. 配置体检
 
 开代理前跑 8 条只读规则，回答"配置有没有矛盾"。三条铁律：**绝不写入** settings.json/凭据、
 不提供自动修复（与 settings_guard 不变量③同源）；**宁可漏报不可误报**（误报比漏报更伤——
@@ -820,7 +825,7 @@ settings.json）。macOS 返回 `in_place:false, restart:false` + 解压出的 `
 
 ---
 
-## 3.7 失败聚合（260725 落地，260801 接入 UI）
+## 8. 失败聚合
 
 把当天失败按上游错误消息指纹归并（抹掉 request-id / uuid / 数字），每组摆请求侧字段。**只整理
 数据不调 LLM**，分析交给外面 CC/agent（"人看 GUI、AI 走 CLI/API"的分工）。
@@ -962,7 +967,7 @@ CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI �
 
 ---
 
-## 3.75 检索与统计（260802 从 CLI 抽公共到 HTTP）
+## 9. 检索与统计
 
 `grep` / `stats` 的核心逻辑在 `capture_store.grep` / `capture_store.stats`，**CLI 与 HTTP 共用
 同一个函数**。历史教训：这两个能力最初只有 CLI，HTTP 侧缺失，于是 agent 被迫直读 jsonl
@@ -1000,7 +1005,7 @@ cache_read,cache_creation}, cache_hit_ratio, total_ms{p50,p95,max}}`
 
 ---
 
-## 3.8 盲区雷达（260802）
+## 10. 盲区雷达
 
 聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/
 thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
@@ -1055,7 +1060,7 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 
 ---
 
-## 3.9 快照：提示词/录制的备份、精确对比、思考链（260808）
+## 11. 快照：提示词/录制的备份、精确对比、思考链
 
 **与 `POST /api/captures/clear` 的「压缩存档」不是一回事**：那个打包后**删掉原文件**，属于清理；
 快照是用户显式保存的一份拷贝，**不删任何东西、不受 `retention_days` 自动清理**（同 `archives/`
@@ -1332,7 +1337,7 @@ body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**�
 
 ---
 
-## 3.10 API 浏览面：人类可读渲染（260825，issue 260825_API可视化审计面）
+## 12. API 浏览面：人类可读渲染
 
 本工具是双模式的——**人看 GUI（`/`），AI 走 `/api/*`**。这一节是给这两条通道之间开的一扇窗：
 让人能在浏览器里亲眼核对 AI 那一侧拿到的是什么。原本返回 HTML 的只有 `/`，`/api/*` 一律 JSON、
@@ -1387,7 +1392,7 @@ GET /api/ai-guide?format=html                            → 排好版的说明�
 
 ---
 
-## 4. 约定
+## 13. 约定
 
 - **headers_safe**：所有 headers 字段经脱敏，`authorization` / `x-api-key` / `anthropic-auth-token` 显示 `<redacted>`，列表/详情都不返回真实 token。**脱敏无条件生效，没有开关**（曾有个 `redact_headers` 配置项，但从未接线；260713 连开关一起删掉 —— 提供"明文存 key"的选项本身就是危险，何况录制现在可被 AI 经 CLI 读取）。
 - **时间格式**：ISO 8601 带毫秒，本地时区（`2026-07-05T22:43:12.345`）。

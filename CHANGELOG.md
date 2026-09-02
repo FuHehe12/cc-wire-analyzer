@@ -41,6 +41,10 @@
   from the same anchor already used for sub-agent lanes. Across 7 days: 28 of 556 security reviews
   belong to a sub-agent (40% on days with heavy sub-agent use), and no other auxiliary kind ever
   does. Turn cards, cascade hiding and token costs follow the corrected owner.
+- Reference docs: audited all five end to end, fixed what they contradicted about themselves and
+  about each other, dropped the essay-style openings and closings, and renumbered the patched-in
+  section numbers into a straight sequence. The agent manual shipped in the binary (`--help`,
+  `GET /api/ai-guide`) is one of them.
 - The timeline no longer draws dozens of identical overlapping edges when a folded card stands in
   for many nodes, and the auxiliary lane no longer draws a "conversation order" line between
   auxiliary calls that belong to different sessions or agents.
