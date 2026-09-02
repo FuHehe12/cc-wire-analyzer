@@ -218,7 +218,12 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #   v16 → v17（260901）：sec_action 改用双格式 transcript 解析。CC 2.1.238 起 transcript 从
 #                     一行一对象换成文本条目（续行缩进两格），旧解析在这种录制上 100% 取错
 #                     待判定动作、动作数按物理行虚增。字段集没变，值变了，必须重建。
-IDX_SCHEMA = 17
+#   v17 → v18（260902）：新增 sec_scope / sec_handoff（安全审查的**被审对象**归属原料）。
+#                     CC 把「正在执行这次工具调用的那个 agent 的对话」塞进 transcript，
+#                     子代理的审查因此首条 user 就是派生 prompt；wire 头上没有这个信息
+#                     （CC 的 side query 一律硬编码成 main，见 build_dag 的归属段注释）。
+#                     没有这两个字段，安全审查只能一律挂主线。
+IDX_SCHEMA = 18
 
 
 # ===== 请求体取文本 =====
@@ -251,6 +256,15 @@ def _user_texts(body: dict) -> list[str]:
 # 解析**只此一份**，前端不再抄——`usage_norm` 的键名归一被抄三份、同一个 bug 犯两次的教训。
 SEC_ACTION_MAX = 400      # 待判定动作留多长（进索引，要控体积）
 SEC_REASON_MAX = 300
+# 被审对象（scope）锚点长度：与 `first_user_task` 同规格，好让两处用**同一个**对齐算法。
+# 别为了省几百字改小——对齐 probe 是 300 字，锚点短了长 reminder 场景会漏命中。
+SEC_SCOPE_LEN = 1500
+# 子代理交还控制权时那次整段复查的铁证（`tools/AgentTool/agentToolUtils.ts` 里写死的文本）。
+# 只匹配公共部分：实测措辞有 `Sub-agent has finished…`（源码）与 `Subagent has finished…`
+# （2.1.220 录制）两种版本变体。
+# ⚠️ **必须限定「transcript 末条目 + role=user」再匹配**，不能全文搜：讨论这件事的会话正文
+# 会原样带上这句话（本项目自己的排查脚本就把它写进了 Bash 命令，于是进了别人的 transcript）。
+SEC_HANDOFF_MARK = "has finished and is handing back control to the main agent"
 
 # transcript 的两种渲染格式——**这是 CC 自己在安全提示词里声明的**，不是我们猜的：
 #   「Assistant-role entries (keyed `assistant` in JSONL format, or prefixed `Assistant:`
@@ -342,6 +356,11 @@ def sec_request(body: dict) -> dict | None:
         inner = inner[start + len("<transcript>"):]
     entries = _sec_entries(inner)
     tool, arg = entries[-1] if entries else ("", "")
+    # 被审对象（260902）：CC 把**正在执行这次工具调用的那个 agent 的对话**塞进 transcript
+    # （`utils/permissions/permissions.ts` 传的是 `context.messages`）。所以子代理的工具调用
+    # 被审查时，首条 user 逐字就是那次 Task 的派生 prompt——与子代理泳道键用的是同一个锚点。
+    # 限定首条目必须是 user 角色：Bash 参数里恰好抄了一段派生 prompt 的情况不该命中。
+    head_tool, head_arg = entries[0] if entries else ("", "")
     return {
         "action_tool": tool,
         "action_arg": arg[:SEC_ACTION_MAX],
@@ -350,6 +369,9 @@ def sec_request(body: dict) -> dict | None:
         "rules_chars": rules_chars,
         # 意图上下文（实测是用户 CLAUDE.md 全文）——本次审查连它一起发了出去
         "ctx_chars": len(users[0]) if len(users) > 1 else 0,
+        "scope_head": (strip_reminders(head_arg)[:SEC_SCOPE_LEN]
+                       if head_tool == "user" else ""),
+        "handoff": bool(tool == "user" and SEC_HANDOFF_MARK in arg),
     }
 
 
@@ -810,6 +832,9 @@ def index_record(rec: dict) -> dict:
     sys_text = _system_text(body)
     users = _user_texts(body)
     billing = billing_kv(sys_text[:2000])
+    # 安全审查解析跑一次就够——sec_action / sec_scope / sec_handoff 三个字段同源
+    # （此前 `_sec_action_flat` 自己又调一次 sec_request，等于把 114K 规则库的 transcript 解析两遍）
+    _sec = sec_request(body)
     summary = ""
     for blk in resp.get("content_blocks") or []:
         if isinstance(blk, dict) and blk.get("type") == "text" and blk.get("text"):
@@ -890,8 +915,13 @@ def index_record(rec: dict) -> dict:
         # ---- 安全审查原料（260729）----
         # 待判定动作在 transcript 末尾，last_user 只存前 2000 字够不着，只能单独提取。
         # 列表行要一眼看出「AI 在确认什么、判了什么」，这两个字段就是那两句话的原料。
-        "sec_action": _sec_action_flat(body),
+        "sec_action": ({"tool": _sec["action_tool"], "arg": _sec["action_arg"][:200],
+                        "n": _sec["n_actions"]} if _sec else None),
         "sec_verdict": sec_verdict(resp),
+        # 被审对象归属原料（260902）。**只有 security 带**，其余 kind 不背恒 null 字段
+        # （与 sec_action/sec_verdict 同一惯例）。用途见 build_dag 的 aux 归属段。
+        "sec_scope": ((_sec["scope_head"] or None) if _sec else None),
+        "sec_handoff": (_sec["handoff"] if _sec else None),
         # ---- harness 声明面（260731 对账审计）----
         # CC 自己声明的东西，此前一条都没进索引。它们的用处不是当下判别，是**发现下一个盲区**：
         # 出现没见过的 beta 特性或新的请求体字段，就意味着 CC 启用了新能力，
@@ -922,14 +952,6 @@ def index_record(rec: dict) -> dict:
         "host": _host_of(rec),
         "cc_version": _cc_version(rec),
     }
-
-
-def _sec_action_flat(body: dict) -> dict | None:
-    """index_record 用：只留列表行需要的几个字段，别把整个 sec_request 塞进索引记录。"""
-    s = sec_request(body)
-    if not s:
-        return None
-    return {"tool": s["action_tool"], "arg": s["action_arg"][:200], "n": s["n_actions"]}
 
 
 # ===== 分类 =====
@@ -1186,6 +1208,45 @@ def build_dag(records: list[dict]) -> dict:
             key = r.get("agent_id") or r.get("agent_fp") or lk
             info[2] = "agent-" + key
 
+    # 安全审查的「被审对象」归属（260902）。
+    #
+    # **CC 在 wire 上主动抹掉了这个信息**：所有 side query（安全审查/标题/压缩/走开判定）都走
+    # `sideQuery()`，它把 agentContext 写死成 `{agentType:"main", agentId: sessionId}`
+    # （v2.1.183 bundle: `function fm(){return{agentType:"main",agentId:It()}}`），而 client 对
+    # agentType==="main" 一律不发 `x-claude-code-agent-id`。实测 7 天 aux 带 agent 头 0/1,236，
+    # 子代理正线 42/42 全带——所以官方位在这里不是缺位，是**等不到**。
+    #
+    # 但 CC 进程内是知道的，而且那份归属以正文形式泄漏了出来：分类器收到的 transcript 就是
+    # `context.messages`——**正在执行这次工具调用的那个 agent 的对话**（permissions.ts）。
+    # 子代理的工具调用被审查时，transcript 首条 user 逐字就是那次 Task 的派生 prompt。
+    # 于是这里复用**与子代理泳道键完全同一个**对齐算法，不发明第二套启发式。
+    #
+    # 取证（7 天）：security 命中 28/556，其余 7 种 aux kind 全 0（与 CC 源码对得上——
+    # 只有权限分类器跑在子代理循环里）；28/28 的时间戳落在对应子代理泳道跨度内，零反例；
+    # 无子代理的两天 123 条 security 零误命中。
+    sec_owner: dict[str, str] = {}     # 审查请求 id → 子代理泳道键（md5 对齐键，下面统一改写）
+    sec_handoff_ids: set[str] = set()  # 子代理交还控制权时那次整段复查（另走时序，见 near 边段）
+    for r, kind, _ in infos:
+        if kind == "main" or kind == "subagent":
+            continue
+        if r.get("sec_handoff"):
+            sec_handoff_ids.add(r.get("id"))
+            continue
+        scope = r.get("sec_scope") or ""
+        if not scope:
+            continue
+        for mid, p in prompts:
+            probe = p[:PROMPT_PROBE_LEN]
+            if len(p) < PROMPT_MATCH_MIN or not probe or probe not in scope:
+                continue
+            sec_owner[r.get("id")] = "agent-" + hashlib.md5(
+                f"{mid}|{p[:PROMPT_MATCH_LEN]}".encode("utf-8", "replace")).hexdigest()[:8]
+            break
+    # 与正线同一次改写：泳道键 260801 起以官方 agent-id 优先，归属键必须跟着改，否则指向一条
+    # 已经被改名的泳道 = 归属静默落空（惯犯②）。
+    for rid, lk in list(sec_owner.items()):
+        sec_owner[rid] = aid_of_aligned.get(lk, lk)
+
     # lane 组装：main 每会话一列、subagent 每派生实例一列、辅助合一列
     # （subagent 的 lane_key 到这里必然已是 "agent-" 开头：对齐命中时设成派生实例键，
     #   未命中时由上面的 agent_fp 回落循环补上）
@@ -1328,12 +1389,30 @@ def build_dag(records: list[dict]) -> dict:
                 break
         return prev
 
+    # 子代理泳道的收尾时刻（handoff 复查归属用）：交还控制权那次复查紧跟在子代理最后一条
+    # 请求之后发出，所以「末条请求 ≤ 审查时刻」里最晚的那条子代理泳道就是被复查的对象。
+    # 这仍是时序启发式，但作用域被铁证（末条目 role=user + 固定文本）锁死在「刚有子代理交还
+    # 控制权」这一瞬间，与被否掉的「全局时序邻近」不是一回事。实测全语料 2 条，正文与派生
+    # prompt 语义对上 2/2。
+    sub_last: list[tuple[str, str]] = sorted(
+        ((max((x["ts_start"] or "") for x in ns), lid)
+         for lid, ns in by_lane.items() if ns and ns[0]["kind"] == "subagent"))
+
     for n in nodes:
         if n["lane"] != "aux":
             continue
         prev = None
+        own = sec_owner.get(n["id"])
+        if own is None and n["id"] in sec_handoff_ids:
+            cands = [lid for last, lid in sub_last if last <= (n["ts_start"] or "")]
+            own = cands[-1] if cands else None
+        if own:   # 被审对象是子代理：在那条泳道里找时序前驱（见上面的归属段注释）
+            pool = by_lane.get(own) or []
+            if pool:
+                prev = _latest_before(pool, n["ts_start"] or "") or pool[0]
+            # 泳道不在（子代理本身没被录到/跨天截断）就落回下面的主线路径，不静默丢边
         sid = aux_sid.get(n["id"])
-        if sid:   # 精确：与主线泳道键同一算法（"s-" + md5(session_id)，见 _lane_key）
+        if prev is None and sid:   # 精确：与主线泳道键同一算法（"s-" + md5(session_id)，见 _lane_key）
             pool = main_by_lane.get(
                 "s-" + hashlib.md5(sid.encode("utf-8", "replace")).hexdigest()[:8])
             if pool:   # 泳道在就只在泳道内找：先取时序前驱，没有（aux 早于本会话首条
@@ -1344,11 +1423,12 @@ def build_dag(records: list[dict]) -> dict:
         if prev:
             edges.append({"from": prev["id"], "to": n["id"], "type": "near"})
             # 辅助归轮（260802）：near 边起点属于哪一轮，这次辅助调用就归哪一轮。
-            # ⚠️ **只能归到主线的轮，归不到子代理**：9 天 1290 条 aux 里带
-            # X-Claude-Code-Agent-Id 的是 0 条，而 session_id 子代理与主线共用（260725 定案），
-            # wire 层没有任何标识能说「这次安全审查是在审子代理的工具调用」。靠时序邻近猜
-            # 属于启发式，而 §2.5 的定案是官方标识符优先——猜错的代价（把主线的标题请求挂到
-            # 子代理头上）比"都挂主线"更糟。等 CC 哪天给了标识再收紧。
+            # **260902 起也能归到子代理的轮**——安全审查的被审对象由 transcript 正文判定
+            # （见上面的 sec_owner 段）。此前这里写着「只能归主线」，理由是「wire 层没有任何
+            # 标识能说这次审查在审子代理，靠时序邻近猜代价更大」；那条否决针对的是**全局时序
+            # 邻近**这种弱信号，而现在用的是与子代理泳道键同一个的正文锚点，性质不同。
+            # 其余 7 种 aux kind 仍一律归主线，那不是保守而是实测——它们在 CC 里就是主循环
+            # 独占的 side query，7 天全语料 0 条对齐到子代理。
             t = turn_by_id.get(turn_of.get(prev["id"], ""))
             if t:
                 t["aux"][n["kind"]] = t["aux"].get(n["kind"], 0) + 1

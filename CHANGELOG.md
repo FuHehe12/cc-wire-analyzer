@@ -31,6 +31,20 @@
   4. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's
      pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
+## Unreleased
+
+### Fixed
+
+- Security reviews of a sub-agent's tool calls are now attributed to that sub-agent instead of the
+  mainline. Claude Code hides this on the wire — every side query is stamped as the main agent — but
+  it puts the reviewed agent's own conversation in the request body, so the sub-agent is identifiable
+  from the same anchor already used for sub-agent lanes. Across 7 days: 28 of 556 security reviews
+  belong to a sub-agent (40% on days with heavy sub-agent use), and no other auxiliary kind ever
+  does. Turn cards, cascade hiding and token costs follow the corrected owner.
+- The timeline no longer draws dozens of identical overlapping edges when a folded card stands in
+  for many nodes, and the auxiliary lane no longer draws a "conversation order" line between
+  auxiliary calls that belong to different sessions or agents.
+
 ## v0.4.23 - 2026-09-02
 
 ### Added

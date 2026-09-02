@@ -151,6 +151,34 @@ def main() -> None:
             {"role": "user", "content": "[SYSTEM NOTIFICATION] Background task finished: build ok"},
         ]
         f.write(json.dumps(notif, ensure_ascii=False) + "\n")
+        # 安全审查的被审对象（260902）：CC 把「正在执行这次工具调用的那个 agent 的对话」
+        # 塞进 transcript，所以子代理的审查首条 user 逐字就是派生 prompt。三条一组：
+        # 派生方（主线，响应里带 Agent 工具调用）→ 子代理 → 审子代理那次工具调用的安全审查。
+        SPAWN = ("你是 cc-wire-analyzer 项目的 CLI 功能检查员。项目在 D:/Claude/workshop/cc-wire-analyzer，"
+                 "逐条跑 22 个子命令，把每条的退出码、stdout 前 200 字、是否报错记下来，最后给一张表。")
+        spawner = _fake_record("req_ggg7777", "main")
+        spawner["ts_start"] = "2026-07-12T22:20:00.000"
+        spawner["response"]["content_blocks"] = [
+            {"type": "tool_use", "id": "t9", "name": "Agent", "input": {"prompt": SPAWN}}]
+        f.write(json.dumps(spawner, ensure_ascii=False) + "\n")
+        sub = _fake_record("req_hhh8888", "main")
+        sub["ts_start"] = "2026-07-12T22:20:05.000"
+        sub["request"]["body"]["system"][0]["text"] += " cc_is_subagent=true;"
+        sub["request"]["body"]["messages"] = [{"role": "user", "content": SPAWN}]
+        sub["response"]["content_blocks"] = [
+            {"type": "tool_use", "id": "t10", "name": "Bash",
+             "input": {"command": "uv run python src/cli.py paths"}}]
+        f.write(json.dumps(sub, ensure_ascii=False) + "\n")
+        secsub = _fake_record("req_iii9999", "security")
+        secsub["ts_start"] = "2026-07-12T22:20:07.000"
+        secsub["request"]["body"]["messages"] = [
+            {"role": "user", "content": "# CLAUDE.md（意图上下文）"},
+            {"role": "user", "content":
+                "<transcript>\n"
+                + json.dumps({"user": SPAWN}, ensure_ascii=False) + "\n"
+                + json.dumps({"Bash": "uv run python src/cli.py paths"}, ensure_ascii=False)
+                + "\n</transcript>\n\nRespond with <severity>N</severity> ONLY."}]
+        f.write(json.dumps(secsub, ensure_ascii=False) + "\n")
 
     env = {**os.environ, "CCWA_HOME": str(tmp), "CCWA_CLAUDE_SETTINGS": str(settings)}
 
@@ -166,18 +194,18 @@ def main() -> None:
         o = run(env, "paths")
         check("paths 走 CCWA_HOME", str(tmp) in o.get("captures_dir", ""))
         o = run(env, "stats", "--date", "2026-07-12")
-        check("stats 记录数", o.get("records") == 6, str(o.get("kinds")))
-        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 6,
-              f"input={o.get('tokens', {}).get('input')}（6 条 × 24001；SSE 给的是 input_tokens 全名）")
+        check("stats 记录数", o.get("records") == 9, str(o.get("kinds")))
+        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 9,
+              f"input={o.get('tokens', {}).get('input')}（9 条 × 24001；SSE 给的是 input_tokens 全名）")
         o = run(env, "list", "--date", "2026-07-12", "--kind", "main")
-        check("list --kind 过滤", len(o.get("items", [])) == 4)
+        check("list --kind 过滤", len(o.get("items", [])) == 5)
         o = run(env, "get", "req_aaa1111", "--date", "2026-07-12", "--part", "system", "--max-chars", "200")
         check("get --part system 截断", o.get("truncated") is True)
         check("get 输出不炸上下文", len(json.dumps(o)) < 4000, f"{len(json.dumps(o))} bytes")
         o = run(env, "get", "req_aaa1111", "--date", "2026-07-12", "--part", "tools")
         check("get --part tools 回工具名", "Agent" in (o.get("data") or []))
         o = run(env, "grep", "security monitor", "--date", "2026-07-12", "--in", "system")
-        check("grep 命中", o.get("hits") == 1, f"hits={o.get('hits')}")
+        check("grep 命中", o.get("hits") == 2, f"hits={o.get('hits')}")   # 两条 security 的 system 都含这句
         o = run(env, "dag", "--date", "2026-07-12")
         check("dag 出泳道", len(o.get("lanes", [])) >= 1)
         # 轮聚合（260802）：DAG 按轮折叠的全部依据。三条 main（其中一条是工具循环中间步）
@@ -185,7 +213,7 @@ def main() -> None:
         # 260902：SUGGESTION MODE 那条改判 self_prompt 落 aux、不再开轮；
         # SYSTEM NOTIFICATION 那条仍是主线轮（origin=synthetic）。仍是三轮，但构成变了。
         turns = o.get("turns") or []
-        check("dag 出轮", len(turns) == 3, f"turns={len(turns)}")
+        check("dag 出轮", len(turns) == 5, f"turns={len(turns)}")
         t0 = turns[0] if turns else {}
         check("轮卡带用户那轮说的话（不是模型回答）",
               t0.get("user_text") == "帮我查一下泳道判别的问题", repr(t0.get("user_text")))
@@ -209,6 +237,17 @@ def main() -> None:
               any(t.get("origin") == "synthetic" and "SYSTEM NOTIFICATION" in (t.get("user_text") or "")
                   for t in turns),
               str([(t.get("origin"), (t.get("user_text") or "")[:24]) for t in turns]))
+        # 260902 归属：安全审查审的是子代理那次工具调用 → 归子代理的轮，不再一律挂主线。
+        check("安全审查归到被审的子代理那一轮（不再一律挂主线）",
+              any((t.get("aux") or {}).get("security")
+                  for t in turns if t["lane"].startswith("agent-")),
+              str([(t["lane"], t.get("aux")) for t in turns]))
+        # 反例：审主线工具调用的那条（transcript 首条不是派生 prompt）必须仍归主线。
+        # 少了这条，「一律改挂子代理」也能测过去。
+        check("审主线的那条仍归主线，不被误判成子代理",
+              sum((t.get("aux") or {}).get("security", 0)
+                  for t in turns if t["lane"].startswith("s-")) >= 1,
+              str([(t["lane"], t.get("aux")) for t in turns]))
         check("每个主线/子代理节点都有归属轮",
               all(n.get("turn") for n in o.get("nodes", []) if n["kind"] in ("main", "subagent")))
 
