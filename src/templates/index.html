@@ -4995,12 +4995,19 @@ function dagPosOf(id){
   /* 节点可见位置：普通节点取自身 pos；被折叠进 run / 辅助聚合卡 / turn 的成员解析到那张卡的位置。
      边（trigger/near）因此在折叠态下自动改连到轮卡/聚合卡上——否则主线节点一藏，
      「哪一轮派生了这个子代理」「这次安全审查属于谁」的连线就断了。
-     auxAgg 先于 turnPos：折叠态下 aux 成员归聚合卡（轮卡只替 main/subagent 站位）。 */
+     auxAgg 先于 turnPos：折叠态下 aux 成员归聚合卡（轮卡只替 main/subagent 站位）。
+     **aux 节点绝不回落轮卡**（260902）：260802「辅助归轮」之后 aux 节点也有 turn，于是一条被
+     hideAux 判掉、本该没有位置的 aux 会解析到它所属那一轮的轮卡——而它 near 边的起点本来就是
+     那张卡，两端重合，画出来是一条横穿卡片的反向自环（隐藏辅助后实测 11 条）。同一个洞在
+     「组首被 hideMid 滤掉」「主线被级联隐藏」两条路径上也成立。没有可见替身就返回 null，
+     边跟着不画——这是按上面那句注释既有的语义收口，不是新规则。 */
   if(DG.pos[id]) return DG.pos[id];
   const rk = DG.runOf[id];
   if(rk) return DG.runs[rk].pos;
   const ak = DG.auxAggOf[id];
   if(ak && DG.auxAgg[ak]) return DG.auxAgg[ak].pos;
+  const n = DG.nodeById[id];
+  if(n && DG.laneKind[n.lane] === "aux") return null;
   const tk = DG.turnOfNode[id];
   return (tk && DG.turnPos[tk]) ? DG.turnPos[tk] : null;
 }
