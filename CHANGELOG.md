@@ -15,8 +15,9 @@
   and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand exposing a
   headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships
   inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed.
-- **Current status**: **v0.4.23 (2026-09-02)** — the turns Claude Code starts by itself no longer
-  count as mainline; turn counts now line up with Claude Code's own conversation log.
+- **Current status**: **v0.4.24 (2026-09-02)** — security reviews of a sub-agent's tool calls are
+  attributed to that sub-agent on the timeline; fold-mode switching and edge drawing are clean;
+  the Windows index-rebuild bug is fixed.
 - **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed
   `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced,
   delete it yourself.
@@ -31,32 +32,22 @@
   4. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's
      pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
-## Unreleased
+## v0.4.24 - 2026-09-02
 
 ### Fixed
 
-- Security reviews of a sub-agent's tool calls are now attributed to that sub-agent instead of the
-  mainline. Claude Code hides this on the wire — every side query is stamped as the main agent — but
-  it puts the reviewed agent's own conversation in the request body, so the sub-agent is identifiable
-  from the same anchor already used for sub-agent lanes. Across 7 days: 28 of 556 security reviews
-  belong to a sub-agent (40% on days with heavy sub-agent use), and no other auxiliary kind ever
-  does. Turn cards, cascade hiding and token costs follow the corrected owner.
-- Index rebuilds after a schema bump now actually replace the old index file on Windows instead of
-  appending to it. The old file could not be deleted while the same process still held it open for
-  reading, so every read re-appended a whole day: one local day had 196 records stored as 3,955 index
-  lines across four schema generations. Reads always returned correct data, which is why it went
-  unnoticed. The bloated files are cleaned up on first read.
-- Reference docs: audited all five end to end, fixed what they contradicted about themselves and
-  about each other, dropped the essay-style openings and closings, and renumbered the patched-in
-  section numbers into a straight sequence. The agent manual shipped in the binary (`--help`,
-  `GET /api/ai-guide`) is one of them.
-- The timeline no longer draws dozens of identical overlapping edges when a folded card stands in
-  for many nodes, and the auxiliary lane no longer draws a "conversation order" line between
-  auxiliary calls that belong to different sessions or agents.
-- Switching the timeline's fold mode now resets the auxiliary aggregate cards too. Expanding one by
-  hand, then using "expand all turns" and "fold by turn", used to leave that group scattered — the
-  fold button looked like it did not apply to auxiliary calls. Only the turn cards were being reset;
-  the aggregate cards were added later and never wired into the mode switch.
+- Security reviews of a sub-agent's tool calls are now attributed to that sub-agent on the timeline
+  instead of the mainline. Turn cards, cascade hiding and token costs follow the corrected owner;
+  no other auxiliary kind is affected.
+- On Windows, index rebuilds after a schema bump used to append to the old file instead of replacing
+  it, so index files kept growing; they are now replaced, and already-bloated files clean themselves
+  up on first read.
+- Timeline: a folded card standing in for many nodes no longer draws dozens of identical overlapping
+  edges; the aux lane no longer chains calls from different sessions into one "conversation order"
+  line; switching the fold mode now resets expanded aux aggregate cards too.
+- Reference docs: all five audited end to end — contradictions fixed, essay-style openings and
+  closings dropped, patched-in section numbers renumbered (the agent manual shipped in the binary
+  included).
 
 ## v0.4.23 - 2026-09-02
 
