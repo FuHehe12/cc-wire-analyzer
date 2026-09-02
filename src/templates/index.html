@@ -5148,7 +5148,11 @@ function dagToggleTurn(tid){
 }
 function dagToggleTurns(){
   DG.foldTurns = !DG.foldTurns;
+  /* 切模式 = 回到干净的折叠态：逐项展开态全清。**辅助聚合卡也要清**——它只在折叠态存在，
+     展开所有轮时 aux 本就全是单条、脏状态被藏住，切回折叠才显形成"辅助不受折叠按钮管"
+     （260902 用户报）。err-run 不清：两种模式下都渲染，跨模式保留才是连续的。 */
   DG.expandedTurns = new Set();
+  DG.expandedAuxAgg = new Set();
   const b = $("dagTurnBtn");
   b.dataset.i18n = DG.foldTurns ? "dag.unfoldTurns" : "dag.foldTurns";
   b.textContent = t18(b.dataset.i18n);

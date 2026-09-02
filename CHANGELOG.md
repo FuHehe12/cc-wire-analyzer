@@ -53,6 +53,10 @@
 - The timeline no longer draws dozens of identical overlapping edges when a folded card stands in
   for many nodes, and the auxiliary lane no longer draws a "conversation order" line between
   auxiliary calls that belong to different sessions or agents.
+- Switching the timeline's fold mode now resets the auxiliary aggregate cards too. Expanding one by
+  hand, then using "expand all turns" and "fold by turn", used to leave that group scattered — the
+  fold button looked like it did not apply to auxiliary calls. Only the turn cards were being reset;
+  the aggregate cards were added later and never wired into the mode switch.
 
 ## v0.4.23 - 2026-09-02
 
