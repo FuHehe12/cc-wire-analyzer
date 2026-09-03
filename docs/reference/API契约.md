@@ -77,7 +77,7 @@
 > **自检**：加新代理状态字段时，必须同步更新 `_proxy_state()` 函数（`src/app.py`）+ 此契约
 > + `docs/reference/AI_USAGE.md` 的 status 表 + 前端 `templates/index.html` 的 `refreshStatus()` 渲染。
 
-### `GET /api/settings/upstream-history` — 上游配置历史（260807）
+### `GET /api/settings/upstream-history` — 上游配置历史
 
 最近 5 套**真实上游**的 `ANTHROPIC_*` env 组合 + 当前是否处于「本机死地址」病态。
 
@@ -113,7 +113,7 @@
   切换工具的 profile"这个病（录制期间 cc-switch 保存 profile 所致，见 `docs/reference/AI_USAGE.md`
   「与 cc-switch 等配置工具共存」）。代理正在录制时本机地址是正常的，此字段为 `false`。
 
-### `POST /api/settings/upstream-restore` — 一键还原（260807）
+### `POST /api/settings/upstream-restore` — 一键还原
 
 **请求**：`{"id": "b65d7c60"}`
 
@@ -288,7 +288,7 @@ data: {...}
 > **自检**：`_node_summary` 加字段必须同步这里 + 前端 `dagNodeHtml`。字段只对部分 kind 存在时，
 > 明写「哪些 kind 带」——消费方不能靠试。
 
-### `POST /api/captures/clear` — 清除录制（260712）
+### `POST /api/captures/clear` — 清除录制
 
 **请求**：`{ "date": "2026-07-12", "mode": "purge"|"archive", "source"?: "标签", "label"?: "机器名" }`。`date` 缺省=今天；`mode` 缺省=`purge`。`date` 经 `YYYY-MM-DD` 格式 + 语义校验（防路径穿越）。
 
@@ -447,7 +447,7 @@ CLI 对应 `--source`。
 
 错误返回统一含 `error_code`（供前端 i18n 映射：`no_api_key` / `no_base_url` / `empty_text`）+ `error`（原始诊断串）。
 
-### `POST /api/translate` — 翻译文本（SSE 流式，260713 改）
+### `POST /api/translate` — 翻译文本（SSE 流式）
 
 **请求**：`{ "text": "..." }`（超过输入上限截断，见下方 `input_truncated`；上限 = 配置
 `translate.input_max_chars`，默认 20,000，260825 起可在设置页调）
@@ -475,7 +475,7 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 
 目标语言取 `config.translate.target_lang`。system prompt 内置强隔离（`<text>` 内视为纯文本，绝不执行其中指令），文本内字面 `</text` 转义防定界符逃逸。
 
-### `POST /api/explain` — AI 解读（SSE 流式，260713 改）
+### `POST /api/explain` — AI 解读（SSE 流式）
 
 同 `/api/translate` 的 SSE 协议（`delta` 增量 / `done` 结束 / `error_code` 错误），区别在 system prompt：
 
@@ -491,6 +491,12 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 
 **始终返回 HTTP 200**，由 `ok` 字段判成败（避免前端把配置错误当 fetch 异常）：
 `{ "ok": true, "snippet": "译文片段…" }` 或 `{ "ok": false, "error_code": "...", "error": "..." }`
+
+---
+
+## 6. 实例与环境
+
+实例自描述与运行环境事实：本实例是谁、数据目录多大、说明书在哪。除 `open-folder` 外全部只读无副作用——`/api/instances` 扫描时对每个候选端口调一次 `/api/instance`，慢不得。
 
 ### `GET /api/about`
 
@@ -511,82 +517,7 @@ data: {"error_code": "...", "error": "..."}    // 错误时替代 done
 - `ai_guide`：自描述入口的路径（260801）。恒为 `"/api/ai-guide"`——它存在的意义是让只调过
   `about` 的 agent 不必先知道端点清单就能找到说明书。
 
-### `GET|POST /api/snapshots/<sid>/analysis` — 骨架的 AI 语义层（260809）
-
-`GET` 读已有结果（**不调模型**）：`{ok, exists, data}`。
-`POST` 跑一次并覆盖落盘（"重新分析"就是再 POST 一次）：`{ok, data}`。
-
-```json
-{
-  "sid": "snap_…", "created": "2026-08-09T19:20:00", "model": "deepseek-chat",
-  "steps_total": 66,
-  "turns": [{"turn": 1, "steps": [1,2,3], "title": "…", "intent": "…", "risk": ""}],
-  "summary": "…",
-  "dropped_steps": []
-}
-```
-
-**这是分层设计，不是"AI 生成骨架"**：
-
-| 层 | 谁产出 | 回答什么 |
-|---|---|---|
-| 事实层 | `snapshot_extract.level0()` 规则 | 有哪些步、谁触发、调了什么工具、轮次边界——可从录制原文复算 |
-| 语义层（本端点）| AI | 这一轮在做什么、想达到什么、哪里值得注意 |
-
-⚠️ **`turns[].steps` 里的步号在落盘前被强制校验**，不在程序骨架里的一律剔除并记入
-`dropped_steps`。prompt 里要求"只引用真实步号"是要求，不是保证——**没有这道校验，
-"AI 归纳挂在程序事实上"就只是一句说辞**：模型可以归纳出一轮根本不存在的步骤，
-而界面照样渲染得像模像样。
-
-其他边界：
-
-- 只对 `kind=capture` 的快照有效（提示词快照没有轮次骨架），否则 400 `not_capture`。
-- 抽不出步骤时 400 `no_steps`，不返回一份空归纳。
-- 模型没给出可解析 JSON → `ok:false` + `bad_json`（HTTP 200），**如实说**而不是留空面板。
-- 防注入照不变量 6：`SKELETON_GUARD_HEAD/TAIL` 硬编码不可配置，骨架经 `_wrap_content` 转义
-  字面 `</skeleton>`。骨架里含用户原话与工具入参，是不可信内容。
-- 结果存 `<sid>.analysis.json`，**不进快照信封**（信封不可改，这是可重算的派生物）；
-  随快照删除一并清理，并计入 `size_of`。
-
-### `POST /api/snapshots/export` — 快照便携包（260827）
-
-body `{sids: ["snap_…"], note?}` → 在 `archives/` 里产出一个 `.ccwa`，返回 manifest：
-
-```json
-{
-  "ok": true, "kind": "snapshots", "snap_schema": 1, "count": 2,
-  "items": [{"sid": "snap_…", "kind": "capture", "label": "…", "created": "…",
-             "has_analysis": true, "has_chat": false, "bytes": 2049181}],
-  "host": "…", "tool_version": "0.4.17", "exported_at": "2026-08-27T15:34:58",
-  "path": "…/archives/snapshots-20260827-153458.ccwa", "size": 891369
-}
-```
-
-**搬的不是快照本身，是它旁边那份归纳**：一份 97KB 的 `analysis.json` 实测花了 27 批、
-26 分钟。没有这条通道，换一台机器（或换一个人）就只能重跑一遍，重新花一次钱、重新等半小时。
-
-- **与录制归档同后缀 `.ccwa`，靠 manifest 里的 `kind` 区分**（`snapshots` / `captures`）。
-  老的录制归档没有 `kind` 字段，按 `captures` 处理。用户那边只有一个"导入"，
-  文件是什么由工具自己看出来。
-- **签名与归档同源**：`host` 只取机器名不取用户名（包会被拷来拷去，机器名足以分辨两台机器，
-  泄露面小得多），`tool_version` 取真实版本。
-- 包内布局 `snapshots/<sid>.json` + `.analysis.json` + `.chat.jsonl`（后两份可缺）。
-- 空选择 → `no_snapshots`，**不产出一个空包**。
-
-### `POST /api/snapshots/import` — 导入快照便携包（260827）
-
-body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, manifest, host, foreign}`。
-
-⚠️ **同 sid 不覆盖**：撞了就换一个新 sid 落地，`renamed: [{from, to}]` 如实报回来。
-盖掉本机同名快照 = 拿别人的证据顶替自己的，正是 `sources/` 独立命名空间要防的那件事。
-落地后信封里多一个 `imported_from {host, tool_version, sid, at}`，界面据此标出"这不是本机的"。
-
-- 归纳里的 `sid` 会跟着改写成落地后的 sid——不改就与快照对不上。
-- **子代理线在对面机器上捞不到**（`_subagent_lanes` 要回当日录制里找，而那台机器没有那天的录制）。
-  所以包里已生成的子代理简报与线级结论是对面唯一还能读到的部分，它们随 `analysis.json` 一起走。
-- 传进来的是录制归档 → `wrong_kind`；不是本工具的包 → `bad_archive`；版本不认 → `schema_mismatch`。
-
-### `GET /api/storage` — 数据目录占用（260809）
+### `GET /api/storage` — 数据目录占用
 
 ```json
 {
@@ -619,7 +550,7 @@ body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, man
 恒为 0 的字段就是死字段）。`{date}.idx.jsonl` 单列而不并入 `bytes`，因为它占 1.3%，
 混进去会让"录制本身有多大"这个数失真。
 
-### `GET /api/instance` — 本实例是谁（260809）
+### `GET /api/instance` — 本实例是谁
 
 ```json
 {
@@ -635,7 +566,7 @@ body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, man
 - `recording`：等价于 `proxy/status.running`（本实例是否正在 patch settings.json）。
 - 这个端点必须**轻、无副作用、不依赖磁盘状态**——`/api/instances` 扫描时对每个候选端口调它。
 
-### `GET /api/instances` — 本机在跑的所有实例（260809）
+### `GET /api/instances` — 本机在跑的所有实例
 
 ```json
 {
@@ -663,7 +594,7 @@ body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, man
 > （260809 实测 `serve.pid` 停在六天前一个已退出的 PID）。本端点因此**不依赖任何持久化状态**，
 > 也就不可能显示过期信息。写入侧的契约要不要改属 0.5.x，与本端点无关。
 
-### `GET /api/ai-guide` — 自描述说明书（260801）
+### `GET /api/ai-guide` — 自描述说明书
 
 **不返回 JSON**：`Content-Type: text/markdown; charset=utf-8`，body 是 Markdown 原文。
 
@@ -687,7 +618,7 @@ body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, man
 
 ---
 
-## 6. 就地更新
+## 7. 就地更新
 
 **"点一下就换好"，不是"自动升级"**：没有定时检查、没有静默安装，每个端点都对应界面上的
 一次点击。安全边界见 [开发约定.md](开发约定.md) 不变量 10（来源硬编码 / 逐跳 host 白名单 /
@@ -763,7 +694,7 @@ settings.json）。macOS 返回 `in_place:false, restart:false` + 解压出的 `
 
 ---
 
-## 7. 配置体检
+## 8. 配置体检
 
 开代理前跑 8 条只读规则，回答"配置有没有矛盾"。三条铁律：**绝不写入** settings.json/凭据、
 不提供自动修复（与 settings_guard 不变量③同源）；**宁可漏报不可误报**（误报比漏报更伤——
@@ -825,7 +756,7 @@ settings.json）。macOS 返回 `in_place:false, restart:false` + 解压出的 `
 
 ---
 
-## 8. 失败聚合
+## 9. 失败聚合
 
 把当天失败按上游错误消息指纹归并（抹掉 request-id / uuid / 数字），每组摆请求侧字段。**只整理
 数据不调 LLM**，分析交给外面 CC/agent（"人看 GUI、AI 走 CLI/API"的分工）。
@@ -895,7 +826,7 @@ settings.json）。macOS 返回 `in_place:false, restart:false` + 解压出的 `
 > 加新 req_field 必须同步加到 `diagnose._req_fields` + `classifier.index_record` + 此契约
 > + `IDX_SCHEMA` bump（防旧索引静默缺字段）。
 
-### `GET /api/diagnose/trends?span=7&model=&kind=&limit=20` — 跨天失败趋势（260802）
+### `GET /api/diagnose/trends?span=7&model=&kind=&limit=20` — 跨天失败趋势
 
 单天 errors 的跨天版：最近 N 天失败用**同一归并键**跨天合并，加每日曲线 + 趋势标记 + 供应商 /
 CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI 审计甜区）。route 做 IO（按 span 算
@@ -967,7 +898,7 @@ CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI �
 
 ---
 
-## 9. 检索与统计
+## 10. 检索与统计
 
 `grep` / `stats` 的核心逻辑在 `capture_store.grep` / `capture_store.stats`，**CLI 与 HTTP 共用
 同一个函数**。历史教训：这两个能力最初只有 CLI，HTTP 侧缺失，于是 agent 被迫直读 jsonl
@@ -1005,7 +936,7 @@ cache_read,cache_creation}, cache_hit_ratio, total_ms{p50,p95,max}}`
 
 ---
 
-## 10. 盲区雷达
+## 11. 盲区雷达
 
 聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/
 thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
@@ -1060,7 +991,7 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 
 ---
 
-## 11. 快照：提示词/录制的备份、精确对比、思考链
+## 12. 快照：提示词/录制的备份、精确对比、思考链
 
 **与 `POST /api/captures/clear` 的「压缩存档」不是一回事**：那个打包后**删掉原文件**，属于清理；
 快照是用户显式保存的一份拷贝，**不删任何东西、不受 `retention_days` 自动清理**（同 `archives/`
@@ -1116,6 +1047,44 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 
 `fp.norm_sha256` 是**抹掉日期/时间/UUID/长 hex 后**的哈希。没有它，CC 提示词里的当天日期会让
 每天的快照两两都"有差异"，真正的变化淹没在噪声里。
+
+### `POST /api/snapshots/export` — 快照便携包
+
+body `{sids: ["snap_…"], note?}` → 在 `archives/` 里产出一个 `.ccwa`，返回 manifest：
+
+```json
+{
+  "ok": true, "kind": "snapshots", "snap_schema": 1, "count": 2,
+  "items": [{"sid": "snap_…", "kind": "capture", "label": "…", "created": "…",
+             "has_analysis": true, "has_chat": false, "bytes": 2049181}],
+  "host": "…", "tool_version": "0.4.17", "exported_at": "2026-08-27T15:34:58",
+  "path": "…/archives/snapshots-20260827-153458.ccwa", "size": 891369
+}
+```
+
+**搬的不是快照本身，是它旁边那份归纳**：一份 97KB 的 `analysis.json` 实测花了 27 批、
+26 分钟。没有这条通道，换一台机器（或换一个人）就只能重跑一遍，重新花一次钱、重新等半小时。
+
+- **与录制归档同后缀 `.ccwa`，靠 manifest 里的 `kind` 区分**（`snapshots` / `captures`）。
+  老的录制归档没有 `kind` 字段，按 `captures` 处理。用户那边只有一个"导入"，
+  文件是什么由工具自己看出来。
+- **签名与归档同源**：`host` 只取机器名不取用户名（包会被拷来拷去，机器名足以分辨两台机器，
+  泄露面小得多），`tool_version` 取真实版本。
+- 包内布局 `snapshots/<id>.json` + `.analysis.json` + `.chat.jsonl`（后两份可缺）。
+- 空选择 → `no_snapshots`，**不产出一个空包**。
+
+### `POST /api/snapshots/import` — 导入快照便携包
+
+body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, manifest, host, foreign}`。
+
+⚠️ **同 sid 不覆盖**：撞了就换一个新 sid 落地，`renamed: [{from, to}]` 如实报回来。
+盖掉本机同名快照 = 拿别人的证据顶替自己的，正是 `sources/` 独立命名空间要防的那件事。
+落地后信封里多一个 `imported_from {host, tool_version, sid, at}`，界面据此标出"这不是本机的"。
+
+- 归纳里的 `sid` 会跟着改写成落地后的 sid——不改就与快照对不上。
+- **子代理线在对面机器上捞不到**（`_subagent_lanes` 要回当日录制里找，而那台机器没有那天的录制）。
+  所以包里已生成的子代理简报与线级结论是对面唯一还能读到的部分，它们随 `analysis.json` 一起走。
+- 传进来的是录制归档 → `wrong_kind`；不是本工具的包 → `bad_archive`；版本不认 → `schema_mismatch`。
 
 ### `GET /api/snapshots/<id>` — 完整快照（含 payload）
 
@@ -1239,7 +1208,7 @@ user），挂到哪一步则是同一条判据、只是拿快照自己那一步�
 - `lane=<lane_id>&step=N`：那条线单步的思考原文，与主线 `thinking?level=2` 同义（同样的
   `level2` 产物），只是换了条记录。线不在了返回 404 `lane_not_found`。
 
-### `GET /api/snapshots/<id>/trajectory` — 轨迹八视图（260828，仅录制快照）
+### `GET /api/snapshots/<id>/trajectory` — 轨迹八视图（仅录制快照）
 
 程序层即时算（~20s/条录制），语义层有缓存就带上、没有就机械兜底并标 `semantic:"degraded"`。
 
@@ -1257,13 +1226,13 @@ user），挂到哪一步则是同一条判据、只是拿快照自己那一步�
 不是单条最长请求——autocompact 剪掉的前半段只有并集能捞回来。当日数据已归档成 `.ccwa` 时
 如实回 `archived_or_missing`，而不是渲染半截 run。
 
-### `GET|POST /api/snapshots/<id>/semantic` — 八视图的语义层（260828，仅录制快照）
+### `GET|POST /api/snapshots/<id>/semantic` — 八视图的语义层（仅录制快照）
 
 `GET` 只探测有没有缓存（**不调模型**）。`POST` 跑一条可续跑的三段流水线：
 阶段切分（程序候选边界喂模型）→ 状态快照四格（每阶段一次，并发）→ 步级简述（分批并发）。
 进度走既有的 `analysis/progress` 通道，phase 前缀 `traj_`。
 
-结果存 `<sid>.semantic.json`（与 `analysis.json` 同待遇的可重算派生物：随快照删除清理、
+结果存 `<id>.semantic.json`（与 `analysis.json` 同待遇的可重算派生物：随快照删除清理、
 计入 `size_of`、跟着便携包搬）。**事实四格不落盘**：`artifacts/pending/errors/constraints`
 在 compute 时由 `_attach_phase_facts()` 现算盖掉——模型改不了事实。
 
@@ -1337,7 +1306,7 @@ body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**�
 
 ---
 
-## 12. API 浏览面：人类可读渲染
+## 13. API 浏览面：人类可读渲染
 
 本工具是双模式的——**人看 GUI（`/`），AI 走 `/api/*`**。这一节是给这两条通道之间开的一扇窗：
 让人能在浏览器里亲眼核对 AI 那一侧拿到的是什么。原本返回 HTML 的只有 `/`，`/api/*` 一律 JSON、
@@ -1352,7 +1321,7 @@ body `{kind?, tags?, before?, sids?, preview?}`，条件之间是**「与」**�
 列出全部可 GET 的 `/api/*` 端点（**从 `app.url_map` 现取，不是硬编码清单**），分组、每条
 一句话说明、每条一个可点链接。返回 `text/html`。
 
-需要参数的端点（`/api/captures/<rid>`、`/api/snapshots/<sid>/*`，以及靠 `?a=&b=` 传两个 sid 的
+需要参数的端点（`/api/captures/<rid>`、`/api/snapshots/<id>/*`，以及靠 `?a=&b=` 传两个 sid 的
 `/api/snapshots/diff`，共 10 条）给一行**可编辑的完整 URL**，预填的样例由后端从**本机真实数据**
 里挑（`_view_sample_ids`：最近有数据那天的第一条 rid；快照优先挑**已经归纳过的录制快照**——
 `/analysis`、`/subagents` 落在别的快照上打开是空的，而空页会被读成"端点坏了"）。挑不到才退回
@@ -1392,7 +1361,7 @@ GET /api/ai-guide?format=html                            → 排好版的说明�
 
 ---
 
-## 13. 约定
+## 14. 约定
 
 - **headers_safe**：所有 headers 字段经脱敏，`authorization` / `x-api-key` / `anthropic-auth-token` 显示 `<redacted>`，列表/详情都不返回真实 token。**脱敏无条件生效，没有开关**（曾有个 `redact_headers` 配置项，但从未接线；260713 连开关一起删掉 —— 提供"明文存 key"的选项本身就是危险，何况录制现在可被 AI 经 CLI 读取）。
 - **时间格式**：ISO 8601 带毫秒，本地时区（`2026-07-05T22:43:12.345`）。

@@ -32,6 +32,19 @@
   4. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's
      pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
+## Unreleased
+
+### Fixed
+
+- Docs, batch 1 (divergences and style): the API contract's stale duplicate of
+  `GET|POST /api/snapshots/<id>/analysis` is gone, and its catch-all chapter was split — LLM
+  endpoints stay, snapshot export/import moved to the snapshots chapter, and a new "Instance &
+  environment" chapter now holds about/storage/instance(s)/ai-guide/open-folder. The three docs
+  still carrying essay-style openings/closings lost them, numbered headings were de-numbered, date
+  stamps were moved out of every heading across six docs (32 spots), and one link to a
+  repo-excluded local file was made self-contained. `doc_audit` reconciles clean; every endpoint is
+  documented exactly once.
+
 ## v0.4.24 - 2026-09-02
 
 ### Fixed
