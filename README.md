@@ -113,6 +113,7 @@ This README covers only what you need for your first session. For implementation
 - [Use an agent to drive CCWA](docs/reference/AI_USAGE.md)
 - [API contract](docs/reference/API契约.md)
 - [Architecture overview](docs/reference/架构总览.md)
+- [Building a tool like this one](handbook/同类工具构建手册.md) — a portable handbook for wiring up the same kind of analyser for another agent harness (Codex, opencode, your own): one unit per capability, each marked with what changes and what does not when the harness changes
 - [Contributing and building](CONTRIBUTING.md)
 
 ## License

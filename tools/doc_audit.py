@@ -29,6 +29,7 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
   6. 界面语义 token：深色块里的每个 token，`classic`/`light` 是否都给了取值；有没有无人引用的死 token
   7. 端点标题的机械事实（260904）：同一 (方法, 路径) 只准占一节；标题声明的方法与查询参数
      必须在代码里成立；`error_code` 的取值必须在代码里出现过
+  8. markdown 相对链接点得到（第 3 项查的是"反引号里提到的文件在不在"，这项查"点下去到不到"）
 
 最后一项是 v0.4.7 加的，来由与前面几项一样：三主题落地后，"新加的 token 要三套都定义"
 这条只存在于人的记忆里——实测当时就有 7 个 token 定义了从没被引用。为了让它可判定，
@@ -58,24 +59,30 @@ except Exception:
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC, DOCS = ROOT / "src", ROOT / "docs"
-# 260808 docs/ 分层：reference/ = ①参考手册（描述当前实现，会腐化，**这就是对账范围**），
-# methodology/ = ③可迁移方法论，根下 = ④元文档。范围是**路径规则不是文件清单**——
-# 新文档放进 reference/ 自动进对账，清单式的名单则会因为"忘了加"而漏。
+HANDBOOK = ROOT / "handbook"
+# docs/ 分层（260808 立、260904 收敛成两层）：reference/ = 参考手册（描述当前实现、会腐化，
+# **这就是对账范围**），根下 = 元文档。范围是**路径规则不是文件清单**——新文档放进
+# reference/ 自动进对账，清单式的名单则会因为"忘了加"而漏。
+# 原 `methodology/` 260904 拆掉：`报文解读.md` 随代码腐化（kind 枚举的对账一直扫的就是它，
+# 而它被归成"不用管"那一类，实测已腐化）→ 并进 reference/；`同类工具构建手册.md` 的受众在
+# 本项目之外、不随本项目迭代 → 搬到仓库根 `handbook/`。**handbook/ 仍进文档面**：
+# 它引用本项目的端点与文件路径，断链和幽灵端点照样要查（只是不在"描述当前实现"那一类里）。
 REFERENCE = DOCS / "reference"
 # 具名依赖的文档路径集中在此，配 `_read_required` 使用（见那个函数的 docstring）。
 GUIDE = REFERENCE / "开发约定.md"
 # 文档面：仓库里会提到端点/命令/路径的公开文档（本地 CLAUDE.md 与 issues/ 不进对账——
 # 它们是过程记录，允许留下当时的说法）。
-DOC_FILES = sorted(DOCS.rglob("*.md")) + [ROOT / "README.md", ROOT / "README.zh.md",
-                                         ROOT / "README.ja.md", ROOT / "CONTRIBUTING.md"]
+DOC_FILES = (sorted(DOCS.rglob("*.md")) + sorted(HANDBOOK.rglob("*.md"))
+             + [ROOT / "README.md", ROOT / "README.zh.md",
+                ROOT / "README.ja.md", ROOT / "CONTRIBUTING.md"])
 # 端点表也在代码里躺着一份（产物自带的说明书回落），一并当"文档面"对账。
 GUIDE_FALLBACK = SRC / "app.py"
 
-# **别的工具的端点**。文档里出现它们是正常的——`docs/methodology/同类工具构建手册.md` 的主题
+# **别的工具的端点**。文档里出现它们是正常的——`handbook/同类工具构建手册.md` 的主题
 # 就是给其他 agent 工具做同类分析器，写到被测工具的端点是这份文档的本职内容。
 #
 # 形状照 `classifier.KNOWN_BETAS`：硬编码 + 可审计 + 一条一条加，每条注明属于谁。
-# **不按目录跳过 methodology/**——实测那个目录下 5 处端点引用有 4 处是本项目的真端点
+# **不整篇豁免那份手册**——实测它那 5 处端点引用有 4 处是本项目的真端点
 # （`/api/unknowns` ×3、`/api/ai-guide` ×1），整篇豁免等于为消一个误报放弃四处真覆盖：
 # 「主语是别的工具」是段落属性，不是文件属性，用文件粒度的规则去切它必然误伤。
 EXTERNAL_ENDPOINTS = {
@@ -251,6 +258,36 @@ def _error_codes() -> set[str]:
         out |= set(re.findall(r'\bcode\s*=\s*"([a-z_0-9]+)"', t))
         out |= set(re.findall(r'Error\(\s*"([a-z_0-9]{3,})"', t))
     return out
+
+
+# markdown 相对链接。反引号里的路径（`docs/x.md`）另有一条检查，那条查的是"提到的文件在不在"；
+# 这条查的是"点下去到不到得了"——**两者会各自漏**：260904 把两份文档换目录时，
+# 手册里一条同目录写法的兄弟链接（`[报文解读.md](报文解读.md)`）就这么断在那儿，
+# 反引号那条完全看不见它。
+_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)#\s]+)(?:#[^)\s]*)?\)")
+
+
+def _dead_links() -> list[str]:
+    """指不到东西的相对链接。
+
+    **跳过解析后落在仓库外的**（`../../releases` 这类）：那是 GitHub 的相对写法，
+    在网页上能用、在文件系统里本来就不该存在。用"跳出仓库根"当判据而不是维护一张
+    白名单——白名单是会腐化的那种东西，判据不是。
+    """
+    bad = []
+    for f in DOC_FILES:
+        if not f.exists():
+            continue
+        for m in _MD_LINK.finditer(_read(f)):
+            t = m.group(1)
+            if t.startswith(("http://", "https://", "mailto:")):
+                continue
+            tgt = (f.parent / t).resolve()
+            if ROOT not in tgt.parents and tgt != ROOT:
+                continue
+            if not tgt.exists():
+                bad.append(f"{f.relative_to(ROOT)} → {t}")
+    return sorted(bad)
 
 
 def _kinds() -> set[str]:
@@ -433,12 +470,13 @@ def audit() -> dict:
     missing_paths = []
     _cands = []
     for name, text in doc_text.items():
-        for m in re.finditer(r"`((?:src|tools|docs)/[A-Za-z0-9_./-]+\.(?:py|md|html))`", text):
+        for m in re.finditer(r"`((?:src|tools|docs|handbook)/[A-Za-z0-9_./-]+\.(?:py|md|html))`", text):
             if not (ROOT / m.group(1)).exists():
                 _cands.append({"doc": name, "path": m.group(1)})
     # 生成物（gitignore 的）不算断链：仓库里本来就没有，文档提它是在讲构建机制
     _ignored = _git_ignored(sorted({c["path"] for c in _cands}))
     missing_paths = [c for c in _cands if c["path"] not in _ignored]
+    dead_links = _dead_links()
 
     # 4. 文档里**断言当前值**的 IDX_SCHEMA（`IDX_SCHEMA = N`）。历史叙述（`9→10`、
     #    `IDX_SCHEMA=6 起`）是对的，不该报——只有"当前是 N"会误导下一个读者。
@@ -548,10 +586,11 @@ def audit() -> dict:
         "stale_external_endpoints": stale_external,
         "undocumented_cli": undocumented_cmds,
         "missing_paths": missing_paths,
+        "dead_links": dead_links,
         "idx_schema_drift": schema_drift,
         "missing_selftest_files": sorted(set(missing_selftests)),
         "tokens": _theme_tokens(),
-        "note": ("硬差异（ghost_routes / duplicate_endpoint_sections / ghost_methods / "
+        "note": ("硬差异（ghost_routes / dead_links / duplicate_endpoint_sections / ghost_methods / "
                  "ghost_query_args / missing_paths / idx_schema_drift / "
                  "missing_selftest_files / tokens.theme_gaps / tokens.shared_leaked / "
                  "tokens.unresolved_refs）"
@@ -577,6 +616,7 @@ def _rows(r: dict) -> tuple[list, list]:
     tk = r["tokens"]
     hard = [("文档提到但代码没有的端点", r["ghost_routes"]),
             ("文档指向的不存在文件", [f"{x['doc']} → {x['path']}" for x in r["missing_paths"]]),
+            ("点下去到不了的相对链接", r.get("dead_links", [])),
             ("IDX_SCHEMA 数值不一致", [f"{x['doc']} 写 {x['says']}，代码 {x['code']}"
                                        for x in r["idx_schema_drift"]]),
             ("自测清单里不存在的文件", r["missing_selftest_files"]),
@@ -687,6 +727,7 @@ def _selftest() -> int:
             "missing_paths": [], "idx_schema_drift": [], "missing_selftest_files": [],
             "stale_external_endpoints": [],
             "duplicate_endpoint_sections": [], "ghost_methods": [], "ghost_query_args": [],
+            "dead_links": [],
             "undocumented_methods": [],
             "tokens": {"counts": {}, "theme_gaps": [], "shared_leaked": [], "dead_tokens": [],
                        "unresolved_refs": []}}
@@ -714,6 +755,7 @@ def _selftest() -> int:
         ("外部端点豁免过期挡", n_hard(stale_external_endpoints=["/api/anthropic/v1/messages"]) == 1),
         ("无定义引用挡",
          n_hard(tokens={**base["tokens"], "unresolved_refs": ["--nope"]}) == 1),
+        ("断掉的相对链接挡", n_hard(dead_links=["docs/x.md → nope.md"]) == 1),
         ("重复端点小节挡", n_hard(duplicate_endpoint_sections=["GET /api/x（2 节）"]) == 1),
         ("幽灵方法挡", n_hard(ghost_methods=["POST /api/x → 代码只有 GET"]) == 1),
         ("幽灵查询参数挡", n_hard(ghost_query_args=["GET /api/x?zz= → 代码不读 zz"]) == 1),
@@ -775,6 +817,12 @@ def _selftest() -> int:
          not audit()["ghost_methods"] and not audit()["ghost_query_args"]),
         ("真实契约每个端点只占一节", not audit()["duplicate_endpoint_sections"]),
         ("error_code 真源可提取", {"not_capture", "bad_json"} <= _error_codes()),
+        # 链接检查：解析器要真读到链接（读空了就静默变成永远通过），
+        # 且仓库外的 GitHub 相对写法不许被误报成断链。
+        ("markdown 链接解析得到", len(_MD_LINK.findall(_read(DOCS / "README.md"))) > 5),
+        ("仓库外的相对写法不算断链",
+         not any("releases" in x for x in _dead_links())),
+        ("真实文档零断链", not _dead_links()),
     ]
     # spec 对账：提取器要真读到东西（读空了会让检查静默变成永远通过），
     # 两份 spec 的一致性是 260801 真事故（mac spec 没跟上 brotli）的防线。

@@ -113,6 +113,7 @@ README 只保留第一次使用需要的信息。实现原理、网络转发、�
 - [用 agent 驱动 CCWA](docs/reference/AI_USAGE.md)
 - [API 契约](docs/reference/API契约.md)
 - [架构总览](docs/reference/架构总览.md)
+- [同类工具构建手册](handbook/同类工具构建手册.md)——想给别的 agent 工具（Codex / opencode / 自研）做同类分析器时看：逐个能力单元，每个标注「换 harness 时哪些变、哪些不变」
 - [参与开发与构建](CONTRIBUTING.md)
 
 ## 许可证

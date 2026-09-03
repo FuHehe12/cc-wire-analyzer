@@ -36,6 +36,14 @@
 
 ### Fixed
 
+- Docs, batch 3 (audience): the handbook on building a tool like this one moved out of `docs/` to
+  `handbook/` at the repository root and is now linked from all three READMEs - its readers are
+  people wiring up an analyser for another agent harness, and it should not be maintained as part of
+  this project's manual. `报文解读.md` moved the other way, into `docs/reference/`: it had been
+  filed as "low corruption, not reconciled" while in fact it tracks the kind enum and has always
+  been part of that reconciliation - the move caught the proof, a cross-reference still promising
+  "9 kinds" when there have been 11 for a while. `doc_audit` also now checks that relative markdown
+  links resolve (179 of them, one was broken by this very move).
 - Docs, batch 2 (the reconciliation gate now reads endpoint headings): `doc_audit` used to check
   only that a path exists somewhere in the contract - writing the same endpoint twice satisfied
   that, which is how batch 1's diverged duplicate grew. It now also checks that each (method, path)

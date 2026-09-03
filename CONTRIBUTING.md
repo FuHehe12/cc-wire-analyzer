@@ -78,7 +78,7 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 | call the HTTP API | [`docs/reference/API契约.md`](docs/reference/API契约.md) |
 | drive the tool from an AI agent | [`docs/reference/AI_USAGE.md`](docs/reference/AI_USAGE.md) |
 | understand the UI | [`docs/reference/界面导览.md`](docs/reference/界面导览.md) |
-| understand what Claude Code actually sends | [`docs/methodology/报文解读.md`](docs/methodology/报文解读.md) |
+| understand what Claude Code actually sends | [`docs/reference/报文解读.md`](docs/reference/报文解读.md) |
 | edit the docs themselves | [`docs/文档维护策略.md`](docs/文档维护策略.md) |
 
 Issue reports and PRs welcome.
