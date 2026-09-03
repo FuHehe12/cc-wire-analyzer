@@ -1135,19 +1135,26 @@ body `{file: "<绝对路径>"}` → `{ok, imported, renamed, skipped, items, man
 产出**实测序列化尺寸后收缩**，`size` / `budget` / `over_budget` 如实报告；砍掉的东西一律有计数
 （`omitted_steps` / `steps_without_excerpt` / `steps_total`）——"这步没摘录"不能被读成"这步没思考"。
 
-**`availability` 分三档，没有思考链时也要给得出东西**：
+**`availability` 分三档，读不到思考时也要给得出东西**：
 
 ```json
 {"tier": "B", "reason_code": "disabled",
  "reason": "本次请求显式关闭了思考（thinking.type=disabled）",
- "steps": 12, "steps_with_thinking": 0, "thinking_chars": 0,
+ "steps": 12, "steps_with_thinking": 0, "steps_with_plaintext": 0, "thinking_chars": 0,
  "thinking_param": "disabled", "model": "claude-sonnet-5"}
 ```
 
-- `A` 有思考链 → 三层全功能
-- `B` 无思考链 → 附 `behavior` **行为链**（工具序列 + 反复证据：连续同工具、反复读同一目标、
+- `A` 有可读思考链 → 三层全功能
+- `B` 没有思考块 → 附 `behavior` **行为链**（工具序列 + 反复证据：连续同工具、反复读同一目标、
   报错重试），并说出具体原因。实测 claude-sonnet-5 档 23/23 全部 `thinking=disabled`
-- `C` `redacted_thinking` → 标注"上游加密不可读"，不试图解析
+- `C` 思考块在、内容读不到 → 同样附 `behavior`，不试图解析。两种原因码：`redacted`
+  （`redacted_thinking`，上游加密）、`signature_only`（块带 `signature` 但明文没回传，
+  260904 实测 claude-opus-5 有三条录制整条如此）
+
+**判档只认明文**：`steps_with_thinking` 数的是**块存在**，`steps_with_plaintext` 与
+`thinking_chars` 才是内容量——两者可以是 86 与 0。别拿块数判"有没有思考可读"
+（这正是 260901 那个把空块判成 A 档的缺陷）。A 档若夹着空块，另给 `partial_empty: true`；
+夹着加密块给 `partial_redacted: true`——"它没考虑过 X"可能只是那几步读不到。
 
 判档在**步**这一级做，不在模型级：`adaptive` 是主流形态，同一模型内部也会有的步不思考。
 

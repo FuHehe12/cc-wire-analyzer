@@ -438,12 +438,23 @@ def availability(record: dict) -> dict:
         body = {}
     steps = steps_of(record)
     n_think = sum(1 for s in steps if s["thinking_blocks"])
+    # 判档只认**明文**：块存在 ≠ 内容非空。260904 全量扫描 16 份录制快照，3 份
+    # （全是 claude-opus-5）整条录制的思考块都带 signature 却没有一个字明文——
+    # 按块数判就是 A 档，brief 提示词于是照 A 档引导 agent"去读思考原文",
+    # 抽屉一打开全是空。同函数几行之上拼 thinking 时早已滤过空文本块，两处口径必须一致。
+    n_plain = sum(1 for s in steps if s["thinking_chars"])
     n_red = sum(s["redacted_blocks"] for s in steps)
     total_chars = sum(s["thinking_chars"] for s in steps)
-    if n_think:
+    if n_plain:
         tier, code, why = "A", "ok", ""
     elif n_red:
         tier, code, why = "C", "redacted", "思考被上游加密（redacted_thinking），内容不可读"
+    elif n_think:
+        # 与 redacted 同构：有思考活动的证据，但读不到内容 → 同样归 C，同样退行为链。
+        # 不新立 A′ 档：新档位要在三语 i18n、列表 chip、brief 提示词各加一条分支，
+        # 而 brief 最终仍把它当 b 档，多出的档位不产生新行为，只多三处会忘记同步的地方。
+        tier, code, why = ("C", "signature_only",
+                           f"上游回了 {n_think} 步思考块（带 signature）但没回明文，内容不可读")
     else:
         code, why = _why_no_thinking(body)
         tier = "B"
@@ -452,13 +463,17 @@ def availability(record: dict) -> dict:
         "reason_code": code,
         "reason": why,
         "steps": len(steps),
-        "steps_with_thinking": n_think,
+        "steps_with_thinking": n_think,      # 块存在的步数
+        "steps_with_plaintext": n_plain,     # 明文非空的步数（判档看这个）
         "thinking_chars": total_chars,
         "redacted_blocks": n_red,
         "thinking_param": (body.get("thinking") or {}).get("type")
                           if isinstance(body.get("thinking"), dict) else None,
         "model": body.get("model") or "",
     }
+    if tier == "A" and n_plain < n_think:
+        # A 档里夹着空块：读到的不是全部，"它没想过 X"可能只是那几步的明文没回传。
+        out["partial_empty"] = True
     if n_red and n_think:
         # A 档也可能夹带加密块：正文能读，但**有一部分读不到，必须说出来**，
         # 否则分析出的"它没考虑过 X"可能只是那段恰好被加密了。
@@ -469,7 +484,8 @@ def availability(record: dict) -> dict:
 # ===== 行为链（B 档回退） =====
 
 def behavior_chain(record: dict) -> dict:
-    """没有思考链时的替代原料：工具调用序列 + **反复的行为证据**。
+    """读不到思考时的替代原料：工具调用序列 + **反复的行为证据**（B 档没有思考，
+    C 档有块读不到，两者都靠这个）。
 
     没有思考不等于没有行为。连续多次调同一工具、反复读同一文件、同一命令改参数重跑、
     工具报错后的重试——这些在行为层面就是"反复"，不读思考也看得出来。
@@ -553,7 +569,9 @@ def level0(record: dict) -> dict:
                 row["marks"] = m
         rows.append(row)
     out: dict = {"availability": av, "steps": rows}
-    if av["tier"] == "B":
+    if av["tier"] != "A":
+        # C 档比 B 档更需要行为链：思考块在但读不到，行为序列是唯一剩下的原料。
+        # 原来写死 == "B"，C 档两手空空——判据只认 A/B 时留下的分叉。
         out["behavior"] = behavior_chain(record)
 
     # 超预算就从中间往外砍（两端最有价值：开头是任务设定，结尾是当前状态；

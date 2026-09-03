@@ -1876,8 +1876,9 @@ def snapshots_thinking(sid):
     **agent 应当先读 level=0**：它是整条对话的地图（每步的思考量、工具、可疑信号），
     再据此决定钻哪一步。budget 默认给 agent 档（80K），可用 ?budget= 覆盖。
 
-    没有思考链时不会返回空——`availability.tier=B` 时带 `behavior` 行为链，
-    并在 `availability.reason` 里说明为什么没有（模型档位关了思考 / 本次未启用 / 自适应未思考）。
+    读不到思考链时不会返回空——`availability.tier` 非 A（B 无思考 / C 加密或只回签名）时带
+    `behavior` 行为链，并在 `availability.reason` 里说明为什么读不到（模型档位关了思考 /
+    本次未启用 / 自适应未思考 / 上游加密 / 只回签名不回明文）。
     """
     try:
         snap = snapshot_store.get_snapshot(sid)
@@ -3532,17 +3533,17 @@ CHAT_TASK = {
           "ないこと；④ 求められない限り簡潔に。",
 }
 
-# B 档（无思考链）追加的硬约束。**不让模型自己判断有没有思考链**——我们已经知道答案，
+# B/C 档（读不到思考）追加的硬约束。**不让模型自己判断有没有思考链**——我们已经知道答案，
 # 就该写死；让它自己看，它会顺着行为记录讲心理活动（confabulation 的标准诱因）。
-CHAT_TASK_B = {
-    "zh": "\n\n**重要：这份录制没有思考链**（原因：{reason}），<content> 里只有行为记录"
+CHAT_TASK_NO_PLAIN = {
+    "zh": "\n\n**重要：这份录制没有可读的思考链**（原因：{reason}），<content> 里只有行为记录"
           "（工具调用序列、回复摘录）。你只能就「它做了什么、在哪儿反复」作答，"
           "**不得描述、不得推测它当时在想什么或在犹豫什么**——那些内容不存在，写出来就是编造。",
-    "en": "\n\n**Important: this recording has no reasoning chain** (reason: {reason}). <content> "
+    "en": "\n\n**Important: this recording has no readable reasoning chain** (reason: {reason}). <content> "
           "holds behaviour only (tool-call sequence, reply excerpts). Answer only about what it did "
           "and where it repeated itself. **Do not describe or infer what it was thinking or "
           "hesitating about** — that data does not exist, and writing it is invention.",
-    "ja": "\n\n**重要：この記録には思考チェーンがありません**（理由：{reason}）。<content> にあるのは"
+    "ja": "\n\n**重要：この記録には読める思考チェーンがありません**（理由：{reason}）。<content> にあるのは"
           "行動記録のみです。「何をしたか・どこで繰り返したか」だけに答えてください。"
           "**何を考えていたか・何に迷っていたかは記述も推測もしないでください** —— "
           "存在しないデータであり、書けば捏造です。",
@@ -3599,8 +3600,10 @@ def _chat_system(av: dict | None) -> tuple[str, str]:
     再读一次配置就可能读到用户中途改过的值，同一轮里出现两种语言。"""
     lang = CFG.get_config().get("ui_lang") or "zh"
     task = CHAT_TASK.get(lang, CHAT_TASK["zh"])
-    if av and av.get("tier") == "B":
-        task += CHAT_TASK_B.get(lang, CHAT_TASK_B["zh"]).format(
+    # C 档（加密 / 只回签名）与 B 档一样读不到思考内容，护栏必须同样挂上——
+    # 原来写死 == "B"，C 档的问答少了"不得推测它在想什么"这条约束。
+    if av and av.get("tier") != "A":
+        task += CHAT_TASK_NO_PLAIN.get(lang, CHAT_TASK_NO_PLAIN["zh"]).format(
             reason=av.get("reason") or av.get("reason_code") or "未知")
     return EXPLAIN_GUARD_HEAD + task + EXPLAIN_GUARD_TAIL, lang
 
@@ -3757,10 +3760,10 @@ _BRIEF_TMPL = {
                   "最终为什么这么选；③ 是否存在上下文冲突（system 提示词 / CLAUDE.md 注入 / "
                   "会话中系统消息 / 工具描述 / 用户消息，这几个来源的指令有没有互相打架，"
                   "打架时它听了谁的）；④ 是否存在上下文腐烂（后期轮次是否偏离早期约束）。"),
-        "ask_b": ("**这份录制没有思考链**（原因：{reason}），只有行为记录。"
+        "ask_b": ("**这份录制没有可读的思考链**（原因：{reason}），只有行为记录。"
                   "请只根据工具调用序列判断：① 哪里出现了重试、反复读同一文件、"
                   "参数反复调整这类反复行为；② 是否存在上下文冲突（多个指令来源互相打架）；"
-                  "③ 是否存在上下文腐烂。**不要推测它当时在想什么**——没有思考链的情况下，"
+                  "③ 是否存在上下文腐烂。**不要推测它当时在想什么**——读不到思考内容时，"
                   "任何关于它心理活动的描述都是编造。"),
         # 流程图任务（260831）。两件事要分开：
         #   **引导**（这里的「流程图」是什么语义）要给——通用流程图惯例是为程序设计的
@@ -3806,7 +3809,7 @@ _BRIEF_TMPL = {
             "不要画数据里没有的环节。\n"
             "- 反复、不再出现的分支、子代理并行——这些 trajectory 里都有"
             "（loops / subagents / phases），别在图里把它们拉直抹平。\n"
-            "- **这份录制没有思考链**（原因：{reason}），只有行为记录。"
+            "- **这份录制没有可读的思考链**（原因：{reason}），只有行为记录。"
             "上面说的「分叉点写它当时手上有什么」，在这里只能写工具返回了什么；"
             "凡是涉及它当时怎么想、为什么放弃某个分支、为什么切换阶段的，"
             "数据里没有就写「录制中无依据」，**不要补一个合理的解释**。"),
@@ -3854,11 +3857,11 @@ _BRIEF_TMPL = {
                   "descriptions / user messages - do their instructions contradict each other, and "
                   "which one did it follow); (4) whether there is context rot (do later turns drift "
                   "from earlier constraints)."),
-        "ask_b": ("**This recording has no reasoning chain** (reason: {reason}) - only behaviour. "
+        "ask_b": ("**This recording has no readable reasoning chain** (reason: {reason}) - only behaviour. "
                   "Judge only from the tool-call sequence: (1) where retries, repeated reads of the "
                   "same file, or repeated parameter tweaks occur; (2) whether there is context "
                   "conflict; (3) whether there is context rot. **Do not speculate about what it was "
-                  "thinking** - with no reasoning chain, any account of its mental state is invention."),
+                  "thinking** - with the reasoning unreadable, any account of its mental state is invention."),
         "flow_frame": (
             "**First, what \"flowchart\" means here**: the usual flowchart / architecture diagram "
             "is drawn for a program - nodes are modules or functions, branches are `if` conditions, "
@@ -3908,7 +3911,7 @@ _BRIEF_TMPL = {
             "- Repetition, branches that stop recurring, subagents running in parallel - "
             "`trajectory` already has all of it (loops / subagents / phases). Do not straighten "
             "those out in the diagram.\n"
-            "- **This recording has no reasoning chain** (reason: {reason}) - only behaviour. "
+            "- **This recording has no readable reasoning chain** (reason: {reason}) - only behaviour. "
             "So \"write the condition as what it had in hand\" here means only what a tool returned. "
             "Wherever it would take knowing what it was thinking - why a branch was dropped, why a "
             "phase changed - write `no basis in recording` if the data does not say. "
@@ -3956,10 +3959,10 @@ _BRIEF_TMPL = {
                   "（system プロンプト / 注入された CLAUDE.md / 会話中の system メッセージ / "
                   "ツール説明 / ユーザーメッセージの指示が矛盾していないか、矛盾時どれに従ったか）；"
                   "④ コンテキストの腐敗があるか（後半のターンが初期の制約から逸脱していないか）。"),
-        "ask_b": ("**この記録には思考チェーンがありません**（理由：{reason}）。行動記録のみです。"
+        "ask_b": ("**この記録には読める思考チェーンがありません**（理由：{reason}）。行動記録のみです。"
                   "ツール呼び出しの系列だけから判断してください：① リトライ・同一ファイルの反復読み取り・"
                   "パラメータの繰り返し調整が起きた箇所；② コンテキストの衝突；③ コンテキストの腐敗。"
-                  "**何を考えていたかは推測しないでください** —— 思考チェーンがない以上、"
+                  "**何を考えていたかは推測しないでください** —— 思考内容が読めない以上、"
                   "心理状態の記述はすべて捏造です。"),
         "flow_frame": (
             "**まずここでの「フロー図」の意味**：一般的なフロー図 / アーキテクチャ図はプログラム"
@@ -4003,7 +4006,7 @@ _BRIEF_TMPL = {
             "- 図の各ノードは trajectory 上の**具体的なステップ番号かフェーズ**に対応すること。\n"
             "- 反復、以後現れなくなった分岐、サブエージェントの並列——これらは trajectory に"
             "すべて入っています（loops / subagents / phases）。図の上で直線に均さないでください。\n"
-            "- **この記録には思考チェーンがありません**（理由：{reason}）。行動記録のみです。"
+            "- **この記録には読める思考チェーンがありません**（理由：{reason}）。行動記録のみです。"
             "したがって「条件には手元にあったものを書く」は、ここではツールの戻り値のみを指します。"
             "何を考えていたか——なぜ分岐を放棄したか、なぜフェーズが変わったか——に関わる部分は、"
             "データになければ「記録に根拠なし」と書いてください。"

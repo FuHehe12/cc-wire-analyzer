@@ -283,18 +283,22 @@ GET  /api/snapshots/<sid>/sources               ← 多源指令清单（冲突�
 **动手前先 `GET /api/snapshots/<sid>/chat` 看一眼**：那里有已经问过的问题和得到的回答，
 两条分析路径不互相隔绝，才不会各自从零开始，也免得你把用户已经否掉的结论再讲一遍。
 
-**没有思考链时不要编**。`availability.tier == "B"` 意味着这条录制里根本没有 thinking 块
-（实测 claude-sonnet-5 档 23/23 全部 `thinking=disabled`），此时只有行为链（工具序列 +
-反复证据）。行为链能回答"它做了什么、在哪儿反复"，回答不了"它当时在犹豫什么"——
-对着行为记录描述心理活动，就是 confabulation。
+**读不到思考时不要编**。`availability.tier` 不是 `A`，就没有可读的思考原文：`B` 是这条录制
+里根本没有 thinking 块（实测 claude-sonnet-5 档 23/23 全部 `thinking=disabled`），`C` 是块在
+但内容读不到（上游加密，或只回 `signature` 不回明文——实测 claude-opus-5 有整条录制 26 个块
+全是这样）。两者都只给行为链（工具序列 + 反复证据）。行为链能回答"它做了什么、在哪儿反复"，
+回答不了"它当时在犹豫什么"——对着行为记录描述心理活动，就是 confabulation。
 
 三条判读纪律：
 
-1. **先看 `availability.tier`**。`B` 表示这条录制**没有思考链**，`reason` 会说清楚为什么
-   （模型档位显式关闭 / 本次未启用 / 自适应未思考）。实测 claude-sonnet-5 档 23/23 全部
-   `thinking=disabled`。这时接口给的是 `behavior` 行为链（工具序列 + 反复证据），
-   **它能回答"做了什么、在哪儿反复"，回答不了"当时在犹豫什么"**——没有思考链却描述心理活动，
-   那是编造，不是分析。`C` 档表示思考被上游加密（`redacted_thinking`），同样不可读。
+1. **先看 `availability.tier`，且只认明文**。`B` 表示这条录制**没有思考块**，`reason` 会说清楚
+   为什么（模型档位显式关闭 / 本次未启用 / 自适应未思考）。实测 claude-sonnet-5 档 23/23 全部
+   `thinking=disabled`。`C` 表示**块在但内容读不到**：`reason_code=redacted`（上游加密）
+   或 `signature_only`（只回签名不回明文）。B 与 C 都会附 `behavior` 行为链，
+   **它能回答"做了什么、在哪儿反复"，回答不了"当时在犹豫什么"**——读不到思考却描述心理活动，
+   那是编造，不是分析。
+   别拿 `steps_with_thinking` 判"有没有思考可读"：它数的是**块存在**，
+   `steps_with_plaintext` / `thinking_chars` 才是内容量，两者可以是 86 与 0。
 2. **`signals` 是候选不是结论**。骨架里每步的 `signals`（犹豫/分支/自我修正/不确定）
    是关键词命中数，只说明"这步值得看"。要下判断得读 `level=2` 的原文。
 3. **看清被砍掉了什么**。产出按预算收缩，`steps_total` / `omitted_steps` /

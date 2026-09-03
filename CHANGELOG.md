@@ -36,6 +36,13 @@
 
 ### Fixed
 
+- Reasoning availability is now judged by plaintext, not by block presence. A recording whose
+  thinking blocks all came back signature-only (measured on claude-opus-5: 86 blocks, zero
+  characters) used to be tier A, so the agent brief sent the reader off to "read the reasoning" and
+  the drawer was empty. Those recordings are tier C with reason `signature_only`, and tier C now
+  gets the behaviour chain and the do-not-speculate guard that only tier B used to get. New
+  `steps_with_plaintext` field alongside `steps_with_thinking` (blocks); a tier-A recording that
+  still hides empty blocks is flagged `partial_empty`.
 - Docs, batch 1 (divergences and style): the API contract's stale duplicate of
   `GET|POST /api/snapshots/<id>/analysis` is gone, and its catch-all chapter was split — LLM
   endpoints stay, snapshot export/import moved to the snapshots chapter, and a new "Instance &

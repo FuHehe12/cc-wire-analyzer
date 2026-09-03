@@ -256,6 +256,39 @@ rec_b2 = make_record(rid="req_test005", thinking=False, thinking_type=None)
 ok(SX.availability(rec_b2)["reason_code"] == "absent",
    "B 档：请求体没有 thinking 字段时给出的原因不同于 disabled")
 
+# C 档：思考块在、明文没回（只有 signature）。260904 全量扫描实测：claude-opus-5 有整条
+# 录制 26/26 块都这样，按"块存在"判档就给了 A，brief 于是引导 agent 去读一个空抽屉。
+rec_sig = make_record(rid="req_test004b", steps=6)
+for m2 in rec_sig["request"]["body"]["messages"]:
+    if m2.get("role") == "assistant":
+        for b in m2["content"]:
+            if b.get("type") == "thinking":
+                b["thinking"], b["signature"] = "", "Er8B" + "x" * 40
+av_sig = SX.availability(rec_sig)
+ok(av_sig["tier"] == "C" and av_sig["reason_code"] == "signature_only",
+   "C 档：思考块存在但明文为空（只回签名）不许判 A",
+   json.dumps(av_sig, ensure_ascii=False))
+ok(av_sig["steps_with_thinking"] == 6 and av_sig["steps_with_plaintext"] == 0,
+   "块数与明文步数分别报告（前端靠这两个数说清「有块无明文」）")
+ok(SX.level0(rec_sig).get("behavior", {}).get("tool_calls") == 6,
+   "C 档同样退到行为链——思考读不到时，行为序列是唯一剩下的原料")
+
+# A 档夹空块：有明文就仍是 A，但"读到的不是全部"必须标出来
+rec_mix = make_record(rid="req_test004c", steps=6)
+_blanked = 0
+for m2 in rec_mix["request"]["body"]["messages"]:
+    if m2.get("role") != "assistant" or _blanked >= 2:
+        continue
+    for b in m2["content"]:
+        if b.get("type") == "thinking":
+            b["thinking"] = ""
+            _blanked += 1
+av_mix = SX.availability(rec_mix)
+ok(av_mix["tier"] == "A" and av_mix.get("partial_empty") is True
+   and av_mix["steps_with_plaintext"] == 4,
+   "A 档夹空块：仍判 A，但 partial_empty 标出并非全部可读",
+   json.dumps(av_mix, ensure_ascii=False))
+
 # 行为链的反复证据
 rec_r = make_record(rid="req_test006", thinking=False, thinking_type="disabled", steps=6)
 for m2 in rec_r["request"]["body"]["messages"]:

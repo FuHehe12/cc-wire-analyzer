@@ -2023,10 +2023,11 @@ zh: {
   "an.truncated": "内容过长，只比对了前 {n} 行。",
   "an.foldedLines": "折叠 {n} 行相同内容",
   "an.hgTip": "同形异码（{name}）：{a} → {b}",
-  "an.tier.A": "有完整思考链", "an.tier.B": "没有思考链", "an.tier.C": "思考被上游加密",
+  "an.tier.A": "有完整思考链", "an.tier.B": "没有思考链", "an.tier.C": "有思考但读不到",
   "an.tierStats": "{steps} 步 · 其中 {think} 步有思考 · 共 {chars} 字 · {model}",
   "an.tierStatsNoPlain": "{steps} 步 · 其中 {think} 步带思考块，但明文未回传（上游只回签名）· {model}",
   "an.partialRedacted": "注意：有部分思考被上游加密读不到——「它没考虑过 X」可能只是那段恰好不可读。",
+  "an.partialEmpty": "注意：有部分步骤只回了签名、没回明文——那几步的思考同样读不到，「它没考虑过 X」可能只是落在那里。",
   "an.srcTitle": "多源指令清单",
   "an.srcCount": "· {n} 处",
   "an.srcHint": "这条请求里有几处在下指令。它们互相打架就是「上下文冲突」。内容相同的重复注入已合并计数。",
@@ -2435,10 +2436,11 @@ en: {
   "an.foldedLines": "{n} identical lines folded",
   "an.hgTip": "Homoglyph ({name}): {a} \u2192 {b}",
   "an.tier.A": "Full reasoning chain", "an.tier.B": "No reasoning chain",
-  "an.tier.C": "Reasoning encrypted upstream",
+  "an.tier.C": "Reasoning present but unreadable",
   "an.tierStats": "{steps} steps \u00b7 {think} with reasoning \u00b7 {chars} chars \u00b7 {model}",
   "an.tierStatsNoPlain": "{steps} steps \u00b7 {think} carry a reasoning block, but no plaintext came back (signature only) \u00b7 {model}",
   "an.partialRedacted": "Note: part of the reasoning is encrypted upstream \u2014 \u201cit never considered X\u201d may just mean that part is unreadable.",
+  "an.partialEmpty": "Note: some steps came back with a signature but no plaintext - their reasoning is unreadable too, so an it-never-considered-X reading may just fall on those steps.",
   "an.srcTitle": "Instruction sources",
   "an.srcCount": "· {n} sources",
   "an.srcHint": "How many places in this request are giving instructions. When they contradict each other, that is context conflict. Identical repeated injections are merged with a count.",
@@ -2844,10 +2846,11 @@ ja: {
   "an.foldedLines": "同一の {n} 行を折りたたみ",
   "an.hgTip": "同形異字（{name}）：{a} → {b}",
   "an.tier.A": "思考チェーンあり", "an.tier.B": "思考チェーンなし",
-  "an.tier.C": "思考は上流で暗号化",
+  "an.tier.C": "思考ありだが読めない",
   "an.tierStats": "{steps} ステップ · うち思考あり {think} · 計 {chars} 文字 · {model}",
   "an.tierStatsNoPlain": "{steps} ステップ · うち {think} に思考ブロックあり、ただし平文は返らず（署名のみ）· {model}",
   "an.partialRedacted": "注意：一部の思考は上流で暗号化され読めません。「X を検討しなかった」は、単にその部分が読めないだけの可能性があります。",
+  "an.partialEmpty": "注意：一部のステップは署名のみで平文が返っていません。その思考も読めないため、「X を検討しなかった」は単にそのステップに当たっただけの可能性があります。",
   "an.srcTitle": "指示ソース一覧",
   "an.srcCount": "· {n} 箇所",
   "an.srcHint": "このリクエストで指示を出している箇所の数。互いに矛盾すればそれが「コンテキストの衝突」です。同一内容の重複注入は件数にまとめています。",
@@ -6291,18 +6294,23 @@ async function anRecLoad(){
 function renderRec(d, sources){
   const av = d.availability || {};
   let h = "";
-  /* ① 可得性横幅：B 档时**直接说清为什么没有思考链**，不让用户对着空面板猜 */
-  const tierCls = av.tier === "A" ? "ok" : (av.tier === "C" ? "warn" : "warn");
+  /* ① 可得性横幅：非 A 档时**直接说清为什么读不到思考**，不让用户对着空面板猜 */
+  const tierCls = av.tier === "A" ? "ok" : "warn";
+  /* 「26 步有思考 · 共 0 字」是句自相矛盾的话：块确实在，只是上游只回签名不回明文。
+     260904 全量扫描订正归因：三份这样的快照全是 claude-opus-5，GLM 系反而全有明文——
+     此前这里写的"经网关的 GLM"是反的。两种情况分开说，别让用户以为是这边把字弄丢了。
+     计数也分开取：正常那句数**有明文的步**（判档看它），只回签名那句才数块。 */
+  const noPlain = (av.steps_with_thinking || 0) > 0 && !(av.thinking_chars || 0);
   h += '<div class="card an-tier ' + tierCls + '"><b>' + t18("an.tier." + (av.tier || "B")) + '</b>' +
     (av.reason ? '<div class="an-hint">' + esc(av.reason) + '</div>' : "") +
-    /* 「26 步有思考 · 共 0 字」是句自相矛盾的话：块确实在，只是上游（经网关的 GLM）
-       只回签名不回明文。两种情况分开说，别让用户以为是这边把字弄丢了。 */
     '<div class="an-counts">' + t18(
-      ((av.steps_with_thinking || 0) > 0 && !(av.thinking_chars || 0))
-        ? "an.tierStatsNoPlain" : "an.tierStats", {
-      steps: av.steps || 0, think: av.steps_with_thinking || 0,
+      noPlain ? "an.tierStatsNoPlain" : "an.tierStats", {
+      steps: av.steps || 0,
+      think: (noPlain ? av.steps_with_thinking
+                      : (av.steps_with_plaintext ?? av.steps_with_thinking)) || 0,
       chars: fmtTok(av.thinking_chars || 0), model: esc(av.model || "?")}) + '</div>' +
     (av.partial_redacted ? '<div class="an-hint">' + t18("an.partialRedacted") + '</div>' : "") +
+    (av.partial_empty ? '<div class="an-hint">' + t18("an.partialEmpty") + '</div>' : "") +
     '</div>';
 
   /* ② 多源指令清单：**默认折叠**（260826 用户定）。实测一条录制的清单里常有几十条
