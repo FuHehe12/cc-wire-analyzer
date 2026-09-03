@@ -36,6 +36,13 @@
 
 ### Fixed
 
+- Docs, batch 2 (the reconciliation gate now reads endpoint headings): `doc_audit` used to check
+  only that a path exists somewhere in the contract - writing the same endpoint twice satisfied
+  that, which is how batch 1's diverged duplicate grew. It now also checks that each (method, path)
+  owns exactly one section, that every method and query parameter a heading declares exists in the
+  code, and that documented `error_code` values are real. Switching it on caught a real one: the
+  contract advertised `POST /api/snapshots/<id>/semantic`, but that path is GET-only - the pipeline
+  it described lives on `POST /api/snapshots/<id>/trajectory`. Both sections are corrected.
 - A prompt the upstream refuses is re-sent verbatim by Claude Code, and every re-send used to open
   its own turn on the timeline — one measured lane had ten turns carrying the same sentence, all
   inside one minute. Re-sends now merge into the turn they are retrying (same text, previous attempt

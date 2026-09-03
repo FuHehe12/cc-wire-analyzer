@@ -27,6 +27,8 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
   4. 文档里引用的 `IDX_SCHEMA = N` 是否与代码一致
   5. 开发约定「验证」节列的自测命令，对应文件是否存在
   6. 界面语义 token：深色块里的每个 token，`classic`/`light` 是否都给了取值；有没有无人引用的死 token
+  7. 端点标题的机械事实（260904）：同一 (方法, 路径) 只准占一节；标题声明的方法与查询参数
+     必须在代码里成立；`error_code` 的取值必须在代码里出现过
 
 最后一项是 v0.4.7 加的，来由与前面几项一样：三主题落地后，"新加的 token 要三套都定义"
 这条只存在于人的记忆里——实测当时就有 7 个 token 定义了从没被引用。为了让它可判定，
@@ -39,6 +41,7 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
 """
 from __future__ import annotations
 
+import ast
 import json
 import pathlib
 import re
@@ -175,6 +178,81 @@ def _theme_tokens() -> dict:
 # 文档抄过去的值还对得上。三者都是具名依赖，用 `_read_required` 读（文件被移走要立刻炸，
 # 不能像 `_read` 那样返回 "" 让检查静默变成永远通过）。
 
+# ===== 端点标题的机械事实（260904，批二）=====
+# 批一修掉的那份分叉复制品（同一端点写了两遍、内容已经不一致）是**结果**不是原因：
+# 端点的机械事实靠人手抄进文档，抄一次就多一个会各自演化的副本。原有对账只查
+# 「路径存不存在」——**同一个端点写两遍照样满足"提到了"**，方法写错、参数写错一概看不见。
+def _route_facts() -> dict[str, dict]:
+    """每个路由的 methods 与它真读的查询参数名。
+
+    用 AST 不用正则：`methods=[...]` 与 `request.args.get("x")` 都要按函数体归属，
+    正则读不出"这个 args.get 属于哪个视图函数"。
+    """
+    tree = ast.parse(_read_required(SRC / "app.py"))
+    out: dict[str, dict] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        args: set[str] = set()
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr in ("get", "getlist")
+                    and isinstance(sub.func.value, ast.Attribute)
+                    and sub.func.value.attr in ("args", "form")
+                    and sub.args and isinstance(sub.args[0], ast.Constant)):
+                args.add(sub.args[0].value)
+        for d in node.decorator_list:
+            if not (isinstance(d, ast.Call) and getattr(d.func, "attr", "") == "route"
+                    and d.args and isinstance(d.args[0], ast.Constant)):
+                continue
+            methods = {"GET"}
+            for kw in d.keywords:
+                if kw.arg == "methods" and isinstance(kw.value, (ast.List, ast.Tuple)):
+                    methods = {e.value for e in kw.value.elts if isinstance(e, ast.Constant)}
+            e = out.setdefault(_norm_path(d.args[0].value),
+                               {"methods": set(), "args": set(), "funcs": []})
+            e["methods"] |= methods
+            e["args"] |= args
+            e["funcs"].append(node.name)
+    return out
+
+
+def _norm_path(p: str) -> str:
+    """路径骨架：`<sid>` / `<id>` 一律归一（契约里统一写 `<id>`，代码里多是 `<sid>`）。"""
+    return re.sub(r"<[^>]+>", "<id>", p.rstrip("/?"))
+
+
+# 端点标题形如：### `GET|POST /api/snapshots/<id>/analysis` — 说明
+#               ### `GET /api/snapshots/<id>/subagents[?lane=&step=]` — 说明
+#               ### `GET /api/snapshots/<id>/thinking?level=0|1|2&step=N&budget=` — 说明
+_HEAD = re.compile(r"^### `([A-Z|]+) (/[^\s`?\[]+)([^`]*)`", re.M)
+
+
+def _contract_heads(text: str) -> list[dict]:
+    """契约里的端点标题 → [{methods, path, args}]。标题是这份文档的**索引**，
+    也是唯一一处"每个端点恰好一节"的结构承诺——重复即分叉的开始。"""
+    heads = []
+    for m in _HEAD.finditer(text):
+        heads.append({"methods": set(m.group(1).split("|")),
+                      "path": _norm_path(m.group(2)),
+                      "args": set(re.findall(r"[?&]([a-z_0-9]+)=", m.group(3))),
+                      "raw": f"{m.group(1)} {m.group(2)}{m.group(3)}"})
+    return heads
+
+
+def _error_codes() -> set[str]:
+    """代码里真出现过的 `error_code` 取值。三种写法：直接写进响应字面量、异常类的
+    `code=`、`raise XError("code", …)`。**跨模块扫 src/**——错误码是端点契约的一部分，
+    但生产它的常常不是 app.py（trajectory / snapshot_pack / updater 各有一批）。"""
+    out: set[str] = set()
+    for p in sorted(SRC.glob("*.py")):
+        t = _read(p)
+        out |= set(re.findall(r'"error_code":\s*"([a-z_0-9]+)"', t))
+        out |= set(re.findall(r'\bcode\s*=\s*"([a-z_0-9]+)"', t))
+        out |= set(re.findall(r'Error\(\s*"([a-z_0-9]{3,})"', t))
+    return out
+
+
 def _kinds() -> set[str]:
     """`classifier.KIND_ORDER` 是 kind 的单一真源。"""
     m = re.search(r"KIND_ORDER\s*=\s*\(([^)]*)\)",
@@ -290,6 +368,10 @@ _ERRK_JSON = re.compile(r'"err_kind":\s*"([a-z_0-9]+)"')
 # doctor 规则表：| `dead_port_leftover` | error | …
 _SEVERITY_ROW = re.compile(r"\|\s*`([a-z_]{4,})`\s*\|\s*(?:error|warning|info)\s*\|")
 _CODE_JSON = re.compile(r'"code":\s*"([a-z_]+)"')
+# 错误码只认 JSON 字面量形（`"error_code": "a|b|c"`）。散文里反引号包着的 snake_case 太多
+# （`delta` / `done` 这些 SSE 事件名就同句出现过），宽匹配必然误报——**宁可少查一点，
+# 不可制造误报**，与上面 kind 那条同一条铁律。
+_ERRCODE_JSON = re.compile(r'"error_code":\s*"([a-z_0-9|]+)"')
 
 
 def _doc_enum_claims(text: str) -> dict[str, set[str]]:
@@ -301,7 +383,10 @@ def _doc_enum_claims(text: str) -> dict[str, set[str]]:
     for v in _PIPE_JSON.findall(text):
         errk |= set(v.split("|"))
     codes: set[str] = set(_SEVERITY_ROW.findall(text)) | set(_CODE_JSON.findall(text))
-    return {"kind": kinds, "err_kind": errk, "doctor_code": codes}
+    ecodes: set[str] = set()
+    for v in _ERRCODE_JSON.findall(text):
+        ecodes |= {x for x in v.split("|") if x}
+    return {"kind": kinds, "err_kind": errk, "doctor_code": codes, "error_code": ecodes}
 
 
 def _mentioned_anywhere(text: str, value: str) -> bool:
@@ -378,8 +463,9 @@ def audit() -> dict:
     #    幽灵值（文档列了、代码没有）是硬差异——agent 会照着分支处理一个永远不出现的值，
     #    人会去找一条不存在的规则。未文档化（代码有、文档没列）是软的，与端点同判据。
     kinds, err_kinds, dcodes = _kinds(), _err_kinds(), _doctor_codes()
+    ecodes = _error_codes()
     claims = _doc_enum_claims(joined)
-    all_code_enums = kinds | err_kinds | dcodes | _lane_kinds()
+    all_code_enums = kinds | err_kinds | dcodes | _lane_kinds() | ecodes
 
     enums = []
     for label, code_set in (("kind", kinds), ("err_kind", err_kinds),
@@ -392,6 +478,43 @@ def audit() -> dict:
         # 未文档化用宽匹配：文档里压根没出现过这个词才算
         missing = sorted(v for v in code_set if not _mentioned_anywhere(joined, v))
         enums.append({"enum": label, "ghost": ghosts, "undocumented": missing})
+    # `error_code` **只报幽灵、不报未文档化**：代码里有 60+ 个错误码，绝大多数是内部分支，
+    # 全列出来是一张没人会看的清单——软差异存在的意义是"提示人做判断"，一张 50 行的
+    # 清单提示不了任何判断，只会把真正该看的两三行淹掉。
+    enums.append({"enum": "error_code",
+                  "ghost": sorted(claims["error_code"] - all_code_enums),
+                  "undocumented": []})
+
+    # 8. 端点标题的机械事实（260904 批二）：**标题是这份文档的索引**，也是唯一一处
+    #    "每个端点恰好一节"的结构承诺。原有对账只查路径存不存在——写两遍照样算"提到了",
+    #    批一那份分叉复制品就是这么长出来的；方法/查询参数写错更是一概看不见。
+    rfacts = _route_facts()
+    heads = _contract_heads(contract)
+    seen_heads: dict[tuple, int] = {}
+    ghost_methods, ghost_query = [], []
+    documented_methods: dict[str, set] = {}
+    for h in heads:
+        for meth in h["methods"]:
+            seen_heads[(meth, h["path"])] = seen_heads.get((meth, h["path"]), 0) + 1
+        documented_methods.setdefault(h["path"], set()).update(h["methods"])
+        f = rfacts.get(h["path"])
+        if not f:
+            continue    # 路径本身不存在 → 幽灵端点那条已经报了，不重复报同一件事
+        real = f["methods"] - {"HEAD", "OPTIONS"}   # Flask 隐式补的，文档不写是对的
+        if h["methods"] - real:
+            ghost_methods.append(f"{h['raw']} → 代码只有 {'/'.join(sorted(real))}")
+        if h["args"] - f["args"]:
+            ghost_query.append(f"{h['raw']} → 代码不读 {', '.join(sorted(h['args'] - f['args']))}")
+    dup_heads = [f"{m} {p}（{n} 节）" for (m, p), n in sorted(seen_heads.items()) if n > 1]
+    # 软：代码有、标题没写的方法。GET/POST 分两节写是合法的（`/api/config` 就是），
+    # 所以按 (方法, 路径) 判重、按路径合并方法集——两个口径缺一不可。
+    undocumented_methods = []
+    for p, f in sorted(rfacts.items()):
+        if not p.startswith("/api") or p not in documented_methods:
+            continue
+        miss = (f["methods"] - {"HEAD", "OPTIONS"}) - documented_methods[p]
+        if miss:
+            undocumented_methods.append(f"{p} 少写 {'/'.join(sorted(miss))}")
 
     # 7. PyInstaller spec：打包源路径是否存在 + 两份 spec 是否分叉
     specs = _spec_facts()
@@ -417,6 +540,10 @@ def audit() -> dict:
         "spec_missing_datas": spec_missing,
         "spec_divergence": spec_divergence,
         "undocumented_routes": undocumented,
+        "duplicate_endpoint_sections": dup_heads,
+        "ghost_methods": ghost_methods,
+        "ghost_query_args": ghost_query,
+        "undocumented_methods": undocumented_methods,
         "ghost_routes": ghost_routes,
         "stale_external_endpoints": stale_external,
         "undocumented_cli": undocumented_cmds,
@@ -424,7 +551,8 @@ def audit() -> dict:
         "idx_schema_drift": schema_drift,
         "missing_selftest_files": sorted(set(missing_selftests)),
         "tokens": _theme_tokens(),
-        "note": ("硬差异（ghost_routes / missing_paths / idx_schema_drift / "
+        "note": ("硬差异（ghost_routes / duplicate_endpoint_sections / ghost_methods / "
+                 "ghost_query_args / missing_paths / idx_schema_drift / "
                  "missing_selftest_files / tokens.theme_gaps / tokens.shared_leaked / "
                  "tokens.unresolved_refs）"
                  "是文档说错了，会挡发版；软差异（undocumented_*、dead_tokens）只是文档没写，"
@@ -464,9 +592,13 @@ def _rows(r: dict) -> tuple[list, list]:
             # 端点永远闭嘴。归硬类是因为后果与幽灵端点同源——判据带着一条静默的例外在跑。
             ("已成真路由、该从 EXTERNAL_ENDPOINTS 删掉的豁免",
              r.get("stale_external_endpoints", []))]
+    hard += [("同一端点在契约里写了不止一节（分叉的开始）", r.get("duplicate_endpoint_sections", [])),
+             ("端点标题声明了代码没有的方法", r.get("ghost_methods", [])),
+             ("端点标题声明了代码不读的查询参数", r.get("ghost_query_args", []))]
     hard += [(f"文档列了但代码没有的 {e['enum']} 值", e["ghost"])
              for e in r.get("enums", [])]
     soft = [("文档里没提到的端点", r["undocumented_routes"]),
+            ("端点标题没写全的方法", r.get("undocumented_methods", [])),
             ("文档里没提到的 CLI 子命令", r["undocumented_cli"]),
             ("定义了但无人引用的 token", tk["dead_tokens"])]
     soft += [(f"代码有但文档没列的 {e['enum']} 值", e["undocumented"])
@@ -554,6 +686,8 @@ def _selftest() -> int:
             "undocumented_routes": [], "ghost_routes": [], "undocumented_cli": [],
             "missing_paths": [], "idx_schema_drift": [], "missing_selftest_files": [],
             "stale_external_endpoints": [],
+            "duplicate_endpoint_sections": [], "ghost_methods": [], "ghost_query_args": [],
+            "undocumented_methods": [],
             "tokens": {"counts": {}, "theme_gaps": [], "shared_leaked": [], "dead_tokens": [],
                        "unresolved_refs": []}}
 
@@ -580,6 +714,10 @@ def _selftest() -> int:
         ("外部端点豁免过期挡", n_hard(stale_external_endpoints=["/api/anthropic/v1/messages"]) == 1),
         ("无定义引用挡",
          n_hard(tokens={**base["tokens"], "unresolved_refs": ["--nope"]}) == 1),
+        ("重复端点小节挡", n_hard(duplicate_endpoint_sections=["GET /api/x（2 节）"]) == 1),
+        ("幽灵方法挡", n_hard(ghost_methods=["POST /api/x → 代码只有 GET"]) == 1),
+        ("幽灵查询参数挡", n_hard(ghost_query_args=["GET /api/x?zz= → 代码不读 zz"]) == 1),
+        ("方法没写全不挡（软）", n_hard(undocumented_methods=["/api/x 少写 POST"]) == 0),
         # 反向：软差异**不该**挡，否则第一个内部端点就卡住发版
         ("未登记端点不挡", n_hard(undocumented_routes=["/api/internal"]) == 0),
         ("未登记子命令不挡", n_hard(undocumented_cli=["secret"]) == 0),
@@ -610,6 +748,33 @@ def _selftest() -> int:
         # 于是这条差异只在干净 checkout 里现身。生成物不算断链。
         ("gitignore 的生成物被豁免", _git_ignored(["src/_version.py"]) == {"src/_version.py"}),
         ("普通缺失文件不被豁免", _git_ignored(["docs/definitely-not-here.md"]) == set()),
+    ]
+    # 端点标题的机械事实（260904 批二）：提取器要真读到东西，三条硬检查各造一个反例。
+    # 读空了检查就静默变成永远通过——本项目惯犯 ③ 犯在守卫自己身上的形状。
+    _rf = _route_facts()
+    _fake_doc = ("### `GET|POST /api/config` — 甲\n\n"
+                 "### `GET /api/config` — 乙\n\n"
+                 "### `GET /api/dag?date=&nope=` — 丙\n")
+    _fh = _contract_heads(_fake_doc)
+    _seen: dict = {}
+    for _h in _fh:
+        for _m in _h["methods"]:
+            _seen[(_m, _h["path"])] = _seen.get((_m, _h["path"]), 0) + 1
+    ecases += [
+        ("路由方法可提取", _rf.get("/api/config", {}).get("methods") == {"GET", "POST"}),
+        ("查询参数可提取", "date" in _rf.get("/api/dag", {}).get("args", set())),
+        ("标题解析出方法与路径", {h["path"] for h in _fh} == {"/api/config", "/api/dag"}),
+        ("重复小节能算出来", _seen[("GET", "/api/config")] == 2),
+        ("标题里的查询参数解析得到",
+         next(h["args"] for h in _fh if h["path"] == "/api/dag") == {"date", "nope"}),
+        ("幽灵查询参数能检出",
+         bool(next(h["args"] for h in _fh if h["path"] == "/api/dag") - _rf["/api/dag"]["args"])),
+        # 回归：真实契约必须零幽灵——260904 加这条检查时它抓到过一处真错
+        #（`GET|POST /semantic` 的 POST 其实在 `/trajectory` 上），修完才允许留在基线里。
+        ("真实契约零幽灵方法与参数",
+         not audit()["ghost_methods"] and not audit()["ghost_query_args"]),
+        ("真实契约每个端点只占一节", not audit()["duplicate_endpoint_sections"]),
+        ("error_code 真源可提取", {"not_capture", "bad_json"} <= _error_codes()),
     ]
     # spec 对账：提取器要真读到东西（读空了会让检查静默变成永远通过），
     # 两份 spec 的一致性是 260801 真事故（mac spec 没跟上 brotli）的防线。

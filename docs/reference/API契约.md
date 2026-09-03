@@ -1218,7 +1218,7 @@ user），挂到哪一步则是同一条判据、只是拿快照自己那一步�
 - `lane=<lane_id>&step=N`：那条线单步的思考原文，与主线 `thinking?level=2` 同义（同样的
   `level2` 产物），只是换了条记录。线不在了返回 404 `lane_not_found`。
 
-### `GET /api/snapshots/<id>/trajectory` — 轨迹八视图（仅录制快照）
+### `GET|POST /api/snapshots/<id>/trajectory` — 轨迹八视图（仅录制快照）
 
 程序层即时算（~20s/条录制），语义层有缓存就带上、没有就机械兜底并标 `semantic:"degraded"`。
 
@@ -1232,15 +1232,19 @@ user），挂到哪一步则是同一条判据、只是拿快照自己那一步�
     页面同时暴露 `window.ccwaTrajTheme(t)` 供父页即时换肤——**不能用 reload 换肤**，
     payload 内嵌在页面里，reload 等于让服务端重算一遍。
 
+- `POST` → **跑语义层**（`?mode=resume|redo`）：一条可续跑的三段流水线——阶段切分
+  （程序给候选边界、模型定名）→ 状态快照四格（每阶段一次，并发）→ 步级简述（分批并发）。
+  进度走既有的 `analysis/progress` 通道，phase 前缀 `traj_`。跑完丢掉该 sid 的 HTML 缓存。
+
 地基是**全部主线请求的 blocks 并集**（`tool_use` id / `tool_result` id / 文本 md5 三键去重），
 不是单条最长请求——autocompact 剪掉的前半段只有并集能捞回来。当日数据已归档成 `.ccwa` 时
 如实回 `archived_or_missing`，而不是渲染半截 run。
 
-### `GET|POST /api/snapshots/<id>/semantic` — 八视图的语义层（仅录制快照）
+### `GET /api/snapshots/<id>/semantic` — 八视图语义层的存在性探测（仅录制快照）
 
-`GET` 只探测有没有缓存（**不调模型**）。`POST` 跑一条可续跑的三段流水线：
-阶段切分（程序候选边界喂模型）→ 状态快照四格（每阶段一次，并发）→ 步级简述（分批并发）。
-进度走既有的 `analysis/progress` 通道，phase 前缀 `traj_`。
+只回 `{ok, exists}`，**不调模型、不拉 payload**（前端状态条用）。
+跑语义层是 `POST …/trajectory` 那条——260904 校对发现这里此前写成 `GET|POST /semantic`，
+描述的 POST 其实不在这个路径上，是端点标题的机械事实第一次被对账查出来。
 
 结果存 `<id>.semantic.json`（与 `analysis.json` 同待遇的可重算派生物：随快照删除清理、
 计入 `size_of`、跟着便携包搬）。**事实四格不落盘**：`artifacts/pending/errors/constraints`
