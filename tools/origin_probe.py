@@ -189,12 +189,28 @@ PAYLOAD_PREFIXES = (
     ("<session>", "标题/命名请求（jsonl 记成 ai-title，不在对话 DAG）"),
     ("<local-command-caveat>", "斜杠命令（jsonl 不给 promptId）"),
     ("<command-", "斜杠命令（jsonl 不给 promptId）"),
-    ("[Request interrupted by user", "打断标记"),
 )
 
 
 def _payload_bucket(text: str) -> str:
+    """轮首文本 → 形状标签。
+
+    **先剥打断标记再归类**（260904）：`[Request interrupted by user…]` 归 `payload`，
+    `opens_turn` 恒假，它自己不可能是"多切一轮"的成因——轮之所以开，是因为标记后面还跟着
+    真人文本或斜杠命令。此前不剥，于是 08-08 那条 `打断标记 + <command-message>unui` 被记成
+    "打断标记"，`260902 §七` 据此写下"打断标记仍开新轮"的遗留，**整条归因是错的**。
+    """
     t = (text or "").lstrip()
+    if not t:
+        # 轮首根本没有 user 文本。**与"剥完变空"是两件事**，别混成一个标签：
+        # 这类轮是靠别的东西开起来的，值得单独盯（09-04 那条出现在 /compact 之后）。
+        return "(轮首无 user 文本)"
+    for marker in INTERRUPT_MARKERS:
+        while t.startswith(marker):
+            t = t[len(marker):].lstrip()
+    if not t:
+        # 标记单独成篇。判据（`opens_turn`）本该拦掉，真出现说明判据回归了。
+        return "打断标记单独出现 → **判据回归**（本该不开轮）"
     for prefix, label in PAYLOAD_PREFIXES:
         if t.startswith(prefix):
             return f"{prefix} → {label}"
@@ -203,6 +219,19 @@ def _payload_bucket(text: str) -> str:
 
 def _extra_bucket(turn: dict) -> str:
     return _payload_bucket(turn.get("user_text") or "")
+
+
+# 重试判定的时间上限：同一句 prompt 隔这么久再发一次，更可能是人自己又敲了一遍。
+# 实测重试族的间隔在 4-21 秒（09-03 三条泳道），60 秒留了三倍余量。
+RETRY_GAP_S = 60
+
+
+def _gap_seconds(a: dict, b: dict) -> float:
+    try:
+        return abs((datetime.fromisoformat(b["first_ts"])
+                    - datetime.fromisoformat(a["first_ts"])).total_seconds())
+    except (KeyError, TypeError, ValueError):
+        return 1e9
 
 
 def _to_local(ts: str):
@@ -313,6 +342,7 @@ def reconcile_turns(dates: list, js: dict, samples: int) -> None:
     print("\n=== B. 轮边界对账（jsonl promptId × wire turns）===")
     print("    问的是：CC 给这一轮分配 promptId 了吗？没有 = 它不认为这是新的一轮。")
     tot_j = tot_w = 0
+    tot_extra = n_retry = n_outside = 0
     rows, extra = [], collections.Counter()
     for date in dates:
         dag, rid_of, sess_of = load_wire_day(date)
@@ -334,6 +364,26 @@ def reconcile_turns(dates: list, js: dict, samples: int) -> None:
             tot_j += n_j
             tot_w += len(turns)
             if len(turns) > n_j:
+                tot_extra += len(turns) - n_j
+                # 逐条可归因的两件事（**这两个是真归因，不是形状分布**）：
+                #   · 重试：同一句 prompt 被重发（上游 5xx/429，CC 原样再来一次），
+                #     轮首文本全等且间隔很短——09-03 实测一条泳道 10 轮全是同一句
+                #   · 窗口外：jsonl 轮首落在录制时间窗之外，是**探针口径**造成的差，
+                #     不是 wire 过度切分（08-11 首轮早于窗口 73 秒）
+                # **按泳道封顶**：一条泳道的差值只有这么多，重试对数可能比它还大
+                #（10 轮同句 = 9 对，差值 8），不封顶残余会算成负数——一眼假。
+                d = len(turns) - n_j
+                seq = sorted(turns, key=lambda t: t.get("first_ts") or "")
+                pairs_same = sum(
+                    1 for a, b in zip(seq, seq[1:])
+                    if _norm(a.get("user_text"))
+                    and _norm(a.get("user_text")) == _norm(b.get("user_text"))
+                    and _gap_seconds(a, b) <= RETRY_GAP_S)
+                r = min(d, pairs_same)
+                o = min(d - r, sum(1 for h in js["heads"][sid]
+                                   if not (lo <= _to_local(h["ts"]) <= hi)))
+                n_retry += r
+                n_outside += o
                 # ⚠️ 这是**形状分布，不是逐条归因**：差值是泳道级的，wire 轮与 jsonl 轮没有
                 # 1:1 的键可对（wire 侧没有 promptId）。所以只列"非真人形状"的轮首，
                 # 真人形状的轮（`(其它)`）不进这张表——把它们算进来会让人误以为真人轮也多切了。
@@ -348,8 +398,19 @@ def reconcile_turns(dates: list, js: dict, samples: int) -> None:
     if rows:
         print(f"  {'合计':11s} {'':12s} {tot_j:7d} {tot_w:7d} {tot_w - tot_j:+5d}"
               f"   （{(tot_w - tot_j) / tot_j:+.0%}）" if tot_j else "")
+    if tot_extra:
+        # **差值必须可分解**：只报形状分布会被读成逐条归因——260902 就是这么把
+        # "有差值的泳道里有 2 个打断标记形状的轮首"读成"打断标记多切了 2 轮"的。
+        rest = tot_extra - n_retry - n_outside
+        print(f"\n差值分解（**正差值**合计 +{tot_extra}；表尾的净差还减去了录制窗口截断的负差）：")
+        print(f"    {n_retry:5d}  同一 prompt 的重试（轮首文本全等且间隔 ≤{RETRY_GAP_S}s）"
+              f"——真多切，是否合并见 CHANGELOG 下一步第 2 条")
+        print(f"    {n_outside:5d}  jsonl 轮首落在录制窗口之外——**探针口径**，不是过度切分")
+        print(f"    {rest:5d}  其余（形状分布见下，**分布不是逐条归因**）")
+        print("    ↑ 按泳道封顶的**记账**，不是逐条证明：一条泳道两种成因并存时按上面的"
+              "顺序归因，所以每项读作'最多解释这么多'。残余为 0 才说明差值全被解释掉了。")
     if extra:
-        print("\nwire 多切出来的轮，按轮首形状归类：")
+        print("\n有差值的泳道里，非真人形状的轮首（形状分布，不是逐条归因）：")
         for bucket, n in extra.most_common():
             if n:
                 print(f"    {n:5d}  {bucket}")
