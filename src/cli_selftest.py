@@ -25,6 +25,9 @@ ORIG_UPSTREAM = "https://fake-upstream.example.com"
 FAILED: list[str] = []
 
 
+RETRY_TEXT = "上游过载时被重发的同一句"
+
+
 def _fake_record(rid: str, kind: str) -> dict:
     """造一条形似真实抓包的记录（system 三块 + 计费头 + session_id，见 tools/lane_probe.py）。"""
     if kind == "main":
@@ -145,6 +148,31 @@ def main() -> None:
         f.write(json.dumps(synth, ensure_ascii=False) + "\n")
         # 反例，必须同时守住：后台任务通知**是真轮**——jsonl 给它 promptId（实测 201 行）。
         # 不能按「机器发起的都不算主线」一刀切；它仍判 main、仍开轮，只由 origin 降档成 synthetic。
+        # 重试重发（260904）：上游过载时 CC 把同一句 prompt 原样再发，每次都是合法轮起点。
+        # 实测 09-03 一条泳道 10 个轮首全是同一句、一分钟内——8 轮虚高。并成一轮，
+        # **节点全留在轮里**（展开可逐次看），轮上记 retry_n。
+        for i, (rid, ts, bad) in enumerate((
+                ("req_ret1111", "2026-07-12T22:45:00.000", True),
+                ("req_ret2222", "2026-07-12T22:45:08.000", True),
+                ("req_ret3333", "2026-07-12T22:45:20.000", False))):
+            r = _fake_record(rid, "main")
+            r["ts_start"] = ts
+            r["request"]["body"]["messages"] = [{"role": "user", "content": RETRY_TEXT}]
+            if bad:
+                r["response"]["status"] = 529
+                r["error"] = {"kind": "upstream_5xx",
+                              "body_snippet": json.dumps({"type": "error", "error": {
+                                  "type": "overloaded_error", "message": "Overloaded"}})}
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        # **反例，必须同时守住**：同一句话在上一轮**答成了**之后再发一次，那是人又问了一遍，
+        # 是真的新一轮。判据里"上一次 has_error"这条就是为它留的——没有它，
+        # 合并会把"追问同一句"也吞掉，正是惯犯⑦「只修了撞见的那一层」的反面。
+        for rid, ts in (("req_ask1111", "2026-07-12T22:50:00.000"),
+                        ("req_ask2222", "2026-07-12T22:50:20.000")):
+            r = _fake_record(rid, "main")
+            r["ts_start"] = ts
+            r["request"]["body"]["messages"] = [{"role": "user", "content": "同一句但上一轮答成了"}]
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
         notif = _fake_record("req_fff6666", "main")
         notif["ts_start"] = "2026-07-12T22:10:00.000"
         notif["request"]["body"]["messages"] = [
@@ -194,11 +222,11 @@ def main() -> None:
         o = run(env, "paths")
         check("paths 走 CCWA_HOME", str(tmp) in o.get("captures_dir", ""))
         o = run(env, "stats", "--date", "2026-07-12")
-        check("stats 记录数", o.get("records") == 9, str(o.get("kinds")))
-        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 9,
-              f"input={o.get('tokens', {}).get('input')}（9 条 × 24001；SSE 给的是 input_tokens 全名）")
+        check("stats 记录数", o.get("records") == 14, str(o.get("kinds")))
+        check("stats token 键名归一", o.get("tokens", {}).get("input") == 24001 * 14,
+              f"input={o.get('tokens', {}).get('input')}（14 条 × 24001；SSE 给的是 input_tokens 全名）")
         o = run(env, "list", "--date", "2026-07-12", "--kind", "main")
-        check("list --kind 过滤", len(o.get("items", [])) == 5)
+        check("list --kind 过滤", len(o.get("items", [])) == 10)
         o = run(env, "get", "req_aaa1111", "--date", "2026-07-12", "--part", "system", "--max-chars", "200")
         check("get --part system 截断", o.get("truncated") is True)
         check("get 输出不炸上下文", len(json.dumps(o)) < 4000, f"{len(json.dumps(o))} bytes")
@@ -213,7 +241,7 @@ def main() -> None:
         # 260902：SUGGESTION MODE 那条改判 self_prompt 落 aux、不再开轮；
         # SYSTEM NOTIFICATION 那条仍是主线轮（origin=synthetic）。仍是三轮，但构成变了。
         turns = o.get("turns") or []
-        check("dag 出轮", len(turns) == 5, f"turns={len(turns)}")
+        check("dag 出轮", len(turns) == 8, f"turns={len(turns)}")
         t0 = turns[0] if turns else {}
         check("轮卡带用户那轮说的话（不是模型回答）",
               t0.get("user_text") == "帮我查一下泳道判别的问题", repr(t0.get("user_text")))
@@ -237,6 +265,21 @@ def main() -> None:
               any(t.get("origin") == "synthetic" and "SYSTEM NOTIFICATION" in (t.get("user_text") or "")
                   for t in turns),
               str([(t.get("origin"), (t.get("user_text") or "")[:24]) for t in turns]))
+        # 重试重发合并（260904）
+        rt = [t for t in turns if RETRY_TEXT in (t.get("user_text") or "")]
+        check("同一句 prompt 的重试并成一轮（不再各自开轮）", len(rt) == 1,
+              f"轮数={len(rt)} steps={[t['steps'] for t in rt]}")
+        check("并进来的重试节点一个不少，且轮上记得住次数",
+              bool(rt) and rt[0]["steps"] == 3 and rt[0]["retry_n"] == 2,
+              f"steps={rt[0]['steps'] if rt else '-'} retry_n={rt[0].get('retry_n') if rt else '-'}")
+        check("重试原因给得出来（轮卡 tooltip 用）",
+              bool(rt) and "Overloaded" in (rt[0].get("retry_cause") or ""),
+              repr(rt[0].get("retry_cause") if rt else None))
+        ask = [t for t in turns if "上一轮答成了" in (t.get("user_text") or "")]
+        check("反例：上一轮答成了再发同一句 → 是新的一轮，不许合并", len(ask) == 2,
+              f"轮数={len(ask)}")
+        check("反例：真人追问轮不带重试标记",
+              all(not t.get("retry_n") for t in ask), str([t.get("retry_n") for t in ask]))
         # 260902 归属：安全审查审的是子代理那次工具调用 → 归子代理的轮，不再一律挂主线。
         check("安全审查归到被审的子代理那一轮（不再一律挂主线）",
               any((t.get("aux") or {}).get("security")

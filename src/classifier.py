@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime
 from urllib.parse import urlparse
 
 # ===== 分类规则常量（真实流量回来后在这里迭代） =====
@@ -1093,6 +1094,68 @@ def _task_prompts(record: dict) -> list[str]:
     return out
 
 
+# ===== 重试重发（260904）=====
+# 上游过载时 CC 会把**同一句 prompt 原样再发一次**，每次都是一个合法的轮起点——
+# 于是一次提问被切成 N 轮。实测 09-03 一条泳道 10 个轮首全是「cc-wire-analyzer 继续这个项目」，
+# 21:50:48→21:51:55 一分钟内，前三次 status=200 但流里是 `overloaded_error`（`has_error` 真）、
+# 后七次 529。全机那天 wire 比 jsonl 多切 18 轮，18 项都是这个。
+#
+# **合并不是丢弃**：重试节点全部留在原轮里当中间步（与 `[Image:` 那批"归回原轮"同一口径，
+# 见 `_is_turn_start`），只是不再各自开一轮；轮上记 `retry_n`，展开就能逐次看。
+RETRY_MAX_GAP_S = 60          # 实测重试间隔 4-21 秒，留三倍余量；超过更像人自己又敲了一遍
+
+
+def _ts_gap_s(a: dict, b: dict) -> float:
+    """两个节点的开始时间差（秒）。本模块唯一一处对时间戳做算术——其余地方一律
+    字符串比较（`_latest_before`），因为只需要先后不需要间隔。"""
+    try:
+        return abs((datetime.fromisoformat(b["ts_start"])
+                    - datetime.fromisoformat(a["ts_start"])).total_seconds())
+    except (KeyError, TypeError, ValueError):
+        return float("inf")   # 时间戳缺/坏 → 当成隔得很远，宁可多切一轮也不误合并
+
+
+def _is_retry_resend(turn: list[dict], n: dict) -> bool:
+    """`n` 是当前这轮的重试重发，不是新的一轮？三条同时成立才算：
+
+    1. **同一句**：轮首与它的 user_text 归一空白后全等（空文本不参与——两个都没文本
+       不能当"同一句"）
+    2. **上一次没成**：`turn[-1].has_error`。已经答出来了还发同一句，那是人又问了一遍，
+       是真的新一轮
+    3. **紧挨着**：与上一次的间隔 ≤ RETRY_MAX_GAP_S（按链传递，长风暴整条并进来）
+
+    残轮（轮首不是真起点）不认——它本就是没看全的一段，谈不上"重发"。
+    """
+    head = turn[0]
+    if not head.get("turn_start"):
+        return False
+    a, b = head.get("user_text") or "", n.get("user_text") or ""
+    if not a.strip() or " ".join(a.split()) != " ".join(b.split()):
+        return False
+    if not turn[-1].get("has_error"):
+        return False
+    return _ts_gap_s(turn[-1], n) <= RETRY_MAX_GAP_S
+
+
+def _retry_cause(turn: list[dict], err_of: dict[str, str]) -> str:
+    """这一轮重试的原因标签（给轮卡的 tooltip）。取失败节点里最常见的那条错误说明——
+    重试风暴的成因通常同一个（`overloaded_error: Overloaded` / `HTTP 529`），
+    列全等于把同一句话说八遍。没有重试就不给标签。
+    """
+    if not any(n.get("turn_start") for n in turn[1:]):
+        return ""
+    seen: dict[str, int] = {}
+    for n in turn:
+        if not n.get("has_error"):
+            continue
+        msg = (err_of.get(n["id"]) or "").strip()
+        if msg:
+            seen[msg] = seen.get(msg, 0) + 1
+    if not seen:
+        return ""
+    return max(seen.items(), key=lambda kv: kv[1])[0][:60]
+
+
 def _node_summary(idx: dict, kind: str, lane: str) -> dict:
     """索引记录 → DAG 节点摘要。usage 在 index_record 里已归一（260719），
     不再有「生产方写全名、消费方读短名」的键名错位空间。"""
@@ -1253,6 +1316,8 @@ def build_dag(records: list[dict]) -> dict:
     lane_of: dict[str, dict] = {}
     nodes = []
     aux_sid: dict[str, str] = {}   # aux node id → session_id（near 边精确挂接用，260801）
+    err_of: dict[str, str] = {}    # 失败节点 id → 错误说明（只给重试原因标签用，
+                                   # **不进节点**：一天几千个节点，每个背一份说明不划算）
     for r, kind, lk in infos:
         if kind == "main":
             lane_id = "s-" + lk
@@ -1273,6 +1338,9 @@ def build_dag(records: list[dict]) -> dict:
                                 "entrypoint": r.get("entrypoint") or ""}
         lane_of[lane_id]["count"] += 1
         n = _node_summary(r, kind, lane_id)
+        if n["has_error"]:
+            err_of[n["id"]] = (r.get("err_msg") or r.get("err_kind")
+                               or (f"HTTP {r.get('status')}" if r.get("status") else ""))
         if lane_kind == "aux" and r.get("session_id"):
             aux_sid[n["id"]] = r["session_id"]
         nodes.append(n)
@@ -1332,6 +1400,11 @@ def build_dag(records: list[dict]) -> dict:
             # 实测一天 68 轮里 29 轮含至少一次失败，若一律染红，红色就不再刺眼了。
             "errors": sum(1 for n in turn if n["has_error"]),
             "has_error": any(n["has_error"] for n in turn),
+            # 重试重发（260904）：这一轮里同一句 prompt 被原样重发了几次。
+            # **不是"失败次数"**（那是上面的 errors）——一轮 31 步里工具调用失败 3 次，
+            # 与"这句话发了 8 遍才发出去"是完全不同的两件事，前端也画成两个徽章。
+            "retry_n": sum(1 for n in turn[1:] if n["turn_start"]),
+            "retry_cause": _retry_cause(turn, err_of),
             "pure_chat": bool(turn[0].get("pure_chat")),
             "subagents": [],              # 下面按 trigger 边回填
             "aux": {},                    # 下面按 near 边回填
@@ -1342,7 +1415,7 @@ def build_dag(records: list[dict]) -> dict:
             continue
         turn: list[dict] = []
         for n in lane_nodes:
-            if n["turn_start"] and turn:
+            if n["turn_start"] and turn and not _is_retry_resend(turn, n):
                 _flush_turn(lane_id, turn)
                 turn = [n]
             else:

@@ -258,6 +258,7 @@ data: {...}
              "user_text":"帮我把雷达的 betas 改成提升度…","partial":false,
              "origin":"user|synthetic|command|sdk|partial",
              "steps":12,"tool_uses":26,"total_ms":138000,"errors":1,"has_error":true,"pure_chat":false,
+             "retry_n":0,"retry_cause":"",
              "subagents":[{"lane_id":"agent-…","label":"你是视觉设计评审…"}],
              "aux":{"security":3,"title":1}}]
 }
@@ -265,7 +266,8 @@ data: {...}
 
 **`turns`（260802）——对话的语义单位，DAG 按轮折叠的数据源。** 轮＝一次用户消息 + 它引发的
 全部工具循环步、派生的子代理、触发的辅助调用。分轮判据沿用 `turn_start`（最后一条 user 消息
-含真实 text ＝ 用户新消息触发；全是 tool_result ＝ 中间步，260717 三天真实录制验证）。
+含真实 text ＝ 用户新消息触发；全是 tool_result ＝ 中间步，260717 三天真实录制验证），
+外加一条**重试重发合并**（260904，见 `retry_n`）。
 
 | 字段 | 说明 |
 |---|---|
@@ -273,6 +275,7 @@ data: {...}
 | `partial` | 轮首不是真起点（代理中途启动，只录到某轮的中间段） |
 | `origin`（260809，260810 加 `sdk`） | **这轮是谁发起的**：`user`（真人消息）/ `synthetic`（CC 自己合成的伪 user 消息，如建议补全/后台任务/离开回顾/内部检索）/ `command`（斜杠命令注入）/ `sdk`（程序驱动的会话）/ `partial`。判据单份在 `classifier._turn_origin`，前端不重算。**两类信号，优先级 partial > 措辞 > entrypoint**：`synthetic`/`command` 靠轮首文本前缀白名单——wire 层**没有结构性判据**（`tools_n`/`max_tokens`/计费头版本哈希在真人与伪轮间全重叠），措辞是唯一稳定指纹，故这一档是启发式；`sdk` 则读计费头的 `cc_entrypoint`，是**官方标识符**。命中不了的一律落回 `user`（宁可把伪轮当真轮，不能把真人消息弱化）。260810 用 CC 本地 jsonl 的 `promptSource` 做过 2,339 轮离线对账：一致率 99.8%，「把真人轮判成 synthetic」0 例。⚠️ `synthetic` **不是噪声**——伪轮会带出真工作、有真实 token 成本，前端只能降档显示，不能隐藏（藏了就是惯犯③静默丢数据） |
 | `index` | 泳道内第几轮（从 1 起） |
+| `retry_n` / `retry_cause`（260904） | 这一轮里同一句 prompt 被**原样重发**了几次，以及原因（取失败节点里最常见的那条错误说明，给轮卡 tooltip）。上游过载时 CC 会重发同一句，每次都是合法轮起点——实测 09-03 一条泳道 10 个轮首全是同一句、一分钟内，wire 因此比 jsonl 多切 18 轮。合并判据三条同时成立：轮首与它同一句（归一空白后全等）、上一次 `has_error`、间隔 ≤60 秒（按链传递）。**合并不是丢弃**：重试节点全留在轮里当中间步（`steps` 照数、展开可逐次看），与 `[Image:` 那批"归回原轮"同一口径。**与 `errors` 是两件事**：那是"这轮里失败了几次"，这是"这句话发了几遍" |
 | `errors` / `has_error` | 失败**条数**与布尔。给数量是因为「31 步里 1 次瞬时 429」和「整轮全挂」是两件事——前端据此决定标 ⚠N 还是整卡染红（一律染红会把红色用废：实测一天 68 轮有 29 轮含至少一次失败） |
 | `subagents` | 这轮派生了哪些子代理（trigger 边起点落在本轮内）。嵌套派生天然成立：子代理派生的子代理归到父子代理的那一轮。`label` 取被派生泳道首条的用户文本＝派生 prompt |
 | `aux` | 这轮触发的辅助调用计数（near 边起点落在本轮内）。**子代理的轮也会有**（260902）：安全审查的被审对象由请求正文判定——transcript 首条 user 就是那次 Task 的派生 prompt。头上没有这个信息（CC 把 side query 的 agent 身份写死成 main，实测 aux 带 `X-Claude-Code-Agent-Id` 0/1236）。其余辅助 kind 仍一律归主线，那是实测结果不是保守：它们在 CC 里就是主循环独占的 side query |

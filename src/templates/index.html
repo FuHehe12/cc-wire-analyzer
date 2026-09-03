@@ -2213,6 +2213,8 @@ zh: {
   "dag.spawnedBy": "由主线 {n} 派生", "dag.spawnedBySub": "由子代理 {id} 派生", "dag.assoc": "关联 {n}",
   "dag.laneCascaded": "随 {lane} 隐藏",
   "dag.zoomOut": "缩小", "dag.zoomIn": "放大", "dag.fit": "⤢ 适应宽度", "dag.fitTitle": "适应宽度（无水平滚动）",
+  "dag.turnRetry": "重试 ×{n}",
+  "dag.turnRetryTip": "同一句 prompt 被原样重发 {n} 次（{cause}）——已并入这一轮，展开可逐次查看",
   "dag.foldTurns": "按轮折叠", "dag.unfoldTurns": "展开所有轮",
   "dag.foldTurnsTitle": "按对话轮折叠：一轮一张卡，卡上是你那轮说的话、派生的子代理与辅助调用；点卡片展开该轮逐条请求",
   "dag.turnNo": "轮 {n}", "dag.turnSteps": "{n} 步", "dag.turnYou": "你：", "dag.turnSpawn": "派生：",
@@ -2624,6 +2626,8 @@ en: {
   "dag.spawnedBy": "spawned by session {n}", "dag.spawnedBySub": "spawned by agent {id}", "dag.assoc": "related to {n}",
   "dag.laneCascaded": "hidden with {lane}",
   "dag.zoomOut": "Zoom out", "dag.zoomIn": "Zoom in", "dag.fit": "⤢ Fit width", "dag.fitTitle": "Fit width (no horizontal scroll)",
+  "dag.turnRetry": "retried ×{n}",
+  "dag.turnRetryTip": "The same prompt was re-sent {n} times ({cause}) — merged into this turn; expand to see each attempt",
   "dag.foldTurns": "Fold by turn", "dag.unfoldTurns": "Expand all turns",
   "dag.foldTurnsTitle": "Fold by conversation turn: one card per turn showing what you said, the subagents it spawned and the auxiliary calls; click a card to expand that turn's requests",
   "dag.turnNo": "turn {n}", "dag.turnSteps": "{n} steps", "dag.turnYou": "you: ", "dag.turnSpawn": "spawned with: ",
@@ -3034,6 +3038,8 @@ ja: {
   "dag.spawnedBy": "メイン {n} から派生", "dag.spawnedBySub": "サブエージェント {id} から派生", "dag.assoc": "{n} に関連",
   "dag.laneCascaded": "{lane} と一緒に非表示",
   "dag.zoomOut": "縮小", "dag.zoomIn": "拡大", "dag.fit": "⤢ 幅に合わせる", "dag.fitTitle": "幅に合わせる（横スクロールなし）",
+  "dag.turnRetry": "リトライ ×{n}",
+  "dag.turnRetryTip": "同じプロンプトが {n} 回再送されました（{cause}）——このターンに統合済み。展開すると各回が見えます",
   "dag.foldTurns": "ターンで折りたたむ", "dag.unfoldTurns": "全ターンを展開",
   "dag.foldTurnsTitle": "会話ターン単位で折りたたみ：1 ターン 1 カードに、あなたの発言・派生したサブエージェント・補助呼び出しをまとめます。カードをクリックするとそのターンの各リクエストが開きます",
   "dag.turnNo": "ターン {n}", "dag.turnSteps": "{n} ステップ", "dag.turnYou": "あなた：", "dag.turnSpawn": "派生指示：",
@@ -5134,6 +5140,14 @@ function dagTurnCardHtml(t, pos, laneColor){
      实测一天 68 轮有 29 轮含至少一次失败——一律染红等于把红色用废。 */
   const allFailed = t.errors > 0 && t.errors === t.steps;
   const errTag = t.errors ? ' · <b style="color:var(--err)">⚠' + t.errors + '</b>' : "";
+  /* 重试重发（260904）：同一句 prompt 被原样重发 N 次，后端已并成一轮（classifier
+     `_is_retry_resend`）。**与 ⚠N 是两件事**——那是"这轮里失败了几次"，这是"这句话发了几遍"。
+     放同一行不另起一行：轮卡是固定高度（check_render 守着 NH_TURN），加行会溢出。 */
+  const retryTag = t.retry_n
+    ? ' · <b style="color:var(--warn)" title="' +
+      esc(t18("dag.turnRetryTip", {n: t.retry_n, cause: t.retry_cause || "?"})) + '">⟲' +
+      t18("dag.turnRetry", {n: t.retry_n}) + '</b>'
+    : "";
   return '<div class="dag-node turn' + (allFailed ? " err" : "") + (t.pure_chat ? " chat" : "") +
     (origin === "synthetic" ? " synth" : "") +
     '" role="button" tabindex="0" onkeydown="activateClick(event)" data-turn="' + esc(t.turn_id) +
@@ -5141,7 +5155,7 @@ function dagTurnCardHtml(t, pos, laneColor){
     pos.h + 'px;border-left-color:' + laneColor + '" onclick="dagToggleTurn(\'' + esc(t.turn_id) + '\')">' +
     '<div class="dn-r1"><span class="dn-time">' + timePart(t.first_ts) + '</span>' +
     '<span class="dn-meta">' + t18("dag.turnNo", {n: t.index}) + ' · ⟳' + t18("dag.turnSteps", {n: t.steps}) +
-    (t.total_ms ? ' · ' + fmtMs(t.total_ms) : "") + errTag + '</span></div>' +
+    (t.total_ms ? ' · ' + fmtMs(t.total_ms) : "") + errTag + retryTag + '</span></div>' +
     '<div class="dn-you">' + you + '</div>' + badges + '</div>';
 }
 function dagToggleTurn(tid){

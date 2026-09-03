@@ -36,6 +36,12 @@
 
 ### Fixed
 
+- A prompt the upstream refuses is re-sent verbatim by Claude Code, and every re-send used to open
+  its own turn on the timeline — one measured lane had ten turns carrying the same sentence, all
+  inside one minute. Re-sends now merge into the turn they are retrying (same text, previous attempt
+  errored, within 60s), carrying a "retried xN" badge and the reason on hover. Nothing is hidden:
+  every request stays a step inside that turn, so expanding it shows each attempt. Measured on one
+  day: 99 turns became 80, against Claude Code's own count of 81.
 - Reasoning availability is now judged by plaintext, not by block presence. A recording whose
   thinking blocks all came back signature-only (measured on claude-opus-5: 86 blocks, zero
   characters) used to be tier A, so the agent brief sent the reader off to "read the reasoning" and
