@@ -26,15 +26,6 @@
 - Reasoning availability is judged by plaintext, not block presence: signature-only recordings drop to tier C (`signature_only`); new `steps_with_plaintext` field.
 - API contract: the duplicated analysis endpoint is gone and the catch-all chapter was split three ways; six docs lost essay openings and heading date stamps.
 
-## v0.4.24 - 2026-09-02
-
-### Fixed
-
-- Security reviews of a sub-agent's tool calls are now attributed to that sub-agent on the timeline instead of the mainline. Turn cards, cascade hiding and token costs follow the corrected owner; no other auxiliary kind is affected.
-- On Windows, index rebuilds after a schema bump used to append to the old file instead of replacing it, so index files kept growing; they are now replaced, and already-bloated files clean themselves up on first read.
-- Timeline: a folded card standing in for many nodes no longer draws dozens of identical overlapping edges; the aux lane no longer chains calls from different sessions into one "conversation order" line; switching the fold mode now resets expanded aux aggregate cards too.
-- Reference docs: all five audited end to end — contradictions fixed, essay-style openings and closings dropped, patched-in section numbers renumbered (the agent manual shipped in the binary included).
-
 ## Earlier versions
 
 v0.4.22 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the [GitHub Releases page](https://github.com/FuHehe12/cc-wire-analyzer/releases), which carries the same notes per version.

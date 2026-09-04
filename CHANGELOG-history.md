@@ -1,6 +1,6 @@
 # Changelog — released versions
 
-> Full notes for every released version, v0.4.23 and earlier. The current version and the
+> Full notes for every released version, v0.4.24 and earlier. The current version and the
 > unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
 > to build a release's notes. Each version below is also published, unchanged, on its
 > [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
@@ -9,6 +9,15 @@
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
 
+
+## v0.4.24 - 2026-09-02
+
+### Fixed
+
+- Security reviews of a sub-agent's tool calls are now attributed to that sub-agent on the timeline instead of the mainline. Turn cards, cascade hiding and token costs follow the corrected owner; no other auxiliary kind is affected.
+- On Windows, index rebuilds after a schema bump used to append to the old file instead of replacing it, so index files kept growing; they are now replaced, and already-bloated files clean themselves up on first read.
+- Timeline: a folded card standing in for many nodes no longer draws dozens of identical overlapping edges; the aux lane no longer chains calls from different sessions into one "conversation order" line; switching the fold mode now resets expanded aux aggregate cards too.
+- Reference docs: all five audited end to end — contradictions fixed, essay-style openings and closings dropped, patched-in section numbers renumbered (the agent manual shipped in the binary included).
 
 ## v0.4.23 - 2026-09-02
 
