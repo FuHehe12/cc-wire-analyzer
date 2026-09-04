@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- `doc_audit` now limits blockquotes in `docs/` to warnings, self-check hooks and each file's audience header; 69 rhetorical ones became plain text.
 - `doc_audit` now caps CHANGELOG entries (25 words / 40 characters) and rejects hard-wrapped lines; the entries above were trimmed to fit.
 - Docs: the build-your-own handbook moved to `handbook/`, the wire-format reference into `docs/reference/`, and `doc_audit` now checks that relative links resolve.
 - `doc_audit` now reconciles endpoint headings too: one section per (method, path), and declared methods, query parameters and `error_code` values must exist.

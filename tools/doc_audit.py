@@ -380,6 +380,41 @@ def _changelog_cap_drift() -> list[str]:
     return out
 
 
+# `>` 块允许的三类。参考手册里的引用块要承担**功能**（扫读时必须跳出来的东西），
+# 不承担**修辞**——一份文档里抬起来 20 次，等于一次也没抬。260904 立，来由见
+# workspace-spec `issues/closed/260904_撤销文档写作工作流.md`：工作区曾有一条
+# 「强引言用块引用突出」的写作工作流，本项目 docs/ 照着长到 118 块，那条已撤。
+_BQ_EMOJI = re.compile(r"^[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]")
+
+
+def _blockquote_style(paths=None) -> list[str]:
+    """docs/ 里的 `>` 块必须属三类之一：emoji 警示 / `**自检**` 同步钩子 / 每篇第一个块。
+
+    第三类是文档开头的「读者 + 触发时机」声明（批三受众收敛立的），每篇只有一个，
+    因此判据就是"文件里第一个块"——不用去认它的措辞，措辞会变，位置不会。
+
+    **只查 docs/**：`research/` 装路线、判据、踩坑记录，是过程记录不是参考手册，
+    允许自由文体；`handbook/` 的读者在本项目之外，同理不套。
+    """
+    out = []
+    for p in (paths if paths is not None else sorted(DOCS.rglob("*.md"))):
+        lines = p.read_text(encoding="utf-8").split("\n")
+        i, first = 0, True
+        while i < len(lines):
+            if not lines[i].startswith(">"):
+                i += 1
+                continue
+            j = i
+            while j < len(lines) and lines[j].startswith(">"):
+                j += 1
+            body = " ".join(re.sub(r"^>\s?", "", x) for x in lines[i:j]).strip()
+            if not (first or _BQ_EMOJI.match(body) or body.startswith("**自检**")):
+                out.append(f"{p.name}:{i + 1} 修辞性引用块（降级为正文）：{body[:36]}…")
+            first = False
+            i = j
+    return out
+
+
 def _kinds() -> set[str]:
     """`classifier.KIND_ORDER` 是 kind 的单一真源。"""
     m = re.search(r"KIND_ORDER\s*=\s*\(([^)]*)\)",
@@ -664,12 +699,14 @@ def audit() -> dict:
 
     changelog_long, changelog_wrapped = _changelog_style()
     changelog_cap = _changelog_cap_drift()
+    bq = _blockquote_style()
 
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
         "changelog_too_long": changelog_long,
         "changelog_hard_wrapped": changelog_wrapped,
         "changelog_cap_drift": changelog_cap,
+        "rhetorical_blockquotes": bq,
         "enums": enums,
         "spec_missing_datas": spec_missing,
         "spec_divergence": spec_divergence,
@@ -734,7 +771,8 @@ def _rows(r: dict) -> tuple[list, list]:
     # 而且这条不像内部端点那样存在"有意不写"的合理情形，不会逼出 `|| true`。
     hard += [("CHANGELOG 条目超出「一条一行」的量", r.get("changelog_too_long", [])),
              ("CHANGELOG 里的硬折行", r.get("changelog_hard_wrapped", [])),
-             ("文档写的 CHANGELOG 量与闸门常量不一致", r.get("changelog_cap_drift", []))]
+             ("文档写的 CHANGELOG 量与闸门常量不一致", r.get("changelog_cap_drift", [])),
+             ("docs/ 里的修辞性引用块", r.get("rhetorical_blockquotes", []))]
     hard += [("同一端点在契约里写了不止一节（分叉的开始）", r.get("duplicate_endpoint_sections", [])),
              ("端点标题声明了代码没有的方法", r.get("ghost_methods", [])),
              ("端点标题声明了代码不读的查询参数", r.get("ghost_query_args", []))]
@@ -984,6 +1022,22 @@ def _selftest() -> int:
         ("量的写法在文档里真被匹配到",
          sum(1 for _p in list(DOC_FILES) + [ROOT / "CLAUDE.md"]
              if _p.exists() and _CAP_PAT.search(_p.read_text(encoding="utf-8"))) >= 2),
+    ]
+    # `>` 三类闸门（260904）：三个豁免各造一个正例、修辞块造一个反例。
+    # 豁免写错方向（把该报的放过）与报错方向同样致命，所以正反都测。
+    _bq = _cd / "bq.md"
+    _bq.write_text(_NL.join([
+        "> 读者：谁谁谁。**触发时机：动手之前**。", "", "## 一节", "",
+        "> ⚠️ 这条是警示，必须留。", "",
+        "> **自检**：改 X 必须同步 Y。", "",
+        "> **一句被抬起来的洞见**——这类要降级为正文。", ""]), encoding="utf-8")
+    _bq_hits = _blockquote_style([_bq])
+    ecases += [
+        ("修辞性引用块能检出", len(_bq_hits) == 1),
+        ("首块（受众声明）豁免", not any(":1 " in h for h in _bq_hits)),
+        ("emoji 警示块豁免", not any("警示" in h for h in _bq_hits)),
+        ("自检钩子块豁免", not any("自检" in h for h in _bq_hits)),
+        ("真实 docs/ 无修辞性引用块", not _blockquote_style()),
     ]
     for name, passed in ecases:
         print("[枚举对账]", ("PASS " if passed else "FAIL ") + name)

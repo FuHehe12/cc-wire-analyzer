@@ -59,10 +59,10 @@ kill $pid                 # macOS/Linux：SIGTERM → handler 在退出路上恢
 
 如果进程在清理前被强杀，`settings.json` 会留在指向一个没人听的本地端口的状态——**Claude Code 连不上任何上游**——而工具已经关了，没人怀疑到它。`.patched` marker 会留下来，下次启动（GUI 或 `serve`）自动修复。单二进制版没有单独的 `restore` 命令（再起一次 `serve` 即可，它会检测并修孤儿态）。
 
-> **Windows 强杀的已知限制**：`Stop-Process -Force`（TerminateProcess）不触发 Python 的
-> atexit/signal，serve 进程被强杀时副本 settings.json 不会自动恢复。但 serve 用
-> `CCWA_CLAUDE_SETTINGS` 副本隔离，真配置不受影响。GUI 模式（主场景）有 `closing` 事件兜底，
-> 不受此限制。
+**Windows 强杀的已知限制**：`Stop-Process -Force`（TerminateProcess）不触发 Python 的
+atexit/signal，serve 进程被强杀时副本 settings.json 不会自动恢复。但 serve 用
+`CCWA_CLAUDE_SETTINGS` 副本隔离，真配置不受影响。GUI 模式（主场景）有 `closing` 事件兜底，
+不受此限制。
 
 ### 与 cc-switch 等配置工具共存
 
@@ -176,9 +176,9 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 }
 ```
 
-> **读原始文件时最重要的一条规则：** 永远不要 `cat` / `Read` 整个录制文件。一天的 JSONL 可能
-> 几十 MB，*一条* record 可能超 5 MB（一个 main 请求带着完整 system prompt + 70~100 个工具的
-> 完整 JSON Schema）。先 grep 出 id，再用 HTTP 取那一条，或分块读文件。
+**读原始文件时最重要的一条规则：** 永远不要 `cat` / `Read` 整个录制文件。一天的 JSONL 可能
+几十 MB，*一条* record 可能超 5 MB（一个 main 请求带着完整 system prompt + 70~100 个工具的
+完整 JSON Schema）。先 grep 出 id，再用 HTTP 取那一条，或分块读文件。
 
 ---
 
@@ -186,10 +186,10 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 
 都返回 JSON。都在 `127.0.0.1:$port`。
 
-> **告诉用户他可以自己看**：任何 GET 端点后面加 `format=html`，浏览器打开就是渲染好的页面；
-> `http://127.0.0.1:$port/view` 是端点总览。这是给人用的入口——当用户问「你到底看到了什么」
-> 时，**给他这个链接**，比你复述一遍可靠。加 `format=html` **不影响你**：不带这个参数时
-> 响应逐字节不变，所以别在自己的请求里带它（那样你拿到的是 HTML，不是数据）。
+**告诉用户他可以自己看**：任何 GET 端点后面加 `format=html`，浏览器打开就是渲染好的页面；
+`http://127.0.0.1:$port/view` 是端点总览。这是给人用的入口——当用户问「你到底看到了什么」
+时，**给他这个链接**，比你复述一遍可靠。加 `format=html` **不影响你**：不带这个参数时
+响应逐字节不变，所以别在自己的请求里带它（那样你拿到的是 HTML，不是数据）。
 
 | Method | Path | 给你什么 |
 |---|---|---|
