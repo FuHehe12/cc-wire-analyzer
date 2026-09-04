@@ -1017,11 +1017,11 @@ def _selftest() -> int:
         ("CHANGELOG 硬折行挡发版", n_hard(changelog_hard_wrapped=["x.md:9 续行"]) == 1),
         ("量的数字漂移挡发版", n_hard(changelog_cap_drift=["x.md 写 ≤9 词"]) == 1),
         ("真实文档写的量与闸门一致", not _changelog_cap_drift()),
-        # 正向:模式必须真的命中(开发约定.md 与 CLAUDE.md 各一处)。只断言"没有漂移"
-        # 等于奖励一个什么都匹配不到的正则。
-        ("量的写法在文档里真被匹配到",
-         sum(1 for _p in list(DOC_FILES) + [ROOT / "CLAUDE.md"]
-             if _p.exists() and _CAP_PAT.search(_p.read_text(encoding="utf-8"))) >= 2),
+        # 正向:模式必须真的命中。只断言"没有漂移"等于奖励一个什么都匹配不到的正则。
+        # 只认仓库内的 开发约定.md——CLAUDE.md 是 gitignored 的本地文件,干净 checkout
+        # 里不存在,把它数进断言会让这条自测只在 CI(或别人的机器)上红,方向与 _version.py
+        # 那次教训正好相反(那个是只在本地存在)。
+        ("量的写法在文档里真被匹配到", bool(_CAP_PAT.search(_read(GUIDE)))),
     ]
     # `>` 三类闸门（260904）：三个豁免各造一个正例、修辞块造一个反例。
     # 豁免写错方向（把该报的放过）与报错方向同样致命，所以正反都测。
