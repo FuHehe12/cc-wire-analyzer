@@ -14,6 +14,10 @@
   2. Decide whether turn origin should ever be corrected at runtime from Claude Code's local logs. It currently is not, and that restraint is the point — the app's data surface is the traffic it recorded plus one settings field.
   3. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
+## Unreleased
+
+- API contracts and development conventions now live in the offline product manual; compatibility links and documentation checks remain intact.
+
 ## v0.4.26 - 2026-09-05
 
 ### Added

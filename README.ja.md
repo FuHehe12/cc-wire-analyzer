@@ -111,7 +111,7 @@ uv run python src/desktop.py
 - [ドキュメント一覧](docs/README.md)
 - [画面ガイド](docs/reference/界面导览.md)
 - [agent から CCWA を使う](docs/reference/AI_USAGE.md)
-- [API 契約](docs/reference/API契约.md)
+- [API 契約](docs/product-manual.html#doc=API契约.md)
 - [アーキテクチャ概要](docs/reference/架构总览.md)
 - [同種ツール構築ハンドブック](handbook/同类工具构建手册.md)——他の agent ツール（Codex / opencode / 自作）向けに同種のアナライザーを作るときに読むもの：能力ユニットごとに「harness を替えると何が変わり、何が変わらないか」を明記
 - [開発とビルドに参加する](CONTRIBUTING.md)

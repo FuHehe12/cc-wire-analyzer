@@ -70,7 +70,26 @@ HANDBOOK = ROOT / "handbook"
 # 它引用本项目的端点与文件路径，断链和幽灵端点照样要查（只是不在"描述当前实现"那一类里）。
 REFERENCE = DOCS / "reference"
 # 具名依赖的文档路径集中在此，配 `_read_required` 使用（见那个函数的 docstring）。
-GUIDE = REFERENCE / "开发约定.md"
+GUIDE = REFERENCE / "开发约定.md"  # 逻辑文档标识；正文从单文件说明书读取
+MANUAL = DOCS / "product-manual.html"
+EMBEDDED_DOCS = {"API契约.md", "开发约定.md"}
+
+
+def _manual_documents() -> dict:
+    """具名正文缺失或载荷损坏必须失败，不能回落到兼容跳转页。"""
+    try:
+        html = MANUAL.read_text(encoding="utf-8")
+        match = re.search(r'<script id="bookData" type="application/json">(.*?)</script>', html, re.S)
+        if not match:
+            raise ValueError("缺少 bookData")
+        docs = json.loads(match.group(1))["documents"]
+        for name in EMBEDDED_DOCS:
+            if not isinstance(docs.get(name, {}).get("text"), str) or not docs[name]["text"].strip():
+                raise ValueError(f"缺少正文 {name}")
+        return docs
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise SystemExit(f"[doc_audit] 单文件说明书开发参考不可读：{exc}") from exc
+
 # 文档面：仓库里会提到端点/命令/路径的公开文档（本地 CLAUDE.md 与 issues/ 不进对账——
 # 它们是过程记录，允许留下当时的说法）。
 DOC_FILES = (sorted(DOCS.rglob("*.md")) + sorted(HANDBOOK.rglob("*.md"))
@@ -92,6 +111,8 @@ EXTERNAL_ENDPOINTS = {
 
 
 def _read(p: pathlib.Path) -> str:
+    if p.parent == REFERENCE and p.name in EMBEDDED_DOCS:
+        return _manual_documents()[p.name]["text"]
     try:
         return p.read_text(encoding="utf-8")
     except OSError:
@@ -109,6 +130,8 @@ def _read_required(p: pathlib.Path) -> str:
     260808 把 `docs/` 拆成子目录时就差点踩中：自测清单检查硬编码读 `DOCS / "开发约定.md"`，
     而那份文档已经移进了 `reference/`。
     """
+    if p.parent == REFERENCE and p.name in EMBEDDED_DOCS:
+        return _read(p)
     if not p.exists():
         raise SystemExit(
             f"[doc_audit] 具名文档不存在：{p.relative_to(ROOT)}\n"
@@ -373,7 +396,7 @@ def _changelog_cap_drift() -> list[str]:
     for p in list(DOC_FILES) + [ROOT / "CLAUDE.md"]:
         if not p.exists():
             continue
-        for w, c in pat.findall(p.read_text(encoding="utf-8")):
+        for w, c in pat.findall(_read(p)):
             if (int(w), int(c)) != (CHANGELOG_EN_WORDS, CHANGELOG_ZH_CHARS):
                 out.append(f"{p.name} 写 ≤{w} 词 / ≤{c} 字，闸门是 "
                            f"≤{CHANGELOG_EN_WORDS} 词 / ≤{CHANGELOG_ZH_CHARS} 字")
@@ -398,7 +421,7 @@ def _blockquote_style(paths=None) -> list[str]:
     """
     out = []
     for p in (paths if paths is not None else sorted(DOCS.rglob("*.md"))):
-        lines = p.read_text(encoding="utf-8").split("\n")
+        lines = _read(p).split("\n")
         i, first = 0, True
         while i < len(lines):
             if not lines[i].startswith(">"):
