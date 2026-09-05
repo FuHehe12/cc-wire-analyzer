@@ -1,6 +1,6 @@
 # 变更历史 — 已发布版本
 
-> v0.4.24 及更早每一版的完整说明。当前版本与未发布滚动清单在 [CHANGELOG.zh.md](CHANGELOG.zh.md)，
+> v0.4.25 及更早每一版的完整说明。当前版本与未发布滚动清单在 [CHANGELOG.zh.md](CHANGELOG.zh.md)，
 > 那份也是 CI 生成 release notes 的真源。下面每一版同样原样发布在各自的
 > [GitHub Release 页](https://github.com/FuHehe12/cc-wire-analyzer/releases)。
 >
@@ -9,6 +9,18 @@
 
 
 
+
+## v0.4.25 - 2026-09-04
+
+### 修复
+
+- `doc_audit` 限定 docs/ 的 `>` 只留警示、自检钩子与首块受众声明；69 块修辞性引用降为正文。
+- `doc_audit` 新增 CHANGELOG 闸门：条目 ≤25 词 / ≤40 字、不许硬折行；上面几条已照此改短。
+- 文档：同类工具构建手册搬到 `handbook/`，《报文解读》搬进 `docs/reference/`，`doc_audit` 加查相对链接可达。
+- `doc_audit` 开始对账端点标题：同一 (方法, 路径) 只准占一节，声明的方法、查询参数与 `error_code` 必须真实存在。
+- 上游拒绝后 CC 原样重发的 prompt 并入它所重试的那一轮，标 ⟲重试 ×N，不再各开一轮。
+- 思考档位改按明文判，不按块存在判：只回签名的录制降为 C 档（`signature_only`），新增 `steps_with_plaintext` 字段。
+- API 契约：analysis 端点的过时复制品删掉，抽屉章拆成三处；六份文档去掉文章式引子与标题日期戳。
 
 ## v0.4.24 - 2026-09-02
 
