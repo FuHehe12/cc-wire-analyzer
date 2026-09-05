@@ -180,9 +180,13 @@ def index():
     # KNOWN_BETAS 由后端注入（260802）：判别"哪些 beta 是新出现的"此前只有前端做得到，
     # 而唯一会问这个问题的消费者（AI 走 /api/unknowns）拿不到清单。清单跟着判别逻辑走，
     # 前端只是消费者之一——两处各存一份必然分叉。
+    # KNOWN_BODY_FIELDS 同理（260905）：详情页要把「本工具还没解析过的请求体字段」高亮出来，
+    # 判据必须与盲区雷达（classifier._unknowns）用同一份清单，否则界面说"新字段"而 /api/unknowns
+    # 说没有，两处各自演化就是 SSOT 破裂。
     import classifier
     return render_template("index.html",
-                           known_betas=json.dumps(sorted(classifier.KNOWN_BETAS)))
+                           known_betas=json.dumps(sorted(classifier.KNOWN_BETAS)),
+                           known_body_fields=json.dumps(sorted(classifier.KNOWN_BODY_FIELDS)))
 
 
 @app.route("/favicon.ico")
