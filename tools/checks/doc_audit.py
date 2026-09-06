@@ -30,7 +30,7 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
   7. 端点标题的机械事实（260904）：同一 (方法, 路径) 只准占一节；标题声明的方法与查询参数
      必须在代码里成立；`error_code` 的取值必须在代码里出现过
   8. markdown 相对链接点得到（第 3 项查的是"反引号里提到的文件在不在"，这项查"点下去到不到"）
-  9. CHANGELOG 的两条量（260904）：未发布节条目 ≤25 词 / ≤40 字；整份文件不许硬折行
+  9. 当前与历史 CHANGELOG 必须存在，全文不许机械硬折行；正文不设字数目标
 
 最后一项是 v0.4.7 加的，来由与前面几项一样：三主题落地后，"新加的 token 要三套都定义"
 这条只存在于人的记忆里——实测当时就有 7 个 token 定义了从没被引用。为了让它可判定，
@@ -300,20 +300,16 @@ def _dead_links() -> list[str]:
 
 
 CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "CHANGELOG-history.md")
-# 当前中文正文仍沿用既有上限；英文标题支持用于审计反例和历史输入，不靠文件名推断语言。
-CHANGELOG_EN_WORDS, CHANGELOG_ZH_CHARS = 25, 40
 _BLOCK_START = re.compile(r"^(?:#{1,6}\s|\||>|[-*+]\s|\d+[.)]\s|`{3,}|~{3,}|(?:---+|\*\*\*+|___+)\s*$)")
-_UNRELEASED = re.compile(r"^##\s+(未发布|Unreleased)(?=\s|$)", re.I)
 
 
-def _changelog_style(paths=None) -> tuple[list[str], list[str]]:
-    """检查当前及历史两份变更记录：未发布条目长度，以及全文的机械硬折行。
+def _changelog_style(paths=None) -> list[str]:
+    """检查两份必需的变更记录及全文机械硬折行，不限制正文长度。
 
-    未发布标题决定汉字数或英文词数规则，不依赖文件后缀。已发布历史保留完整信息，
-    不限制条目长度；两份文件都使用编辑器的视觉换行。空行分段、表格、嵌套列表、
+    变更记录应解释问题、变化和影响，允许较长的完整段落。空行分段、表格、嵌套列表、
     围栏及缩进代码块、显式 Markdown 换行均保留。连续普通正文行视为机械续行。
     """
-    too_long, wrapped = [], []
+    wrapped = []
     for path in (CHANGELOGS if paths is None else paths):
         if not path.is_file():
             raise SystemExit(f"[doc_audit] 必需变更记录不存在：{path}")
@@ -321,7 +317,6 @@ def _changelog_style(paths=None) -> tuple[list[str], list[str]]:
         fence = None
         prev_blank, prev_quote, prev_structural = True, False, False
         prev_explicit_break, indented_code = False, False
-        language = None
         for i, ln in enumerate(text.splitlines(), 1):
             stripped = ln.strip()
             marker = re.match(r"^(`{3,}|~{3,})", stripped)
@@ -342,10 +337,6 @@ def _changelog_style(paths=None) -> tuple[list[str], list[str]]:
                 prev_blank, prev_structural = False, True
                 continue
             indented_code = False
-            heading = re.match(r"^##\s+", ln)
-            if heading:
-                match = _UNRELEASED.match(ln)
-                language = ("zh" if match[1] == "未发布" else "en") if match else None
             is_quote = stripped.startswith(">")
             structural = bool(re.match(r"^(?:#{1,6}\s|\||(?:---+|\*\*\*+|___+)\s*$)", stripped))
             if not prev_blank and not prev_structural and not prev_explicit_break and not _BLOCK_START.match(stripped):
@@ -356,40 +347,7 @@ def _changelog_style(paths=None) -> tuple[list[str], list[str]]:
             prev_quote = is_quote and not prev_blank
             prev_structural = structural
             prev_explicit_break = ln.endswith("  ") or ln.endswith("\\")
-            if language and re.match(r"^[-*+]\s", ln):
-                entry = ln[2:].strip()
-                zh = language == "zh"
-                n = len(re.findall(r"[一-鿿]", entry)) if zh else len(entry.split())
-                cap = CHANGELOG_ZH_CHARS if zh else CHANGELOG_EN_WORDS
-                unit = "字" if zh else "词"
-                if n > cap:
-                    too_long.append(f"{path.name} 一条 {n} {unit}(上限 {cap}):{entry[:36]}…")
-    return too_long, wrapped
-
-
-# 「量」在文档里的写法。抽成模块常量是为了让自测能反过来数命中数——**解析读空了,
-# 漂移检查就静默变成永远通过**,而它长得和通过一模一样(本项目惯犯 ③)。
-_CAP_PAT = re.compile(r"≤\s*(\d+)\s*词\s*/\s*≤\s*(\d+)\s*字")
-
-
-def _changelog_cap_drift() -> list[str]:
-    """文档里写的「≤N 词 / ≤N 字」必须与闸门常量一致——形状同 `IDX_SCHEMA` 漂移那条。
-
-    规则的数字一旦在文档里手抄一份,就是下一处腐化(本项目在版本号上栽过,判据见第十二节)。
-    这里**破例把本地 `CLAUDE.md` 也纳入**:模块顶部写着"CLAUDE.md 不进对账",那句管的是
-    "说法"——过程记录允许留下当时的看法;而这两个数字不是说法,是闸门会照着挡发版的硬事实,
-    而且 CLAUDE.md 恰恰是每个会话都被读到、最可能被照着执行的那一份。
-    """
-    pat = _CAP_PAT
-    out = []
-    for p in list(DOC_FILES) + [ROOT / "CLAUDE.md"]:
-        if not p.exists():
-            continue
-        for w, c in pat.findall(_read(p)):
-            if (int(w), int(c)) != (CHANGELOG_EN_WORDS, CHANGELOG_ZH_CHARS):
-                out.append(f"{p.name} 写 ≤{w} 词 / ≤{c} 字，闸门是 "
-                           f"≤{CHANGELOG_EN_WORDS} 词 / ≤{CHANGELOG_ZH_CHARS} 字")
-    return out
+    return wrapped
 
 
 # `>` 块允许的三类。参考手册里的引用块要承担**功能**（扫读时必须跳出来的东西），
@@ -714,15 +672,12 @@ def audit() -> dict:
                 spec_divergence.append(
                     f"{name} 没有引入 tools/build/version_res.py —— 该平台的产物在程序外看不到版本号")
 
-    changelog_long, changelog_wrapped = _changelog_style()
-    changelog_cap = _changelog_cap_drift()
+    changelog_wrapped = _changelog_style()
     bq = _blockquote_style()
 
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
-        "changelog_too_long": changelog_long,
         "changelog_hard_wrapped": changelog_wrapped,
-        "changelog_cap_drift": changelog_cap,
         "rhetorical_blockquotes": bq,
         "enums": enums,
         "spec_missing_datas": spec_missing,
@@ -742,7 +697,7 @@ def audit() -> dict:
         "tokens": _theme_tokens(),
         "note": ("硬差异（ghost_routes / dead_links / duplicate_endpoint_sections / ghost_methods / "
                  "ghost_query_args / missing_paths / idx_schema_drift / "
-                 "missing_selftest_files / changelog_too_long / changelog_hard_wrapped / "
+                 "missing_selftest_files / changelog_hard_wrapped / "
                  "tokens.theme_gaps / tokens.shared_leaked / "
                  "tokens.unresolved_refs）"
                  "是文档说错了，会挡发版；软差异（undocumented_*、dead_tokens）只是文档没写，"
@@ -783,12 +738,8 @@ def _rows(r: dict) -> tuple[list, list]:
             # 端点永远闭嘴。归硬类是因为后果与幽灵端点同源——判据带着一条静默的例外在跑。
             ("已成真路由、该从 EXTERNAL_ENDPOINTS 删掉的豁免",
              r.get("stale_external_endpoints", []))]
-    # 归硬类的理由与别的硬差异同源：它们都是"文档说了一件不成立的事"——CHANGELOG 抬头、
-    # CLAUDE.md、开发约定 三处都写着「一条一行」，条目却是段落，那三句话就是假的。
-    # 而且这条不像内部端点那样存在"有意不写"的合理情形，不会逼出 `|| true`。
-    hard += [("CHANGELOG 条目超出「一条一行」的量", r.get("changelog_too_long", [])),
-             ("CHANGELOG 里的硬折行", r.get("changelog_hard_wrapped", [])),
-             ("文档写的 CHANGELOG 量与闸门常量不一致", r.get("changelog_cap_drift", [])),
+    # 只约束机械折行，不把说明问题所需的正文长度当成缺陷。
+    hard += [("CHANGELOG 里的硬折行", r.get("changelog_hard_wrapped", [])),
              ("docs/ 里的修辞性引用块", r.get("rhetorical_blockquotes", []))]
     hard += [("同一端点在契约里写了不止一节（分叉的开始）", r.get("duplicate_endpoint_sections", [])),
              ("端点标题声明了代码没有的方法", r.get("ghost_methods", [])),
@@ -999,15 +950,15 @@ def _selftest() -> int:
         ("spec 掉了版本资源会挡发版",
          n_hard(spec_divergence=["build-mac.spec 没有引入 tools/build/version_res.py"]) == 1),
     ]
-    # CHANGELOG 两条量(260904):反例造不出来就说明解析读空了,检查会静默变成永远通过。
+    # CHANGELOG 格式：长正文合法，机械折行必须拦截，缺失文件必须明确报错。
     import tempfile as _tf
     _cd = pathlib.Path(_tf.mkdtemp())
     _NL = chr(10)
     _good_en = "## Unreleased" + _NL * 2 + "- Retries now merge into the turn they retry." + _NL
-    _long_en = "## Unreleased" + _NL * 2 + "- " + "word " * 40 + _NL
+    _long_en = "## Unreleased" + _NL * 2 + "- Requests previously lost their original error when a later retry succeeded. The recording now preserves both attempts and explains which response belongs to each attempt, so users can investigate the initial failure without mistaking the final success for the entire interaction." + _NL
     _wrap_en = "## Unreleased" + _NL * 2 + "- A line that got" + _NL + "  hard wrapped here." + _NL
     _quote_en = "> first quoted line" + _NL + "> folded continuation" + _NL
-    _long_zh = "## 未发布" + _NL * 2 + "- " + "字" * 60 + _NL
+    _long_zh = "## 未发布" + _NL * 2 + "- 之前重试成功后，界面只展示最后一次结果，用户无法理解最初为什么失败。现在保留每次请求及其对应响应，并明确展示重试关系，便于追溯原始错误及最终恢复过程。" + _NL
     _rel_en = "## v0.1.0" + _NL * 2 + "- " + "word " * 40 + _NL
 
     def _w(name, text):
@@ -1035,27 +986,17 @@ def _selftest() -> int:
     except SystemExit:
         _missing_raised = True
     ecases += [
-        ("超长英文条目能检出", len(_t_long[0]) == 1),
-        ("根 CHANGELOG 无 zh 后缀仍检出超长中文", len(_t_zh[0]) == 1),
-        ("历史文件硬折行同样检出", len(_history_wrap[1]) == 1),
-        ("代码表格嵌套列表及独立段落不误报", _changelog_style(_w("structured.md", _structured)) == ([], [])),
+        ("较长英文未发布正文允许", _t_long == []),
+        ("较长中文未发布正文允许", _t_zh == []),
+        ("历史文件硬折行同样检出", len(_history_wrap) == 1),
+        ("代码表格嵌套列表及独立段落不误报", _changelog_style(_w("structured.md", _structured)) == []),
         ("缺失必需变更记录立即报错", _missing_raised),
-        ("续行(硬折行)能检出", len(_t_wrap[1]) == 1),
-        ("被折成多行的引用块能检出", len(_t_quote[1]) == 1),
-        # 反向:合规条目不许被报,否则闸门天天红,下一步就是有人加 `|| true`
-        ("合规条目不误报", _t_good == ([], [])),
-        # 已发布历史保留完整事实，不套用未发布速览的长度限制
-        ("已发版节的长条目不查长度", _changelog_style(_w("f.md", _rel_en))[0] == []),
-        ("真实 CHANGELOG 两条都干净", _changelog_style() == ([], [])),
-        ("CHANGELOG 超长挡发版", n_hard(changelog_too_long=["x.md 一条 99 词"]) == 1),
-        ("CHANGELOG 硬折行挡发版", n_hard(changelog_hard_wrapped=["x.md:9 续行"]) == 1),
-        ("量的数字漂移挡发版", n_hard(changelog_cap_drift=["x.md 写 ≤9 词"]) == 1),
-        ("真实文档写的量与闸门一致", not _changelog_cap_drift()),
-        # 正向:模式必须真的命中。只断言"没有漂移"等于奖励一个什么都匹配不到的正则。
-        # 只认仓库内的 开发约定.md——CLAUDE.md 是 gitignored 的本地文件,干净 checkout
-        # 里不存在,把它数进断言会让这条自测只在 CI(或别人的机器)上红,方向与 _version.py
-        # 那次教训正好相反(那个是只在本地存在)。
-        ("量的写法在文档里真被匹配到", bool(_CAP_PAT.search(_read(GUIDE)))),
+        ("续行(硬折行)能检出", len(_t_wrap) == 1),
+        ("被折成多行的引用块能检出", len(_t_quote) == 1),
+        ("合规条目不误报", _t_good == []),
+        ("较长历史正文允许", _changelog_style(_w("f.md", _rel_en)) == []),
+        ("真实两份 CHANGELOG 无硬折行", _changelog_style() == []),
+        ("CHANGELOG 硬折行挡验收", n_hard(changelog_hard_wrapped=["x.md:9 续行"]) == 1),
     ]
     # `>` 三类闸门（260904）：三个豁免各造一个正例、修辞块造一个反例。
     # 豁免写错方向（把该报的放过）与报错方向同样致命，所以正反都测。
