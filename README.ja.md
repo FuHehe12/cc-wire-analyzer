@@ -6,7 +6,7 @@ CC Wire Analyzer は、Claude Code と上流の間で交わされるリクエス
 
 [English](README.md) · [中文](README.zh.md)
 
-[ウェブサイト](https://fuhehe12.github.io/cc-wire-analyzer/) · [最新版をダウンロード](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [ドキュメント](docs/README.md) · [変更履歴](CHANGELOG.md)
+[ウェブサイト](https://fuhehe12.github.io/cc-wire-analyzer/) · [最新版をダウンロード](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [製品マニュアル](https://fuhehe12.github.io/cc-wire-analyzer/manual.html) · [ドキュメント](docs/README.md) · [変更履歴](CHANGELOG.md)
 
 **Windows / macOS 対応 · 中国語 / 英語 / 日本語 UI · オプションの翻訳と AI 解説 · 記録はローカルに保存**
 
@@ -108,11 +108,13 @@ uv run python src/desktop.py
 
 この README では、初回利用に必要な情報だけを扱っています。実装、ネットワーク転送、データの保存場所、設定の復元、API の全仕様、開発ルールについては、必要に応じて次のドキュメントを参照してください。
 
+- [製品マニュアル（オンライン）](https://fuhehe12.github.io/cc-wire-analyzer/manual.html)——機能・使い方・開発リファレンスを 1 ページに集約
 - [ドキュメント一覧](docs/README.md)
 - [画面ガイド](docs/reference/界面导览.md)
 - [agent から CCWA を使う](docs/reference/AI_USAGE.md)
-- [API 契約](docs/product-manual.html#doc=API契约.md)
+- [API 契約](docs/reference/API契约.md)
 - [アーキテクチャ概要](docs/reference/架构总览.md)
+- [Claude Code が実際に送るもの](docs/reference/报文解读.md)
 - [同種ツール構築ハンドブック](handbook/同类工具构建手册.md)——他の agent ツール（Codex / opencode / 自作）向けに同種のアナライザーを作るときに読むもの：能力ユニットごとに「harness を替えると何が変わり、何が変わらないか」を明記
 - [開発とビルドに参加する](CONTRIBUTING.md)
 

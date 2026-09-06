@@ -6,7 +6,7 @@ CC Wire Analyzer 在本机录下 Claude Code 与上游之间的请求和响应�
 
 [English](README.md) · [日本語](README.ja.md)
 
-[官网](https://fuhehe12.github.io/cc-wire-analyzer/zh/) · [下载最新版](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [使用文档](docs/README.md) · [更新日志](CHANGELOG.zh.md)
+[官网](https://fuhehe12.github.io/cc-wire-analyzer/zh/) · [下载最新版](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [产品说明书](https://fuhehe12.github.io/cc-wire-analyzer/manual.html) · [使用文档](docs/README.md) · [更新日志](CHANGELOG.zh.md)
 
 **支持 Windows 与 macOS · 中文/英文/日文界面 · 可选翻译与 AI 解读 · 录制保存在本机**
 
@@ -108,11 +108,13 @@ uv run python src/desktop.py
 
 README 只保留第一次使用需要的信息。实现原理、网络转发、数据位置、配置恢复、完整 API 和开发约定请按需查看：
 
+- [产品说明书（在线）](https://fuhehe12.github.io/cc-wire-analyzer/manual.html)——一页读完：功能、用法与完整开发参考
 - [文档索引](docs/README.md)
 - [界面导览](docs/reference/界面导览.md)
 - [用 agent 驱动 CCWA](docs/reference/AI_USAGE.md)
-- [API 契约](docs/product-manual.html#doc=API契约.md)
+- [API 契约](docs/reference/API契约.md)
 - [架构总览](docs/reference/架构总览.md)
+- [报文解读](docs/reference/报文解读.md)——Claude Code 实际发了什么
 - [同类工具构建手册](handbook/同类工具构建手册.md)——想给别的 agent 工具（Codex / opencode / 自研）做同类分析器时看：逐个能力单元，每个标注「换 harness 时哪些变、哪些不变」
 - [参与开发与构建](CONTRIBUTING.md)
 

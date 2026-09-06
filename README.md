@@ -6,7 +6,7 @@ CC Wire Analyzer records requests and responses between Claude Code and its upst
 
 [中文](README.zh.md) · [日本語](README.ja.md)
 
-[Website](https://fuhehe12.github.io/cc-wire-analyzer/) · [Download the latest release](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
+[Website](https://fuhehe12.github.io/cc-wire-analyzer/) · [Download the latest release](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) · [Manual](https://fuhehe12.github.io/cc-wire-analyzer/manual.html) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
 **Windows and macOS · Chinese, English, and Japanese UI · Optional translation and AI explanation · Recordings stored locally**
 
@@ -108,11 +108,13 @@ uv run python src/desktop.py
 
 This README covers only what you need for your first session. For implementation details, network forwarding, data locations, configuration recovery, the complete API, and development conventions, see:
 
+- [Product manual (online)](https://fuhehe12.github.io/cc-wire-analyzer/manual.html) — everything in one page: what it does, how to use it, and the full developer reference
 - [Documentation index](docs/README.md)
 - [UI guide](docs/reference/界面导览.md)
 - [Use an agent to drive CCWA](docs/reference/AI_USAGE.md)
-- [API contract](docs/product-manual.html#doc=API契约.md)
+- [API contract](docs/reference/API契约.md)
 - [Architecture overview](docs/reference/架构总览.md)
+- [What Claude Code actually sends](docs/reference/报文解读.md)
 - [Building a tool like this one](handbook/同类工具构建手册.md) — a portable handbook for wiring up the same kind of analyser for another agent harness (Codex, opencode, your own): one unit per capability, each marked with what changes and what does not when the harness changes
 - [Contributing and building](CONTRIBUTING.md)
 
