@@ -16,6 +16,10 @@
 
 ## Unreleased
 
+## v0.4.27 - 2026-09-06
+
+- Default settings enable rolling compaction and prefill DeepSeek, with larger analysis limits; API keys remain empty.
+
 - The website explains prompts, run timelines, snapshots, translation and AI explanations, with online documentation and expandable screenshots.
 - Documentation maintenance rules join the product manual; research findings and remaining design questions replace duplicate historical notes.
 - API contracts and development conventions now live in the product manual; compatibility links and documentation checks remain intact.

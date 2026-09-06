@@ -42,16 +42,16 @@ _DEFAULTS = {
     # 滚动压实（260831）：今天的录制写到阈值就把已写完的前缀封存成分片，不必等跨天。
     # 动机是**当天磁盘峰值**——实测单日 500~860MB 是常态，而 compact_date 拒绝碰今天，
     # 于是 28x 的压缩比在当天一秒都享受不到。
-    # 默认关：这是新形态，先让它在真流量上跑几天再考虑默认开。
-    "rolling_compact": False,
+    # 默认开启：按维护者实际使用配置，及时压实当天已写完的录制前缀。
+    "rolling_compact": True,
     # 切段阈值（MB），读写两侧夹到 20~2000（见 _clamp_seg_mb）。
     "rolling_compact_mb": 200,
     "translate": {
         "api_key": "",
-        "base_url": "",
-        "model": "",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
         "temperature": 0.3,
-        "max_tokens": 8192,   # 长文本翻译/解读输出上限；不足会被上游截断（260713 开放到设置页）
+        "max_tokens": 16384,   # 长文本翻译/解读输出上限；不足会被上游截断（260713 开放到设置页）
         "target_lang": "zh",
         # 输入侧上限，单位**字符**（不是 token——客户端算不出 token 数，提示里报的也是
         # 字符，配置项必须与提示同一单位，所见即所得）。260825 从 app.py 的写死 20000
@@ -61,8 +61,8 @@ _DEFAULTS = {
         # chat_context_max_chars：分析对话每轮注入的快照上下文上限
         # 两个都读写两侧夹取（1000~2,000,000，见 _clamp_chars）：下限防"填 0 截成空串
         # 还挂已截断提示"，上限防手滑天文数字一次烧穿。
-        "input_max_chars": 20000,
-        "chat_context_max_chars": 20000,
+        "input_max_chars": 80000,
+        "chat_context_max_chars": 80000,
     },
     "explain": {
         "prompt": "",

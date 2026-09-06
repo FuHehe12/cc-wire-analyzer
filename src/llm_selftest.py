@@ -6,7 +6,7 @@
 20,000 字符。截断一直**有自陈**（260801），但砍在哪一刀用户定不了——实测单条 system prompt
 40K+ 常见，被砍一半的翻译/解读本身就是失真的结论。本测守三件事：
 
-  ① 老配置升级零变化：没有新键的 config.json 合并后行为与默认完全一致
+  ① 既有显式配置升级不变；缺少的键补当前默认值
   ② 配置真的改变刀口：SSE 的 input_truncated 事件带的是**配置值**而不是常量
   ③ 防呆夹取：这是花钱的旋钮，0/负数/天文数字不许穿透到截断逻辑
 
@@ -94,13 +94,33 @@ def main() -> None:
     import app as A                                   # noqa: E402
     C = A.app.test_client()
 
-    print("\n[1] 老配置升级零变化（不带新键的 config.json 合并出默认值）")
+    print("\n[0] 全新配置不带密钥，已有配置与密钥不会被默认值覆盖")
+    CFG.CONFIG_FILE.unlink(missing_ok=True)
+    fresh = CFG.get_config()
+    ok(fresh["translate"]["api_key"] == "", "全新配置密钥为空")
+    ok(fresh["translate"]["input_max_chars"] == 80000 and
+       fresh["translate"]["chat_context_max_chars"] == 80000, "全新配置输入与上下文上限为 80K")
+    existing = {"rolling_compact": False, "translate": {
+        "api_key": "synthetic-existing-key", "base_url": "https://existing.invalid", "model": "existing-model",
+        "max_tokens": 4096, "input_max_chars": 12345, "chat_context_max_chars": 23456}}
+    CFG.CONFIG_FILE.write_text(json.dumps(existing), encoding="utf-8")
+    before = CFG.CONFIG_FILE.read_bytes()
+    saved = CFG.get_config()
+    ok(all(saved["translate"][k] == v for k, v in existing["translate"].items()) and
+       saved["rolling_compact"] is False, "已存服务端点、模型、参数与密钥均优先于默认值")
+    ok(CFG.CONFIG_FILE.read_bytes() == before, "读取配置不改写已有文件")
+    saved = CFG.set_config({"ui_lang": "en"})
+    ok(all(saved["translate"][k] == v for k, v in existing["translate"].items()),
+       "修改无关设置后仍保留已有参数与密钥")
+    ok(CFG._deepcopy_defaults()["translate"]["api_key"] == "", "用户密钥不回写到全新配置默认值")
+
+    print("\n[1] 缺键补当前默认值，已有显式值保留")
     CFG.CONFIG_FILE.write_text(json.dumps({"ui_lang": "zh", "translate": {"max_tokens": 8192}}),
                                encoding="utf-8")
     cfg = CFG.get_config()
-    ok(cfg["translate"]["input_max_chars"] == 20000, "缺键 → 默认 20000")
-    ok(cfg["translate"]["chat_context_max_chars"] == 20000, "缺键 → 默认 20000")
-    ok(A._llm_input_max() == 20000 and A._chat_ctx_max() == 20000, "app 侧读到默认")
+    ok(cfg["translate"]["input_max_chars"] == 80000, "缺键 → 默认 80000")
+    ok(cfg["translate"]["chat_context_max_chars"] == 80000, "缺键 → 默认 80000")
+    ok(A._llm_input_max() == 80000 and A._chat_ctx_max() == 80000, "app 侧读到默认")
     ok(cfg["translate"]["max_tokens"] == 8192, "既有键不受影响")
 
     print("\n[2] 配置改变刀口：input_truncated 事件带配置值")
@@ -111,11 +131,11 @@ def main() -> None:
     ok(cut is not None, "超配置值 → 有截断事件")
     ok(cut and cut["input_truncated"] == 5000, "事件里是配置值 5000（不是常量 20000）", cut)
     ok(cut and cut["orig"] == 8000, "事件里原文长度 8000", cut)
-    # 同样的 8000 字在默认 20K 下不该有截断事件
+    # 同样的 8000 字在显式配置 20K 下不该有截断事件
     CFG.set_config({"translate": {"input_max_chars": 20000}})
     r = C.post("/api/explain", json={"text": "字" * 8000})
     evs = sse_events(r)
-    ok(not any("input_truncated" in e for e in evs), "默认 20K 下 8000 字不截断")
+    ok(not any("input_truncated" in e for e in evs), "显式配置 20K 下 8000 字不截断")
     # AI 解读走同一把刀（同一函数，换端点验证接线没漏）
     CFG.set_config({"translate": {"input_max_chars": 6000}})
     r = C.post("/api/explain", json={"text": "字" * 7000})
@@ -127,7 +147,7 @@ def main() -> None:
     CFG.set_config({"translate": {"chat_context_max_chars": 20000}})
     r = C.post("/api/analyze/chat", json={"sid": sid, "question": "这份提示词讲什么？"})
     cut = next((e for e in sse_events(r) if "input_truncated" in e), None)
-    ok(cut is not None and cut["input_truncated"] == 20000, "默认 20K：72K 上下文被截", cut)
+    ok(cut is not None and cut["input_truncated"] == 20000, "显式配置 20K：72K 上下文被截", cut)
     CFG.set_config({"translate": {"chat_context_max_chars": 100000}})
     r = C.post("/api/analyze/chat", json={"sid": sid, "question": "这份提示词讲什么？"})
     evs = sse_events(r)
@@ -136,7 +156,7 @@ def main() -> None:
     with A.app.test_request_context():
         m = A._chat_ctx_max()
         ok(m == 100000, "config 100K 生效")
-        ok(A.CHAT_CONTEXT_MAX == 20000, "常量仍是默认值（只作 fallback，不被改写）")
+        ok(A.CHAT_CONTEXT_MAX == 20000, "常量仍是兼容 fallback（不被配置改写）")
 
     print("\n[4] 防呆夹取（花钱的旋钮，读写两侧都夹）")
     CFG.set_config({"translate": {"input_max_chars": 0, "chat_context_max_chars": -5}})
