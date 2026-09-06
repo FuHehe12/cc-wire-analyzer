@@ -1,6 +1,6 @@
 # 变更历史 — 已发布版本
 
-> v0.4.25 及更早每一版的完整说明。当前版本与未发布滚动清单在 [CHANGELOG.zh.md](CHANGELOG.zh.md)，
+> v0.4.26 及更早每一版的完整说明。当前版本与未发布滚动清单在 [CHANGELOG.zh.md](CHANGELOG.zh.md)，
 > 那份也是 CI 生成 release notes 的真源。下面每一版同样原样发布在各自的
 > [GitHub Release 页](https://github.com/FuHehe12/cc-wire-analyzer/releases)。
 >
@@ -9,6 +9,12 @@
 
 
 
+
+## v0.4.26 - 2026-09-05
+
+### 新增
+
+- 详情页新增调用参数折叠区：请求体除三大块外的字段原样摆出，没见过的键标橙。
 
 ## v0.4.25 - 2026-09-04
 
