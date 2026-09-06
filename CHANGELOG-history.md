@@ -1,6 +1,6 @@
 # Changelog — released versions
 
-> Full notes for every released version, v0.4.25 and earlier. The current version and the
+> Full notes for every released version, v0.4.26 and earlier. The current version and the
 > unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
 > to build a release's notes. Each version below is also published, unchanged, on its
 > [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
@@ -9,6 +9,12 @@
 > on every handoff and needs to be short, while the history below it needs to be complete.
 > Those two pull in opposite directions, so the history moved here.
 
+
+## v0.4.26 - 2026-09-05
+
+### Added
+
+- Detail view shows the whole call-parameter block from the request body; unseen fields are highlighted.
 
 ## v0.4.25 - 2026-09-04
 
