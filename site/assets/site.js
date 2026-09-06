@@ -1,7 +1,10 @@
-/* Progressive enhancement: all examples remain readable without JavaScript. */
-const tabs=[...document.querySelectorAll('[data-example]')];
-if(tabs.length){
- const activate=(tab,focus=false)=>{for(const t of tabs){const selected=t===tab;t.setAttribute('aria-selected',String(selected));t.tabIndex=selected?0:-1;document.getElementById(t.getAttribute('aria-controls')).hidden=!selected;}if(focus)tab.focus();};
- tabs.forEach((tab,i)=>{tab.addEventListener('click',()=>activate(tab));tab.addEventListener('keydown',e=>{let j;if(e.key==='ArrowRight')j=(i+1)%tabs.length;if(e.key==='ArrowLeft')j=(i+tabs.length-1)%tabs.length;if(e.key==='Home')j=0;if(e.key==='End')j=tabs.length-1;if(j!==undefined){e.preventDefault();activate(tabs[j],true);}});});
- activate(tabs[0]);
+document.documentElement.classList.add('js');
+const viewer=document.getElementById('image-viewer');
+if(viewer){
+ const picture=viewer.querySelector('img'),caption=viewer.querySelector('.viewer-bar p');
+ for(const link of document.querySelectorAll('[data-zoom]'))link.addEventListener('click',e=>{e.preventDefault();picture.src=link.href;picture.alt=link.querySelector('img').alt;caption.textContent=picture.alt;viewer.showModal();});
+ viewer.querySelector('button').addEventListener('click',()=>viewer.close());
+ viewer.addEventListener('click',e=>{if(e.target===viewer){const r=viewer.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)viewer.close();}});
 }
+const copy=document.querySelector('.copy-button');
+if(copy)copy.addEventListener('click',async()=>{const text=document.getElementById('agent-request').innerText;try{await navigator.clipboard.writeText(text);copy.textContent=copy.dataset.done;}catch{const range=document.createRange();range.selectNodeContents(document.getElementById('agent-request'));const selection=getSelection();selection.removeAllRanges();selection.addRange(range);copy.textContent=copy.dataset.fallback;}});

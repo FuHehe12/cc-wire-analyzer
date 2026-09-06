@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CC Wire Analyzer — Inspect Claude Code requests, prompts and failures</title>
-  <meta name="description" content="A local open-source traffic inspector for Claude Code. Record requests and responses, inspect prompts, tool calls, errors and token usage, and follow the illustrated product manual.">
-  <meta name="theme-color" content="#f5f8fc">
+  <title>CC Wire Analyzer — Prompts, subagents, snapshots and run analysis</title>
+  <meta name="description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
+  <meta name="theme-color" content="#172b46">
   <link rel="canonical" href="https://fuhehe12.github.io/cc-wire-analyzer/">
   <link rel="alternate" hreflang="en" href="https://fuhehe12.github.io/cc-wire-analyzer/">
   <link rel="alternate" hreflang="zh-CN" href="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
@@ -17,23 +17,23 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CC Wire Analyzer">
   <meta property="og:locale" content="en_US">
-  <meta property="og:title" content="CC Wire Analyzer — Inspect Claude Code requests, prompts and failures">
-  <meta property="og:description" content="A local open-source traffic inspector for Claude Code. Record requests and responses, inspect prompts, tool calls, errors and token usage, and follow the illustrated product manual.">
+  <meta property="og:title" content="CC Wire Analyzer — Prompts, subagents, snapshots and run analysis">
+  <meta property="og:description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
   <meta property="og:url" content="https://fuhehe12.github.io/cc-wire-analyzer/">
   <meta property="og:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
   <meta property="og:image:alt" content="Actual capture list showing synthetic requests, a failure, timing and token usage">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="CC Wire Analyzer — Inspect Claude Code requests, prompts and failures">
-  <meta name="twitter:description" content="A local open-source traffic inspector for Claude Code. Record requests and responses, inspect prompts, tool calls, errors and token usage, and follow the illustrated product manual.">
+  <meta name="twitter:title" content="CC Wire Analyzer — Prompts, subagents, snapshots and run analysis">
+  <meta name="twitter:description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
   <meta name="twitter:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
 
   <script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "CC Wire Analyzer",
-  "description": "A local open-source traffic inspector for Claude Code. Record requests and responses, inspect prompts, tool calls, errors and token usage, and follow the illustrated product manual.",
+  "description": "Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.",
   "url": "https://fuhehe12.github.io/cc-wire-analyzer/",
   "downloadUrl": "https://github.com/FuHehe12/cc-wire-analyzer/releases/latest",
   "softwareHelp": "https://fuhehe12.github.io/cc-wire-analyzer/manual.html",
@@ -41,7 +41,7 @@
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows, macOS",
   "image": "https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png",
-  "screenshot": "https://fuhehe12.github.io/cc-wire-analyzer/assets/screenshots/tutorial-capture.png",
+  "screenshot": "https://fuhehe12.github.io/cc-wire-analyzer/assets/screenshots/tutorial-detail.png",
   "license": "https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE",
   "author": {
     "@type": "Person",
@@ -60,9 +60,9 @@
 <header class="site-header">
 <div class="shell nav">
 <a class="brand" href="./">
-<img src="assets/favicon.svg" alt="" width="34" height="34">CC Wire Analyzer</a>
+<img src="assets/favicon.svg" width="34" height="34" alt="">CC Wire Analyzer</a>
 <nav class="nav-links" aria-label="Main navigation">
-<a class="optional" href="#questions">Use cases</a>
+<a class="optional" href="#read">Features</a>
 <a href="#start">Get started</a>
 <a href="manual.html">Manual (中文)</a>
 <a class="optional" href="https://github.com/FuHehe12/cc-wire-analyzer">GitHub</a>
@@ -72,201 +72,302 @@
 </header>
 <main id="main">
 <section class="hero">
-<div class="shell hero-grid">
+<div class="shell">
+<div class="hero-grid">
 <div>
-<p class="product-type">A local traffic inspector for Claude Code</p>
-<h1>Inspect the request.<br>Understand the run.</h1>
-<p class="hero-copy">Record the requests and responses between Claude Code and its model endpoint. Inspect prompts, tools, errors and usage, then follow the timeline back to the evidence.</p>
+<p class="product-type">An observability workspace for Claude Code</p>
+<h1>See what reaches the model.<br>Follow the calls behind the task.</h1>
+<p class="hero-copy">Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.</p>
 <div class="actions">
 <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Download the app</a>
-<a class="button" href="manual.html">Read the manual (中文)</a>
+<a class="button secondary" href="manual.html">Read the manual (中文)</a>
 </div>
 <ul class="trust-line">
 <li>Windows / macOS</li>
-<li>English, 中文, 日本語 UI</li>
-<li>Open source · Local storage</li>
+<li>English · 中文 · 日本語</li>
+<li>Open source · Local records</li>
 </ul>
 </div>
-<figure class="hero-screen">
-<div class="screen-route">
+<aside class="request-map">
+<div class="map-route">
 <span>Claude Code</span>
-<i class="route-line" aria-hidden="true">
+<i aria-hidden="true">
 </i>
-<span>Local recorder</span>
-<i class="route-line" aria-hidden="true">
+<span>CCWA</span>
+<i aria-hidden="true">
 </i>
-<span>Model endpoint</span>
+<span>Model</span>
 </div>
-<a href="manual.html#manual-connect">
-<img src="assets/screenshots/tutorial-capture.png" alt="Actual capture list showing synthetic requests, a failure, timing and token usage" width="1352" height="537" fetchpriority="high">
-</a>
-<figcaption>Actual UI with isolated synthetic data. Open the illustrated guide for annotated steps (Chinese).</figcaption>
-</figure>
+<div class="map-heading">
+<strong>Inside a recorded request</strong>
+<small>Reading schematic</small>
+</div>
+<dl>
+<div>
+<dt>System</dt>
+<dd>The system prompts and rules sent to the model</dd>
+</div>
+<div>
+<dt>Messages</dt>
+<dd>Conversation history, tool results and injected context</dd>
+</div>
+<div>
+<dt>Tools</dt>
+<dd>The tools and parameters declared for this call</dd>
+</div>
+<div>
+<dt>Response</dt>
+<dd>Returned text, thinking, tool calls and errors</dd>
+</div>
+</dl>
+<p>Input and output stay together, so an interpretation can be checked against its source.</p>
+</aside>
+</div>
+<div class="hero-bottom">
+<strong>For prompt debugging, failure investigation, subagent inspection and studying how agents work.</strong>
+<a href="#read">Explore the interface</a>
+</div>
 </div>
 </section>
-<div class="intro-band">
-<div class="shell">
-<strong>Start with a question. Follow the evidence.</strong>
-<p>Read main requests, tool results and auxiliary calls together. Use translation and AI explanations when useful; keep the recorded evidence in view.</p>
+<section class="section " id="read">
+<div class="shell feature ">
+<div class="feature-copy">
+<h2>What did the model actually receive?</h2>
+<p class="lead">Expand a conversation into the request behind it.</p>
+<p>Inspect the system prompt, history, tool definitions and call parameters alongside user input. When an answer changes or instructions conflict, start with what was actually sent.</p>
+<ul class="points">
+<li>
+<strong>Prompts and context</strong>: inspect System, Messages, tool results and reminders.</li>
+<li>
+<strong>Call parameters</strong>: check the model, output limits and other request fields.</li>
+<li>
+<strong>Originals and explanations</strong>: copy, format, translate or explain passages while retaining the source.</li>
+</ul>
+<a class="section-link" href="manual.html#manual-read">Request details (中文)</a>
+<p class="note">Thinking is visible only when it was returned and recorded; this is not access to all internal model reasoning.</p>
 </div>
-</div>
-<section class="section" id="questions">
-<div class="shell">
-<div class="section-head">
-<h2>What do you want to understand?</h2>
-<p>Choose a question to see where to start. These UI examples use synthetic records, not real user tasks.</p>
-</div>
-<div class="question-tabs" role="tablist" aria-label="Choose a question">
-<button type="button" id="tab-0" role="tab" aria-selected="true" aria-controls="example-0" data-example="0">Why did it fail?</button>
-<button type="button" id="tab-1" role="tab" aria-selected="false" aria-controls="example-1" data-example="1">What did the model receive?</button>
-<button type="button" id="tab-2" role="tab" aria-selected="false" aria-controls="example-2" data-example="2">How are calls connected?</button>
-</div>
-<article class="example-panel" id="example-0" role="tabpanel" aria-labelledby="tab-0">
-<figure class="example-image">
-<a href="manual.html#reading-list">
-<img src="assets/screenshots/tutorial-errors.png" alt="Error grouping in the actual UI, using a synthetic upstream failure" width="1352" height="724" loading="lazy">
+<div class="visual">
+<figure class="product-shot">
+<a href="assets/screenshots/tutorial-detail.png" data-zoom>
+<img src="assets/screenshots/tutorial-detail.png" alt="Request details: recorded input on the left, model response on the right" width="1352" height="919" loading="lazy">
 </a>
-<figcaption>Error grouping in the actual UI, using a synthetic upstream failure</figcaption>
+<figcaption>
+<span>Request details: recorded input on the left, model response on the right</span>
+<span>Enlarge image</span>
+</figcaption>
 </figure>
-<div class="example-copy">
-<h3>Find what the failures share.</h3>
-<ol>
-<li>Locate failed requests and inspect error groups.</li>
-<li>Open a sample and read the response and stop reason.</li>
-<li>Distinguish upstream errors, tool failures and incomplete records.</li>
-</ol>
-<p class="boundary">A successful HTTP status can still carry an error inside the SSE response.</p>
-<a href="manual.html#reading-list">Read the investigation guide (中文)</a>
+<p class="note">Actual software UI with isolated synthetic data.</p>
 </div>
-</article>
-<article class="example-panel" id="example-1" role="tabpanel" aria-labelledby="tab-1">
-<figure class="example-image">
-<a href="manual.html#manual-read">
-<img src="assets/screenshots/tutorial-detail.png" alt="Actual request and response panels with synthetic content" width="1352" height="919" loading="lazy">
-</a>
-<figcaption>Actual request and response panels with synthetic content</figcaption>
-</figure>
-<div class="example-copy">
-<h3>Read the input beside the output.</h3>
-<ol>
-<li>Inspect System, Messages, Tools and call parameters.</li>
-<li>Compare the response with tool calls and results.</li>
-<li>Translate or explain a passage as needed, then check the original.</li>
-</ol>
-<p class="boundary">Thinking is visible only when the upstream returned it and it was recorded. An explanation is not proof of a cause.</p>
-<a href="manual.html#manual-read">Read the detail guide (中文)</a>
-</div>
-</article>
-<article class="example-panel" id="example-2" role="tabpanel" aria-labelledby="tab-2">
-<figure class="example-image">
-<a href="manual.html#manual-dag">
-<img src="assets/screenshots/tutorial-dag.png" alt="Actual timeline DAG with synthetic main and subagent lanes" width="1112" height="722" loading="lazy">
-</a>
-<figcaption>Actual timeline DAG with synthetic main and subagent lanes</figcaption>
-</figure>
-<div class="example-copy">
-<h3>Follow the timeline and the gaps.</h3>
-<ol>
-<li>Locate the relevant session, lane and turn.</li>
-<li>Expand tool calls, retries and auxiliary requests.</li>
-<li>Return to the request to check dispatch instructions and results.</li>
-</ol>
-<p class="boundary">Some parent-child links are inferred. Temporal proximity alone does not establish causation.</p>
-<a href="manual.html#manual-dag">Read the timeline guide (中文)</a>
-</div>
-</article>
 </div>
 </section>
-<section class="section alt" id="start">
+<section class="section soft" id="flow">
+<div class="shell feature reverse">
+<div class="feature-copy">
+<h2>One task can involve many model calls.</h2>
+<p class="lead">Put main, subagent and auxiliary requests back into the run.</p>
+<p>Title generation, safety checks, context compaction and retries can all happen during a task. Session lanes and turns make waits, dispatches and repeated calls easier to locate.</p>
+<ul class="points">
+<li>
+<strong>Relationships</strong>: expand turns and inspect connections between main and subagent calls.</li>
+<li>
+<strong>Usage</strong>: compare duration, first-response timing, tokens and cache usage.</li>
+<li>
+<strong>Failures</strong>: group similar errors, then inspect individual responses.</li>
+</ul>
+<a class="section-link" href="manual.html#manual-dag">Timelines and relationships (中文)</a>
+<p class="note">Some relationships are inferred by matching rules. Check the request before treating a connection as causal.</p>
+</div>
+<div class="visual">
+<figure class="product-shot">
+<a href="assets/screenshots/tutorial-dag.png" data-zoom>
+<img src="assets/screenshots/tutorial-dag.png" alt="Timeline with synthetic main and subagent lanes" width="1112" height="722" loading="lazy">
+</a>
+<figcaption>
+<span>Timeline with synthetic main and subagent lanes</span>
+<span>Enlarge image</span>
+</figcaption>
+</figure>
+<p class="note">Actual software UI with isolated synthetic data.</p>
+</div>
+</div>
+</section>
+<section class="section" id="compare">
 <div class="shell">
 <div class="section-head">
-<h2>Record your first request.</h2>
-<p>Three steps from download to a record you can inspect.</p>
+<h2>What changed between these two runs?</h2>
+<p>Save a prompt or capture as a snapshot, keeping the material available for another look.</p>
+</div>
+<div class="compare-layout">
+<figure class="product-shot">
+<a href="assets/screenshots/tutorial-snapshots.png" data-zoom>
+<img src="assets/screenshots/tutorial-snapshots.png" alt="Prompt whiteboard with two saved synthetic snapshots" width="1112" height="345" loading="lazy">
+</a>
+<figcaption>
+<span>Prompt whiteboard with two saved synthetic snapshots</span>
+<span>Enlarge image</span>
+</figcaption>
+</figure>
+<figure class="product-shot">
+<a href="assets/screenshots/tutorial-diff.png" data-zoom>
+<img src="assets/screenshots/tutorial-diff.png" alt="Snapshot comparison showing deterministic differences and comparability notes" width="1112" height="625" loading="lazy">
+</a>
+<figcaption>
+<span>Snapshot comparison showing deterministic differences and comparability notes</span>
+<span>Enlarge image</span>
+</figcaption>
+</figure>
+</div>
+<div class="compare-text">
+<div>
+<h3>Keep the material</h3>
+<p>Back up a prompt or capture from request details and organize it in the analysis workspace. Preserve the context used in your investigation.</p>
+</div>
+<div>
+<h3>Make differences visible</h3>
+<p>Compare prompts and context, including subtle changes in line breaks, zero-width characters and homoglyphs. Continue with a model discussion when useful.</p>
+</div>
+</div>
+<p class="note">A difference does not prove a cause. Two-prompt comparison and capture analysis are distinct workflows. Actual software UI with isolated synthetic data.</p>
+<a class="section-link" href="manual.html#manual-analyze">Snapshots and comparison (中文)</a>
+</div>
+</section>
+<section class="section trajectory" id="trajectory">
+<div class="shell">
+<div class="section-head">
+<h2>Go further: how did the task progress?</h2>
+<p>Trajectory analysis organizes requests into nodes and phases, offering several views of artifacts, checks, repetition and cost.</p>
+</div>
+<div class="trajectory-grid">
+<div class="process-strip">
+<p class="process-title">A schematic for reading a trajectory</p>
+<div class="process-nodes">
+<span>Read material</span>
+<i aria-hidden="true">
+</i>
+<span>Change artifact</span>
+<i aria-hidden="true">
+</i>
+<span>Run a check</span>
+<i aria-hidden="true">
+</i>
+<span>Continue</span>
+</div>
+<div class="process-questions">
+<div>
+<strong>Inputs and outputs</strong>
+<p>Which inputs may support an artifact?</p>
+</div>
+<div>
+<strong>Checks after changes</strong>
+<p>What was read or checked after a write?</p>
+</div>
+<div>
+<strong>Repetition and recovery</strong>
+<p>Where did failures, blocks and retries occur?</p>
+</div>
+<div>
+<strong>Time and usage</strong>
+<p>Where were time and tokens spent?</p>
+</div>
+</div>
+</div>
+<div class="trajectory-copy">
+<p>Eight views cover state snapshots, material lineage, verification, gates and loops, energy and variance, material lifelines, and counterfactual tables and timelines.</p>
+<p>Move from the overall change to a node, then back to the recorded request and tool result. The views help you form and check questions.</p>
+<a href="manual.html#research-reading-model">Trajectory analysis methods (中文)</a>
+<p class="note">Phase summaries use model interpretation; relationships and verification levels include heuristics. An “optimal trajectory” is a retrospective candidate, not a proven best workflow.</p>
+</div>
+</div>
+</div>
+</section>
+<section class="section" id="agent">
+<div class="shell">
+<div class="section-head">
+<h2>Inspect it yourself. Let an agent go deeper.</h2>
+<p>The UI and local HTTP API use the same records. For questions spanning many requests, an agent can search and aggregate, then return to individual record IDs.</p>
+</div>
+<div class="agent-grid">
+<article class="agent-col">
+<h3>Analyze inside the app</h3>
+<p>Configure a model endpoint to translate or explain text, discuss snapshots, or generate semantic trajectory summaries.</p>
+<ul>
+<li>Select the material before starting the analysis.</li>
+<li>Keep interpretations separate from the original content.</li>
+<li>Scope, model capability and record completeness affect the result.</li>
+</ul>
+<a class="section-link" href="manual.html#manual-analyze">Snapshots and comparison (中文)</a>
+</article>
+<article class="agent-col">
+<h3>Investigate with an external agent</h3>
+<p>With the service running, ask the agent to read the built-in guide, discover available data and query it progressively.</p>
+<div class="agent-prompt">
+<p id="agent-request">Read CC Wire Analyzer’s /api/ai-guide first. Inspect today’s failures and slow requests, list the relevant record IDs, then check their call parameters. State what evidence is missing for any uncertain cause.</p>
+<p>
+<code>GET http://127.0.0.1:&lt;port&gt;/api/ai-guide</code>
+</p>
+<button class="copy-button" data-done="Copied" data-fallback="Text selected; copy it now" aria-live="polite">Copy investigation prompt</button>
+</div>
+<p class="note">Use the port of the current instance. This is a prompt for an external agent, not a claim of continuous autonomous investigation and action.</p>
+<a class="section-link" href="manual.html#manual-agent">Agent workflows (中文)</a>
+</article>
+</div>
+</div>
+</section>
+<section class="section soft" id="start">
+<div class="shell">
+<div class="start-grid">
+<div class="download-copy">
+<h2>Connect Claude Code. Record the run that matters.</h2>
+<p>Download the asset for your platform. Reading saved records does not require an analysis model; configure translation and AI features when you need them.</p>
+<div class="actions">
+<a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Download the app</a>
+<a class="button" href="manual.html#manual-connect">Read the manual (中文)</a>
+</div>
 </div>
 <ol class="steps">
 <li>
-<h3>Choose your platform</h3>
-<p>Download the Windows or macOS asset from Releases. The manual covers installation and first launch.</p>
-<a href="manual.html#manual-connect">Installation guide (中文)</a>
+<h3>Open the app</h3>
+<p>Choose and launch the Windows or macOS release asset.</p>
 </li>
 <li>
-<h3>Start recording</h3>
-<p>Open the app, check the upstream endpoint and start the proxy. Complete setup, then use Claude Code as usual.</p>
-<a href="manual.html#manual-connect">Recording guide (中文)</a>
+<h3>Check the upstream and start the proxy</h3>
+<p>Follow setup, open a new Claude Code session and work as usual.</p>
 </li>
 <li>
-<h3>Open a record</h3>
-<p>Inspect its request and response. When finished, stop the proxy and check that configuration is restored.</p>
-<a href="manual.html#manual-read">Reading guide (中文)</a>
+<h3>Inspect the records and stop recording</h3>
+<p>Open details or the timeline. Stop the proxy when finished and check configuration restoration.</p>
 </li>
 </ol>
 </div>
-</section>
-<section class="section" id="manual">
-<div class="shell manual-grid">
-<div class="manual-copy">
-<h2>The details belong<br>in one manual.</h2>
-<p>From illustrated workflows to product requirements, API contracts and development conventions. Current behavior is distinguished from future design. The unified manual is currently in Chinese.</p>
-<a class="button" href="manual.html" download="CCWA-product-manual.html">Download offline HTML</a>
-<p>
-<small>A single file with its images and references, ready to read offline.</small>
-</p>
-</div>
-<div class="manual-links">
-<a href="manual.html#manual-connect">
-<strong>Get started</strong>
-<span>Installation, setup and recording</span>
-</a>
-<a href="manual.html#manual-read">
-<strong>Find and inspect</strong>
-<span>Error groups, search and request details</span>
-</a>
-<a href="manual.html#manual-analyze">
-<strong>Analyze and compare</strong>
-<span>Snapshots, diffs and interpretation limits</span>
-</a>
-<a href="manual.html#doc=API契约.md">
-<strong>Developer reference</strong>
-<span>Complete API contracts and conventions</span>
-</a>
-</div>
 </div>
 </section>
-<section class="section alt" id="privacy">
-<div class="shell privacy-grid">
-<div>
-<h2>Local records.<br>Clear data boundaries.</h2>
-<p>Local storage and network forwarding are different. Check the endpoint and scope before using model analysis.</p>
-</div>
-<dl class="privacy-list">
-<div>
-<dt>Recording</dt>
-<dd>Claude Code requests pass through the local proxy to the configured upstream model. The app saves records locally.</dd>
-</div>
-<div>
-<dt>Reading</dt>
-<dd>Reading saved requests and deterministic statistics needs no analysis model. Records support local compaction and archiving.</dd>
-</div>
-<div>
-<dt>Model analysis</dt>
-<dd>Translation, AI explanations and semantic analysis send the relevant content to the model endpoint you configure.</dd>
-</div>
-<div>
-<dt>Sharing & updates</dt>
-<dd>Record bodies may contain messages, files and sensitive data. Review them before sharing. Update checks and downloads also use the network.</dd>
-</div>
-</dl>
-</div>
-</section>
-<section class="final-cta">
+<section class="section">
 <div class="shell">
-<div class="cta-panel">
+<h2>A few things to know before starting.</h2>
+<div class="faq-list">
+<details>
+<summary>Where does the data go?</summary>
+<p>The local proxy forwards requests to the configured upstream and saves records locally. Translation, AI explanations and semantic analysis send relevant material to your configured analysis endpoint. Update checks and downloads also use the network.</p>
+</details>
+<details>
+<summary>Can I share a recording publicly?</summary>
+<p>Authentication headers are redacted, but bodies may still contain messages, file content and secrets. Inspect the material before sharing it. Website screenshots use prepared synthetic examples.</p>
+</details>
+<details>
+<summary>Which tools and platforms are supported?</summary>
+<p>The current product targets Claude Code, with Windows and macOS apps and English, Chinese and Japanese UI. Other harnesses need protocol and behavior validation; research directions are not supported integrations.</p>
+</details>
+<details>
+<summary>Does it automatically prove a cause or guarantee success?</summary>
+<p>Error groups, views, model interpretations and counterfactual candidates support investigation. Conclusions depend on the evidence and analysis. The manual distinguishes current behavior from future design.</p>
+</details>
+</div>
+<div class="manual-banner">
 <div>
-<h2>Start with one request.</h2>
-<p>Read the illustrated guide, then choose a question to investigate.</p>
+<h3>Continue in the online product manual.</h3>
+<p>Illustrated steps, product requirements, API contracts and development conventions in one place. The unified manual is currently in Chinese.</p>
 </div>
 <div class="actions">
-<a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Download the app</a>
 <a class="button" href="manual.html">Read the manual (中文)</a>
 </div>
 </div>
@@ -275,15 +376,25 @@
 </main>
 <footer class="site-footer">
 <div class="shell footer-row">
-<span>CC Wire Analyzer · Follow the recorded evidence.</span>
+<span>CC Wire Analyzer · Inspect how Claude Code runs.</span>
 <nav class="footer-links" aria-label="Footer navigation">
-<a href="manual.html">Manual (中文)</a>
+<a href="manual.html">Read the manual (中文)</a>
 <a href="https://github.com/FuHehe12/cc-wire-analyzer">GitHub</a>
-<a href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE">MIT code</a>
-<a href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE-DOCS">CC BY docs</a>
+<a href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE">MIT</a>
+<a href="https://github.com/FuHehe12/cc-wire-analyzer/blob/main/LICENSE-DOCS">CC BY 4.0</a>
 </nav>
 </div>
 </footer>
+<dialog id="image-viewer" aria-label="Interface screenshot">
+<div class="viewer-bar">
+<p>
+</p>
+<button type="button">Close</button>
+</div>
+<div class="viewer-body">
+<img alt="">
+</div>
+</dialog>
 <script src="assets/site.js" defer>
 </script>
 </body>
