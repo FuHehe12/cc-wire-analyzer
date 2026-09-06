@@ -44,3 +44,9 @@ CLAUDE.md
 issues/
 research/
 .claude/
+
+# Generated for Pages from the maintained offline manual.
+site/manual.html
+
+# Local browser QA artifacts.
+.site-qa/

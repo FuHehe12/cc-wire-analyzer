@@ -142,6 +142,9 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('evidence').textContent='当前功能与截图';
   document.querySelector('.downloads a[href*="reference-capabilities"]').remove();
   document.getElementById('buildNote').textContent='功能说明基线：v0.4.26 · 操作截图与历史示例分别标注 · 本文件可独立离线阅读。';
+  const siteLink=document.createElement('a');
+  siteLink.href='https://fuhehe12.github.io/cc-wire-analyzer/zh/';siteLink.textContent='项目官网';
+  document.getElementById('buildNote').append(' ',siteLink);
   const followHash=()=>{
     const raw=location.hash.slice(1);
     if(raw.startsWith('doc=')){const params=new URLSearchParams(raw),key=params.get('doc');if(BOOK.documents[key])showDoc(key,params.get('section'));return;}

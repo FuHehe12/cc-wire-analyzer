@@ -7,6 +7,8 @@ on:
       - 'site/**'
       - '.github/workflows/pages.yml'
       - 'tools/site_audit.py'
+      - 'tools/build_site.py'
+      - 'docs/product-manual.html'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +30,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate manual from its maintained source
+        run: python tools/build_site.py
 
       - name: Verify static artifact
         shell: bash

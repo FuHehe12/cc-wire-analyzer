@@ -4,17 +4,20 @@
 from __future__ import annotations
 
 import json
+import re
 import struct
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from xml.etree import ElementTree
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 PAGES = (SITE / "index.html", SITE / "zh" / "index.html")
+MANUAL = SITE / "manual.html"
+MANUAL_URL = "https://fuhehe12.github.io/cc-wire-analyzer/manual.html"
 EXPECTED_CANONICALS = {
     "https://fuhehe12.github.io/cc-wire-analyzer/",
     "https://fuhehe12.github.io/cc-wire-analyzer/zh/",
@@ -78,7 +81,7 @@ class PageParser(HTMLParser):
             self._json_ld_parts.append(data)
 
 
-def check_page(path: Path) -> list[str]:
+def check_page(path: Path, manual_nodes: set[str], manual_docs: set[str]) -> list[str]:
     errors: list[str] = []
     parser = PageParser()
     parser.feed(path.read_text(encoding="utf-8"))
@@ -112,9 +115,50 @@ def check_page(path: Path) -> list[str]:
         if value.startswith("#"):
             require(value[1:] in parser.ids, f"broken page anchor {value!r}")
             continue
-        target = (path.parent / parsed.path).resolve()
+        target = (path.parent / unquote(parsed.path)).resolve()
         require(target.exists(), f"broken local {attribute} {value!r}")
+        if target == MANUAL and parsed.fragment:
+            fragment = unquote(parsed.fragment)
+            if fragment.startswith("doc="):
+                document = parse_qs(parsed.fragment).get("doc", [""])[0]
+                require(document in manual_docs, f"unknown manual document {value!r}")
+            else:
+                require(fragment in manual_nodes, f"unknown manual chapter {value!r}")
+    require(any((path.parent / unquote(urlparse(value).path)).resolve() == MANUAL
+                for attribute, value in parser.links
+                if attribute == "href" and not urlparse(value).scheme and not value.startswith("//")),
+            "missing local product manual link")
     return errors
+
+
+def check_manual() -> tuple[list[str], set[str], set[str]]:
+    errors: list[str] = []
+    nodes: set[str] = set()
+    documents: set[str] = set()
+    try:
+        content = MANUAL.read_bytes()
+        if content != (ROOT / "docs" / "product-manual.html").read_bytes():
+            errors.append("site/manual.html differs from its source; run tools/build_site.py")
+        html = content.decode("utf-8")
+        payloads = {}
+        for key in ("bookData", "data"):
+            match = re.search(rf'<script id="{key}" type="application/json">(.*?)</script>', html, re.S)
+            if not match:
+                raise ValueError(f"missing manual payload {key}")
+            payloads[key] = json.loads(match.group(1))
+        documents = set(payloads["bookData"]["documents"])
+
+        def collect(branches: list[dict]) -> None:
+            for branch in branches:
+                nodes.add(branch["id"])
+                collect(branch.get("children", []))
+
+        collect(payloads["data"]["tree"])
+        if not nodes or not documents:
+            raise ValueError("empty manual chapters or documents")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        errors.append(f"invalid product manual: {exc}")
+    return errors, nodes, documents
 
 
 def png_dimensions(path: Path) -> tuple[int, int]:
@@ -125,7 +169,8 @@ def png_dimensions(path: Path) -> tuple[int, int]:
 
 
 def main() -> int:
-    errors = [error for page in PAGES for error in check_page(page)]
+    errors, manual_nodes, manual_docs = check_manual()
+    errors += [error for page in PAGES for error in check_page(page, manual_nodes, manual_docs)]
     try:
         dimensions = png_dimensions(SITE / "assets" / "social-preview.png")
         if dimensions != (1280, 640):
@@ -135,8 +180,8 @@ def main() -> int:
 
     sitemap = ElementTree.parse(SITE / "sitemap.xml")
     urls = {element.text for element in sitemap.findall("{*}url/{*}loc")}
-    if urls != EXPECTED_CANONICALS:
-        errors.append("sitemap URLs do not match the bilingual canonical URLs")
+    if urls != EXPECTED_CANONICALS | {MANUAL_URL}:
+        errors.append("sitemap URLs do not match the bilingual homepages and manual")
     robots = (SITE / "robots.txt").read_text(encoding="utf-8")
     if "Sitemap: https://fuhehe12.github.io/cc-wire-analyzer/sitemap.xml" not in robots:
         errors.append("robots.txt does not advertise the sitemap")
@@ -146,7 +191,7 @@ def main() -> int:
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    print("Static site audit passed: bilingual metadata, links, sitemap, and 1280x640 social preview are valid.")
+    print("Static site audit passed: bilingual metadata, links, exact manual copy, sitemap, and social preview are valid.")
     return 0
 
 
