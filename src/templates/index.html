@@ -27,7 +27,7 @@
 
 /* ===== 主题无关 token（三套外观共用；改这里等于三套一起改）=====
    与下面的深色取值分开放，是为了让「哪些必须三套各给一份」变成机器可判定的：
-   tools/doc_audit.py 只检查深色块里的 token，共用的这些不该出现在 classic/light。 */
+   tools/checks/doc_audit.py 只检查深色块里的 token，共用的这些不该出现在 classic/light。 */
 :root{
   --apple-transition:all .16s ease;
   --font-body:"Inter","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
@@ -1596,7 +1596,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
         </div>
         <!-- 曾有个「Headers 脱敏」开关：它是假的（proxy._redact() 一直无条件调用，从不看配置）。
              260713 连开关一起删掉，脱敏恒开——真让它可关 = 提供把 API key 明文写进 jsonl 的选项，
-             而录制现在可被 AI 经 CLI 读取（docs/reference/AI_USAGE.md），等于给 key 修一条直通 AI 上下文的路。 -->
+             而录制现在可被 AI 经 CLI 读取（docs/usage/AI_USAGE.md），等于给 key 修一条直通 AI 上下文的路。 -->
       </div>
 
       <!-- 运行中的实例（260809）。修的病：serve 是双重无窗的（console=False + 不建 pywebview 窗），
@@ -3288,7 +3288,7 @@ function laneLabel(k){ return (I18N.zh["lane." + k] != null) ? t18("lane." + k) 
 /* CC 已知的协议扩展基线（260731 实测：10 天真录制里出现过的全集，18 个）。
    这份清单**会随 CC 版本漂移**，所以它不是校验白名单，而是一条基线——出现不在其中的特性，
    界面高亮提示，意思是「CC 启用了我们没见过的能力，去查它带来什么新字段/新块」。
-   补充这个清单时请连同 docs/reference/开发约定.md §2.5 一起更新。 */
+   补充这个清单时请连同 docs/development/开发约定.md §2.5 一起更新。 */
 /* 协议扩展基线：**由后端注入**（classifier.KNOWN_BETAS，260802 从这里上提）。
    此前清单硬编码在这里，而后端的盲区雷达（/api/unknowns，AI 唯一能调的那一面）拿不到它，
    只好退而按频次升序猜"长尾即信号"——实测每天把同样几个结构性低频的已知特性顶在最前。

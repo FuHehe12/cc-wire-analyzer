@@ -1,0 +1,330 @@
+{
+  "capturedOn": "2026-09-06",
+  "screenshots": [
+    {
+      "id": "capture",
+      "target": "manual-connect",
+      "title": "从捕获页开始录制",
+      "file": "tutorial-capture.png",
+      "asset": "assets/tutorial-capture.png",
+      "sha256": "bdf973fb6996e04b5e30ab3e848f151190960f6e834e566ff90617f294506492",
+      "width": 1352,
+      "height": 537,
+      "callouts": [
+        {
+          "x": 1230,
+          "y": 38.078125,
+          "w": 94,
+          "h": 45,
+          "text": "启动或停止代理；这里是接入入口。"
+        },
+        {
+          "x": 5,
+          "y": 124.171875,
+          "w": 101,
+          "h": 35,
+          "text": "选日期后查看对应录制。"
+        },
+        {
+          "x": 6,
+          "y": 166.171875,
+          "w": 1340,
+          "h": 51,
+          "text": "点击一条记录进入详情。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。"
+    },
+    {
+      "id": "running",
+      "target": "manual-connect",
+      "title": "启动后核对状态与路由",
+      "file": "tutorial-running.png",
+      "asset": "assets/tutorial-running.png",
+      "sha256": "e895d42a681f2a639782cd2fc4ac5020fa12c34364f12008f937137e146e4bcf",
+      "width": 1352,
+      "height": 590,
+      "callouts": [
+        {
+          "x": 48,
+          "y": 22,
+          "w": 78.5,
+          "h": 29.1875,
+          "text": "运行状态表明代理已启动。"
+        },
+        {
+          "x": 28,
+          "y": 51.1875,
+          "w": 351,
+          "h": 24.390625,
+          "text": "核对监听地址和上游；随后新开 Claude Code 会话。"
+        },
+        {
+          "x": 1230,
+          "y": 38.078125,
+          "w": 94,
+          "h": 45,
+          "text": "结束录制时从这里停止并恢复配置。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。只启动了隔离代理，未向上游发送请求；列表仍是预置示例。"
+    },
+    {
+      "id": "errors",
+      "target": "reading-list",
+      "title": "从失败组回到具体请求",
+      "file": "tutorial-errors.png",
+      "asset": "assets/tutorial-errors.png",
+      "sha256": "2c7185bdd927773e3f875ddab00184e66d60f73766df4409c60444f9112b1f29",
+      "width": 1352,
+      "height": 724,
+      "callouts": [
+        {
+          "x": 1159.8125,
+          "y": 127.921875,
+          "w": 96.484375,
+          "h": 27.5,
+          "text": "失败条数和分组数量是不同指标。"
+        },
+        {
+          "x": 20,
+          "y": 214.171875,
+          "w": 1312,
+          "h": 116.84375,
+          "text": "读取错误原因与样本入口，回原文查证。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。"
+    },
+    {
+      "id": "detail",
+      "target": "manual-read",
+      "title": "请求和响应分开阅读",
+      "file": "tutorial-detail.png",
+      "asset": "assets/tutorial-detail.png",
+      "sha256": "45dfa488b029d128b81bcefc66687ba9be85b0b69ae813bcccaec87d0e564aaf",
+      "width": 1352,
+      "height": 920,
+      "callouts": [
+        {
+          "x": 5,
+          "y": 62,
+          "w": 666,
+          "h": 855.609375,
+          "text": "左边是发给模型的请求。"
+        },
+        {
+          "x": 681,
+          "y": 62,
+          "w": 666,
+          "h": 537.84375,
+          "text": "右边是上游响应、用量和错误。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。"
+    },
+    {
+      "id": "parameters",
+      "target": "reading-payload",
+      "title": "展开实际调用参数",
+      "file": "tutorial-parameters.png",
+      "asset": "assets/tutorial-parameters.png",
+      "sha256": "1497a435f4ad5834d7bcc629516635120d7d90f043b9fbd510ec25aff1dbdd8d",
+      "width": 676,
+      "height": 918,
+      "callouts": [
+        {
+          "x": 5,
+          "y": 93.796875,
+          "w": 666,
+          "h": 259.546875,
+          "text": "展开后读实际参数值；不要由模型名猜配置。"
+        },
+        {
+          "x": 6,
+          "y": 414.734375,
+          "w": 664,
+          "h": 50.390625,
+          "text": "System 是独立内容块，不属于这里的调用参数。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。"
+    },
+    {
+      "id": "backup",
+      "target": "manual-analyze",
+      "title": "在详情右键备份材料",
+      "file": "tutorial-backup.png",
+      "asset": "assets/tutorial-backup.png",
+      "sha256": "fca908451b974d977f6a56e068452af904ba92fb628fc16b410a58fe2f79d262",
+      "width": 1352,
+      "height": 975,
+      "callouts": [
+        {
+          "x": 335,
+          "y": 374.609375,
+          "w": 156,
+          "h": 151.75,
+          "text": "区分备份当前提示词块与备份整条录制。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。这里只展示菜单，未复制真实用户材料。"
+    },
+    {
+      "id": "dag",
+      "target": "manual-dag",
+      "title": "先看泳道，再展开轮次",
+      "file": "tutorial-dag.png",
+      "asset": "assets/tutorial-dag.png",
+      "sha256": "011eab9ea158d0f6a58f3314047d7da72b1def1439a9e435200a0ee14ca9189c",
+      "width": 1112,
+      "height": 722,
+      "callouts": [
+        {
+          "x": 533.28125,
+          "y": 98.59375,
+          "w": 55,
+          "h": 34,
+          "text": "选择需要看的泳道。"
+        },
+        {
+          "x": 588.28125,
+          "y": 98.59375,
+          "w": 89.5,
+          "h": 34,
+          "text": "按轮展开或折叠。"
+        },
+        {
+          "x": 677.78125,
+          "y": 98.59375,
+          "w": 112.5,
+          "h": 34,
+          "text": "这是显示过滤，不会删除录制。"
+        },
+        {
+          "x": 22,
+          "y": 244.1875,
+          "w": 266,
+          "h": 102,
+          "text": "轮卡聚合了多条请求；点击后查看具体步骤。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。"
+    },
+    {
+      "id": "snapshots",
+      "target": "manual-analyze",
+      "title": "选择提示词快照进行比较",
+      "file": "tutorial-snapshots.png",
+      "asset": "assets/tutorial-snapshots.png",
+      "sha256": "ba5c48b99b67f37f1509b6627dce1662c4707e277bd08bc5ea3ac6bb772746de",
+      "width": 1112,
+      "height": 345,
+      "callouts": [
+        {
+          "x": 5,
+          "y": 114,
+          "w": 1102,
+          "h": 226,
+          "text": "在提示词白板选择两份材料。"
+        },
+        {
+          "x": 121,
+          "y": 16,
+          "w": 148.796875,
+          "h": 39,
+          "text": "录制分析使用另一个入口。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。"
+    },
+    {
+      "id": "diff",
+      "target": "manual-analyze",
+      "title": "查看选中材料的精确差异",
+      "file": "tutorial-diff.png",
+      "asset": "assets/tutorial-diff.png",
+      "sha256": "03113e15d1c89434f8e54d2295dc2a4de4dc89ba6ccd8a4566ab660b65161f51",
+      "width": 1112,
+      "height": 626,
+      "callouts": [
+        {
+          "x": 5,
+          "y": 86,
+          "w": 1102,
+          "h": 57.59375,
+          "text": "先看是否存在实质差异。"
+        },
+        {
+          "x": 5,
+          "y": 149.59375,
+          "w": 1102,
+          "h": 83.984375,
+          "text": "可比性提醒解释材料是否适合直接比较。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。这里只展示确定性比较，没有调用模型生成解读。"
+    },
+    {
+      "id": "model",
+      "target": "reading-translation",
+      "title": "输入和输出上限分别设置",
+      "file": "tutorial-model.png",
+      "asset": "assets/tutorial-model.png",
+      "sha256": "8b8824f53ad70554fc5a082861828d986787148b65e1ca1c66bf7d9fd6b34081",
+      "width": 736,
+      "height": 918,
+      "callouts": [
+        {
+          "x": 442,
+          "y": 125.59375,
+          "w": 266,
+          "h": 34,
+          "text": "模型请求发送到这里配置的端点。"
+        },
+        {
+          "x": 605,
+          "y": 271.34375,
+          "w": 103,
+          "h": 34,
+          "text": "输出上限的单位是 tokens。"
+        },
+        {
+          "x": 599.5625,
+          "y": 335.734375,
+          "w": 108.4375,
+          "h": 34,
+          "text": "输入上限的单位是字符。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。本次未配置真实 API Key，也未调用模型。"
+    },
+    {
+      "id": "cleanup",
+      "target": "reading-storage",
+      "title": "压实、归档与删除是不同动作",
+      "file": "tutorial-cleanup.png",
+      "asset": "assets/tutorial-cleanup.png",
+      "sha256": "e47e06b105108309becc9f701bcebf61ca4c0c68e642051320b485ec262546c8",
+      "width": 1352,
+      "height": 537,
+      "callouts": [
+        {
+          "x": 1264.296875,
+          "y": 125.875,
+          "w": 82.703125,
+          "h": 29,
+          "text": "打开清理菜单。"
+        },
+        {
+          "x": 1141,
+          "y": 156.46875,
+          "w": 206,
+          "h": 298,
+          "text": "先辨认操作：减小占用、导出包或删除数据。"
+        }
+      ],
+      "note": "2026-09-06 实际采集：本地 v0.4.26 对应源码的浏览器界面（源码模式显示 dev），使用隔离的合成示例，不是真实用户记录。本次只展开菜单，没有删除或压实示例数据。"
+    }
+  ]
+}

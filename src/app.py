@@ -39,7 +39,7 @@ import upstream_history
 log = logging.getLogger(__name__)
 
 # 版本号唯一真源是 git tag。CI 构建时由 release.yml 从 tag 生成 src/_version.py（见
-# docs/reference/开发约定.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
+# docs/development/开发约定.md 第九节）；本地源码运行 / 本地手打包时该文件不存在，fallback 到占位 "dev"。
 try:
     from _version import VERSION
 except ImportError:
@@ -209,7 +209,7 @@ _VIEW_MAX_BYTES = 4 * 1024 * 1024   # 超过就不渲染——但必须**明说*
 
 # 端点说明表：只管「分组 / 一句话 / 默认参数」三件事。
 # **端点清单本身不在这里**——它从 `app.url_map` 现取，新端点自动出现在浏览面上。
-# 理由同 tools/doc_audit.py 的立论：需要人工定期同步的清单，自己就是下一处腐化。
+# 理由同 tools/checks/doc_audit.py 的立论：需要人工定期同步的清单，自己就是下一处腐化。
 # 值 = (分组 key, 一句话说明 key)；两者都在 view.html 的三语字典里取值。
 _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/ai-guide":                ("guide",    "aiGuide"),
@@ -1687,10 +1687,10 @@ def _ai_guide_body() -> str:
     绝不 500、绝不返回空——给 AI 的输出宁可少也不能是错误页（同不变量⑦「输出必须有界且诚实」）。
     """
     # 两条路径的**布局不同，这是有意的**：产物内把它放在扁平的 `docs/` 下（spec 负责打进去），
-    # 而仓库里 260808 起分了层，它在 `docs/reference/` 中。产物不必跟着仓库的分类结构走——
+    # 仓库的活跃软件说明在 `docs/usage/`。产物不必跟着仓库的分类结构走——
     # 那套分类是给维护者和文档对账用的，下载到 exe 的人不需要。改这里记得同步两份 spec。
     for p in (_RES_BASE / "docs" / "AI_USAGE.md",                                # 冻结态：_MEIPASS/docs
-              Path(__file__).resolve().parent.parent / "docs" / "reference" / "AI_USAGE.md"):  # 源码模式
+              Path(__file__).resolve().parent.parent / "docs" / "usage" / "AI_USAGE.md"):  # 源码模式
         try:
             text = p.read_text(encoding="utf-8")
             if text.strip():

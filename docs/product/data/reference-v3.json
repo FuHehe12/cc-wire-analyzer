@@ -1,0 +1,79 @@
+{
+  "sections": [
+    {
+      "id": "reader-first-visit",
+      "target": "s0",
+      "title": "从官网到第一次读懂一条请求",
+      "body": "官网的入口围绕提示词、thinking 与子代理，但不必从所有功能开始学。先选一个具体问题，再决定看哪一页。\n\n| 你想知道什么 | 第一步 | 下一步 |\n|---|---|---|\n| 为什么突然报错 | 捕获页找失败请求 | 详情看上游错误与停止原因；跨请求问题再看失败聚合 |\n| 模型实际收到什么 | 详情展开 System、Messages、Tools 与调用参数 | 分清原始内容、翻译和模型解释 |\n| 子代理拿到了什么任务 | 时序页聚焦相关泳道 | 从派生关系回到 Task/Agent 的参数和子代理原记录 |\n| 为什么这一轮更慢 | 比较总耗时和首字时间 | 沿时间轴找等待、重试和辅助调用；仅凭时间长不能认定模型陷入循环 |\n| 两次提示词有什么不同 | 备份两份提示词快照 | 分析页做精确对比，必要时再请求模型解释 |\n\n**下载安装**：项目提供 Windows 与 macOS 版本。可从 [项目发布页](https://github.com/FuHehe12/cc-wire-analyzer/releases/latest) 选择系统对应的产物。说明书可以单独离线阅读；录制新请求需要启动软件并接入 Claude Code。\n\n**版本与语言**：本书的当前用法基于 v0.4.26。软件支持中、英、日界面，但本书正文目前为中文；官网与多语 README 仍承担各语言的发现和下载入口。",
+      "refs": [
+        "s1",
+        "manual-connect",
+        "s4",
+        "s5",
+        "s6"
+      ],
+      "basis": "原项目 site/index.html、site/zh/index.html 与 README.zh.md 的场景和入门内容。"
+    },
+    {
+      "id": "reader-data-destinations",
+      "target": "s9",
+      "title": "数据保存在本机，哪些操作仍会联网",
+      "body": "“本机保存”描述录制文件的位置，不表示软件所有操作都没有网络访问。应区分下面四条路径。\n\n| 操作 | 数据去向 | 使用时看什么 |\n|---|---|---|\n| 录制 Claude Code 请求 | 经本机代理转发到已配置的上游；软件在本机保存记录 | 当前监听端口与上游地址；停止后配置是否恢复 |\n| 查看已保存的捕获、详情与确定性统计 | 读取本机已有材料 | 来源、日期、完整性及是否有导入数据 |\n| 翻译、AI 解读、语义归纳与分析对话 | 发送该操作所需内容到设置中的分析模型端点 | 模型与端点、输入范围；内容可能含提示词、工具结果或文件片段 |\n| 检查更新与下载版本 | 访问发布服务或下载地址 | 目标版本与下载状态 |\n\n原网页强调本地录制与可选模型能力。在本书中，这两点分别说明：阅读原文不需要先调用模型，选择翻译或分析前要理解所选材料会进入模型请求。模型输出不应替代原始证据。\n\n录制头部的鉴权字段会脱敏，但正文可能仍含用户消息、文件片段、路径和秘密。导出包与截图不能仅因“鉴权头已脱敏”就视为可公开。公开分享应使用专门准备的示例；分享说明书时，历史截图的示例与版本限制见各图注。",
+      "refs": [
+        "s1",
+        "s4",
+        "s6",
+        "s7",
+        "s8"
+      ],
+      "basis": "site/zh/index.html 隐私说明；docs/reference/API契约.md 的配置、模型服务、更新和 headers_safe 约定。"
+    },
+    {
+      "id": "reader-search-coverage",
+      "target": "s3",
+      "title": "全文检索：零命中前先检查搜索范围",
+      "body": "接口检索适合找一段错误、文件名或工具结果，再按返回的记录 ID 打开完整详情。示例中的日期和关键词需要换成你自己的条件：\n\n```text\nGET /api/grep?date=YYYY-MM-DD&pattern=timeout&in=all&limit=50\n```\n\n| 字段 | 读法 |\n|---|---|\n| hits / items | 命中数量与样本；样本包含 id、where、snippet 和 match_count |\n| coverage.searched | 实际搜索过的区域 |\n| coverage.skipped / skipped_ratio | 跳过的区域和比例；不要把未搜索当成不存在 |\n| note | 检索范围或结果的补充说明 |\n\n`in` 可选 `all`、`system`、`user`、`assistant`、`sysmsg`、`tool_result`、`tool_use`、`tools`。**all 不包含 tools 工具定义**：若要找工具 schema 中的字段，显式使用 `in=tools`。这能避免每条请求重复携带的相同定义淹没结果。\n\n遇到 `400` 与 `bad_pattern`，先修正正则表达式；需要普通文本匹配时使用接口支持的 fixed 参数。`hits=0` 时先看来源、日期、搜索区域与 coverage，再形成结论。压实后的数据仍通过接口读取，不应假设所有材料都能按普通 JSONL 文件逐行搜索。",
+      "refs": [
+        "manual-find",
+        "s4"
+      ],
+      "basis": "docs/reference/API契约.md §10；capture_store 的 grep 区域与覆盖说明。"
+    },
+    {
+      "id": "reader-usage-fields",
+      "target": "s6",
+      "title": "读懂 Token、缓存与统计口径",
+      "body": "完整录制与列表摘要使用两套字段名。写脚本时，应先确认拿到的是哪种响应，不能直接把两者相加。\n\n| 内容 | 完整录制常用字段 | 列表、DAG 摘要字段 |\n|---|---|---|\n| 输入 | input_tokens | input |\n| 输出 | output_tokens | output |\n| 缓存读取 | cache_read_input_tokens | cache_read |\n| 缓存创建 | cache_creation_input_tokens | cache_creation |\n\n`GET /api/stats?date=YYYY-MM-DD` 汇总 records、kinds、models、statuses、errors 和 tokens，并给出总耗时的 p50、p95 与最大值。缓存命中比例使用“读取 ÷（读取＋创建）”；分母为零时返回 null，表示没有这个比例，不能写成命中率为 0%。\n\n统计中的 file_size 表示当天整体文件的大小，不会随会话筛选自动变成该会话独占的存储量。Token 数也不直接等于金额：模型、上游链路和缓存策略可能影响价格。统计接口提供用量，费用换算需要另外确定单价和口径。\n\n比较两次运行时，先确认日期、来源、会话范围与请求组成一致。一次运行多了标题、安全审查或重试，总量变化未必来自主线提示词本身。",
+      "refs": [
+        "s3",
+        "s5",
+        "manual-analyze"
+      ],
+      "basis": "docs/reference/API契约.md §10、§14 的 usage 双轨和统计定义。"
+    },
+    {
+      "id": "reader-api-boundaries",
+      "target": "s9",
+      "title": "接口调用：先确认实例，再区分查询与动作",
+      "body": "桌面界面和自动化调用共享本地服务。端口可能被占用后顺延，不能把示例中的 5051 当成固定端口。先读取本机实例信息，确认版本、数据目录与运行状态，再构造请求。软件内置的 `/api/ai-guide` 是 Agent 的自足入口；它继续由原软件打包，不由本 HTML 替换。\n\n| 目的 | 入口举例 | 边界 |\n|---|---|---|\n| 看实例与代理状态 | /api/ai-guide、/api/proxy/status | 服务存在不表示正在录制 |\n| 找到与读取记录 | /api/captures、/api/captures/<id> | 明确 date 与 source，列表摘要不等于完整正文 |\n| 搜索、统计、未知项 | /api/grep、/api/stats、/api/unknowns | 看覆盖范围；未知值不自动等于软件缺陷 |\n| 看调用关系 | /api/dag | 图上的匹配关系可能是推断 |\n| 比较和分析快照 | /api/snapshots、/api/snapshots/diff | 两个快照 ID、材料类型和分析存在性需要先确认 |\n| 启停、导入、清理和修改 | 对应 POST 动作接口 | 会改变配置或数据，不要用探测方式盲试 |\n\n**错误也有信息**：启动接口返回 409 可表示已经运行；500 可能带 `no_listen_port` 或 `patch_failed` 等原因。详情查询失败时先查 ID、来源和日期，而不是立刻认定原始数据丢失。HTTP 成功与语义分析成功也是不同状态。\n\n本节给使用路径。精确请求体、全部端点字段和错误响应已完整收入本书的 [API 契约](#doc=API契约.md)，可打开篇内目录定位接口。改代码时同时查看 [开发约定](#doc=开发约定.md)，其中保留安全不变量、测试命令、前端规范和发布流程。两篇与本书一起离线可用，文档检查工具从 HTML 读取规范正文。",
+      "refs": [
+        "manual-agent",
+        "reader-search-coverage",
+        "s7"
+      ],
+      "basis": "docs/reference/API契约.md §1–14；src/app.py 的 ai_guide 与原打包清单保持不变。"
+    },
+    {
+      "id": "reader-publication-boundary",
+      "target": "s9",
+      "title": "说明书、官网与软件内置帮助怎样分工",
+      "body": "统一说明书负责让读者理解和使用产品；官网负责让新读者找到它、判断是否适合并进入下载。原项目有中英文网页和三语 README，不能因为多了一份中文 HTML 就取消其他语言入口。\n\n**官网保留的内容**：简明定位、典型问题、平台与下载链接、语言入口、真实截图和隐私说明。详细操作从官网进入本书。404 页面、站点所有权验证文件与页面元数据属于站点运行和发现机制，不是可以并入正文后删除的文章。\n\n**本书吸收的内容**：提示词、thinking、子代理和错误调查的解释，安装起点，以及本地保存和联网动作的边界。网页中的“就能找到原因”改成按证据调查，不保证每次都能得出唯一根因；“纯 JSONL”也不能覆盖后续压实与导入形态。\n\n**发布后的维护要求**：软件行为改变时先修改相应章节，再生成 HTML；截图要标明来源与版本限制。下载入口可以指向发布页，正文说明的版本基线仍应明确。搜索是否收录、历史曝光数字和发布成功与否不作为功能已实现的证据。\n\n项目曝光研究中的账户操作、搜索后台记录与历史推广步骤保留为维护资料，不放入普通用户的操作流程。接口契约与开发规范的完整正文已并入本书的开发参考。原 Markdown 路径仅留兼容链接，供旧版软件内置帮助使用；软件内置帮助和站点运行文件继续保留。",
+      "refs": [
+        "reader-first-visit",
+        "reader-data-destinations",
+        "s8"
+      ],
+      "basis": "site/index.html、site/zh/index.html；research 中项目曝光研究的可迁移文档维护结论。"
+    }
+  ]
+}

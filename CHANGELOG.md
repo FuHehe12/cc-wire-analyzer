@@ -7,15 +7,18 @@
 > Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
 
 - **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand exposing a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed.
-- **Current status**: **v0.4.27 (2026-09-06)** — updated non-secret defaults, unified online documentation, and a redesigned bilingual website.
+- **Current status**: **v0.4.27 baseline; local restructuring (2026-09-06)** — product, development and usage sources are separated. Disclosure is frozen; no publishing or synchronization.
 - **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
 - **Next steps**:
+  0. Use the local manual and issue workflow for real iterations; reconsider disclosure updates only after this structure proves useful.
   1. Turn a recurring failure pattern into a check automatically — `/api/diagnose/trends` answers "new or recurring?", but writing the rule is still manual.
   2. Decide whether turn origin should ever be corrected at runtime from Claude Code's local logs. It currently is not, and that restraint is the point — the app's data surface is the traffic it recorded plus one settings field.
   3. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
 
 ## Unreleased
 
+- Local product sources now rebuild the manual independently; disclosure is frozen and README navigation serves local work.
+- Tests and tools have explicit homes; resource loading, verification and local packaging follow the new paths.
 - Development conventions and API contracts return to `docs/reference/*.md`; the manual is generated from them.
 - The manual now bundles five reference documents; doc links point at the online manual and stay readable on GitHub.
 - `doc_audit` gains a body-length gate: a named document reduced to a redirect page now fails.
@@ -30,4 +33,4 @@
 
 ## Earlier versions
 
-v0.4.26 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md) — or the [GitHub Releases page](https://github.com/FuHehe12/cc-wire-analyzer/releases), which carries the same notes per version.
+v0.4.26 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md).

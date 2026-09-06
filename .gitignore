@@ -4,10 +4,11 @@ __pycache__/
 *.egg-info/
 .venv/
 .uv/
+.uv-cache/
 
 # PyInstaller 打包产物
-dist/
-build/
+/dist/
+/build/
 *.spec.bak
 # 构建时从 tag 生成（见 release.yml / docs/开发指南.md 第九节），不入仓库。
 # 注意：.gitignore 的 `#` 只有行首才是注释，行尾注释会成为 pattern 的一部分
@@ -34,19 +35,11 @@ port.txt
 # 本地维护文件（工作区规范，不上传开源仓库）
 # CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
 # .claude/ = 本地操作规程（workflows/self-audit.md 等，含本机路径与采集姿势）
-# research/ = 本地文档的家（260828 建，260829 起归拢全部本地文档，不随开源仓库发布）：
-#   项目曝光教程保留独立用途；轨迹方法和候选已整合进产品说明书。
-#   注：prototypes/（十一代可视化原型）已于 260829 收官删除——管线全部吸收进 src/trajectory.py，
-#   演进史与独有复算条件归入 issues/；原始录制不变。
-#   注：项目断面/（原 sections/，0.4.x 冻结快照）已于 260902 删除，机制记录留在
-#   issues/closed/260807_引入项目断面机制与首份0.4.x断面.md
+# local/ = 本地辅助笔记与可重跑的临时产物；迭代证据继续留 issues/。
 CLAUDE.md
 issues/
-research/
+local/
 .claude/
 
-# Generated for Pages from the maintained offline manual.
-site/manual.html
-
-# Local browser QA artifacts.
+# Legacy local QA output (new output goes to local/artifacts).
 .site-qa/

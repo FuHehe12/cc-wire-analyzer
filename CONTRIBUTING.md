@@ -1,88 +1,14 @@
-# Contributing to CC Wire Analyzer
+# 本地工作约定
 
-Thanks for your interest in improving this tool! This page covers **environment setup, building,
-and the PR checklist**.
+软件运行支持 Python 3.10+；本地说明书生成使用 Python 3.12+。安装依赖：`uv sync`；macOS 使用 `uv sync --extra mac`。
 
-> **Before you write any code, read [`docs/reference/开发约定.md`](docs/reference/开发约定.md) (Development Guide).**
-> It is the single source of truth for this project's conventions — safety invariants, the
-> recurring bug types, the defensive-design table, the subagent-identification ruling, the
-> self-tests, and the frontend rules. Counts grow over time, so the guide holds them — not this
-> page. The guide is in
-> Chinese — if that's a barrier, open an issue and we'll help.
->
-> Those conventions used to be summarised on this page too. That copy silently drifted: it listed
-> 2 self-tests when there were 6, and 3 invariants when there were 8. So this page no longer
-> restates them — it links instead.
+- 启动桌面：`uv run python src/desktop.py`。
+- 浏览器调试：`uv run python src/app.py`，使用启动日志或数据目录 `port.txt` 的实际端口；模板改后重启服务。
+- 测试数据入口：`tests/dev_seed.py`；采集或修改配置的测试先按开发约定双隔离，不能操作真实设置。
+- 软件构建入口：`tools/build/build.py`；本地说明书：`uv run python tools/build/build_manual.py`。
+- 文档检查：`uv run python tools/checks/doc_audit.py`；具体测试与前端检查见[开发约定的验证章节](docs/development/开发约定.md#八验证改完必须跑什么)。
+- 目录与披露断面检查：`uv run python tools/checks/workspace_audit.py`；验证 `public` 原始文件哈希及本地入口边界。
 
-## Development setup
+改动前写 issue，按任务读取[开发约定](docs/development/开发约定.md)相关章节。新功能、字段、用法和约束同步到唯一正文；验证记录回填 issue。机械检查不能代替真实界面和语义核对，平台未实测应明确记录。
 
-Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
-
-```bash
-git clone <this-repo> && cd cc-wire-analyzer
-uv sync                 # Windows
-uv sync --extra mac     # macOS (installs pyobjc for the WebKit backend)
-```
-
-Run it:
-
-```bash
-uv run python src/desktop.py          # desktop window (the real entry point)
-uv run python src/app.py              # server-only, for browser debugging (port from startup log or ~/.cc-wire-analyzer/port.txt)
-uv run python src/dev_seed.py         # seed demo captures to exercise the UI
-```
-
-> **Template edits need a dev-server restart** — `app.run(debug=False)` caches Jinja templates, so
-> editing `index.html` and refreshing still shows the old page. Why this happens and how to verify
-> a change took effect: see [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §8.
-
-## Building
-
-- Windows: `uv run pyinstaller build.spec` → `dist/cc-wire-analyzer.exe`
-- macOS: `uv sync --extra mac && uv run pyinstaller build-mac.spec` → `dist/cc-wire-analyzer.app` (the `--extra mac` installs pyobjc for the WebKit backend)
-- Tagging `v*` triggers CI to build both and publish a Release.
-
-The maintainer develops on Windows — **macOS builds are verified by CI
-([`.github/workflows/release.yml`](.github/workflows/release.yml)) and by macOS contributors**,
-not locally. If you're on macOS, please test builds before release. Platform-specific code in
-`desktop.py` must be guarded by `sys.platform` checks.
-
-## Bundled assets
-
-- Fonts (`src/static/fonts/`): Inter, JetBrains Mono, Noto Sans SC (all SIL OFL; full list in the
-  README license section). Don't replace with non-redistributable fonts.
-- `marked.min.js`, `purify.min.js`: vendored for offline use. DOMPurify sanitisation of all
-  upstream-rendered content is a security requirement — don't bypass it.
-
-## Before submitting a PR
-
-1. **Run all seven self-tests.** The commands are listed in
-   [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §8 — copy them from there rather than from memory,
-   since the set has grown over time.
-2. If you touched the frontend, exercise the affected UI in a browser (open the port from the
-   startup log or `~/.cc-wire-analyzer/port.txt`) — **restart the dev server first** (see the
-   template-caching note above).
-3. If you added or changed user-visible strings, update **all three** i18n locales
-   (`zh` / `en` / `ja`) in `index.html`. The three key sets must match exactly.
-4. Check your change against the safety invariants in [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §1.
-   Anything that writes `settings.json`, renders upstream content, or produces output for an AI
-   agent needs a second look.
-5. Don't commit `dist/`, `build/`, or anything under `~/.cc-wire-analyzer/` (they're gitignored).
-
-## Where things are documented
-
-| I want to… | Read |
-|---|---|
-| change code without breaking things | [`docs/reference/开发约定.md`](docs/reference/开发约定.md) |
-| understand how the app is put together | [`docs/reference/架构总览.md`](docs/reference/架构总览.md) |
-| call the HTTP API | [`docs/reference/API契约.md`](docs/reference/API契约.md) |
-| drive the tool from an AI agent | [`docs/reference/AI_USAGE.md`](docs/reference/AI_USAGE.md) |
-| understand the UI | [`docs/reference/界面导览.md`](docs/reference/界面导览.md) |
-| understand what Claude Code actually sends | [`docs/reference/报文解读.md`](docs/reference/报文解读.md) |
-| edit the docs themselves | [`docs/reference/开发约定.md`](docs/reference/开发约定.md) §11 — one fact, one home |
-| read all of the above as one page | [Product manual (online)](https://fuhehe12.github.io/cc-wire-analyzer/manual.html) |
-
-The Markdown files above are the source of truth. The online manual is generated from them, so
-edit the Markdown — never the generated `docs/product-manual.html`.
-
-Issue reports and PRs welcome.
+当前只做本地迭代，`public/` 已冻结；不修改披露断面、不推送、不发布、不部署。不改动原始录制，不覆盖其他 agent 的未提交成果。

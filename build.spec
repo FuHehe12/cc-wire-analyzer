@@ -9,9 +9,9 @@ import sys
 from PyInstaller.utils.hooks import collect_submodules
 
 # 版本资源（issue 260808）：让下载到磁盘上的 exe 在「属性 → 详细信息」里直接显示版本号，
-# 不必双击打开程序才知道手上是哪一版。**两份 spec 共用 tools/version_res.py**，
+# 不必双击打开程序才知道手上是哪一版。**两份 spec 共用 tools/build/version_res.py**，
 # 不各写一份——两份 spec 因"要同时改"分叉过一次（mac spec 漏 brotli）。
-sys.path.insert(0, os.path.join(SPECPATH, 'tools'))
+sys.path.insert(0, os.path.join(SPECPATH, 'tools', 'build'))
 from version_res import windows_version_info, runtime_metadata  # noqa: E402
 
 datas = [
@@ -19,7 +19,7 @@ datas = [
     ('src/static', 'static'),         # vendored 前端库（marked/DOMPurify），离线 exe 必须（审计 260712 #3）
     # 给 AI 的用法说明必须随产物走：用户下载到的是单个 exe，仓库 docs/ 一份都不跟着来，
     # 而 serve 模式的消费者正是 AI。/api/ai-guide 从这里读（issue 260801）。
-    ('docs/reference/AI_USAGE.md', 'docs'),
+    ('docs/usage/AI_USAGE.md', 'docs'),
 ] + runtime_metadata()  # Flask/Werkzeug 的 dist-info（uv venv 下 PyInstaller 自动 hook 漏收）
 
 # pywebview 在 Windows 用 EdgeChromium（WebView2）后端

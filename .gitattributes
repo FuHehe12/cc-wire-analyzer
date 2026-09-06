@@ -1,0 +1,4 @@
+# Frozen disclosure hashes refer to exact bytes on every checkout.
+public/** -text -whitespace
+# Third-party sources are retained verbatim.
+tools/build/manual/vendor/** -text -whitespace

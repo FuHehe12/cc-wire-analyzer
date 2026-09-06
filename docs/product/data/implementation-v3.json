@@ -1,0 +1,399 @@
+{
+  "schema": 1,
+  "baseline": "cc-wire-analyzer v0.4.26",
+  "checkedOn": "2026-09-05",
+  "sourceProject": "D:/Claude/workshop/cc-wire-analyzer",
+  "captureMethod": "只读代码核查 + 原项目存量界面截图；本轮未重新运行软件",
+  "screenshots": [
+    {
+      "id": "captures",
+      "source": "docs/screenshots/zh/view-a-captures-zh.png",
+      "file": "captures.png",
+      "title": "捕获页：状态卡、失败入口与调用列表",
+      "note": "原项目存量软件截图，画面日期为2026-08-15，含示例数据；拍摄软件版本未标注。说明已有布局，不代表本轮运行验收。",
+      "sha256": "dca621e3e77b92c83eba02bf99c15b5443c3452489f5319e929cb50e764c469f",
+      "asset": "data/evidence/v3/captures.png",
+      "byteLength": 160431,
+      "publicExcluded": true
+    },
+    {
+      "id": "detail",
+      "source": "docs/screenshots/zh/view-b-capture-detail-zh.png",
+      "file": "detail.png",
+      "title": "详情页：请求/响应、System、Usage、翻译",
+      "note": "原项目存量软件截图，含示例数据，拍摄版本未标注；图中未展示v0.4.26新增的完整调用参数块，当前行为以代码证据为准。",
+      "sha256": "0ab2c7be503d5740cdef4f36002594a14555780090d450ced52a0bc2fe2a0d25",
+      "asset": "assets/detail.png",
+      "byteLength": 127299
+    },
+    {
+      "id": "settings",
+      "source": "docs/screenshots/zh/view-c-settings.png",
+      "file": "settings.png",
+      "title": "设置页：语言、外观、代理与保留期",
+      "note": "原项目存量软件截图，显示测试配置路径；顶部导航是旧布局，不作为当前完整导航或配置恢复成功的证明。",
+      "sha256": "7134fe19d880d98599bf051b26daeb6b858b898521e065f6857a150eacae7565",
+      "asset": "data/evidence/v3/settings.png",
+      "byteLength": 234030,
+      "publicExcluded": true
+    },
+    {
+      "id": "dag",
+      "source": "docs/screenshots/zh/view-d-dag.png",
+      "file": "dag.png",
+      "title": "时序页：泳道、轮次、派生连线",
+      "note": "原项目存量软件截图，画面日期2026-08-02，含示例数据；展示图形表达，不单独证明归属或因果算法正确。",
+      "sha256": "1e28bdfb9e770c4a3fae2c61c72c5699e6b764d75ff344ee7dee95558cb24b9b",
+      "asset": "assets/dag.png",
+      "byteLength": 252497
+    },
+    {
+      "id": "analyse",
+      "source": "docs/screenshots/zh/view-e-analyse.png",
+      "file": "analyse.png",
+      "title": "分析页：两类分析与快照白板",
+      "note": "原项目存量软件截图，画面含08-08示例快照；没有展示新增调查实体，也没有展示完整八视图。",
+      "sha256": "36a2a20495b82659925cafa358a4ce656e17c27630addbf1d78eb592d710e9eb",
+      "asset": "assets/analyse.png",
+      "byteLength": 221444
+    }
+  ],
+  "sources": [
+    {
+      "id": "guard",
+      "file": "src/settings_guard.py",
+      "anchor": "def restore(",
+      "lines": 36,
+      "startLine": 259,
+      "endLine": 294,
+      "excerpt": "def restore(path: Path | None = None) -> bool:\n    \"\"\"恢复 settings.json 到 patch 前原状。返回是否实际执行。\n    幂等：未 patch 时返回 False，重复调用安全。\n    原本有 BASE_URL 键 → 写回原值；原本无 → 删键（回到直连官方原状，260712）。\n\n    260713 新增守卫：只撤销**我们还能证明是自己做的**那一笔。若当前 BASE_URL 已不是我们\n    patch 进去的那个地址（代理运行期间用户用 cc-switch 换了上游 / 手改了配置），那是用户的\n    新意图，无权拿旧快照覆盖它 —— 只清内部状态与 marker，不动文件。\"\"\"\n    global _patched, _patched_listen, _patched_at\n    with _LOCK:\n        if not _patched:\n            return False\n        p = path or CFG.CLAUDE_SETTINGS\n        current = _read_base_url(p)\n        if _patched_listen and current != _patched_listen:\n            log.warning(\"跳过恢复：当前 BASE_URL=%s ≠ 我们 patch 的 %s（用户已自行改动）\",\n                        current, _patched_listen)\n            _patched = False\n            _patched_listen = None\n            _patched_at = None\n            _clear_marker()\n            return False\n        try:\n            if _original_had_key:\n                _patch_base_url_to(p, _original_base_url)\n                log.info(\"restored BASE_URL → %s\", _original_base_url)\n            else:\n                _remove_base_url(p)\n                log.info(\"restored: removed BASE_URL key (原本直连官方)\")\n        finally:\n            _patched = False\n            _patched_listen = None\n            _patched_at = None\n            _clear_marker()  # 正常恢复，清 patch 态 marker（审计 260712 #7）\n        return True\n",
+      "sourceSha256": "d9b93e2c3be6ceee34f3d373b6b3e054bf1d554a772bf4ca327c6a74b0a9431b",
+      "excerptSha256": "bd2334707109d0e1613256666a1d2e84e22a6f915aff43f886c8d72529bafcd0"
+    },
+    {
+      "id": "forward",
+      "file": "src/proxy.py",
+      "anchor": "def forward(",
+      "lines": 24,
+      "startLine": 156,
+      "endLine": 179,
+      "excerpt": "def forward(path: str) -> Response:\n    \"\"\"转发当前 Flask request 到 UPSTREAM/path，流式录 + 转发。\"\"\"\n    upstream_base = settings_guard.get_original_base_url()\n    if not upstream_base:\n        return Response(\n            json.dumps({\"error\": \"proxy_not_started\",\n                        \"detail\": \"原 BASE_URL 未 snapshot，请先启动代理\"}),\n            status=503, mimetype=\"application/json\",\n        )\n    upstream_base = upstream_base.rstrip(\"/\")\n\n    # 260718 深度防御（Bug C）：upstream 若等于我们自己 patch 进去的本地监听地址，\n    # 说明 snapshot 守卫（Bug A）被绕过或 _original_base_url 被污染 —— 转发即无限递归。\n    # snapshot 守卫是第一道防线，这里是最后一道。宁可 502 也不递归。\n    listen = settings_guard.get_patched_listen()\n    if listen and upstream_base == listen.rstrip(\"/\"):\n        log.error(\"拒绝自指转发：upstream=%s == 本代理监听地址（_original_base_url 被污染）\",\n                  upstream_base)\n        return Response(\n            json.dumps({\"error\": \"self_reference_upstream\",\n                        \"detail\": f\"上游地址 {upstream_base} 等于本代理自身监听地址，\"\n                                  \"转发将无限递归。请停止代理，把 settings.json 的 \"\n                                  \"ANTHROPIC_BASE_URL 改回真上游后重启。\"}),\n            status=502, mimetype=\"application/json\")",
+      "sourceSha256": "25208f45bf9244583aaaa297d608678df49b04d2e6b7a2f70cf654200905eb1f",
+      "excerptSha256": "6716a1e308417c8c08a57c4127316805b8a3db4b5cf6db5acb293d377639133d"
+    },
+    {
+      "id": "store",
+      "file": "src/capture_store.py",
+      "anchor": "def append(",
+      "lines": 27,
+      "startLine": 572,
+      "endLine": 598,
+      "excerpt": "def append(record: dict) -> None:\n    \"\"\"落盘 + 写索引 + 推 LIVE。record 应已填完。\n\n    落盘失败**不阻塞转发**（代理透明性优先），但必须留下痕迹：计数 + 日志 + 顶到 UI，\n    否则就是\"界面在跳、盘上没有\"的静默数据丢失（见 _WRITE_ERRORS 注释）。\n    索引写失败同样不阻塞、独立计数——索引缺失由读取侧增量回填自愈。\"\"\"\n    global _WRITE_ERRORS, _LAST_WRITE_ERROR, _IDX_ERRORS, _LAST_IDX_ERROR\n    date = time.strftime(\"%Y-%m-%d\", time.localtime())\n    f = CAPTURES_DIR / f\"{date}.jsonl\"\n    data = (json.dumps(record, ensure_ascii=False) + \"\\n\").encode(\"utf-8\")\n    ok = True\n    idx_entry = None\n    tail_size = 0\n    with _LOCK:\n        try:\n            CAPTURES_DIR.mkdir(parents=True, exist_ok=True)   # 目录建不出来也算落盘失败，一并计入\n            with f.open(\"ab\") as fh:          # 二进制 append：tell() 是真实字节偏移（索引 seek 锚点）\n                fh.seek(0, 2)\n                off = fh.tell()\n                fh.write(data)\n        except OSError as e:\n            ok = False\n            _WRITE_ERRORS += 1\n            _LAST_WRITE_ERROR = f\"{type(e).__name__}: {e}\"\n            log.error(\"录制落盘失败（第 %d 次，转发不受影响）: %s\", _WRITE_ERRORS, e)\n        else:\n            tail_size = off + len(data)   # 滚动压实的判据，锁内取（锁外 stat 会读到别人刚写的）",
+      "sourceSha256": "8f6bc4f269d74772e10410b9b0237214bc623469cd1dad2a571bc467618c3f53",
+      "excerptSha256": "f4868425923e989ad4a2a0a370be547da19f4b8e61807d6886bc3d0fbdc03e8a"
+    },
+    {
+      "id": "list",
+      "file": "src/app.py",
+      "anchor": "def captures_list(",
+      "lines": 13,
+      "startLine": 685,
+      "endLine": 697,
+      "excerpt": "def captures_list():\n    date = request.args.get(\"date\") or None      # 空串 = 没给 = 今天（见 capture_store 里那条注释）\n    def _to_int(v, default):\n        try:\n            return int(v)\n        except (TypeError, ValueError):\n            return default  # 非数字入参回退默认，避免 500（审计 260712 #10）\n    limit = min(_to_int(request.args.get(\"limit\", 200), 200), 1000)\n    offset = max(_to_int(request.args.get(\"offset\", 0), 0), 0)\n    return jsonify(capture_store.list_captures(\n        date, limit, offset,\n        request.args.get(\"exclude_session\", \"\"), request.args.get(\"session\", \"\"),\n        request.args.get(\"source\", \"\")))",
+      "sourceSha256": "2a7e2f46b3756ff73b5a416b76203046a53fef34866b7a384de3405c26eaf95c",
+      "excerptSha256": "6c199aa3837bcf67276918dc68f871833437d52be8839de254cbb832b95e91e5"
+    },
+    {
+      "id": "read",
+      "file": "src/app.py",
+      "anchor": "def capture_detail(",
+      "lines": 14,
+      "startLine": 756,
+      "endLine": 769,
+      "excerpt": "def capture_detail(rid):\n    date = request.args.get(\"date\") or None  # 历史日期详情要带 date（审计 260712 #4）；空串=没给\n    rec = capture_store.get_capture(rid, date, request.args.get(\"source\", \"\"))\n    if rec is None:\n        return jsonify({\"error\": \"not_found\", \"id\": rid}), 404\n    # 安全审查请求：附上解析好的「待判定动作 / 判定结果 / 本次发送量」（260729）。\n    # 解析收口在 classifier（前端只渲染），否则又是一份抄出来的解析逻辑。\n    import classifier\n    sec = classifier.sec_request((rec.get(\"request\") or {}).get(\"body\") or {})\n    if sec:\n        sec[\"verdict\"] = classifier.sec_verdict(rec.get(\"response\") or {})\n        rec = dict(rec, sec=sec)\n    return jsonify(rec)\n",
+      "sourceSha256": "2a7e2f46b3756ff73b5a416b76203046a53fef34866b7a384de3405c26eaf95c",
+      "excerptSha256": "d77e70bb41c9debe9c2acbc73492e5976576e692f1b7032af5569a11715bf438"
+    },
+    {
+      "id": "detail",
+      "file": "src/templates/index.html",
+      "anchor": "function renderDetail(",
+      "lines": 12,
+      "startLine": 4449,
+      "endLine": 4460,
+      "excerpt": "function renderDetail(d){\n  const req = d.request || {}, resp = d.response || {}, body = req.body || {};\n  /* 头部 */\n  $(\"dId\").textContent = d.id || \"\";\n  $(\"dPath\").textContent = (d.method || \"POST\") + \" \" + (d.path || \"\");\n  $(\"dStatus\").outerHTML = '<span id=\"dStatus\">' + chipFor(resp.status) + '</span>';\n  $(\"dTiming\").textContent =\n    timePart(d.ts_start) + (d.ts_end ? \" → \" + timePart(d.ts_end) : \"\") +\n    (resp.total_ms != null ? \" · \" + fmtMs(resp.total_ms) : \"\") +\n    (resp.ttft_ms != null ? \" · \" + t18(\"detail.ttft\") + \" \" + fmtMs(resp.ttft_ms) : \"\");\n\n  /* ---- 左栏 请求 ---- */",
+      "sourceSha256": "5da1e901a352d207dd0a7f5ad688ff7e4a07f54f9451a6d4835d8257678b51aa",
+      "excerptSha256": "af8a43e7ab97873c3ad5117196490fb94ce122a462cee146fcdd048c6cc4255b"
+    },
+    {
+      "id": "dag",
+      "file": "src/app.py",
+      "anchor": "def dag_view(",
+      "lines": 18,
+      "startLine": 778,
+      "endLine": 795,
+      "excerpt": "def dag_view():\n    \"\"\"View D 时序 DAG：当日全量捕获 → 分类 + 会话线 + 边推断。\n    260719 改走写时索引（list_index）：此前 list_full 全量 parse 主文件且写死 1000 条上限，\n    大流量天（826MB/2993 条实测）单次 ~9s 且泳道直接丢后 2/3。\n    260802 加结果缓存：build_dag 全量重算 lane/edge，切回同一天命中缓存秒回，不再重算。\"\"\"\n    import classifier\n    date = request.args.get(\"date\") or time.strftime(\"%Y-%m-%d\", time.localtime())\n    excl = request.args.get(\"exclude_session\", \"\")\n    sess = request.args.get(\"session\", \"\")\n    src = request.args.get(\"source\", \"\")\n    # 不带 session 过滤的整天图走 _dag_of（缓存实现只此一份，子代理线用的是同一份）；\n    # 带过滤的是另一张图，不进缓存也不该进——它不是\"这一天\"，键相同内容不同。\n    if not (excl or sess):\n        return jsonify(_dag_of(date, src))\n    return jsonify(classifier.build_dag(capture_store.list_index(date, excl, sess, src)))\n\n\ndef _store_call(fn, *args, **kw):",
+      "sourceSha256": "2a7e2f46b3756ff73b5a416b76203046a53fef34866b7a384de3405c26eaf95c",
+      "excerptSha256": "a6a4dfbeb32f269ec55cfe26fd8f22a4e2ded78bcd28de4ff0bc50e1ad9a5e0c"
+    },
+    {
+      "id": "trends",
+      "file": "src/diagnose.py",
+      "anchor": "def trends(",
+      "lines": 12,
+      "startLine": 310,
+      "endLine": 321,
+      "excerpt": "def trends(records_by_date: dict, model: str | None = None,\n           kind: str | None = None, limit: int = DEFAULT_TRENDS_LIMIT) -> dict:\n    \"\"\"{date: [idx records]} → 三层（每日曲线 / 跨天归并组 / 维度切片）。\n\n    单天看 aggregate()；这里回答「今天的失败是新发还是老毛病复发 / 趋势如何 / 集中哪个供应商\n    与 CC 版本」。跨天归并键复用单天 (err_kind, status, fingerprint)，不重新指纹。趋势判据\n    见 _trend()。diagnose 只读、不调 LLM；输出有界 + truncated。\n\n    route 侧负责按 span 算日期列表 + 循环 list_index，本函数只做纯归并。\n    records/failures/per_day 在给定 model/kind 过滤后统计（无过滤 = 全部）。\n    \"\"\"\n    dates = sorted(records_by_date.keys())",
+      "sourceSha256": "332dd969b6ff1137fc65e3bd1836602d7cdceee7e7b4afa423fe789279ed8f41",
+      "excerptSha256": "86fa5dd7bec22794d32d93d5c1b2df5b752145c45fbbdd505a09ccc5f95d1a82"
+    },
+    {
+      "id": "snapshot",
+      "file": "src/snapshot_store.py",
+      "anchor": "def create_capture(",
+      "lines": 19,
+      "startLine": 482,
+      "endLine": 500,
+      "excerpt": "def create_capture(record: dict, *, label: str = \"\", note: str = \"\",\n                   tags=None, created_by: str = \"ui\") -> dict:\n    \"\"\"录制快照：信封 + 完整 record 原样。不存元数据副本（见模块 docstring）。\"\"\"\n    if not isinstance(record, dict) or not record.get(\"id\"):\n        raise SnapshotError(\"bad_record\", \"录制记录为空或缺 id\")\n    lab, nt, tg = _sanitize_meta(label, note, tags)\n    snap = {\n        \"sid\": new_snapshot_id(),\n        \"kind\": \"capture\",\n        \"schema\": SNAP_SCHEMA,\n        \"ccwa_version\": _version(),\n        \"created\": _now_iso(),\n        \"created_by\": created_by,\n        \"label\": lab, \"note\": nt, \"tags\": tg,\n        \"payload\": record,\n    }\n    return _write(snap)\n\n",
+      "sourceSha256": "4e502e9fc3fb3de72125cb8660632115f99ade066fc98f79427b121d9abad163",
+      "excerptSha256": "f8f49df9c7609b221e450153abc7b042d9928db0eb3626d4fcf1ef18b2654a67"
+    },
+    {
+      "id": "retention",
+      "file": "src/capture_store.py",
+      "anchor": "def enforce_retention(",
+      "lines": 16,
+      "startLine": 1328,
+      "endLine": 1343,
+      "excerpt": "def enforce_retention(days: int) -> list[str]:\n    \"\"\"删除早于 today-days 的录制文件，返回被删日期列表（升序）。\n\n    260713 修复：此前 retention_days 是**死配置**——设置页白纸黑字承诺「超过天数的 captures 自动清理」，\n    但全项目没有一行代码消费它，录制从第一天起永远堆着（实测 13 条 = 5.6MB，重度使用一天上百 MB）。\n\n    - days <= 0 视为「永不清理」（给要留全量的人一个显式出口，不是当成 0 天全删）。\n    - 只动 captures/*.jsonl；archives/ 是用户显式存档的，绝不自动删。\n    - 按日期字符串比（YYYY-MM-DD 字典序 = 时间序），不碰文件 mtime——\n      mtime 会被拷贝/同步改掉，日期在文件名里才是事实。\n    \"\"\"\n    try:\n        days = int(days)\n    except (TypeError, ValueError):\n        return []\n    if days <= 0:",
+      "sourceSha256": "8f6bc4f269d74772e10410b9b0237214bc623469cd1dad2a571bc467618c3f53",
+      "excerptSha256": "453eb6a5d1acd716d25f1d9685a1ff999f4afe45db5193440070617277c423db"
+    },
+    {
+      "id": "trajectory",
+      "file": "src/trajectory.py",
+      "anchor": "def collect(",
+      "lines": 16,
+      "startLine": 66,
+      "endLine": 81,
+      "excerpt": "def collect(session_id: str, date: str):\n    \"\"\"本会话的全部记录，按 main/subagent/security/other 分组（时序）。\"\"\"\n    mains, subs, secs, others = [], [], [], []\n    for rec in capture_store.iter_records(date):\n        i = classifier.index_record(rec)\n        if i.get(\"session_id\") != session_id:\n            continue\n        k = classifier.classify_idx(i)\n        row = (rec.get(\"ts_start\") or \"\", rec, i, k)\n        (mains if k == \"main\" else subs if k == \"subagent\"\n         else secs if k == \"security\" else others).append(row)\n    for lst in (mains, subs, secs, others):\n        lst.sort(key=lambda x: x[0])\n    return mains, subs, secs, others\n\n",
+      "sourceSha256": "23007cd3f9d1b52ef71d73377f36f1c9fd85543373ff474ff003dd6135c0df1b",
+      "excerptSha256": "2c3397349aacc7314eca8a45d80dd702f28308f9328ba1f7a77a1b2212a3191a"
+    },
+    {
+      "id": "views",
+      "file": "src/trajectory.py",
+      "anchor": "const VIEWS=",
+      "lines": 6,
+      "startLine": 1907,
+      "endLine": 1912,
+      "excerpt": "const VIEWS=[['v1','状态快照','世界变成了什么样'],['v2','物料血统','产物由什么支撑'],\n             ['v3','验证矩阵','质检站够不够硬'],['v4','阀门与回路','什么在控制流向'],\n             ['v5','能耗与方差','代价与瓶颈'],\n             ['v6','最优轨迹','这趟本可以怎么走'],\n             ['v7','物料生命线','一件物料的一生与未验债'],\n             ['v8','最优时序图','节点—连线的反事实时序']];",
+      "sourceSha256": "23007cd3f9d1b52ef71d73377f36f1c9fd85543373ff474ff003dd6135c0df1b",
+      "excerptSha256": "9a85591e98bc6c4b153803d9477a2957d2ae8e443507fbe1fee5e12c2b4578fe"
+    },
+    {
+      "id": "guide",
+      "file": "src/app.py",
+      "anchor": "def ai_guide(",
+      "lines": 16,
+      "startLine": 1705,
+      "endLine": 1720,
+      "excerpt": "def ai_guide():\n    \"\"\"给 AI 的完整用法说明（Markdown 原文）。\n\n    前面追加**本机运行期事实**：文档里写的是 `~/.cc-wire-analyzer/` 这类相对表述，而调用方\n    需要的是这台机器上的绝对路径和这个实例实际监听的端口（`find_free_port` 从 5051 起挑，\n    被占就顺延——照抄 5051 是常见错误）。\n    \"\"\"\n    head = (\n        \"# CC Wire Analyzer — 本机运行期事实（自动生成，以此为准）\\n\\n\"\n        f\"- version: `{VERSION}`\\n\"\n        f\"- 本实例监听: `http://127.0.0.1:{_LISTEN_PORT}`\"\n        \"  ← 下文所有 API 都在这个地址上，别照抄 5051\\n\"\n        f\"- 代理是否正在录制: `{settings_guard.is_patched()}`\"\n        \"  （false 时 CC 直连上游，什么都录不到；POST /api/proxy/start 开始录制）\\n\"\n        f\"- 数据目录: `{CFG.CONFIG_DIR}`\\n\"\n        f\"- 录制目录: `{capture_store.CAPTURES_DIR}`（`YYYY-MM-DD.jsonl`，append-only）\\n\"",
+      "sourceSha256": "2a7e2f46b3756ff73b5a416b76203046a53fef34866b7a384de3405c26eaf95c",
+      "excerptSha256": "6bd12de36de418443065d3c1488ea3a6b86c0ee3f5879a07a1fbddf9f142e26b"
+    }
+  ],
+  "panels": [
+    {
+      "id": "impl-connect",
+      "target": "s1",
+      "title": "当前功能：代理接入与配置恢复",
+      "state": "现有实现 · 代码核查",
+      "how": "在捕获页启动代理后，新开的 Claude Code 会话会经由本机代理访问已配置的上游。状态卡显示监听端口和上游路由。停止代理时恢复由软件接管的配置；如果用户在录制期间自行改过地址，软件不会用旧值覆盖新设置。",
+      "flow": "核对上游 → 启动代理 → 新开 Claude Code 会话 → 发起请求 → 停止代理。",
+      "gap": "启动后应新开 Claude Code 会话。录制期间切换上游可能绕过代理，建议先停止录制再切换。崩溃后应检查配置恢复提示；不同故障情况下的自动恢复范围尚未完成运行验证。",
+      "code": [
+        "guard",
+        "forward"
+      ],
+      "images": [
+        "captures"
+      ],
+      "requirements": [
+        "B-01",
+        "B-02",
+        "B-03",
+        "B-04"
+      ],
+      "refs": [
+        "s1-ui"
+      ]
+    },
+    {
+      "id": "impl-record",
+      "target": "s2",
+      "title": "当前功能：录制保存与失败提示",
+      "state": "现有实现 · 代码核查",
+      "how": "请求记录按日期保存在本机，并建立摘要索引供列表快速读取。写入失败时会记录错误并提示，流量转发继续；因此已转发成功不等于记录已完整保存。",
+      "flow": "正常使用 Claude Code → 自动保存记录 → 捕获页查看摘要 → 打开详情核对。",
+      "gap": "保留全部未知事件或失败原始字节仍是V3要求，不能由已有解码标记推断已经全量留存。",
+      "code": [
+        "store"
+      ],
+      "images": [],
+      "requirements": [
+        "C-08",
+        "C-09",
+        "D-01"
+      ],
+      "refs": [
+        "s2-ui"
+      ]
+    },
+    {
+      "id": "impl-find",
+      "target": "s3",
+      "title": "当前功能：捕获列表与检索",
+      "state": "现有实现 · 代码与存量截图",
+      "how": "捕获页按日期和来源显示请求摘要，可进入详情查看完整内容。失败聚合帮助先找错误样本；接口还支持分页、会话筛选和全文搜索。查看导入包时应选择对应来源。",
+      "flow": "选择来源与日期 → 筛选或检索 → 打开请求 → 查看原文。",
+      "gap": "“本次调查的目标与疑问”是V3新对象，现有捕获列表本身不保存它。检索coverage在新GUI里如何呈现仍需落地。",
+      "code": [
+        "list"
+      ],
+      "images": [
+        "captures"
+      ],
+      "requirements": [
+        "D-03",
+        "F-01",
+        "NEW-01"
+      ],
+      "refs": [
+        "s3-ui"
+      ]
+    },
+    {
+      "id": "impl-read",
+      "target": "s4",
+      "title": "当前功能：请求与响应详情",
+      "state": "现有实现 · 代码与存量截图",
+      "how": "详情以左右两栏展示请求和响应，包括模型、时间、System、Messages、Tools、调用参数和返回内容。长文本可以复制、格式化；配置模型后可翻译或解读，结果与原文分开显示。",
+      "flow": "选中捕获记录 → 展开相关内容块 → 查看参数与响应 → 按需复制、翻译或解读。",
+      "gap": "截图早于完整调用参数展示的更新。片段级“标记到当前调查”是V3新增，现有快照备份不能替代这一操作。",
+      "code": [
+        "read",
+        "detail"
+      ],
+      "images": [
+        "detail"
+      ],
+      "requirements": [
+        "C-04",
+        "C-05",
+        "F-03",
+        "NEW-02"
+      ],
+      "refs": [
+        "s4-ui"
+      ]
+    },
+    {
+      "id": "impl-relations",
+      "target": "s5",
+      "title": "当前功能：时序图与调用关系",
+      "state": "现有实现 · 代码与存量截图",
+      "how": "时序页按日期与来源展示主线、子代理和辅助调用的泳道、节点与连线。可按轮展开、聚焦泳道、缩放和拖动；节点能回到原请求。部分派生关系由提示词匹配推断，不能等同于已证明的因果关系。",
+      "flow": "选择日期与来源 → 浏览轮次和泳道 → 聚焦异常调用 → 打开节点详情。",
+      "gap": "派生匹配属于有依据的推断，不能仅凭字符串相似证明因果。派生prompt的展示细节还需实机核查；存量截图不能证明当前所有交互。",
+      "code": [
+        "dag"
+      ],
+      "images": [
+        "dag"
+      ],
+      "requirements": [
+        "G-01",
+        "G-02",
+        "G-04"
+      ],
+      "refs": [
+        "s5-ui"
+      ]
+    },
+    {
+      "id": "impl-analysis",
+      "target": "s6",
+      "title": "当前功能：快照比较与录制分析",
+      "state": "现有实现 · 含已知缺口",
+      "how": "分析页通过快照选择材料，可以比较提示词差异或分析一份录制。列表归纳和八视图归纳分别启动；切换展示方式不会自动完成另一种分析。跨天统计可通过接口查询，确定性统计不调用模型；语义归纳与 AI 对话需要配置模型。",
+      "flow": "在详情备份材料 → 分析页选择快照 → 比较或查看机械分析 → 按需启动语义归纳 → 回原文核对。",
+      "gap": "collect目前没有source参数；八视图名称常量仍为中文。英文与日文八视图的完整展示尚未确认。判断的确认/撤回与行动验收仍属V3新增设计。 当前页面按钮互斥不保证服务端作业互斥；八视图 details 的思考/回复各最多6000字符、工具结果2500、参数/prompt2000，不能当作完整原文。",
+      "code": [
+        "trends",
+        "trajectory",
+        "views"
+      ],
+      "images": [
+        "analyse"
+      ],
+      "requirements": [
+        "H-01",
+        "J-02",
+        "I-01",
+        "I-11",
+        "NEW-03"
+      ],
+      "refs": [
+        "s6-ui"
+      ]
+    },
+    {
+      "id": "impl-output",
+      "target": "s7",
+      "title": "当前功能：保存快照与导出材料",
+      "state": "部分实现 · 新调查流程待落地",
+      "how": "当前可以保存包含完整录制、标签、备注和版本信息的快照，并通过接口查询或导出已有材料。设置中的浏览入口可打开 HTTP 查询页面。独立调查记录、片段标记、判断修订和行动跟进属于后续设计。",
+      "flow": "备份录制或提示词 → 设置标签与备注 → 查询、比较或导出快照。",
+      "gap": "现有软件没有这套调查容器的产品实现。调查记录与相关操作尚未提供。",
+      "code": [
+        "snapshot",
+        "guide"
+      ],
+      "images": [],
+      "requirements": [
+        "H-01",
+        "K-03",
+        "NEW-05",
+        "NEW-06"
+      ],
+      "refs": [
+        "s7-ui",
+        "s9-model"
+      ]
+    },
+    {
+      "id": "impl-daily",
+      "target": "s8",
+      "title": "当前功能：设置与录制保留期",
+      "state": "现有实现 · 代码与存量截图",
+      "how": "设置页提供上游、分析模型与存储相关配置；界面可以切换外观和语言。录制按日期清理，保留天数不大于 0 时不自动清理。滚动分片压实用于减少当天磁盘占用，压实后的内容仍可由软件读取。",
+      "flow": "打开设置 → 调整所需选项 → 保存配置 → 返回工作区检查效果。模型配置可先测试连接。",
+      "gap": "清理会移除相应日期的录制，请先导出需要长期保留的材料。调查引用影响预览与清理后的调查状态属于后续设计。压实保留的是已经保存的语义记录，不保证包含所有原始网络字节。",
+      "code": [
+        "retention"
+      ],
+      "images": [
+        "settings"
+      ],
+      "requirements": [
+        "D-06",
+        "L-03",
+        "L-02"
+      ],
+      "refs": [
+        "s8-ui"
+      ]
+    }
+  ]
+}

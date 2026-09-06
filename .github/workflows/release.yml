@@ -1,13 +1,11 @@
-name: build-release
+name: manual-verify-build
 
-# 触发：推 v* tag → 双平台打包 + 发 GitHub Release；workflow_dispatch 做测试构建（不出 release）
+# 公开披露已冻结：仅显式手动验证与打包，不触发发布。
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write   # release job 发 release 需要
+  contents: read
 
 jobs:
   # 260808 新增。此前这个 workflow 从 checkout 直接到 PyInstaller 再到发 release，
@@ -20,10 +18,8 @@ jobs:
   verify:
     name: Verify (self-tests + doc gate)
     runs-on: windows-latest
-    # **必须显式指定 bash，两个理由，第二个才是致命的**（260808 首跑 CI 撞出来）：
-    #   1. Windows runner 默认 pwsh，`src/*.py` 这种 glob 不会展开传给外部命令 ——
-    #      `py_compile` 收到字面量 `src/*.py` 直接报错（本地 Git Bash 会展开，所以本地全绿）。
-    #   2. 更要命：Actions 在 pwsh 下只把**最后一条命令**的 `$LASTEXITCODE` 当作 step 结果。
+    # 显式 bash 让多命令 step 中任意一条失败立即停止。
+    # Actions 在 pwsh 下只把**最后一条命令**的 `$LASTEXITCODE` 当作 step 结果。
     #      下面两个 step 各有 4~6 行命令，那意味着前面几条全失败、只要最后一条成功，
     #      step 就是绿的 —— **闸门会在 CI 里静默失效**，而这正是它要防的病。
     #      bash 由 Actions 以 `-eo pipefail` 启动，第一条失败就停。
@@ -35,7 +31,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Install uv
         run: pip install uv
       - name: Sync dependencies
@@ -43,31 +39,33 @@ jobs:
 
       # 顺序有意：先语法、再静态对账（秒级，失败得最快）、最后跑真起进程的 e2e 自测。
       - name: Syntax
-        run: uv run python -m py_compile src/*.py tools/*.py
+        run: uv run python -m compileall -q src tests tools
 
       # doc_audit 是**闸门**：文档说了代码里不成立的事就退出 1（幽灵端点/断链/过期 IDX_SCHEMA/
       # 不存在的自测文件/缺取值的 token）。「代码有、文档没写」只提示，不挡——否则第一个
-      # 有意不公开的内部端点就会卡住发版。判据见 tools/doc_audit.py 的 _rows()。
+      # 有意不公开的内部端点就会卡住发版。判据见 tools/checks/doc_audit.py 的 _rows()。
       - name: Static reconciliation
         run: |
-          uv run python tools/doc_audit.py
-          uv run python tools/check_i18n_js.py
-          uv run python tools/check_render.py
-          uv run python tools/check_refs.py
+          uv run python tools/checks/doc_audit.py --self-test
+          uv run python tools/checks/doc_audit.py
+          uv run python tools/checks/check_i18n_js.py
+          uv run python tools/checks/check_render.py
+          uv run python tools/checks/check_refs.py
 
       - name: Self-tests
         run: |
           uv run python src/settings_guard.py --self-test
           uv run python src/upstream_history.py --self-test
-          uv run python src/proxy_selftest.py
-          uv run python src/cli_selftest.py
-          uv run python src/doctor_selftest.py
-          uv run python src/diagnose_selftest.py
-          uv run python src/snapshot_selftest.py
-          uv run python src/update_selftest.py
-          uv run python src/pack_selftest.py
-          uv run python src/view_selftest.py
-          uv run python src/llm_selftest.py
+          uv run python tests/proxy_selftest.py
+          uv run python tests/cli_selftest.py
+          uv run python tests/doctor_selftest.py
+          uv run python tests/diagnose_selftest.py
+          uv run python tests/snapshot_selftest.py
+          uv run python tests/update_selftest.py
+          uv run python tests/pack_selftest.py
+          uv run python tests/view_selftest.py
+          uv run python tests/llm_selftest.py
+          uv run python tests/rolling_selftest.py
 
   build:
     name: Build (${{ matrix.os }})
@@ -101,7 +99,7 @@ jobs:
       - name: Sync dependencies
         run: uv sync ${{ matrix.extra }}
 
-      # 版本号唯一真源是 git tag（见 docs/reference/开发约定.md 第九节）。构建前从 tag 生成 src/_version.py，
+      # 版本号唯一真源是 git tag（见 docs/development/开发约定.md 第九节）。构建前从 tag 生成 src/_version.py，
       # exe 运行时 /api/about 因此永远与 tag 一致；顺带同步 pyproject.toml（仅改 CI 工作副本，不入仓库）。
       # workflow_dispatch 无 tag 时用 0.0.0-dev 兜底（测试构建，不出 release）。
       - name: Inject version from tag
@@ -112,10 +110,10 @@ jobs:
           else
             V="0.0.0-dev"
           fi
-          printf 'VERSION = "%s"  # CI 从 tag 注入，勿手改（见 docs/reference/开发约定.md 第九节）\n' "$V" > src/_version.py
+          printf 'VERSION = "%s"  # CI 从 tag 注入，勿手改（见 docs/development/开发约定.md 第九节）\n' "$V" > src/_version.py
           sed -i.bak "s/^version = \".*\"/version = \"$V\"/" pyproject.toml && rm pyproject.toml.bak
           # 后面的重命名步骤要用它拼产物名。两份 spec 也读同一个 _version.py 刻进
-          # PE 版本资源 / Info.plist（tools/version_res.py），所以"文件名说的"和
+          # PE 版本资源 / Info.plist（tools/build/version_res.py），所以"文件名说的"和
           # "属性页说的"必然是同一个数——它们来自同一个源，不是两处各写一次。
           echo "APP_VERSION=$V" >> "$GITHUB_ENV"
           echo "Injected version: $V"
@@ -124,7 +122,7 @@ jobs:
       # 不再单独出 CLI 二进制——AI 走 HTTP API（/api/proxy/*、/api/captures…），
       # 结构化 JSON 比 stdout 更合适，也免得维护第二套面向 agent 的接口。
       # （别写"noconsole 没有 stdout"——260801 实测：管道/重定向启动时 fd 1 有效，
-      #   `--help` 正是靠这个打印的。见 docs/reference/开发约定.md「单 exe，三种调用」。）
+      #   `--help` 正是靠这个打印的。见 docs/development/开发约定.md「单 exe，三种调用」。）
       - name: Build with PyInstaller
         run: uv run pyinstaller ${{ matrix.spec }} --noconfirm --clean
 
@@ -147,71 +145,3 @@ jobs:
           name: ${{ matrix.os }}-build
           path: ${{ matrix.artifact }}
           if-no-files-found: error   # 产物缺失则构建失败，不静默放过
-
-  # 单独 release job：等两个平台都构建完，下载所有产物后一次性 attach。
-  # 为什么不放每个 build job 里：两个 build job 各自 attach 时会并发写同一 release，
-  # 后到的基于不完整状态更新、覆盖先到的 asset —— v0.1.0 首发就这样丢了 Windows exe。
-  release:
-    name: Publish release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout（取 CHANGELOG.md 与 tag message 做 release notes）
-        uses: actions/checkout@v4
-        # 不加 fetch-tags: true —— tag 触发时 checkout 本身就把触发 commit 的 SHA fetch 到
-        # refs/tags/<tag>，与 fetch-tags 要拉的 annotated tag 对象同 ref 不同目标，git 直接
-        # fatal "Cannot fetch both ..."（v0.3.0 首次 tag 触发实测，重试三次后 job 失败）。
-
-      - name: Fetch annotated tag（tag message 做 fallback notes 用）
-        # checkout 把 refs/tags/<tag> 指到了触发 commit（lightweight 化），%(contents) 读不到
-        # annotated message —— 强制覆盖回真 tag 对象。失败不致命：还有占位 fallback 兜底。
-        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" || true
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true   # 各平台 artifact 的文件合并到同一目录
-
-      # release notes 取 CHANGELOG.md 当前 tag 段落（单一真源，已在维护、最详细）。
-      # 不用 generate_release_notes：它按 PR 分组列 "What's Changed"，本项目是单人直接
-      # push commit（无 PR），结果只剩一行 Full Changelog 链接，CHANGELOG 和 tag message
-      # 全被忽略——v0.1.0/v0.2.0 的 release 页面即如此（260714 修）。
-      # 校验和清单（260808）：软件内的「下载并安装」会取这个文件比对下载到的字节，
-      # 对不上就删文件并报错。**没有它时软件会明说"本次无校验和"**，而不是默默降级——
-      # 所以这一步不能悄悄失效。只 glob 产物名，不写 `*`：那会把清单自己也算进去。
-      - name: Checksums
-        run: |
-          cd artifacts
-          sha256sum cc-wire-analyzer-* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Build release notes from CHANGELOG
-        run: |
-          TAG="${GITHUB_REF_NAME}"   # 例 v0.2.0
-          # 提取 "## <TAG>" 段落：跳过标题行本身，遇下一个 "## " 截止。
-          # 纯字符串前缀匹配（兼容 "## v0.2.0 - 日期" 与 "## v0.1.0" 两种），免正则转义坑。
-          awk -v tag="$TAG" '
-            /^## / {
-              if (found) exit                       # 已在记录，遇下一版本标题 → 停
-              rest = substr($0, 4)                  # 去掉 "## "
-              if (rest == tag || substr(rest, 1, length(tag)+1) == tag " ") found = 1
-              next                                  # 标题行不进 body
-            }
-            found { print }
-          ' CHANGELOG.md > release_notes.md
-          # 三层兜底，绝不空白：
-          if [ ! -s release_notes.md ]; then
-            git tag -l --format='%(contents)' "$TAG" > release_notes.md   # fallback 1：tag message
-          fi
-          if [ ! -s release_notes.md ]; then
-            echo "Release ${TAG}. See CHANGELOG.md for details." > release_notes.md   # fallback 2：占位
-          fi
-          echo "--- release_notes.md 首部 ---"; head -5 release_notes.md
-
-      - name: Attach all assets to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          body_path: release_notes.md

@@ -1,0 +1,1417 @@
+{
+  "title": "Wire Analyzer · 从零开发需求全景",
+  "date": "2026-09-05",
+  "baseline": "cc-wire-analyzer v0.4.26（本地代码与文档审计）",
+  "scope": "现有功能全景＋未来能力单独标注",
+  "notice": "现有/部分描述参考项目的证据状态；验收条件是新项目目标，不表示旧项目逐条已验收。阶段仅为本次建议，未排期。",
+  "sources": {
+    "product": [
+      "产品定位与当前版本",
+      "CHANGELOG.md"
+    ],
+    "guide": [
+      "界面导览",
+      "docs/usage/界面导览.md"
+    ],
+    "handbook": [
+      "同类工具构建手册",
+      "docs/guides/同类工具构建手册.md"
+    ],
+    "rules": [
+      "开发约定与安全不变量",
+      "docs/development/开发约定.md"
+    ],
+    "api": [
+      "API 契约",
+      "docs/usage/API契约.md"
+    ],
+    "arch": [
+      "架构总览",
+      "docs/development/架构总览.md"
+    ],
+    "trajectory": [
+      "八视图数据层",
+      "src/trajectory.py"
+    ],
+    "views": [
+      "八视图多语言待办",
+      "issues/open/260829_八视图三语.md"
+    ],
+    "fixtures": [
+      "八视图导入与固定样本缺口",
+      "issues/open/260829_八视图只认captures与固定验收样本.md"
+    ],
+    "future": [
+      "方向性路线图（非排期）",
+      "research/路线与待办/ROADMAP.local.md"
+    ],
+    "framework": [
+      "轨迹框架化方向评估",
+      "issues/open/260811_轨迹框架化方向评估.md"
+    ],
+    "observer": [
+      "Agent 观测者需求评估",
+      "issues/open/260904_Agent观测者_需求与可研.md"
+    ]
+  },
+  "phases": {
+    "P0": "最小可信闭环",
+    "P1": "日常调查与可用性",
+    "P2": "深度分析与体验扩展",
+    "R": "未来研究，未排期"
+  },
+  "groups": [
+    {
+      "id": "A",
+      "title": "产品目标与观测边界",
+      "question": "谁使用，能回答什么，哪些事数据无法证明？",
+      "items": [
+        {
+          "id": "A-01",
+          "title": "调查一次 Agent 的真实调用",
+          "phase": "P0",
+          "status": "现有",
+          "need": "用户想解释失败、变慢和上下文变化。",
+          "acceptance": "从一个问题定位到请求、原始响应及相关上下文，形成可复查证据。",
+          "sources": [
+            "handbook",
+            "arch"
+          ]
+        },
+        {
+          "id": "A-02",
+          "title": "人和 Agent 两类使用者",
+          "phase": "P0",
+          "status": "现有",
+          "need": "人需要图形界面，Agent 需要可检索的结构化数据。",
+          "acceptance": "同一条请求在 GUI、API 中保持同一 ID、状态和字段含义。",
+          "sources": [
+            "handbook",
+            "arch"
+          ]
+        },
+        {
+          "id": "A-03",
+          "title": "盘点目标工具的协议契约",
+          "phase": "P0",
+          "status": "现有",
+          "need": "凭协议印象会漏掉真实编码、事件和字段。",
+          "acceptance": "列出声明能力、实测字段、消费分支与支持差距；未知项可追踪。",
+          "sources": [
+            "handbook",
+            "arch"
+          ]
+        },
+        {
+          "id": "A-04",
+          "title": "明确 wire 观测盲区",
+          "phase": "P0",
+          "status": "现有",
+          "need": "请求前行为和内部状态不能由 HTTP 凭空还原。",
+          "acceptance": "产品说明列出可见/不可见范围，缺失与未知不显示为零或成功。",
+          "sources": [
+            "handbook",
+            "arch"
+          ]
+        },
+        {
+          "id": "A-05",
+          "title": "CC 与兼容上游首期边界",
+          "phase": "P0",
+          "status": "现有",
+          "need": "先把一个工具和一类协议的观测闭环做实。",
+          "acceptance": "Anthropic 协议的官方及兼容端点有隔离样本；不宣称通用多协议已支持。",
+          "sources": [
+            "handbook",
+            "arch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "title": "接入、代理与配置恢复",
+      "question": "如何开始录制，并在任何退出路径恢复工作？",
+      "items": [
+        {
+          "id": "B-01",
+          "title": "启动、停止及真实状态",
+          "phase": "P0",
+          "status": "现有",
+          "need": "用户需要知道代理是否就绪。",
+          "acceptance": "端口绑定成功才显示运行；启动失败展示原因，状态可由 API 查询。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "B-02",
+          "title": "最小范围接管配置",
+          "phase": "P0",
+          "status": "现有",
+          "need": "录制不能覆盖用户其他设置。",
+          "acceptance": "仅修改 BASE_URL；保留其他字段与文本格式，保存恢复凭据。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "B-03",
+          "title": "退出与崩溃恢复",
+          "phase": "P0",
+          "status": "现有",
+          "need": "死代理地址会导致被观测工具无法工作。",
+          "acceptance": "正常关闭、异常退出、重启遗留恢复和手动 restore 均在隔离配置验证。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "B-04",
+          "title": "配置变更所有权校验",
+          "phase": "P0",
+          "status": "现有",
+          "need": "其他工具可能在录制期间切换上游。",
+          "acceptance": "只撤销仍能证明属于本实例的修改；用户新值不被旧备份覆盖。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "B-05",
+          "title": "上游选择与代理链共存",
+          "phase": "P0",
+          "status": "现有",
+          "need": "兼容直连、第三方网关及代理环境。",
+          "acceptance": "展示实际上游；保留必要路径/查询/鉴权，检测自指循环。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "B-06",
+          "title": "上游历史与显式还原",
+          "phase": "P1",
+          "status": "现有",
+          "need": "切换后需要找回曾使用的上游组合。",
+          "acceptance": "只还原本机已采集快照，写前备份；代理接管期间拒绝还原。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "B-07",
+          "title": "只读配置体检",
+          "phase": "P0",
+          "status": "现有",
+          "need": "用户应能在接入前识别配置冲突。",
+          "acceptance": "诊断不改配置，规则有依据和范围，允许明确的强制启动入口。",
+          "sources": [
+            "rules",
+            "arch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "title": "流量录制与协议保真",
+      "question": "发生了什么，能否完整留证？",
+      "items": [
+        {
+          "id": "C-01",
+          "title": "HTTP 透明转发",
+          "phase": "P0",
+          "status": "现有",
+          "need": "观测不能改变请求和上游响应语义。",
+          "acceptance": "对照验证方法、路径、正文、状态、必要头；不能把错误转成成功。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-02",
+          "title": "SSE 边转发边记录",
+          "phase": "P0",
+          "status": "现有",
+          "need": "用户不能为录制等待整个响应结束。",
+          "acceptance": "正常流、流内 error、断流和取消分别有样本；首块及时送达。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-03",
+          "title": "非流式与异常响应",
+          "phase": "P0",
+          "status": "现有",
+          "need": "安全分类器等调用可能不使用 SSE。",
+          "acceptance": "JSON、文本/HTML 错误及非流式 usage 可检查，不按空流处理。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-04",
+          "title": "完整请求内容与调用参数",
+          "phase": "P0",
+          "status": "现有",
+          "need": "查模型实际收到的内容和配置。",
+          "acceptance": "system、messages、tools 及其他顶层参数均可查看；新字段保留并提示。",
+          "sources": [
+            "product",
+            "guide"
+          ]
+        },
+        {
+          "id": "C-05",
+          "title": "响应内容块与结束信息",
+          "phase": "P0",
+          "status": "现有",
+          "need": "区分 text、thinking、tool_use 和真实错误。",
+          "acceptance": "内容块顺序、工具参数、stop_reason 和 error 不互相覆盖。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-06",
+          "title": "压缩、字符集与未知事件",
+          "phase": "P0",
+          "status": "现有",
+          "need": "解码失败不能伪装成空正文。",
+          "acceptance": "覆盖声明的编码；解压失败、字符回退和未知事件有明确留痕。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-07",
+          "title": "用量与时序归一化",
+          "phase": "P0",
+          "status": "现有",
+          "need": "比较耗时、首字时间、token 和缓存。",
+          "acceptance": "所有消费者使用相同口径；缺测显示未知；区分请求等待与生成时间。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-08",
+          "title": "录制失败不阻塞转发",
+          "phase": "P0",
+          "status": "现有",
+          "need": "磁盘问题不能使用户的 Agent 停工。",
+          "acceptance": "注入写入失败后转发仍继续，错误计数/日志/界面可见。",
+          "sources": [
+            "handbook",
+            "arch",
+            "rules"
+          ]
+        },
+        {
+          "id": "C-09",
+          "title": "原始证据留存与重解析策略",
+          "phase": "P0",
+          "status": "新增建议",
+          "need": "只存解析结果会让未知协议永久丢失。",
+          "acceptance": "定义原始字节留存范围、脱敏和容量预算；失败样本可重解析，未留存时明示不可恢复。",
+          "sources": [
+            "handbook"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "title": "存储、导入与生命周期",
+      "question": "数据如何查得到、存得住、带得走？",
+      "items": [
+        {
+          "id": "D-01",
+          "title": "持久录制与可追溯 ID",
+          "phase": "P0",
+          "status": "现有",
+          "need": "录制应在退出后仍可定位。",
+          "acceptance": "记录含来源、日期、请求 ID；重复读取稳定定位同一证据。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "D-02",
+          "title": "摘要索引与详情按需读取",
+          "phase": "P0",
+          "status": "现有",
+          "need": "大录制不应每次整包载入。",
+          "acceptance": "列表查询走摘要，详情按 ID 读取；索引版本不符能重建。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "D-03",
+          "title": "分页、时间窗及多条件查询",
+          "phase": "P0",
+          "status": "现有",
+          "need": "从大量录制中缩小调查范围。",
+          "acceptance": "按日期/类型/状态等查询组合口径一致，分页无重复漏项。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "D-04",
+          "title": "压缩存储与归档",
+          "phase": "P1",
+          "status": "现有",
+          "need": "长期使用需要降低体积。",
+          "acceptance": "压缩/归档后可读取对应数据，清楚区分存储压缩和协议压缩。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "D-05",
+          "title": "录制包导入、导出与来源隔离",
+          "phase": "P1",
+          "status": "部分",
+          "need": "跨机器复盘时不能把外来证据混作本机数据。",
+          "acceptance": "来源命名空间参与所有读取链；相同日期/会话的不同来源不会串数据。",
+          "sources": [
+            "api",
+            "fixtures"
+          ]
+        },
+        {
+          "id": "D-06",
+          "title": "删除、保留期与明确反馈",
+          "phase": "P1",
+          "status": "现有",
+          "need": "用户需要控制磁盘占用。",
+          "acceptance": "显式删除有确认；自动保留策略仅作用于规定目录，失败可见。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "D-07",
+          "title": "固定基准样本与失效检测",
+          "phase": "P0",
+          "status": "部分",
+          "need": "回归样本不能被日常清理默默删除。",
+          "acceptance": "基准样本持久独立保存，丢失时测试失败，不把错误页算验收成功。",
+          "sources": [
+            "fixtures"
+          ]
+        },
+        {
+          "id": "D-08",
+          "title": "先压缩再删除及索引进一步节省",
+          "phase": "P2",
+          "status": "构想",
+          "need": "进一步降低长期存储成本。",
+          "acceptance": "先实测规模瓶颈再定方案；验证旧数据可读、压缩失败不触发后续误删。",
+          "sources": [
+            "product",
+            "future"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "title": "身份归属与语义分类",
+      "question": "这条调用是谁的，在做什么？",
+      "items": [
+        {
+          "id": "E-01",
+          "title": "请求角色分类",
+          "phase": "P0",
+          "status": "现有",
+          "need": "区分主线、子代理、标题、安全审查、压缩等请求。",
+          "acceptance": "代表性真样本有分类基准；未知调用保留 unknown 而非强制归类。",
+          "sources": [
+            "handbook",
+            "guide"
+          ]
+        },
+        {
+          "id": "E-02",
+          "title": "会话隔离与主线聚合",
+          "phase": "P0",
+          "status": "现有",
+          "need": "并发调用不能混成一条对话。",
+          "acceptance": "按可信身份字段聚合；缺身份有不确定标记和回查路径。",
+          "sources": [
+            "handbook",
+            "guide"
+          ]
+        },
+        {
+          "id": "E-03",
+          "title": "轮次边界与发起来源",
+          "phase": "P1",
+          "status": "现有",
+          "need": "区分用户发起、工具续轮和其他来源。",
+          "acceptance": "边界规则可解释；跨压缩/重试样本不错误合并或拆分。",
+          "sources": [
+            "handbook",
+            "guide"
+          ]
+        },
+        {
+          "id": "E-04",
+          "title": "子代理派生与归属证据",
+          "phase": "P1",
+          "status": "现有",
+          "need": "理解谁派出了谁以及用了什么任务 prompt。",
+          "acceptance": "派生关系有匹配依据；不足时不画确定关系。",
+          "sources": [
+            "handbook",
+            "guide"
+          ]
+        },
+        {
+          "id": "E-05",
+          "title": "辅助请求关联主线",
+          "phase": "P1",
+          "status": "现有",
+          "need": "隐藏失败经常出现在后台辅助调用。",
+          "acceptance": "关联与独立请求明确区分；不能仅按时间相邻宣称因果。",
+          "sources": [
+            "handbook",
+            "guide"
+          ]
+        },
+        {
+          "id": "E-06",
+          "title": "身份、角色、来源分层",
+          "phase": "P0",
+          "status": "现有",
+          "need": "单个颜色或关键词不能替代完整判别体系。",
+          "acceptance": "字段有独立语义，分类依据可追溯；跨页面同一 ID 的归属一致。",
+          "sources": [
+            "handbook",
+            "guide"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F",
+      "title": "查找请求与阅读详情",
+      "question": "如何快速从全景进入原始证据？",
+      "items": [
+        {
+          "id": "F-01",
+          "title": "捕获列表与实时更新",
+          "phase": "P0",
+          "status": "现有",
+          "need": "首先看哪些请求失败或变慢。",
+          "acceptance": "列表含类型、耗时、usage、状态摘要；实时增加不打乱正在阅读的位置。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        },
+        {
+          "id": "F-02",
+          "title": "概览指标与失败入口",
+          "phase": "P1",
+          "status": "现有",
+          "need": "不逐条翻阅也能发现异常。",
+          "acceptance": "计数与同筛选范围列表一致，点击能进入具体请求或错误组。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        },
+        {
+          "id": "F-03",
+          "title": "请求、响应分区阅读",
+          "phase": "P0",
+          "status": "现有",
+          "need": "长提示词、工具定义和历史消息需要逐层展开。",
+          "acceptance": "各分区可展开、复制与定位，错误/空内容/缺失状态分开。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        },
+        {
+          "id": "F-04",
+          "title": "格式化与原文对照",
+          "phase": "P1",
+          "status": "现有",
+          "need": "提高长文本可读性同时保留原始证据。",
+          "acceptance": "格式化不覆写原记录；JSON、Markdown 与原文可核对。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        },
+        {
+          "id": "F-05",
+          "title": "内容检索与定位",
+          "phase": "P0",
+          "status": "现有",
+          "need": "按错误文本、工具名或片段寻找证据。",
+          "acceptance": "返回匹配 ID 和上下文；超限明确截断，能继续查详情。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        },
+        {
+          "id": "F-06",
+          "title": "未知调用参数突出显示",
+          "phase": "P1",
+          "status": "现有",
+          "need": "协议新增字段可能解释行为变化。",
+          "acceptance": "请求详情展示全部剩余参数，未知字段有标记而非被白名单隐藏。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        },
+        {
+          "id": "F-07",
+          "title": "失败、缺失、归档和空状态",
+          "phase": "P0",
+          "status": "现有",
+          "need": "用户必须知道看不到数据的原因。",
+          "acceptance": "每种状态给出真实原因与可行动入口，不制造必定报错的链接。",
+          "sources": [
+            "guide",
+            "product"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "title": "时序与调用关系图",
+      "question": "并行、等待和派生关系怎样看清？",
+      "items": [
+        {
+          "id": "G-01",
+          "title": "主线、子代理与辅助泳道",
+          "phase": "P1",
+          "status": "现有",
+          "need": "区分同时发生的不同执行主体。",
+          "acceptance": "图与列表引用相同请求 ID，泳道归属一致。",
+          "sources": [
+            "guide",
+            "handbook"
+          ]
+        },
+        {
+          "id": "G-02",
+          "title": "DAG 边与时间编码",
+          "phase": "P1",
+          "status": "现有",
+          "need": "看谁派生谁、何时开始结束。",
+          "acceptance": "先后与派生分开表达；持续时间与时间位置反映记录，不伪造因果。",
+          "sources": [
+            "guide",
+            "handbook"
+          ]
+        },
+        {
+          "id": "G-03",
+          "title": "缩放、平移、折叠轮次",
+          "phase": "P1",
+          "status": "现有",
+          "need": "长会话需要全局浏览和局部细看。",
+          "acceptance": "缩放后文本可读，折叠可恢复，当前选中节点不丢失。",
+          "sources": [
+            "guide",
+            "handbook"
+          ]
+        },
+        {
+          "id": "G-04",
+          "title": "节点详情与上下文联动",
+          "phase": "P1",
+          "status": "现有",
+          "need": "从图里的异常跳到原因。",
+          "acceptance": "点击节点进入对应录制，返回保留筛选和视图上下文。",
+          "sources": [
+            "guide",
+            "handbook"
+          ]
+        },
+        {
+          "id": "G-05",
+          "title": "关联不确定与缺口表达",
+          "phase": "P1",
+          "status": "现有",
+          "need": "数据不全不能补成顺畅故事。",
+          "acceptance": "缺失/推断与已知关系有文字区分；无证据不画确定执行链。",
+          "sources": [
+            "guide",
+            "handbook"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "title": "快照、差异与 AI 解读",
+      "question": "同一次或不同轮次，究竟变了什么？",
+      "items": [
+        {
+          "id": "H-01",
+          "title": "文本与整条录制快照",
+          "phase": "P1",
+          "status": "现有",
+          "need": "保留调查时的内容版本。",
+          "acceptance": "快照能命名、读取、删除；保存对象类型和原录制关联清楚。",
+          "sources": [
+            "guide",
+            "api"
+          ]
+        },
+        {
+          "id": "H-02",
+          "title": "精确差异对比",
+          "phase": "P1",
+          "status": "现有",
+          "need": "发现提示词、上下文和 thinking 的细小变化。",
+          "acceptance": "增删改与不可见字符可见；原始内容可回查。",
+          "sources": [
+            "guide",
+            "api"
+          ]
+        },
+        {
+          "id": "H-03",
+          "title": "翻译与自定义模型配置",
+          "phase": "P2",
+          "status": "现有",
+          "need": "阅读多语言长文本。",
+          "acceptance": "结果与原文并排保留；配置实际生效，失败/取消不损坏原文。",
+          "sources": [
+            "guide",
+            "api"
+          ]
+        },
+        {
+          "id": "H-04",
+          "title": "AI 解读与提示模板",
+          "phase": "P2",
+          "status": "现有",
+          "need": "把复杂报文转为可读解释。",
+          "acceptance": "解释独立标为模型产物，输入隔离；超限和失败有反馈。",
+          "sources": [
+            "guide",
+            "api"
+          ]
+        },
+        {
+          "id": "H-05",
+          "title": "程序骨架与语义分析分层",
+          "phase": "P1",
+          "status": "现有",
+          "need": "事实不能由模型臆造。",
+          "acceptance": "确定性抽取可复算；语义可单独重跑，不修改录制和事实骨架。",
+          "sources": [
+            "guide",
+            "api"
+          ]
+        },
+        {
+          "id": "H-06",
+          "title": "证据步号与分析结果验证",
+          "phase": "P1",
+          "status": "现有",
+          "need": "AI 的解释应能被人复查。",
+          "acceptance": "越界引用被拒绝或剔除并留痕；结构通过不等于结论正确。",
+          "sources": [
+            "guide",
+            "api"
+          ]
+        },
+        {
+          "id": "H-07",
+          "title": "重复行为与工具错误链",
+          "phase": "P1",
+          "status": "现有",
+          "need": "发现单条快照内重复调用、同目标重复和重试。",
+          "acceptance": "标明分析窗口；不把局部检测宣传为跨模型/跨会话连续性评估。",
+          "sources": [
+            "framework"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "I",
+      "title": "轨迹重建与八视图",
+      "question": "如何从调用记录理解状态、物料与验证？",
+      "items": [
+        {
+          "id": "I-01",
+          "title": "跨请求重建完整步骤",
+          "phase": "P1",
+          "status": "现有",
+          "need": "压缩后的单条请求可能已失去前半段历史。",
+          "acceptance": "合并全部相关主线 blocks 并去重，步骤能回查原请求；缺口标明。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-02",
+          "title": "状态快照",
+          "phase": "P2",
+          "status": "现有",
+          "need": "查看各阶段目标、已有状态与变化。",
+          "acceptance": "每个状态主张有步骤引用；模型解释与程序观测分开标识。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-03",
+          "title": "物料血统",
+          "phase": "P2",
+          "status": "现有",
+          "need": "追踪一个产物由什么输入与动作产生。",
+          "acceptance": "资源、工具、产物、证据区分；推断血统有依据而非仅同名连线。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-04",
+          "title": "验证矩阵",
+          "phase": "P2",
+          "status": "现有",
+          "need": "检查输出获得何种验证。",
+          "acceptance": "测试命令、结果与对象对应；重新读取不被等同于验收通过。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-05",
+          "title": "阀门与回路",
+          "phase": "P2",
+          "status": "现有",
+          "need": "查看阻断、回退和重试。",
+          "acceptance": "循环返回原步骤，缺失控制状态保留未知。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-06",
+          "title": "能耗与方差",
+          "phase": "P2",
+          "status": "现有",
+          "need": "分析轨迹中的时间与代价分布。",
+          "acceptance": "计量单位、统计范围和缺测可见，不把单次波动推广成模型优劣。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-07",
+          "title": "最优轨迹（反事实推断）",
+          "phase": "P2",
+          "status": "现有",
+          "need": "探索哪些动作可能不是必要步骤。",
+          "acceptance": "显示推导假设和依赖闭包，明确不是经重跑证明的全局最优解。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-08",
+          "title": "物料生命线",
+          "phase": "P2",
+          "status": "现有",
+          "need": "看物料的读、写、执行和验证债务。",
+          "acceptance": "生命周期与时间位置可回查；未验证不写成已失败或已通过。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-09",
+          "title": "最优时序图（反事实推断）",
+          "phase": "P2",
+          "status": "现有",
+          "need": "比较观测轨迹和建议路径。",
+          "acceptance": "建议删去的节点及理由可检查，不改写原始事件。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-10",
+          "title": "语义分析进度、续跑与降级",
+          "phase": "P2",
+          "status": "现有",
+          "need": "长轨迹分析可能超时或只完成部分。",
+          "acceptance": "分批进度、重跑、已有结果状态清楚；机械兜底标明 degraded。",
+          "sources": [
+            "trajectory",
+            "api"
+          ]
+        },
+        {
+          "id": "I-11",
+          "title": "八视图语言与来源一致性",
+          "phase": "P2",
+          "status": "部分",
+          "need": "八视图应与主产品的数据入口和语言一致。",
+          "acceptance": "导入来源与本地数据均可打开；三语关键页面实测，错误页不能当成功。",
+          "sources": [
+            "views",
+            "fixtures"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "J",
+      "title": "诊断、统计与协议变化",
+      "question": "怎样从很多请求中找到值得调查的问题？",
+      "items": [
+        {
+          "id": "J-01",
+          "title": "失败指纹归并与共性字段",
+          "phase": "P1",
+          "status": "现有",
+          "need": "把大量相同报错缩成可处理的问题组。",
+          "acceptance": "同型合并、不同原因不误并；组内保留原请求和共性条件。",
+          "sources": [
+            "handbook",
+            "api"
+          ]
+        },
+        {
+          "id": "J-02",
+          "title": "跨天复发趋势",
+          "phase": "P1",
+          "status": "现有",
+          "need": "区分新问题和反复出现的问题。",
+          "acceptance": "支持日期与模型/上游等切片；样本量和首次/再次出现可追溯。",
+          "sources": [
+            "handbook",
+            "api"
+          ]
+        },
+        {
+          "id": "J-03",
+          "title": "用量、缓存、耗时统计",
+          "phase": "P1",
+          "status": "现有",
+          "need": "定位资源消耗和慢请求。",
+          "acceptance": "统计与查询范围一致，分位数有样本口径；费用估计标注价格依据。",
+          "sources": [
+            "handbook",
+            "api"
+          ]
+        },
+        {
+          "id": "J-04",
+          "title": "协议未知值雷达",
+          "phase": "P1",
+          "status": "现有",
+          "need": "工具升级可能扩大观测盲区。",
+          "acceptance": "未知字段/事件/编码可发现、定位；不只统计已有解析成功样本。",
+          "sources": [
+            "handbook",
+            "api"
+          ]
+        },
+        {
+          "id": "J-05",
+          "title": "从复发模式沉淀检查规则",
+          "phase": "R",
+          "status": "构想",
+          "need": "诊断经验最终应减少下次排查。",
+          "acceptance": "候选规则先在人审样本上检验误报/漏报，再决定是否启用。",
+          "sources": [
+            "product"
+          ]
+        },
+        {
+          "id": "J-06",
+          "title": "诊断解释的证据与不确定性",
+          "phase": "P0",
+          "status": "现有",
+          "need": "错误文本的归并不等于根因已确定。",
+          "acceptance": "症状、共性和根因假设分开；冲突证据与未知原因不得隐藏。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "title": "面向人和 Agent 的接口",
+      "question": "如何无需手工搬运日志就能完成调查？",
+      "items": [
+        {
+          "id": "K-01",
+          "title": "HTTP 查询与控制契约",
+          "phase": "P0",
+          "status": "现有",
+          "need": "GUI 和外部 Agent 需要统一入口。",
+          "acceptance": "生命周期、查询、诊断与存储动作语义明确，输入校验与错误码稳定。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "K-02",
+          "title": "无窗口服务与 CLI",
+          "phase": "P0",
+          "status": "现有",
+          "need": "自动化环境需要独立启停与查询。",
+          "acceptance": "serve/CLI 不误开 GUI；失败退出状态明确，端口就绪才可查询。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "K-03",
+          "title": "内置使用指南与实例发现",
+          "phase": "P0",
+          "status": "现有",
+          "need": "新机器上的 Agent 不应先查源仓库。",
+          "acceptance": "help、ai-guide、状态/路径接口能说明当前实例与可用查询。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "K-04",
+          "title": "有界输出与渐进检索",
+          "phase": "P0",
+          "status": "现有",
+          "need": "完整请求可能塞满 Agent 上下文。",
+          "acceptance": "摘要优先，分页和截断有标记；按 ID 再取详情，不静默丢内容。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "K-05",
+          "title": "API 的人类浏览面",
+          "phase": "P1",
+          "status": "现有",
+          "need": "人也需要核对接口返回的事实。",
+          "acceptance": "HTML 浏览不改变原 JSON 契约、不吞 SSE；示例参数能实际运行。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "K-06",
+          "title": "分析对话与持久历史",
+          "phase": "P2",
+          "status": "现有",
+          "need": "用户需要围绕快照连续提问。",
+          "acceptance": "对话与对象绑定、历史可恢复；失败可重试，thinking 不可得时说明限制。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        },
+        {
+          "id": "K-07",
+          "title": "快照迁移、标签与备注",
+          "phase": "P1",
+          "status": "现有",
+          "need": "保存调查知识并在其他机器继续。",
+          "acceptance": "快照导入导出保留内容与元数据；批量清理先给范围预览。",
+          "sources": [
+            "api",
+            "arch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L",
+      "title": "桌面体验、设置与发布",
+      "question": "如何成为日常可用的工具？",
+      "items": [
+        {
+          "id": "L-01",
+          "title": "Windows 与 macOS 桌面分发",
+          "phase": "P1",
+          "status": "现有",
+          "need": "使用者不应先安装开发环境。",
+          "acceptance": "干净环境运行发行物；字体/WebView 缺失有提示，退出恢复真实验证。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "L-02",
+          "title": "主界面三语、外观与缩放",
+          "phase": "P1",
+          "status": "现有",
+          "need": "不同语言和屏幕下应可读可用。",
+          "acceptance": "主界面中英日与三套外观核验；八视图缺口另见 I-11。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "L-03",
+          "title": "设置持久化与真实消费",
+          "phase": "P0",
+          "status": "现有",
+          "need": "开关必须实际改变行为。",
+          "acceptance": "界面、默认值、消费点一致；重启保留配置；非法值有反馈。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "L-04",
+          "title": "用户主动更新与回滚",
+          "phase": "P2",
+          "status": "现有",
+          "need": "升级不应损坏正在使用的工具。",
+          "acceptance": "固定可信来源、校验与下载取消可见；录制中不替换，替换失败可回滚。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "L-05",
+          "title": "本机多实例总览",
+          "phase": "P1",
+          "status": "现有",
+          "need": "辨别 GUI 与服务分别运行在哪里。",
+          "acceptance": "列表展示可验证的活动实例；不将陈旧 PID 当作进程身份。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "L-06",
+          "title": "键盘操作与窄屏可读性",
+          "phase": "P1",
+          "status": "新增建议",
+          "need": "密集图和长文本仍需可操作。",
+          "acceptance": "核心调查流程可键盘完成；目标窗口及窄屏不裁切关键信息。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        },
+        {
+          "id": "L-07",
+          "title": "可迁移文档与发布自检",
+          "phase": "P1",
+          "status": "现有",
+          "need": "未来维护者要理解能力与边界。",
+          "acceptance": "安装、协议/API、开发与迁移文档可定位；文档/三语/双平台构建有检查。",
+          "sources": [
+            "guide",
+            "rules",
+            "arch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M",
+      "title": "可信、安全与验收保障",
+      "question": "分析器如何证明自己没有误导用户？",
+      "items": [
+        {
+          "id": "M-01",
+          "title": "不可信内容安全渲染",
+          "phase": "P0",
+          "status": "现有",
+          "need": "录制可能含任意网页或恶意脚本。",
+          "acceptance": "恶意 Markdown/HTML/脚本闭合串不执行；原文本仍可安全检查。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        },
+        {
+          "id": "M-02",
+          "title": "路径与写操作边界",
+          "phase": "P0",
+          "status": "现有",
+          "need": "查询和清理不能越界访问文件。",
+          "acceptance": "日期/ID/来源和归档路径校验，穿越输入失败且不产生文件副作用。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        },
+        {
+          "id": "M-03",
+          "title": "隐私、脱敏与外发说明",
+          "phase": "P0",
+          "status": "新增建议",
+          "need": "提示词、文件片段和凭据可能存在于录制。",
+          "acceptance": "定义字段保留/脱敏策略；模型分析前展示外发范围，导出前可检查敏感内容。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        },
+        {
+          "id": "M-04",
+          "title": "模型输入隔离与输出约束",
+          "phase": "P0",
+          "status": "现有",
+          "need": "录制中的指令不能变成分析器的任务。",
+          "acceptance": "固定隔离边界、输入/输出预算生效；解释只读，不据模型建议自动改用户环境。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        },
+        {
+          "id": "M-05",
+          "title": "真实固定样本与人工判据",
+          "phase": "P0",
+          "status": "部分",
+          "need": "测试全绿不能证明分类与工序语义正确。",
+          "acceptance": "固定正常/错误/压缩/并发/缺失样本，人工标注对照；样本失效显式失败。",
+          "sources": [
+            "rules",
+            "fixtures"
+          ]
+        },
+        {
+          "id": "M-06",
+          "title": "隔离环境故障注入",
+          "phase": "P0",
+          "status": "现有",
+          "need": "验证高风险路径不能破坏用户真配置。",
+          "acceptance": "独立配置与数据目录覆盖磁盘失败、占用端口、崩溃及外部修改。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        },
+        {
+          "id": "M-07",
+          "title": "跨视图、索引及 API 对账",
+          "phase": "P0",
+          "status": "现有",
+          "need": "同一条事实不能在不同入口变成不同数值。",
+          "acceptance": "用相同样本核对分类、usage、错误和证据 ID；迁移后仍可复查。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        },
+        {
+          "id": "M-08",
+          "title": "性能预算与规模基准",
+          "phase": "P0",
+          "status": "新增建议",
+          "need": "从零开发需要知道多大数据才算可用。",
+          "acceptance": "用户确定目标规模与硬件后设首屏、详情、内存、录制额外延迟预算；记录实测而非虚构阈值。",
+          "sources": [
+            "rules",
+            "handbook"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "title": "未来能力与研究方向",
+      "question": "哪些值得探索，但不能写成已实现或已排期？",
+      "items": [
+        {
+          "id": "N-01",
+          "title": "多种 Agent / 协议适配",
+          "phase": "R",
+          "status": "构想",
+          "need": "将方法迁移至 Codex、OpenCode 或自研工具。",
+          "acceptance": "每个适配器重新采样核对观测面；共享规范不掩盖来源差异。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-02",
+          "title": "wire、会话日志与遥测合流",
+          "phase": "R",
+          "status": "构想",
+          "need": "补充单一数据面看不到的上下文。",
+          "acceptance": "使用可信关联键与逻辑调用边界对齐；记录来源冲突，单独确定读取权限。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-03",
+          "title": "实时 Agent 观测者",
+          "phase": "R",
+          "status": "构想",
+          "need": "跟踪指定会话，让人看清目前的问题与进展。",
+          "acceptance": "只读跟随目标会话，解释可回跳；保持已知/未知与预算，未变化不制造噪声。",
+          "sources": [
+            "observer"
+          ]
+        },
+        {
+          "id": "N-04",
+          "title": "按调查问题动态组织视图",
+          "phase": "R",
+          "status": "构想",
+          "need": "固定页面未必适合每一种异常。",
+          "acceptance": "图随问题变化仍引用同一证据；用户可检查选取与遗漏依据。",
+          "sources": [
+            "observer"
+          ]
+        },
+        {
+          "id": "N-05",
+          "title": "预测与偏差、缺失资源提示",
+          "phase": "R",
+          "status": "构想",
+          "need": "只突出出乎预期的步骤以及可能缺的工具、信息或规则。",
+          "acceptance": "先保存可证伪预测再看后续；区分观察者猜错与执行者犯错。",
+          "sources": [
+            "observer"
+          ]
+        },
+        {
+          "id": "N-06",
+          "title": "统一事件、状态变化与工序",
+          "phase": "R",
+          "status": "构想",
+          "need": "将工具活动抽象成有目标、有产出和验收的过程。",
+          "acceptance": "目标/前态/变化/后态/主体/输入输出/证据/判据完整；Tool Call 不自动等于工序。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-07",
+          "title": "跨模型、压缩和模式切换连续性",
+          "phase": "R",
+          "status": "构想",
+          "need": "研究切换后知识、计划和执行是否退化。",
+          "acceptance": "统一 transition 对象；分析跨窗口重复、回退和成果变化，包含反例。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-08",
+          "title": "提示词稳定性、冲突与敏感度",
+          "phase": "R",
+          "status": "构想",
+          "need": "研究不同上下文条件对实际行为的影响。",
+          "acceptance": "预先定义任务、变量和验收，保留环境差异；不把相关性当因果。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-09",
+          "title": "跨会话任务录制包与评估",
+          "phase": "R",
+          "status": "构想",
+          "need": "比较同任务不同模型或配置的过程与结果。",
+          "acceptance": "包中包含录制、环境、产物及验收；控制不可比条件，报告成本与正确性。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-10",
+          "title": "可替换评估器与语义判定复核",
+          "phase": "R",
+          "status": "构想",
+          "need": "研究结论对 judge 与判据是否敏感。",
+          "acceptance": "确定性指标与语义意见分开；换 judge 重跑，报告一致性和人工复核。",
+          "sources": [
+            "future",
+            "framework"
+          ]
+        },
+        {
+          "id": "N-11",
+          "title": "多实例状态文件所有权",
+          "phase": "R",
+          "status": "构想",
+          "need": "避免端口文件覆盖和陈旧 PID 导致误控实例。",
+          "acceptance": "实例标识、启动时间、程序路径和端口可交叉校验；退出只清自己的状态。",
+          "sources": [
+            "future"
+          ]
+        }
+      ]
+    }
+  ]
+}

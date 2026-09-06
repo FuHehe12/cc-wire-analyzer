@@ -1,0 +1,5 @@
+Offline rendering assets copied from cc-wire-analyzer/src/static on 2026-09-05.
+Original bundled headers are preserved.
+marked.js 15.0.12: Copyright Christopher Jeffrey, MIT.
+DOMPurify 3.2.3: Copyright Mario Heiderich and contributors, Apache-2.0 OR MPL-2.0.
+Source provenance: cc-wire-analyzer/THIRD_PARTY_NOTICES and asset headers.

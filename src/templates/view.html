@@ -784,7 +784,7 @@ function renderPayload(){
     n.appendChild(p);
     card.appendChild(n);
   }else if(META.kind === "markdown"){
-    /* 说明书是**自家文档**（docs/reference/AI_USAGE.md），所以允许走 markdown。
+    /* 说明书是**自家文档**（docs/usage/AI_USAGE.md），所以允许走 markdown。
        即便如此仍过 DOMPurify——产物里这份文件理论上可被替换，而"理论上"在
        一个安全工具里不是放行的理由。 */
     const md = el("div", "md");
