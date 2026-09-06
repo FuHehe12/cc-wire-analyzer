@@ -299,67 +299,71 @@ def _dead_links() -> list[str]:
     return sorted(bad)
 
 
-CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "CHANGELOG.zh.md")
-# 「一条一行」的量(CLAUDE.md 与 开发约定.md 第十二节同口径)。取值来自实测:合规条目落在
-# 15-25 词 / 25-40 字,而 260904 之前的 Unreleased 五条是 89-127 词 / 126-158 字。
+CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "CHANGELOG-history.md")
+# 当前中文正文仍沿用既有上限；英文标题支持用于审计反例和历史输入，不靠文件名推断语言。
 CHANGELOG_EN_WORDS, CHANGELOG_ZH_CHARS = 25, 40
-_BLOCK_START = re.compile(r"^(#|\||>|-\s|\*\s|\d+\.\s|```)")
+_BLOCK_START = re.compile(r"^(?:#{1,6}\s|\||>|[-*+]\s|\d+[.)]\s|`{3,}|~{3,}|(?:---+|\*\*\*+|___+)\s*$)")
+_UNRELEASED = re.compile(r"^##\s+(未发布|Unreleased)(?=\s|$)", re.I)
 
 
 def _changelog_style(paths=None) -> tuple[list[str], list[str]]:
-    """CHANGELOG 的两条机械约束(260904 立):条目长度、硬折行。
+    """检查当前及历史两份变更记录：未发布条目长度，以及全文的机械硬折行。
 
-    **为什么要机械查**:规则本来就写在三处(CLAUDE.md、开发约定.md、CHANGELOG 自己的抬头),
-    三处口径一致,照样没守住——因为 `CHANGELOG-history.md` 里躺着 251 条存量示范,中位 106 词、
-    只有 7% 合规。写新条目的人(AI 尤其)看的是文件里的样子,不是文档里的规则,**示范压过规则**。
-    这正是本脚本存在的理由那一句:需要人工记得的药方自己就是下一处腐化。
-
-    **两条的范围不同,别统一**:
-    - 长度只查未发布节。已发版那几节的正文 CI 已经抽去 GitHub Releases 了,事后改短会让仓库
-      与已发布的说明分叉——那是另一种腐化,比长条目更坏。它们下次发版整节搬进 history。
-    - 折行查整份文件(含已发版节):只动换行不动字,与已发布正文的**内容**不分叉。
-    `CHANGELOG-history.md` 两条都不查:它的读者是"想翻旧账的人",长条目对那个读者不算病;
-    存量作为坏示范的影响由 CLAUDE.md 那句「别照抄存量」拦,不靠重写 251 条。
-
-    硬折行判据:一行既不是新块的开头(标题/列表/表格/引用/代码围栏),前一行又非空——
-    那它只能是上一行被折下来的续行。**中文本来就不该折**(会坏渲染),英文这边则是全仓
-    只有 CHANGELOG.md 折过,无 .editorconfig / prettier 支持,纯写作习惯,因此一并禁掉。
+    未发布标题决定汉字数或英文词数规则，不依赖文件后缀。已发布历史保留完整信息，
+    不限制条目长度；两份文件都使用编辑器的视觉换行。空行分段、表格、嵌套列表、
+    围栏及缩进代码块、显式 Markdown 换行均保留。连续普通正文行视为机械续行。
     """
     too_long, wrapped = [], []
-    for path in (paths or CHANGELOGS):
-        if not path.exists():
-            continue
-        zh = path.name.endswith(".zh.md")
+    for path in (CHANGELOGS if paths is None else paths):
+        if not path.is_file():
+            raise SystemExit(f"[doc_audit] 必需变更记录不存在：{path}")
         text = path.read_text(encoding="utf-8")
-        fence, prev_blank, prev_quote = False, True, False
-        for i, ln in enumerate(text.split("\n"), 1):
-            if ln.strip().startswith("```"):
-                fence = not fence
-                prev_blank, prev_quote = False, False
-                continue
+        fence = None
+        prev_blank, prev_quote, prev_structural = True, False, False
+        prev_explicit_break, indented_code = False, False
+        language = None
+        for i, ln in enumerate(text.splitlines(), 1):
+            stripped = ln.strip()
+            marker = re.match(r"^(`{3,}|~{3,})", stripped)
             if fence:
+                if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and stripped == marker[1]:
+                    fence = None
+                    prev_structural = True
                 continue
-            if not ln.strip():
+            if marker:
+                fence = marker[1]
+                prev_blank, prev_quote, prev_structural = False, False, True
+                continue
+            if not stripped:
                 prev_blank, prev_quote = True, False
                 continue
-            is_quote = ln.lstrip().startswith(">")
-            if not prev_blank and not _BLOCK_START.match(ln.lstrip()):
-                wrapped.append(f"{path.name}:{i} 续行(上一行被硬折了):{ln.strip()[:40]}…")
-            elif is_quote and prev_quote:
-                wrapped.append(f"{path.name}:{i} 引用块被折成多行:{ln.strip()[:40]}…")
-            prev_blank, prev_quote = False, is_quote
-
-        # 未发布节的条目长度。两种语言各一个标题写法,找不到就是这份文件没有未发布节。
-        head = "## 未发布" if zh else "## Unreleased"
-        if head not in text:
-            continue
-        seg = text.split(head, 1)[1].split("\n## ", 1)[0]
-        cap = CHANGELOG_ZH_CHARS if zh else CHANGELOG_EN_WORDS
-        unit = "字" if zh else "词"
-        for entry in [l[2:].strip() for l in seg.split("\n") if l.startswith("- ")]:
-            n = len(re.findall(r"[一-鿿]", entry)) if zh else len(entry.split())
-            if n > cap:
-                too_long.append(f"{path.name} 一条 {n} {unit}(上限 {cap}):{entry[:36]}…")
+            if (ln.startswith("    ") or ln.startswith("\t")) and (prev_blank or indented_code) and not _BLOCK_START.match(stripped):
+                indented_code = True
+                prev_blank, prev_structural = False, True
+                continue
+            indented_code = False
+            heading = re.match(r"^##\s+", ln)
+            if heading:
+                match = _UNRELEASED.match(ln)
+                language = ("zh" if match[1] == "未发布" else "en") if match else None
+            is_quote = stripped.startswith(">")
+            structural = bool(re.match(r"^(?:#{1,6}\s|\||(?:---+|\*\*\*+|___+)\s*$)", stripped))
+            if not prev_blank and not prev_structural and not prev_explicit_break and not _BLOCK_START.match(stripped):
+                wrapped.append(f"{path.name}:{i} 续行(上一行被硬折了):{stripped[:40]}…")
+            elif is_quote and prev_quote and stripped != ">" and not prev_explicit_break:
+                wrapped.append(f"{path.name}:{i} 引用块被折成多行:{stripped[:40]}…")
+            prev_blank = stripped == ">"
+            prev_quote = is_quote and not prev_blank
+            prev_structural = structural
+            prev_explicit_break = ln.endswith("  ") or ln.endswith("\\")
+            if language and re.match(r"^[-*+]\s", ln):
+                entry = ln[2:].strip()
+                zh = language == "zh"
+                n = len(re.findall(r"[一-鿿]", entry)) if zh else len(entry.split())
+                cap = CHANGELOG_ZH_CHARS if zh else CHANGELOG_EN_WORDS
+                unit = "字" if zh else "词"
+                if n > cap:
+                    too_long.append(f"{path.name} 一条 {n} {unit}(上限 {cap}):{entry[:36]}…")
     return too_long, wrapped
 
 
@@ -1012,18 +1016,35 @@ def _selftest() -> int:
         return [f]
 
     _t_long = _changelog_style(_w("a.md", _long_en))
-    _t_zh = _changelog_style(_w("e.zh.md", _long_zh))
+    _t_zh = _changelog_style(_w("CHANGELOG.md", _long_zh))
     _t_wrap = _changelog_style(_w("b.md", _wrap_en))
     _t_quote = _changelog_style(_w("c.md", _quote_en))
     _t_good = _changelog_style(_w("d.md", _good_en))
+    _history_wrap = _changelog_style(_w("CHANGELOG-history.md", "## v0.1.0\n\n- 历史条目被\n  机械折行。\n"))
+    _structured = "\n".join([
+        "## 未发布", "", "- 简短改动。", "  - 子项。", "    1. 有序子项。", "",
+        "独立的自然段。", "", "第二个有意义的段落。", "", "```python",
+        "# code", "print('first')", "print('second')", "```", "",
+        "~~~text", "## 未发布", "- " + "字" * 60, "~~~", "",
+        "    first indented code line", "    second indented code line", "",
+        "| 项目 | 状态 |", "|---|---|", "| 示例 | 正常 |", "",
+        "> 第一段。", ">", "> 第二段。", "", "显式换行。  ", "下一行。", ""])
+    _missing_raised = False
+    try:
+        _changelog_style([_cd / "missing.md"])
+    except SystemExit:
+        _missing_raised = True
     ecases += [
         ("超长英文条目能检出", len(_t_long[0]) == 1),
-        ("超长中文条目按汉字数检出", len(_t_zh[0]) == 1),
+        ("根 CHANGELOG 无 zh 后缀仍检出超长中文", len(_t_zh[0]) == 1),
+        ("历史文件硬折行同样检出", len(_history_wrap[1]) == 1),
+        ("代码表格嵌套列表及独立段落不误报", _changelog_style(_w("structured.md", _structured)) == ([], [])),
+        ("缺失必需变更记录立即报错", _missing_raised),
         ("续行(硬折行)能检出", len(_t_wrap[1]) == 1),
         ("被折成多行的引用块能检出", len(_t_quote[1]) == 1),
         # 反向:合规条目不许被报,否则闸门天天红,下一步就是有人加 `|| true`
         ("合规条目不误报", _t_good == ([], [])),
-        # 已发版节不查长度:正文 CI 已抽去 GitHub Releases,事后改短会与已发布说明分叉
+        # 已发布历史保留完整事实，不套用未发布速览的长度限制
         ("已发版节的长条目不查长度", _changelog_style(_w("f.md", _rel_en))[0] == []),
         ("真实 CHANGELOG 两条都干净", _changelog_style() == ([], [])),
         ("CHANGELOG 超长挡发版", n_hard(changelog_too_long=["x.md 一条 99 词"]) == 1),

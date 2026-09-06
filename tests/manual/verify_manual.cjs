@@ -12,6 +12,11 @@ const root=path.resolve(__dirname,'../..'),out=path.join(root,'dist/manual'),qa=
  p.on('pageerror',e=>errors.push(e.message));
  await p.route('**/*',r=>{if(r.request().url()===url)return r.continue();external.push(r.request().url());return r.abort();});
  await p.goto(url);assert.equal(await p.locator('script[src]').count(),0);
+ for(const width of [1440,390,320]){
+  await p.setViewportSize({width,height:960});
+  assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await p.screenshot({path:path.join(qa,`book-entry-${width}.png`)});
+ }
  const collaborationKey='AI_三类文档与项目协作.md';
  await p.locator('#collaboration').click();
  assert.equal(await p.locator('#bookSelect').inputValue(),collaborationKey);

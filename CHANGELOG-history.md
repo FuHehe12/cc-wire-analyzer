@@ -1,1203 +1,511 @@
-# Changelog — released versions
+# 变更历史
 
-> Full notes for every released version, v0.4.26 and earlier. The current version and the
-> unreleased rolling list live in [CHANGELOG.md](CHANGELOG.md), which is also what CI reads
-> to build a release's notes. Each version below is also published, unchanged, on its
-> [GitHub Release page](https://github.com/FuHehe12/cc-wire-analyzer/releases).
->
-> Why the split: CHANGELOG.md serves two readers at once — the overview at its top is read
-> on every handoff and needs to be short, while the history below it needs to be complete.
-> Those two pull in opposite directions, so the history moved here.
-
+这里保留 v0.4.26 及更早版本的完整记录。当前版本和未发布变化见 [CHANGELOG.md](CHANGELOG.md)。历史描述、路径与验证数字保留当时语境，不代表当前实现或新的执行授权。
 
 ## v0.4.26 - 2026-09-05
 
-### Added
+### 新增
 
-- Detail view shows the whole call-parameter block from the request body; unseen fields are highlighted.
+- 详情页新增调用参数折叠区：请求体除三大块外的字段原样摆出，没见过的键标橙。
 
 ## v0.4.25 - 2026-09-04
 
-### Fixed
+### 修复
 
-- `doc_audit` now limits blockquotes in `docs/` to warnings, self-check hooks and each file's audience header; 69 rhetorical ones became plain text.
-- `doc_audit` now caps CHANGELOG entries (25 words / 40 characters) and rejects hard-wrapped lines; the entries above were trimmed to fit.
-- Docs: the build-your-own handbook moved to `handbook/`, the wire-format reference into `docs/reference/`, and `doc_audit` now checks that relative links resolve.
-- `doc_audit` now reconciles endpoint headings too: one section per (method, path), and declared methods, query parameters and `error_code` values must exist.
-- A prompt the upstream refuses and Claude Code re-sends now merges into the turn it retries, badged "retried xN", instead of opening its own turn.
-- Reasoning availability is judged by plaintext, not block presence: signature-only recordings drop to tier C (`signature_only`); new `steps_with_plaintext` field.
-- API contract: the duplicated analysis endpoint is gone and the catch-all chapter was split three ways; six docs lost essay openings and heading date stamps.
+- `doc_audit` 限定 docs/ 的 `>` 只留警示、自检钩子与首块受众声明；69 块修辞性引用降为正文。
+- `doc_audit` 新增 CHANGELOG 闸门：条目 ≤25 词 / ≤40 字、不许硬折行；上面几条已照此改短。
+- 文档：同类工具构建手册搬到 `handbook/`，《报文解读》搬进 `docs/reference/`，`doc_audit` 加查相对链接可达。
+- `doc_audit` 开始对账端点标题：同一 (方法, 路径) 只准占一节，声明的方法、查询参数与 `error_code` 必须真实存在。
+- 上游拒绝后 CC 原样重发的 prompt 并入它所重试的那一轮，标 ⟲重试 ×N，不再各开一轮。
+- 思考档位改按明文判，不按块存在判：只回签名的录制降为 C 档（`signature_only`），新增 `steps_with_plaintext` 字段。
+- API 契约：analysis 端点的过时复制品删掉，抽屉章拆成三处；六份文档去掉文章式引子与标题日期戳。
 
 ## v0.4.24 - 2026-09-02
 
-### Fixed
+### 修复
 
-- Security reviews of a sub-agent's tool calls are now attributed to that sub-agent on the timeline instead of the mainline. Turn cards, cascade hiding and token costs follow the corrected owner; no other auxiliary kind is affected.
-- On Windows, index rebuilds after a schema bump used to append to the old file instead of replacing it, so index files kept growing; they are now replaced, and already-bloated files clean themselves up on first read.
-- Timeline: a folded card standing in for many nodes no longer draws dozens of identical overlapping edges; the aux lane no longer chains calls from different sessions into one "conversation order" line; switching the fold mode now resets expanded aux aggregate cards too.
-- Reference docs: all five audited end to end — contradictions fixed, essay-style openings and closings dropped, patched-in section numbers renumbered (the agent manual shipped in the binary included).
+- 审子代理那次工具调用的安全审查，在时序图里归到那个子代理，不再算在主线上。轮卡计数、级联隐藏、token 成本跟着归对；其余辅助类型不受影响。
+- Windows 上 schema 变更后的索引重建此前不删旧文件、只往后追加，索引会越堆越大；现在真的替换，已膨胀的文件首次读取时自动清理。
+- 时序图：一张折叠卡代表多个节点时不再画出几十条重合的连线；辅助泳道不再把分属不同会话的调用串成一条「会话顺序」线；切换折叠模式时辅助聚合卡的展开态一并重置，不再留下一组散开的单条。
+- 五份参考文档全量体检：自相矛盾与互相矛盾处逐条改对，删文章式引子收束，补丁章节号顺编（随产物打包的 agent 说明书在内）。
 
 ## v0.4.23 - 2026-09-02
 
-### Added
+### 新增
 
-- New request kind `notify_eval`: the check Claude Code runs while you are away to decide whether
-  to notify you. It used to show up as `other`.
+- 新的请求类别 `notify_eval`：你走开之后，CC 用来判断该不该叫你回来的那次调用。此前显示成 `other`。
 
-### Fixed
+### 修复
 
-- The turns Claude Code starts by itself — suggestion completion, away review, internal search
-  dispatch — are no longer counted as mainline; they now sit with the auxiliary calls. Claude Code
-  does not record them in its own conversation log either, and turn counts now line up with that
-  log (they used to be 70% too high). Background task notifications are not in this group: Claude
-  Code does treat those as real turns.
-- The `quota_probe` and `hook_eval` labels in the aux lane showed their raw English values; they
-  now have Chinese and Japanese translations.
-- The kind-dispatch order table in the message-anatomy guide was stuck at 260802 and missing two
-  v0.4.22 rules (the `json_schema` official bit for titles, and the "no tools, not mainline"
-  structural gate); it now matches what the code actually does.
+- CC 自己发起的那几轮——建议补全、离开回顾、内部检索派发——不再算主线，归到辅助。它们在 CC 自己的对话记录里没有位置；改判后轮数与 CC 的记录基本对齐（此前多算 70%）。后台任务通知不在此列， CC 认它是真轮。
+- 辅助泳道的 `quota_probe` / `hook_eval` 标签此前只显示英文原值，现有中日文。
+- 《报文解读》的 kind 判别顺序表停在 260802，缺 v0.4.22 的两条判据（标题的 `json_schema` 官方位、「无工具不判主线」结构门），现与代码实际顺序一致。
 
 ## v0.4.22 - 2026-09-01
 
-### Fixed
+### 修复
 
-- Session-naming requests (title, kebab-case slug) are classified as auxiliary again, not main line.
-- Dialog-shaped requests that carry no tool list are no longer classified as main line.
-- Text a tool returns alongside its result — image notes, fetched page content, interrupt markers — no longer starts a new turn.
-- Turn boundaries had three inconsistent implementations; the timeline and analysis views now share one.
-- Security reviews recorded from Claude Code 2.1.238 onward show the right action under review again, and an honest count of prior actions.
-- Security nodes in the timeline now show the verdict, not only the action under review.
-- `tools/origin_probe.py` covered nothing once a day had been compacted into a `.pack`.
+- 会话命名类请求（标题、kebab-case slug）重新判为辅助，不再算主线。
+- 对话形状但不带工具清单的请求不再判成主线。
+- 工具连同结果一起返回的文本——图片说明、抓回的网页正文、打断标记——不再开启新的一轮。
+- 轮边界此前有三份互不一致的实现，时序视图与分析视图现在共用一份。
+- Claude Code 2.1.238 起录到的安全审查重新显示正确的待判定动作，历史动作数也不再虚增。
+- 时序图的安全节点补上判定结果，此前只显示在审什么。
+- `tools/origin_probe.py` 在录制压实成 `.pack` 之后静默覆盖不到。
 
-### Added
+### 新增
 
-- Blind-spot radar gained a `mainline_suspect` dimension: requests classified as main line that lack main-line structure.
-- `tools/origin_probe.py` gained three reconciliation modes (`--mode belong | turns | origin`).
+- 盲区雷达新增 `mainline_suspect` 维度：判成主线、却缺少主线结构特征的请求。
+- `tools/origin_probe.py` 新增三档对账（`--mode belong | turns | origin`）。
 
-### Other
+### 其他
 
-- `IDX_SCHEMA` 15 → 17; the index rebuilds itself.
+- `IDX_SCHEMA` 15 → 17，索引会自行重建。
 
 ## v0.4.21 - 2026-08-31
 
-### Improved
+### 改进
 
-- Today's recording is compacted as it goes: the finished prefix is sealed into segments once it
-  crosses a threshold and merged back into one pack the next day. Off by default; the settings page
-  has the switch and the threshold (20–2000 MB, default 200). Measured 701 KB → 36.8 KB (19.1x),
-  byte-identical on unpack.
-- The agent-facing brief now exposes the analysis the app has already computed: its endpoint list
-  went from 3 to 8 and names the fields `trajectory` holds. A second task (`?task=flow`) asks for a
-  diagram of how the run actually went.
+- 当天的录制边录边压：录到阈值就把已写完的前缀封存成分片，跨天再合并回单个 pack。默认关闭，设置页有开关与阈值（20~2000MB，默认 200）。实测 701KB → 36.8KB（19.1 倍），unpack 后逐字节一致。
+- 给外部 agent 的指令开放了软件已经算好的分析：端点清单从 3 条扩到 8 条，并点名 `trajectory` 里有哪些字段。新增第二种任务（`?task=flow`）要一张「这一趟实际怎么跑的」流程图。
 
-### Fixed
+### 修复
 
-- Archiving a day that had been rolled kept only its last segment.
-- The agent-facing brief was half-translated: `lang=en` returned an English task wrapped in Chinese
-  labels.
+- 归档一个被切过段的日子，只会留下最后一截。
+- 给 agent 的指令只翻译了一半：`lang=en` 拿到的是英文任务配中文标注。
 
 ## v0.4.20 - 2026-08-29
 
-- **The one "AI Summary" button became two, one per slot.** It used to branch on which slot you were
-  looking at: the same label ran `/analysis` in the List slot and `/trajectory` in the 8-views slot —
-  two different jobs at two different prices behind one word. There are now two buttons, both always
-  present, each showing its own state ("Summarise list" / "Re-run list" / "Fill N steps" vs
-  "Summarise 8 views" / "Re-run 8 views"), so you can see whether the *other* slot has been
-  summarised without switching to it. Only one may run at a time — both pipelines call the same model
-  endpoint, and running them together only multiplies the failure and rate-limit surface. "Recompute
-  from scratch" now names its target too, and stays list-only: the customisable summariser prompts
-  apply to that pipeline, the trajectory's task descriptions are built in.
+- **一个「AI 归纳」按钮拆成两个，一档一个。** 它此前是**按你正在看哪一档分流**的：同样的字面，在列表档跑 `/analysis`、在八视图档跑 `/trajectory`——两件不同的事、两份不同的钱，藏在同一个词后面。现在是两个按钮、都常驻，各自显示自己的状态（「归纳列表 / 重跑列表 / 补齐 N 步」对「归纳八视图 / 重跑八视图」），于是**不切过去也知道那一档归纳过没有**。同时只允许跑一条：两条打的是同一个模型端点，一起跑只会把失败率和限流风险乘起来。「全部重算」也写明了目标，并且只给列表——可自定义的归纳提示词只作用于那条管线，轨迹的任务描述是内置的。
 
-- **Clicking the eight-view slot now changes the screen in the same frame.** Making the iframe
-  transparent with a content-driven height had an unintended consequence: until the child document
-  loads, nothing moves at all — and a 138-node recording takes 5.3 seconds and 1.2 MB to produce, so
-  the only feedback was "I clicked and nothing happened". A skeleton card now renders with the click
-  (measured at 53ms) and says why a long recording takes a few seconds.
-- **The same recording is no longer recomputed every time you open it.** `trajectory.compute` ran on
-  every request for a snapshot that cannot change; a two-entry in-process cache of the rendered HTML,
-  keyed by snapshot plus semantic-layer fingerprint and dropped when the semantic pipeline writes,
-  takes the 138-node recording from **5.18s to 0.03s** on reopen.
+- **点八视图那一下，屏幕在同一帧里就有变化了。** 把 iframe 改成背景透明 + 高度跟内容走之后有个没料到的后果：子页 load 之前屏幕上一个像素都不动——而 138 节点那条录制要算 5.3 秒、页面 1.2 MB，于是用户得到的唯一反馈是「点了没反应」。现在点击的同一帧就渲染出骨架卡（实测 53ms），并写明长录制首次打开为什么要等几秒。
+- **同一条录制不再每次打开都重算。** `trajectory.compute` 每次 GET 都跑一遍，而录制快照是不可变的；现在进程内缓存渲染好的 HTML（容量 2，键 = 快照 + 语义层指纹，语义层跑完即失效）， 138 节点那条重新打开从 **5.18 秒变成 0.03 秒**。
 
 ## v0.4.19 - 2026-08-29
 
-- **The eight views stopped looking like a different piece of software.** They shipped as the
-  prototype had them: a private near-black teal palette, their own font stack, 8.5px labels, their
-  own sticky header and their own scrollbar. Embedded in an app whose default appearance here is
-  Classic Warm, that reads as a slab of black pasted onto cream paper — with the nav wrapping onto
-  two lines and two scrollbars fighting each other. Four things had to change together, because any
-  one of them alone still leaves a page-inside-a-page: the palette is now **the same semantic tokens
-  in three appearances** (the page keeps its own token names, the values come from the main
-  interface's; the appearance arrives as `?theme=` and falls back to the `ccwa_ui_theme` cookie when
-  the page is opened on its own); the **packaged fonts** are declared in the page itself
-  (`/static/fonts/*` is same-origin — without this it silently fell back to system YaHei/Consolas,
-  which is exactly what "two typefaces side by side" looks like); the **height is negotiated with the
-  parent** (the child posts its `scrollHeight`, the parent sizes the iframe, so the whole page has
-  one scrollbar) and the parent posts the **visible viewport** back, which is what lets the drill
-  drawer float over what you are actually looking at instead of being pinned to the top of a
-  several-thousand-pixel document; and switching appearance **re-renders in place** rather than
-  reloading — the payload is embedded in that HTML, so a reload would make the server recompute the
-  whole thing. Type scale went up with it (8.5px labels are gone; nothing below 10px remains).
-  Measured: the first contrast audit of that page found **14 AA failures, all in the two light
-  appearances, all one shape** — `--agent` was being used as a text colour when it is a colour for
-  borders and fills. Fixing that shape took it to **0 across eight views × three appearances**.
+- **八视图不再像是另一个软件。** 它是照原型原样搬进来的：一套私有的近黑深青色板、自己的字体栈、 8.5px 的标签、自己的吸顶顶栏和自己的滚动条。嵌进一个默认外观是**经典暖灰**的软件里，看到的就是米色纸上贴了一块纯黑——导航还折成两行，内外两条滚动条互相打架。四件事必须一起改，少任何一件它仍然是「页中页」：色板换成**同一套语义 token 的三份取值**（页面沿用自己的 token 名，取值直接取主界面的；外观由 `?theme=` 带进来，单独打开时回落到 `ccwa_ui_theme` cookie）； **打包字体**在页面里自己声明一份（`/static/fonts/*` 同源可用——没有这条它会静默落回系统 YaHei/Consolas，两套字形并排就是「两个软件」的字面意思）；**高度与父页协商** （子页把 `scrollHeight` 报上去，父页照着设 iframe 高，于是全页只剩一条滚动条），父页把**可视区**喂回来——正是这一步让钻取抽屉浮在你正看着的那一屏，而不是被钉在一张几千像素高的文档顶端；换外观则是**原地重渲**而不是 reload——payload 内嵌在那份 HTML 里， reload 等于让服务端把整条录制重算一遍。字阶一并抬起来（8.5px 的标签没有了，10px 以下清零）。量过的：这一页**有史以来第一次**对比度走查抓出 **14 处不达标，全在两套浅色外观里，且全是同一个形状**——`--agent` 被当成文字色用了，而它是给边框和实底的。按这个形状修完，**八视图 × 三套外观 = 0**。
 
-- **Nine things the first version got factually wrong.** A 44-minute session reported **129.9 hours**
-  of auxiliary model time (a missing division by 1000); the footer said the phase split took
-  "**undefined** seconds" (the field it read has never existed); the autocompact footnote carried a
-  hard-coded **190** — the tool-call count of the prototype's own recording, a lie on any other one,
-  now computed as "the longest single request only has N of the union's M"; the counterfactual said
-  "0 blocks, the first gave a full reason (…), the other **-1** were retries of the same kind";
-  the same quantity appeared as 20 minutes on a card and 21 in a footnote, and as 20 in one view and
-  21 in another, because each site rounded on its own; a valve banner asserted a compact that had not
-  happened on that recording, and explained itself in terms of "the seventh generation" — prototype
-  jargon that means nothing to a user; an empty counterfactual told the reader to "run optimal.py";
-  the payload said it was generated by `build_factors.py` rather than by a version of this program;
-  and every one of the eight state-snapshot cells was a single ellipsised line, so failure text and
-  what the user actually said were unreadable. Legends were missing where two colours needed telling
-  apart, empty lanes said nothing rather than "there were none of these", and long material names
-  still collided with their L0 badge because truncation counted characters rather than measuring
-  pixels. All fixed and verified against two real recordings (34 and 138 nodes) with the numbers
-  read back out of the DOM.
+- **首版在事实上错了九处。** 一段 44 分钟的会话，辅助模型在途报成了 **129.9 小时**（少除了 1000）；页脚写着阶段切分「用时 **undefined** 秒」（它读的那个字段从来不存在）；autocompact 那条脚注里带着硬编码的 **190**——那是原型自己那条录制的工具调用数，换一条录制就是一句假话，现在改成算出来的「只看最长请求只剩 N 个（并集 M）」；反事实那栏写着「0 次拦截里，第 1 次就给出了完整理由（），其后 **-1** 次是同类重试」；同一个量在卡片上是 20 分、在脚注里是 21 分，在这个视图是 20、在那个视图是 21，因为每处各自取整；阀门视图无条件渲染一句「这一整段发生在 — 的 compact 之前」，并用「第七代」解释自己——那是原型的代际黑话，用户看不懂；反事实为空时让人「先跑 optimal.py」；payload 自称由 `build_factors.py` 产出，而不是这个程序的某个版本；状态快照的八个格子每条都是单行省略号，失败原文和用户到底说了什么根本读不到。另外：需要区分两种颜色的地方没有图例、空泳道什么都不说而不是说「本次运行没有这一类」、长物料名仍会撞上它的 L0 徽标——因为截断数的是字数而不是量的像素。全部修掉，并在两条真实录制（34 与 138 节点）上把数字从 DOM 里读回来核对过。
 
-- **A recording that cannot be drawn now says so in the same skin.** The error path went through
-  `jsonify`, and `?format=html` handed that to the API browser — so a recording whose day had been
-  archived rendered a full "API response" page inside the analysis view, and the front end scraped
-  its `innerText` for an error message, producing "Expand all / Copy / Raw JSON". It now returns a
-  small themed page instead. The smoke probe learned three assertions about this slot (the height
-  bridge really fired, the appearance really followed, and an honest error page counts as rendered —
-  but only after trying up to three recordings, because only ever hitting the archived case means
-  never testing the views at all).
+- **出不了图的录制，现在用同一套外观说这件事。** 错误路径走的是 `jsonify`，而 `?format=html` 会被 API 浏览面接管——于是当日数据已归档的录制，在分析页里渲染出一整页「API 响应」，前端再去抓它的 `innerText` 拼错误信息，抓出来的是「全部展开 / 复制 / 原始 JSON」。现在它返回一张同款外观的小错误页。冒烟测试为这一档新增了三条断言（高度桥真的生效了、外观真的跟上了、诚实的错误页算渲染成功——但要先往下换最多三条录制再判，因为老是撞在归档那条上等于从来没测过八视图）。
 
-- **The availability banner stopped contradicting itself.** "31 steps · 26 of them with reasoning ·
-  **0 chars**" is not a sentence: the blocks are there, the upstream (GLM via the gateway) returns
-  signatures without plaintext. Those two cases now read differently.
+- **可得性横幅不再自相矛盾。** 「31 步 · 其中 26 步有思考 · 共 **0 字**」不是一句话：块确实在，是上游（经网关的 GLM）只回签名不回明文。这两种情况现在分开说。
 
-- **The analysis view's tree slot became the trajectory's eight views.** One recording can now be read
-  eight ways — state-snapshot sequence, material lineage, verification matrix, valves & loops, cost &
-  variance, counterfactual table, material lifeline, optimal timeline — replacing the old mechanical
-  "decision-tree" slot (the list view stays). The foundation is the **union of all main-line requests'
-  blocks** (deduplicated by tool_use id / tool_result id / text md5), not the single longest request:
-  autocompact trims the first half of the history, and only the union recovers it (measured on the
-  prototype: 190 → 377 tool_uses, start moved 69 minutes earlier). The layering is constitutional:
-  facts are computed (nodes, materials, lineage, verification levels, valves, debt, the necessary
-  closure BFS that produces the counterfactual), semantics are model-written (phase split from
-  program-generated candidate boundaries, state-snapshot quadrants, one-line node briefs), and the
-  program overwrites the factual quadrants at compute time — the model cannot touch facts. The
-  semantic layer runs as a resumable POST pipeline (split → snapshots → briefs, progress via the
-  existing analysis-progress channel) and is cached per snapshot (`<sid>.semantic.json`, now also
-  carried inside portable snapshot bundles). Recordings whose day was archived to `.ccwa` say so
-  honestly instead of rendering half a run. Verified on two real recordings end to end (34 and 138
-  nodes; 34/34 and 138/138 brief coverage, zero failed batches). One round of vision-model review
-  (8 view screenshots, P0×0 / P1×8) was verified item by item and fixed: the three conflicting
-  "model time" numbers turned out to be three true values at different calibers (all requests vs
-  node-only) — the cost card now splits them explicitly; GLM upstreams return signature-only
-  thinking blocks (44 blocks, 0 chars of plaintext), and the drill-down now says so instead of
-  "0 chars"; empty states, phase-label overlap on short phases, and a footer that asserted an
-  autocompact that never happened were all fixed.
+- **分析页的树档换成了轨迹八视图。** 一条录制现在能八种读法——状态快照序列 / 物料血统 / 验证矩阵 / 阀门与回路 / 能耗与方差 / 最优轨迹表 / 物料生命线 / 最优时序图——替换掉旧的机械"决策树"档（列表视图保留不动）。地基是**全部主线请求的 blocks 并集** （tool_use id / tool_result id / 文本 md5 三键去重），不是单条最长请求：autocompact 会剪掉前半段历史，只有并集能捞回来（原型实测：190 → 377 个 tool_use、起点前移 69 分钟）。分层是宪法：事实程序算（节点/物料/血统/验证等级/阀门/债/产出反事实的必要闭包 BFS），语义模型写（程序出候选边界喂阶段切分、状态快照四格、步级一句话简述），事实四格在 compute 时由程序盖掉——模型改不了事实。语义层是一条可续跑的 POST 流水线（切分→快照→简述，进度走现有 analysis-progress 通道），按快照缓存（`<sid>.semantic.json`，快照便携包现在也捎上它）。当日数据已归档成 `.ccwa` 的录制会如实说明，而不是渲染半截 run。两条真实录制端到端验证（34 与 138 节点；简述覆盖 34/34 与 138/138，零失败批）。一轮视觉模型复审（8 张视图截图，P0×0 / P1×8）逐条核实后全部处置：三处互相矛盾的「模型在途」实为三种口径的真值（全量请求 vs 节点）—— 成本卡现在明确拆开；GLM 上游回 signature-only 思考块（44 块 0 字明文），钻取如实说「块存在，明文未回传」而不是「0 字」；空态、短阶段标题叠压、以及一句断言了从未发生的 autocompact 的脚注，都已修。
 
 ## v0.4.18 - 2026-08-28
 
-- **The summariser never saw what you asked for, and never saw what any action returned.** Reading a long
-  session back, the step briefs could not answer the one question they exist for — what did the AI actually
-  do. That was not a wording problem. Three fields were missing from the model's input entirely. `trigger`
-  was passed as a bare kind (`"user"` / `"tool_result"`), so **not one character of your instruction reached
-  the model**; tools were passed as names only, with no target and no result. Measured on three real
-  recordings from one day: 572 tool calls produced 572 results totalling **6.8 MB**, of which **0 bytes**
-  ever reached the summariser, and 11%–37% of steps (the pure-execution ones — precisely the steps that
-  change reality) were dropped from the input wholesale. A model that can see the motive but neither the
-  object nor the outcome of an action has one move left: paraphrase the thinking. That is why the old
-  `detail` ran long and said little. Now every tool call carries a **program-extracted result digest**
-  (≤90 chars, type-aware: images are counted, never inlined — one PNG read came back as 33,768 characters
-  of base64), a normalised **verb** (read / search / write / exec / fetch / delegate) and a **target**
-  (the file, script or command it acted on). Pure-execution steps are no longer thrown away: their actions
-  and results are folded into the preceding step that made the decision, so the model reads the whole
-  consequence of a decision **without costing one extra call**. The instruction cap rose from 200
-  characters to a head-and-tail budget of 2,000 — on one multi-agent session, 26 of 46 turns had been
-  hitting that 200-character wall, and a teammate report is 1,838 characters.
+- **归纳从来没看见过你要什么，也没看见过每次动作的结果。** 回看一段长会话，步级简报答不出它存在的唯一理由——AI 到底干了什么。这不是措辞问题：模型的输入里整整少了三样东西。`trigger` 只传了一个类型（`"user"` / `"tool_result"`），**你那条指令一个字都没进去**；工具只传了名字，不带作用对象、不带结果。拿同一天的三条真实录制量了一遍：572 次工具调用产生 572 条结果、共 **6.8 MB**，进入归纳的是 **0 字节**；另有 11%~37% 的步（纯执行步——恰恰是真正改变现实的那些）整步不进模型。一个看得见动机、却看不见动作对象与结果的模型只剩一条路：复述思考。这就是旧 `detail` 又长又空的机制。现在每次工具调用都带上**程序抽取的结果摘要**（≤90 字，按类型抽：图片只计数绝不内联—— 实测 `Read` 一张 PNG 回来的是 33,768 字符的 base64）、**规范化动作**（读 / 搜 / 写 / 执行 / 取 / 委派）与**作用对象**（哪个文件、哪个脚本、哪条命令）。纯执行步不再被丢掉：它们的动作与结果并入前一个做出判断的步，模型因此读得到一次决定引发的全部后果，**而不多花一次调用**。用户指令的上限也从 200 字提到 2,000 字（取头尾）——实测一条多 agent 协作会话 46 轮里有 26 轮撞在那道 200 字的墙上，而一条 teammate 报告就有 1,838 字。
 
-- **Step briefs are now three parts, and shorter for it.** `title` (≤20 chars, what it did) / `why`
-  (one line, only when the thinking really weighed something) / `got` (one line, the result — which
-  simply could not be written before, because the result was not in the input). `got` is encouraged to
-  quote a short fragment of the actual output (`CE=0`, `Traceback`, `572 devices`), which makes it both
-  shorter than a paraphrase and **checkable**: the quoted fragment has to exist verbatim in that step's
-  recorded `tool_result`. Concision comes from the schema, not from telling the model to be brief.
-  All three generations of the format (single `brief`, two-part, three-part) still render — a published
-  `steps_prompt` contract must not be invalidated by a schema change.
+- **步级简报改成三段，反而更短了。** `title`（≤20 字，做了什么）/ `why`（一句，只在思考里真有权衡时才写）/ `got`（一句，结果——这一段此前**根本写不出来**，因为结果不在输入里）。`got` 鼓励直接引用输出里的短片段（`CE=0`、`Traceback`、`572 设备`）：既比转述短，又**可校验**——引用的片段必须能在那一步的 `tool_result` 里字面找到。精炼靠 schema 约束，不靠在提示词里写「简洁」。三代格式（单段 `brief`、两段、三段）继续照常渲染——`steps_prompt` 是已发布契约，换 schema 不能把用户已经写好的提示词判死。
 
-- **Turn headings now separate the overall goal from what this turn is solving.** Reading a list of turns,
-  you could not tell whether the run was drifting, because every heading answered the same question.
-  A turn now answers five: `said` (what you asked — **compressed into one line, not quoted verbatim**),
-  `solving` (which part of the whole task this turn eliminates), `done_when` (only when you actually
-  stated a completion condition — the model is forbidden to invent one), `outcome` (what came of it) and
-  `risk`. Above them sits a session-level `goal` and `drift`, produced by the one call that ever sees the
-  whole run. Two of the inputs are **computed, not asked**: which materials a turn touched, and whether
-  what it wrote was ever read back or run again — "changed five files, verified none" is a fact, not a
-  judgement, so the program answers it.
+- **轮头把「总目标」和「这一轮在解决什么」分开了。** 过去一列轮头全在回答同一个问题，于是读不出它有没有跑偏。现在一轮答五件事：`said`（你要什么——**压缩成一句，不保留原句**）、`solving` （这一轮消掉的是整段任务里的哪一块）、`done_when`（只在你真说了完成条件时才有，**禁止模型替你定标准**）、`outcome`（最后成了什么）与 `risk`。它们上面是会话级的 `goal` 与 `drift`，由全程唯一看得见全貌的那次调用产出。其中两项原料是**程序算的，不问模型**：这一轮碰了哪些东西，以及它写出来的东西后来有没有被回头读过或跑过——「改了五个文件、一个没验」是事实不是判断，该由程序回答。
 
-- Verified end to end on a real 199-step / 30-turn recording: 124 briefs in 17 batches, 0 failures, and
-  turn coverage 199/199 steps. Command-line target parsing was hardened against four shapes found in
-  real traffic that all used to collapse into one useless material name (`cd "…" && uv run python x.py`,
-  `uv run python x.py`, `python -c`, and a quoted absolute path to an executable).
+- 真数据端到端验过：199 步 / 30 轮的录制，17 批出 124 条简报、0 失败，轮级覆盖 199/199 步。命令行的作用对象解析也补硬了——真实流量里有四种形态过去会塌成同一个没用的物料名（`cd "…" && uv run python x.py`、`uv run python x.py`、`python -c`、带引号的可执行文件绝对路径）。
 
 ## v0.4.17 - 2026-08-27
 
-- **After an auto-update restart, the version number was new and the app was not.** The user pressed "Install and restart", Settings duly showed the new version, and the app still behaved like the old one — closing the window and reopening it fixed it. `run.log` had the whole scene: the new process announced `version=0.4.15`, and one second later `GET /static/fonts/Inter.ttf` returned 404 and `marked.min.js` returned 500, both pointing into `Temp\_MEI76282` — **the previous process's extraction directory**. The cause is that `Popen` inherits the whole environment, and a frozen build's environment carries the PyInstaller onefile bootloader's private variables (`_PYI_PARENT_PROCESS_LEVEL` / `_PYI_APPLICATION_HOME_DIR` / `_PYI_ARCHIVE_FILE`). The new executable's bootloader reads them, concludes "I am the already-extracted child process", **skips extraction and reuses the old directory — which the dying process is busy deleting**. Hence the precise mismatch: Python code came from the **new exe** (so the version was new) while templates, static assets and fonts came from the **old directory** (so the UI was old and half its assets 404'd). The symptom also drifts, because it races the old bootloader's cleanup — whatever it had deleted is what goes missing — so "try it again" can never tell you whether it is fixed. The relaunch now strips `_PYI_*` and `_MEIPASS2` from the child's environment and passes everything else through untouched (PATH, TEMP and proxy settings are still needed), with a self-test that fails if any of them leak. One related thing was measured and **deliberately left alone**: after a restart the port drifts from 5051 to 5052, because the old process's SSE connections sit in TIME_WAIT and the free-port probe's bare `bind` is stricter than the criterion werkzeug itself uses. All three fixes are worse than the problem — `SO_REUSEADDR` would break "find a free port" outright (on Windows it permits binding to a *live* listener), waiting out TIME_WAIT costs 120 seconds, and the actual harm is zero because `port.txt` is updated. It is written down so the next person who sees 5052 does not investigate it again.
+- **自动更新重启之后，版本号是新的、界面还是旧的。** 用户点了「安装并重启」，设置页的版本号确实变了，可软件用起来还是老样子，得把窗口关掉再打开一次才对。run.log 里有完整现场：新进程报着 `version=0.4.15` 起来了，紧接着 `GET /static/fonts/Inter.ttf` 404、`marked.min.js` 500，路径指向 `Temp\_MEI76282`——**而那个目录是上一个进程的**。真因是 `Popen` 默认继承整份环境变量，其中带着 PyInstaller onefile 引导器的私有变量（`_PYI_PARENT_PROCESS_LEVEL` / `_PYI_APPLICATION_HOME_DIR` / `_PYI_ARCHIVE_FILE`）。新 exe 的引导器一看这几个变量就认定"我是已经解压过的子进程"，**跳过解压，直接复用旧进程那个正在被删的临时目录**。于是错位得很精确：Python 代码从**新 exe** 里读（版本号是新的），而 templates/、static/、字体从**旧目录**里读（界面是旧的，静态资源一半 404）。症状还会飘——它和旧引导器的删除是赛跑，删到哪儿就缺哪些文件，所以"再试一次"根本判断不了修没修好。现在拉新进程前把 `_PYI_*` 与 `_MEIPASS2` 从环境里剥掉，其余原样保留（PATH/TEMP/代理设置新实例照样要用），自测里造反例验证它真会响。顺带记下一条量过之后**有意不修**的：重启后端口会从 5051 漂到 5052（旧进程的 SSE 连接在 TIME_WAIT，而找空闲端口的裸 bind 探测比 werkzeug 自己起服务的判据更严）。三条路都不通——加 SO_REUSEADDR 会让"找空闲端口"这件事本身失效（Windows 上它允许绑到正在监听的端口）、等 TIME_WAIT 要 120 秒、而实害是零（`port.txt` 跟着更新了）。写在这里是为了下次看见 5052 不用再查一遍。
 
-- **The analysis pipeline was inverted: step briefs come first, and both the turn level and the subagent verdicts roll up from them.** Three pieces of feedback pointed at one chain, and fixing them separately would have undone each other. (1) **It was serial** — the batches have no dependencies between them and were still waited on one at a time: a 126-step session is 26 batches and took tens of minutes. They now run concurrently (4 by default, 1–8 in Settings; the ceiling is not about throughput but about not driving the upstream into rate limiting), taking the same recording **from the 26-minute range down to 196 seconds**. (2) **Long recordings were summarised only in part, and re-running produced the same gap** — because the turn level was fed the L0 skeleton, which has a 20k-character budget and cuts from the middle when it overflows: of the 126 steps in that 420k-character recording, **only 62 ever reached the turn-level model**; the 282-step one lost 142. That is deterministic, which is exactly why "re-analyse" changed nothing. The deeper problem was that **the skeleton contains no reasoning text at all** (only step numbers, tool names, character counts and mechanical signals) — so "what is this turn doing" was always inferred from tool names, while the layer that actually read the reasoning was the step brief. The turn level now takes step briefs as its input, batched by turn and **never splitting one turn across two batches**; measured coverage is **126 of 126 steps**. The skeleton's own fallback truncation changed from "halve it" to "trim until it fits" (it used to cut down to 16,799 characters against a 20,000 budget, throwing away a dozen steps for nothing). (3) **Subagents had only a step-by-step flow** — six lanes expanded is 158 rows, and none of it answers "did it succeed?". Each lane now costs one extra small call and produces four sentences — **task / problems hit / how it was resolved / outcome** — sitting at the top of that lane when you expand it.
+- **AI 归纳倒过来了：先出步级简报，轮级和子代理结论都从它卷起。** 三条反馈指向同一条链路，分开修会互相拆台。①**串行**——批次之间完全无依赖，却一个一个等：实测 126 步的会话 26 批要几十分钟。现在并发跑（默认 4，设置页可调 1~8，上限不是性能考虑而是别把上游打成限流），同一条录制**从 26 分钟量级降到 196 秒**。②**长录制归纳不全，而且重跑还是不全**——因为轮级归纳喂的是 L0 骨架，骨架有 2 万字预算，超了就从中间砍：那条 420K 字的录制 126 步里**只有 62 步进过轮级模型**，282 步那条砍掉 142 步。这是确定性的，所以"重新归纳"多少次结果都一样。更根上的问题是**骨架里根本没有思考原文**（只有步号、工具名、字数、机械信号），也就是说"这一轮在干什么"一直是照着工具名猜的，而真读了思考的是步级简报。现在轮级的原料换成步级简报，按轮切批、**一轮绝不拆到两批里**，实测覆盖 **126/126 步**。骨架的兜底截断也从"一刀砍一半"改成"削到刚好放得下"（原来砍完只有 16,799 字，预算是 20,000，白砍了十几步）。③**子代理只有步级流水**，六条线摊开是 158 行，回答不了"它干成了没有"。现在每条线多一次小调用，卷出**任务 / 遇到的问题 / 怎么解决 / 最终结果**四句话，压在那条线展开后的最上面。
 
-- **A failed analysis can be picked up where it stopped instead of paid for twice.** Failures used to be a single number ("2 batches failed") — which told you neither which steps were lost nor how to get them back — and "re-analyse" re-ran everything, discarding tens of minutes of completed work. Three things changed together: failures are **recorded as specific step numbers**; each phase is persisted as it completes (previously nothing was written until the whole run finished, so any exception anywhere threw the entire run away); and "re-analyse" now fills gaps by default, with a separate "Recompute all" button — the two differ by an order of magnitude in cost, and hiding that behind one button is an accident waiting to happen. Measured: delete 20 steps, press fill, and it runs **4 batches in 64 seconds** rather than 26 batches. Retries also became backoff rather than "immediately once more" (an immediate retry usually lands on the same rate limit), while configuration errors give up at once — if the key is missing, it will still be missing on the third try. Concurrency also changed the progress text: with several threads in flight, "batch N" is wrong whichever one you report, so it now counts completions against a total, per phase (main line / subagents / turns / subagent verdicts).
+- **归纳失败之后能接着跑，不用从头再花一次钱。** 此前失败批只记一个数字（"失败 2 批"），既不知道丢了哪几步，也没有任何入口去补；而"重新归纳"是整条重跑——已经跑完的几十分钟全部作废。现在三件事一起改：失败**记到具体步号**；每跑完一层就落一次盘（不再是全部跑完才写一次，中途任何一处抛异常都白跑）；「重新归纳」默认只补缺口，另给一个「全部重算」按钮（两者花的钱差一个数量级，藏在同一个按钮里迟早出意外）。实测挖掉 20 步再点补齐：只跑了 **4 批 64 秒**，而不是 26 批。重试也从"马上再来一次"改成退避（立即重试撞上的多半是同一个限流），配置错则立刻放弃——Key 没填，重试三次还是没填。并发之后进度文案也改了：几个线程同时在跑，"第几批"报哪一个都是错的，现在是完成数/总数，并且分阶段（主线 / 子代理 / 轮级 / 子代理结论）。
 
-- **After translating, long output was "cut off with no scrollbar".** The drawer is declared `overflow:auto`, so on paper it should always produce a scrollbar — which is why this one was reproduced before it was changed. The cause is that **its height is computed for "once stuck" while it was not yet stuck**: `top:82px` only applies after the page has scrolled to the sticky threshold, and on open the drawer sits at its natural position (measured: y=770) while its height is a fixed `100vh - 104px` = 1138px. 770 + 1138 overshoots the 1242px viewport, leaving **666px off-screen** — and the translation renders *after* the reasoning text, landing entirely in that off-screen stretch, along with the drawer's own scrollbar. A second cause stacked on top: the reasoning `pre` carries its own 420px scroll box, which fills the small visible strip, so the wheel scrolls the inner element and the outer drawer never moves. The height is now computed from **where it actually is** (the smaller of "available height once stuck" and "from here to the bottom of the viewport", rebound on scroll and resize), the drawer is allowed **exactly one scroll container**, and opening it scrolls the page to where it sticks. This also settles a latent bug: UI scaling uses `zoom` on the root element, under which `vh` resolves to more than the real viewport — the new calculation does not use `vh` at all.
+- **翻译之后长内容"没有滚动条、直接被切掉"。** 抽屉本身写着 `overflow:auto`，看代码怎么都该出滚动条——所以这条是先复现再改的。真因是**高度按"贴住之后"算，而它当时还没贴住**：`top:82px` 要等页面滚到 sticky 触发点才成立，刚打开时抽屉在自然位置（实测 y=770），而高度是写死的 `100vh - 104px` = 1138px，于是 770+1138 越过视口底 1242，**666px 在屏幕外**——译文恰好排在思考原文之后，整块落进屏幕外那一段，连抽屉自己的滚动条都在外面。第二个成因叠在上面：思考原文的 `pre` 自带 420px 滚动框，把可见的那一小条占满，滚轮落在里层上，外层纹丝不动。现在高度按**当前实际位置**算（取"贴住后的可用高度"与"从现在的位置到视口底"的较小者，绑 scroll/resize），抽屉里**只允许有一个滚动容器**，打开时把页面滚到它贴住的位置。顺手解决了一条潜伏 bug：界面缩放走根元素 `zoom`，而 `vh` 在 zoom 下算出来会超过真实视口——新算法不依赖 `vh`。
 
-- **The reasoning drawer is no longer pinned to 410px.** The user works across three machines with different aspect ratios (4K, laptop, ultrawide) and got the same narrow strip on all of them, while the entire point of that panel is to spread the source text out and read it. The width now derives from the viewport (`clamp(320px, 30vw, 760px)` — measured 432px at 1440, 760px at 2560), the divider can be dragged, and the chosen width goes to **localStorage rather than config**: this is a "comfortable on this screen" preference, and syncing it to the other two machines would be wrong. The narrow breakpoint still drops the drawer below the narrative, with no grip in that mode.
+- **思考原文的宽度不再写死 410px。** 用户有三台不同比例的机器（4K、笔记本、带鱼屏），而这块面板在哪台上都是同一条窄带，可它存在的全部价值就是"把原文摊开来读"。现在默认按视口算（`clamp(320px, 30vw, 760px)`，实测 1440 屏 432px、2560 屏 760px），中缝可以拖，宽度**落 localStorage 不落 config**——这是"这台机器这块屏幕上顺手"的偏好，同步到另外两台反而是错的。窄屏那一档继续落回叙事流下方，把手在那一档不出现。
 
-- **Stickers can now be carried to another machine the way recordings can.** Recordings had `.ccwa` archives; snapshots had nothing — and the expensive thing about a snapshot is not the snapshot, it is the `analysis.json` beside it: a 97KB analysis measured 27 batches and 26 minutes. Not being able to move it means another machine (or another person) must pay for it again. Selecting stickers and pressing "Export bundle" now packs the snapshot, its AI analysis and its chat history into one file. It **reuses the `.ccwa` extension and distinguishes by `kind` in the manifest**, so there is still only one "Import" for the user and the tool works out what it was handed. Signing matches archives: `host` takes the machine name and never the user name, `tool_version` takes the real version. **Colliding ids are never overwritten** — a clash lands under a new id, the UI says so plainly ("N clashed with local ids and landed under new ones — nothing local was overwritten"), and the envelope records which machine it came from. Measured round trip: 126 step briefs, 8 turn headings and one subagent verdict opened intact on "the other machine" without a single further API call.
+- **贴纸能像归档一样搬走了。** 录制有 `.ccwa` 归档，快照没有——而快照上最贵的东西不是快照本身，是旁边那份 `analysis.json`：实测一份 97KB 的归纳花了 27 批、26 分钟，搬不走就意味着换一台机器（或换一个人）只能重跑一遍。现在选中贴纸点「导出便携包」，快照 + AI 归纳 + 问答记录打成一个文件；**沿用同一个 `.ccwa` 后缀，靠 manifest 里的 `kind` 区分**，用户那边只有一个"导入"，文件是什么由工具自己看出来。签名与归档同源：`host` 只取机器名不取用户名，`tool_version` 取真实版本。**同 sid 不覆盖**——撞了就换个新编号落地，界面如实说"N 份与本机同名，已换新编号（没有覆盖本机的）"，落地后信封里记着它从哪台机器来。真机往返实测：126 步的归纳、8 个轮头、1 条子代理线级结论，在"另一台机器"上一个不少地打开，没有再花一分钱。
 
-- **Fixed: rebuilding the index filed every analysis sidecar as a snapshot of its own.** The `snap_*.json` glob also matched `snap_x.analysis.json`, so every analysed snapshot grew a ghost sticker with no kind and no label. The criterion is now the sid pattern itself rather than "exclude .analysis", so adding another sidecar suffix later does not send anyone back here.
+- **修掉：重建索引会把 AI 归纳文件当成一张快照收进去。** `snap_*.json` 这个 glob 顺手把旁挂的 `snap_x.analysis.json` 也捞进来了——贴纸板上每份分析多出一张没有 kind、没有 label 的幽灵贴纸。判据改成按 sid 正则认（不是"排除 .analysis"），将来再加旁挂后缀不用回来改这里。
 
-- **Fixed: sticker tags measured 4.21:1 in Classic Warm.** The previous release's full-surface audit that took 25 AA failures to zero missed this one because **no sticker on screen had a tag at the time** — the probe only sees what is currently rendered. That lesson matters more than the colour value: an audit is only as good as what is on screen while it runs, so this pass was done against real data, with tagged stickers, expanded subagent cards and the drawer open.
+- **修掉：经典暖灰外观下贴纸标签是 4.21:1。** 上一版那次"25 处不达 AA 归零"的全站走查没抓到它，因为**当时没有一张贴纸带标签**——探针只看得见此刻渲染出来的东西。这条留下的教训比这个色值重要：走查结果的有效性取决于走查时屏幕上有什么，所以这次是拿真数据（带标签的贴纸、展开的子代理卡、开着的抽屉）跑的。
 
-
-- **The endpoints that need arguments can finally be opened from the API browser — and the examples are this machine's real data.** `/view` lays out every endpoint the AI side can reach, but the ten most valuable rows were dead: anything with `<rid>` / `<sid>` in the route said "needs a path arg" and stopped there — and what an agent reads most is exactly `/api/captures/<rid>` and `/api/snapshots/<sid>/*`. The page fell silent precisely where it had the most to say. The tenth was worse: `/api/snapshots/diff` has no `<>` in its route, so it carried a live "Render" link, while what it actually wants is `?a=&b=` — two sids. **Clicking it could only fail.** A dead row is at least honest; a button that cannot work is actively walking someone into a failure. Each row now carries an editable, complete URL, pre-filled from **real local data**: the first rid of the most recent day that has any, and for snapshots the **one that has already been summarised** (an `/analysis` pointed at some other snapshot opens empty, and an empty page reads as "this endpoint is broken"). A placeholder only answers "what is the shape"; it cannot answer "what do I have on this machine" — and the latter is this tool's entire claim. Only when there is genuinely nothing does it fall back to a reference form, and then it **says so on the row** — not saying so would be inviting someone to copy an address that cannot work. Examples carry every argument they need (`date=` for captures, both `a`/`b` for diff): the whole value of an example is that copying it works, and one missing argument turns it back into a placeholder. The self-test **actually runs** every example and asserts HTTP 200 — whether an example is alive or dead has to be decided by a machine, not by looking at it once.
-- **The browser page went from two appearances to three, and one case of mistaken identity is fixed.** The main UI has Classic Warm / Dark Professional / Lab Daylight; this page folded them into light and dark, and the fold had a real error in it: **choosing the teal Lab Daylight and clicking through gave you warm gold** — it was serving the Classic Warm palette. Not "one missing", but the wrong one. An appearance is not decoration; it is the signal that you are still inside the same piece of software — and this page in particular exists to be checked against. A shift in hue reads as "did I click into something else?". All three now get their own tokens, copied value by value from the matching tokens in `index.html` (no separately tuned near-colours — two places tuned separately is the next divergence), and the header gained a three-swatch switch that writes the **same** cookie and localStorage key, so it is not a second source of truth but a second door to the same setting (`/view` can be opened by typing the URL, and until now whoever arrived that way got dark and could not change it). That came with this page's **first colour audit ever**, which measured three real problems: dark `--faint` sits at 3.58:1 on the card — and that is the colour `.ep-why` / `.hint` / `.empty` use; in both light themes `--accent` as link text is 2.94:1 (`--accent` is for borders and solid fills; text needs its own `--link`, a lesson `index.html` had already learned once); and dark `--null` fell just short at 4.45:1. Index, response and guide pages across all three appearances: zero AA failures.
+- **API 浏览面上，需要参数的那些端点终于能点开了——而且样例是本机的真数据。** `/view` 把 AI 那一侧能拿到的端点逐条摆出来，可 10 条最值钱的行是死的：路由里带 `<rid>` / `<sid>` 的一律只写一句"需路径参数"就没了下文，而 agent 读得最多的恰恰是 `/api/captures/<rid>` 与 `/api/snapshots/<sid>/*`——浏览面在自己最该说清楚的地方哑了。第 10 条更糟：`/api/snapshots/diff` 路由里没有 `<>`，于是它一直有个"渲染"直链，而它要的是 `?a=&b=` 两个 sid，**点下去必然报错**——死行至少诚实，一个必然失败的按钮是在主动把人引向一次失败。现在每条给一行可编辑的完整 URL，预填的样例从**本机真实数据**里挑：最近有数据那天的第一条 rid、快照优先挑**已经归纳过的录制快照**（`/analysis` 落在别的快照上打开是空的，而空页会被读成"端点坏了"）。占位符只回答"格式是什么"，回答不了"我这台机器上有什么"，而后者是这个工具的全部主张。真取不到才退回参考写法，并在旁边**如实标成参考写法**——不标就是在骗人照抄一个跑不通的地址。样例里该带的参数一个不少（captures 带 `date=`、diff 带齐 `a`/`b`）：样例的价值在于照抄就能跑，少一个参数就退化成了另一种占位符。自测把每条样例**拿去真跑**并断言 200——"样例是死是活"必须由机器判，肉眼看一次不算数。
+- **浏览面的外观从两套补到三套，并修掉一处张冠李戴。** 主界面有经典暖灰 / 深色专业 / 实验室日光三套，浏览面把它们折成深浅两套，折的方式还有一处实打实的错位：**选了青蓝的实验室日光，点进浏览面看到的是暖金**——它拿的是经典暖灰的色板。不是"少一套"，是认错了人。外观不是装饰，是"我还在同一个软件里"的连续性信号，而这一页偏偏是拿来核对事实的；跳一下色相，第一反应是"我是不是点到别的东西上了"。现在三套 token 各给一份，色值逐个从 `index.html` 同名 token 抄（不另调近似色——两处各调各的就是下一次分叉），顶栏还多了个三色开关，写的是**同一对** cookie + localStorage 键，所以它不是第二个真相源，只是同一个设置的第二个入口（`/view` 能被直接敲 URL 打开，此前第一次进来的人拿到深色就换不掉）。顺带做了这一页**有史以来第一次配色走查**，量出三处真问题：深色的 `--faint` 压在卡片上只有 3.58:1，而 `.ep-why` / `.hint` / `.empty` 这些小字用的就是它；两套浅色下拿 `--accent` 当链接文字色是 2.94:1（`--accent` 是给边框和实底的，压字要另立 `--link`——这条教训 `index.html` 已经吃过一次）；深色 `--null` 4.45:1 差一点。三套外观 × 首页/响应页/说明书页走查完，0 处不达 AA。
 
 ## v0.4.16 - 2026-08-27
 
-- **A recording's subagents are now part of the story it tells.** Reading what an agent did has always been missing its second half: a snapshot holds one request — the main line's full history — and everything `Task` farmed out lives in *other* requests, so the main line keeps only the tool call and the final report. What the subagent actually read, weighed and abandoned was in the recording all along, one join away, and the analysis view never made it. It does now: `GET /api/snapshots/<id>/subagents` walks the recording back, returns each lane's own skeleton, and says which main-line **step** spawned it; the list view nests each lane under that step as a collapsed card (six lanes expanded at once is 158 rows — that buries the narrative this view exists to tell), and one click opens it as its own brief flow, with `?lane=&step=` giving any subagent step's raw reasoning. Nesting goes three deep, because subagents spawn subagents. **Nothing here is a new heuristic**: lanes come from `X-Claude-Code-Agent-Id`, parentage from the same `trigger` edge the DAG has used for a year (spawn prompt's first 300 chars ⊂ the subagent's first user message), and pinning to a step is that same rule aimed at one step's `Task` prompt. Measured on a real 137-step run: 6 lanes, 6 of 6 pinned to a step (#18, #31, #54×3, #97), 158 subagent steps recovered. What cannot be answered says so — a lane whose spawn prompt does not match is listed separately with the reason, and if the day's recording was cleared or archived away the pane says *that*, because rendering "no subagents" would be inventing a fact. The same run also generates briefs for those steps, in the same click, so opening a lane costs nothing extra later — and because that click now costs three times what it did (measured on this run: 27 batches, 26 minutes, main line plus six lanes), the button stops saying "analysing…" and starts saying *how far it has got*: `main line 3/9`, `subagent 2/6 · 4/7`. A progress bar frozen at "12/27" would read as more alive than no progress bar at all, so it is cleared whether the run succeeds or fails.
-- **Step briefs are two-part now, and the raw reasoning opens beside them instead of at the bottom of the page.** The previous version dropped the length cap and asked for why / what turned up / what was abandoned — the information was right, but it came back as one long paragraph, and the row rendered it as one flex element: a hundred steps of undifferentiated text. The task now asks for a `title` (one line, verb-first, ≤24 chars) plus a `detail` that carries the judgment, and the row renders them as two tiers — scan the titles, read the detail where it matters. The old single-`brief` shape still renders (cached analyses and any custom prompt in Settings keep working; it lands in `detail`, and the row falls back to its mechanical lead rather than passing a paragraph off as a headline). Clicking a step used to render its reasoning **after** the entire steps card: on a 137-step recording you scrolled past several screens to read it and scrolled back to find your place. It is now a sticky panel on the right, clearing the header, closing on Esc or a second click on the same row, and never re-rendering the list underneath — the whole point is to stop making you翻. Tree view drills into the same panel.
-- **The API browse page finally has a door.** `/view` shipped in v0.4.15 to tear down the wall between the two halves of this tool — humans read the GUI, agents read the HTTP API, and after you hand an agent that one line, *what it actually reads has been invisible to you*. The page did that job; nothing in the interface linked to it, so the only way to find it was to read the changelog. A user went looking in Settings and could not find it. The "For your AI" card now lists it right under the manual endpoint, clickable and copyable, noting that `?format=html` on any endpoint does the same. Its address comes from `location.origin` like the manual's — hardcoding 5051 is a hole this project has fallen into before.
-- **Fixed: two rows in Settings were printing i18n key names at the user.** `set.anaTurns` and `set.anaSteps` appeared verbatim on the analysis-prompt rows: the HTML referenced four keys that were never added to any of the three tables, and `t18()` falls back to returning the key. `check_i18n_js` was green throughout, because it asks whether the three tables agree with each other — and a key missing from all three leaves them in perfect agreement. That is the third time in two days that *a reference to a name that does not exist* has gone through every gate silently (the other two: `var(--x)` naming an undefined token, and `into` naming an undefined variable). The check now also verifies that every `data-i18n` reference resolves, and a mutation test confirms it fires: delete one key's definitions and the old check still reports `sync=OK` while the new one exits 1.
-- **A full-surface colour audit: 25 places failed AA, now none do.** Three times in ten days the same family of bug came back — the whiteboard stickers rendering dark under the light themes, bare `.chip` as white-on-white, the subagent badge at 4.45:1 — and each time a human found it by looking. `doc_audit` asks whether a token has a value in all three themes; it cannot ask whether that value is *readable on the surface it lands on*, and those two questions are a whole cascade apart. So this round measured instead of patched: a probe walks every visible text element in all three themes, composites the background layer by layer, and applies WCAG. It found **25 failures, 15 of them in Classic Warm alone** — a solid-gold button with white text at 2.94:1, the sticky role badge at 2.87:1, `--err` used as a button fill at 2.77:1, and the diff line numbers, breadcrumb meta and lane ids sitting just under the line. All of them trace to four root causes, and the fix is one rule: **a colour token can only serve one light/dark relationship**. Three pairs got split apart — `--accent` (decoration) from `--brand-ink` (body text), `--err` (a red line on a dark card) from `--danger-solid` (a button fill), and the sticker's role badge into `--role-a-fg` / `--role-b-fg`, since one value was being asked to sit on both bright gold and deep green. Re-measured across six views, three themes and the expanded states: zero. The probe ships as `tools/contrast_probe.js`, and "checked on the dark card" is now explicitly not an acceptance criterion.
-- **Fixed: a row's font size no longer leaks in from the card.** `44 steps` in the subagent header rendered at 16px next to 10px chips and an 11.5px name, because neither the header nor `.an-tk` set a size and the cascade handed them the card default — the same shape as the cluster row fixed hours earlier. The header sets its own size now, and "one row, one font scale" is a check in the probe: a row whose largest text is 1.3× its smallest, and is not a heading element, gets reported.
-- **Fixed: the prompt-diff pane was reporting `into is not defined` instead of a diff.** The unreleased "recording pane goes single-select" change dropped `renderDiff`'s second parameter but left the last line still reading it, so the whole comparison built its HTML and then threw on the way into the DOM. Three gates let it through and it is worth naming why: `node --check` validates syntax and `into` is a perfectly good identifier; `check_refs` resolves *call names* and CSS classes, not free variable reads; and not one of the twelve selftests executes front-end JS. A sweep of every view — including list, detail, grep and DAG on a compacted day — found this one and nothing else. A gate for the whole class was measured and deliberately deferred: the naive static rule yields 500 candidates on this codebase (object keys, destructuring, `for...of`), and `check_refs` ships only at zero false positives.
-- **The tool-run cluster rows stopped looking like they came from a different list.** `#12-13 [Write][Bash] 2 tool calls` carried a hardcoded `padding-left:44px` from the previous flex-based step row and never set a font size, so once step rows became a grid it was both misaligned and a size larger than everything around it. Both now share one `--sn-w` column width, one 12px size, and the visual de-emphasis is carried by color alone; a wide range like `#123-131` grows its own cell instead of colliding with the chips.
-- **Subagent lanes are now blue, the same blue the timeline gives them.** A grey rule the same color as every other divider is not a signal that the subject changed; the lane now carries `--info` on its left edge, its badge and its agent name, over a 7% tint. The badge needed per-theme values of its own: `--info` as text on its own tint measures 4.45:1 and 4.22:1 under the two light themes — under the AA line — which is the third instance this month of a color that was only ever checked against the dark background. It now measures 7.12 / 7.71 / 7.31.
-- **Fixed along the way: every tool-name chip in the analysis view was invisible under both light themes.** `.chip` carries no background of its own — it expects a modifier — so a bare `class="chip"` renders `--chip-default-fg` (white) on transparent. On the dark card that reads fine; on Classic Warm and Lab Daylight it is white on white, and the tool names in the step list, the tool clusters and the tree's "did" row had been rendering as blank gaps. They now use the same soft-tint token as the tree's mark labels, and repeated calls collapse into `Bash×4` instead of four identical chips crowding out the title.
+- **一条录制里的子代理，终于成了它讲的这个故事的一部分。** 读懂"这个 agent 干了什么"一直缺着后一半：快照装的是**一条请求**——主线的完整历史，而 `Task` 派出去的活在**另外的请求**里，主线只留下一次工具调用和最后那份报告。子代理究竟读了什么、权衡过什么、放弃了哪个方案，一直就躺在录制里、只隔着一次关联，而分析视图从来没去接。现在接上了：`GET /api/snapshots/<id>/subagents` 回到录制里把那些请求捞回来，每条线给一份自己的骨架，并说明它是被主线**哪一步**派生的；列表视图把每条线折叠成一张卡挂在那一步下面（六条线全摊开是 158 行，主线叙事当场被埋掉，而那正是这个视图存在的理由），点开就是它自己的简报流，`?lane=&step=` 则给出子代理任意一步的思考原文。嵌套三层，因为子代理还会派子代理。**这里没有任何新判据**：泳道来自 `X-Claude-Code-Agent-Id`，父子来自 DAG 用了一年的 `trigger` 边（派生 prompt 前 300 字 ⊂ 子代理的首条 user），而挂到哪一步只是把同一条判据对准了某一步的 `Task` prompt。真机实测（137 步的一次运行）：6 条线，6/6 都挂上了具体步骤（#18、#31、#54×3、#97），捞回 158 个子代理步骤。**答不上来的会说答不上来**——派生 prompt 对不上的线单列并附原因；当天录制被清理或归档走了，面板直接说这件事，因为渲染成"没有子代理"就是在编事实。同一次归纳会把这些步的简报一起做完，之后点开任何一条线都不再花钱——而正因为这一次点击的代价翻了三倍（本次实测：27 批、26 分钟，主线加六条线），按钮不再只写"分析中…"，而是写**跑到哪儿了**：「主线 3/9 批」「子代理 2/6 线 · 4/7 批」。一条永远停在"12/27"的进度比没有进度更像还在跑，所以无论成败都会清掉。
+- **步级简报改成两段式，思考原文从页面最底部挪到了右边。** 上一版去掉字数上限、点名要"为什么/发现了什么/放弃了什么"——信息是对的，但回来的是一整段长文本，而行渲染把它塞进一个 flex 元素：上百步连成一片没有层次的文字。现在的任务要 `title`（一句话、动宾开头、≤24 字）加 `detail`（承载判断），行按两级渲染——扫标题，需要时再读细节。老的单段 `brief` 照样能渲染（已缓存的分析与设置页里任何自定义提示词继续工作：整段落进 `detail`，行首退回机械 chip，而不是把一段长文本冒充成标题）。点某一步看原文，此前渲染在整张步骤卡**之后**：137 步的录制里要往下滚过几屏才看得到，看完再滚回来找位置。现在它是右侧的 sticky 面板，避开顶栏，Esc 或再点一次同一行收起，且**不会重渲染下面的列表**——这个面板存在的全部意义就是别让人翻来翻去。树视图钻探到同一个面板。
+- **API 浏览面终于有门了。** `/view` 是 v0.4.15 为拆掉这工具两半之间那堵墙做的——人看 GUI、AI 走 HTTP API，而你把那一行复制给 agent 之后，**它实际读到什么，你是看不见的**。那个页面把这件事做了；但界面里没有任何地方链接到它，想找到只能去读 CHANGELOG。用户跑到设置页去找，没找到。现在「给 AI 用」卡片里，「说明书端点」下面就列着它，可点可复制，并写明任何端点加 `?format=html` 同理。地址与说明书端点同源，取自 `location.origin`——写死 5051 是这个项目反复踩过的坑。
+- **修掉：设置页有两行把 i18n 键名直接印给了用户。** 分析提示词那两行显示的是 `set.anaTurns`、`set.anaSteps` 本身：HTML 引用了四个键，而三张语言表里从没加过它们，`t18()` 取不到就回退成返回键名。`check_i18n_js` 全程是绿的——因为它问的是"三张表彼此一致吗"，而一个三张表里**都**没有的键，恰恰让它们完美一致。这是两天内第三次"**引用了一个不存在的名字**"穿过所有闸门（另两次：`var(--x)` 指向没人定义的 token、`into` 指向不存在的变量）。现在这条检查同时验证每个 `data-i18n` 引用都能解析，并做了变异验证证明它真会响：删掉某个键的定义，旧判据照旧 `sync=OK`，新判据退出 1。
+- **一次全站配色走查：25 处不达 AA，现在是 0。** 十天里同一族 bug 回来了三次——白板贴纸在浅色外观下是暗的、裸 `.chip` 白字白底、子代理徽章 4.45:1——每一次都是人真去点才发现的。`doc_audit` 问的是"这个 token 三套外观都有取值吗"，它问不了"这个值压在它实际落到的那块底色上读不读得出来"，而这两个问题差着一整个层叠计算。所以这轮不再打补丁而是量了一遍：探针遍历三套外观里每一个可见的文字元素，把背景逐层合成，按 WCAG 判定。结果 **25 处不达标，其中 15 处集中在 Classic Warm 一套外观里**——金色实底配白字 2.94:1、贴纸角标 2.87:1、`--err` 当按钮实底 2.77:1，以及 diff 行号、面包屑元信息、泳道 id 一批刚好卡在线下的。它们全部收敛到四组根因，而修法只有一条规则：**一个颜色 token 只能服务一种明暗关系**。这次拆开了三对：`--accent`（装饰）与 `--brand-ink`（正文字）、`--err`（深色卡上的一行红字）与 `--danger-solid`（按钮实底）、以及贴纸角标的 `--role-a-fg` / `--role-b-fg`——原先一个值被要求同时压在亮金底和深绿底上。六个视图 × 三套外观 × 展开态复测：0。探针作为 `tools/contrast_probe.js` 随仓库发布，而"在深色卡上看着还行"从此明确不算验收。
+- **修掉：行内字号不再从卡片漏进来。** 子代理卡头里的「44 步」是 16px，紧挨着 10px 的 chip 和 11.5px 的名字——因为卡头和 `.an-tk` 都没设字号，层叠就把卡片默认值发给了它们，与几小时前修的工具聚簇行是同一个形状。现在卡头自己定字号，而"一行只有一个字号档"成了探针里的一条检查：一行里最大的文字达到最小的 1.3 倍、且它不是标题元素，就报出来。
+- **修掉：提示词对比整个功能在报 `into is not defined`，而不是给出差异。** 未发版的「录制面板改单选」把 `renderDiff` 的第二个参数删了，最后一行却还在读它——整段对比 HTML 拼完，在写进 DOM 的那一刻抛错。三道闸门都放它过去，而这件事值得点名：`node --check` 只验语法，`into` 是个完全合法的标识符；`check_refs` 解析的是**调用名**与 CSS 类，不查自由变量的读取；十二条自测没有一条会执行前端 JS。随后把每个视图都扫了一遍（含**压实过的一天**上的列表、详情、grep、DAG），只有这一处。整族的闸门量过之后有意押后：粗判据在这份代码上给出 500 条候选（对象键、解构、`for...of`），而 `check_refs` 的验收线是 0 误报。
+- **工具聚簇行不再像是从另一个列表里掉进来的。** `#12-13 [Write][Bash] 2 次工具调用` 带着上一版 flex 步行的硬编码 `padding-left:44px`，且从没设过字号——于是步行改成 grid 之后，它既对不齐又比周围大一号。现在两者共用一个 `--sn-w` 列宽、同一个 12px，降权只靠颜色；`#123-131` 这种超宽区间自己撑开单元格，而不是压到 chip 上。
+- **子代理线现在是蓝的，与时序图给它的蓝是同一个。** 一条和所有分隔线同色的灰竖线，不构成"这一段换了主体"的信号；现在左边缘、徽章、agent 名都走 `--info`，压在 7% 的淡底上。徽章得单独给三套取值：`--info` 当文字色压在自己的软底上，两套浅色实测 4.45 / 4.22:1，在 AA 线下面——这是本月第三个"只在深色底上验过"的颜色。现在是 7.12 / 7.71 / 7.31。
+- **顺手修掉：分析视图里所有工具名 chip 在两套浅色外观下都是隐形的。** `.chip` 基类不带背景（它等着修饰类给），于是裸 `class="chip"` 拿到的是 `--chip-default-fg`（白字）配透明底。深色卡上看着正常；在 Classic Warm 与 Lab Daylight 上就是白字白底——步骤行里的工具名、工具聚簇、树视图的"做了什么"那一行，一直渲染成一段空白。现在它们改用树视图标签同款的软底 token，重复调用也合并成 `Bash×4`，不再是四个一模一样的 chip 把标题挤走。
 
-- **An archive now says which machine and which version produced it.** A `.ccwa` sitting on the desktop cost a whole investigation: it was a *remote* machine's recording, nothing about it said so, and it was read as local evidence until three clues buried in the recorded traffic — drive paths, the username, `cc_version` — settled it. The manifest, which exists precisely so you can tell what an archive is without unpacking it, could not answer the question: there was no machine field at all, and `tool_version` was **empty in every pack and every archive this tool has ever written**. The cause was not the archiving path, as first assumed — `_tool_version()` read `_version.__version__`, an attribute that file has never defined (it defines `VERSION`, which is what `app.py` reads), and `getattr` with a default turned a wrong name into a silent empty string in the one field whose entire job is provenance. Archives now carry `host` (hostname only, never the username: archives get copied around, and a hostname separates two machines with far less to leak) and a real version, on **both** archiving paths; the identity is unpacked into the imported recording too, so it survives landing on the other machine; and re-archiving an imported source deliberately does *not* re-sign it, because signing someone else's evidence with your own name is the exact failure `sources/` exists to prevent. `GET /api/sources` reports this machine's `host` alongside each source's and archive's own, plus `foreign` (differs from this machine), the settings card shows it on every row, and importing another machine's recording says so in the toast. Anything archived before this reads "machine unknown" — **empty means it cannot answer, not that it is local**, and the label cannot stand in for it either: labels are typed by hand, and the real one on this desk is `164807`, a timestamp.
+- **归档现在答得出「是哪台机器、哪个版本产出的」。** 桌面上一份 `.ccwa` 害得一整轮调查跑偏：它是**远程机**的录制，但它身上没有任何东西这么说，于是被当成本机证据读，直到靠录制正文里三条线索（盘符路径、用户名、`cc_version`）才验明正身。而 manifest——它存在的全部理由就是"不解包也能看清这份归档是什么"——恰恰答不上来：机器字段一个没有，`tool_version` 则是**本工具写出的每一个 pack、每一份归档里都为空**。真因不是最初以为的归档路径：`_tool_version()` 读的是 `_version.__version__`，一个那个文件从来没定义过的属性（它定义的是 `VERSION`，`app.py` 读的就是这个），`getattr` 的默认值把一个错名字变成了静默的空串——而这个字段唯一的职责就是溯源。现在**两条归档路径**都会签上 `host`（只取 hostname，绝不取用户名：归档会被拷来拷去，机器名足以区分两台机器，泄露面小得多）与真实版本；身份也会跟着解进导入后的录制，落到对面机器上不会丢；而把一个导入来源重新归档时**有意不重新签名**——把别人的证据签上自己的名字，正是 `sources/` 独立命名空间要防的那件事。`GET /api/sources` 在给出每个来源与归档各自的 `host` 之外，还给出本机的 `host` 与 `foreign`（与本机不同），设置页的每一行都显示它，导入另一台机器的录制时提示条会明说。在此之前归档的一律显示「机器未知」——**空是"答不上来"，不是"本机"**；标签也顶替不了它：标签是人手打的，这台桌上那份真标签叫 `164807`，其实是个时间戳。
 
-- **Snapshotting a recording from an imported source no longer 404s.** v0.4.15 gave every *read* surface a `source=<label>` parameter, but the backup path — which reads a recording before writing a snapshot — was missed on both ends: the UI sent no `source`, and `POST /api/snapshots` didn't forward one, so the id was looked up in the local namespace and came back `not_found`. Local recordings (empty source) were never affected, which is why this survived release day: it takes importing another machine's archive and then snapshotting from it to hit — a first real user did exactly that within a day. Both ends now pass `source` through, the API contract documents it, and the fix is verified against the original failing recording (without source: 404; with: snapshot created).
-- **The list view is now a step-by-step brief you can actually read.** Long agent sessions (a hundred steps, subagents, walls of tool calls) made recordings a black box in practice: the old list rows were mechanical facts — chips and char counts with no "what was this step doing". Clicking "AI summary" now also generates a **brief for every step** (from that step's thinking + reply; model-invented step numbers dropped by the same whitelist that guards turn summaries), batched at ~8K chars per call so a hundred-step session costs a handful of small calls, cached into the same analysis file so reopening is free. Pure tool steps never see the model at all — consecutive ones collapse into a dimmed cluster line (`#12-18 [Grep×6 Read×4]`, "14 tool calls"), which is all there is to say about them. The view itself is now zero-click: thinking originals stay one drill-down away in the tree view (list = read the story, tree = dig the evidence), signals chips stay as the mechanical counterweight to the AI's wording, and a failed batch is announced instead of silently missing. *Tuned the same evening on a real 137-step run*: the first draft asked for "what was done" in ≤40 chars and beheaded both the briefs (an 80-char disk cap cut mid-sentence) and the raw material (thinking clipped head-only, losing the decision that sits at the end) — the task now explicitly demands *why, what turned up, what was abandoned* in plain language with no length limit (the disk cap is a 2,000-char runaway guard, not a content limit), and long thinking is clipped head-and-tail. Both analysis prompts (per-turn and per-step) are now editable in Settings → LLM, following the explain-prompt pattern: empty means built-in default, the injection-guard scaffolding stays internal, and the placeholder spells out the JSON format that a custom prompt must keep. Also fixed: the analysis file recorded an empty model name when one was configured.
-- **The recording-analysis pane now analyses one recording — by name and by behaviour.** Pick-two comparison is gone from the GUI: the board is single-select (clicking another sticker switches the analysis target, clicking the selected one clears it), and the tab is renamed "Recording agent behaviour" to say what it actually analyses. The prompt-diff pane keeps its two-pick compare. What this costs is deliberate and written down: comparing two recordings by system / tools / messages face — the way to watch context rot — now has exactly one path left, `GET /api/snapshots/diff?face=`; no `face` value comes from the GUI any more.
-- **The instruction-sources list now starts folded.** Measured on a real day (633 recordings, one archive), the list was flooded by harness status notices: `<total_tokens>N tokens left</total_tokens>` arrives once per turn as a role=system message — 13,058 entries that day, each with a different number, so the existing "merge identical content" rule cannot fold them — burying the sources that matter (the 16K CLAUDE.md, the repeated 421-char reminder, the 89K of tool descriptions). The card is now a collapsed `<details>` with the entry count on the summary line; collection logic, the API, and the in-app analysis context are untouched.
-- **The whiteboard and its stickers are no longer a dark island under the two light themes.** Switching to Classic Warm or Lab Daylight left the analysis view's board and stickers dark: a dimmed board, dark-brown paper, white text on it. The whole family (added 260808) had its colors written directly into the components — the paper gradient, the tape across the top, the folded corner, the drop shadow and the inner highlight — not one of them going through a semantic token, and `doc_audit`'s token check was silent about it: that check asks "does every token defined in the dark block have a value in classic/light", and this family **never defined a token at all**. All four layers are tokenized now (swapping only the paper color would give you light paper with a black folded corner, which is worse than not swapping), and each light theme gets paper of its own: cork board with cream/mint/blush notes for Classic Warm, a cold mineral board with clear-toned paper for Lab Daylight, while the recording snapshot keeps the cool-color gap that makes it distinguishable at a glance. Text contrast on paper is computed against **the least favorable of the four papers**: body, secondary, timestamp and category label all pass AA in all three themes (the last two used to sit at 3.9–4.1:1 even in dark — copying that hierarchy is what dragged both light themes under the line). Fixed alongside, same family of debt: the gold tint on list-row hover (which fights a cold theme), the four signal chips, the fork color in the tree view, the hardcoded slate `thinking` badge, the toggle's off-state track (a white knob on a near-white track barely reads as a switch), and the inline character-level diff highlight (a 32% mix is nearly invisible on light paper — and it is the only cue for *which characters* changed).
-- **Referencing a CSS token nobody defined now blocks a release.** The analysis view used an older naming (`--text` / `--text-dim` / `--bg`) that this token system never had: 21 references resolved to nothing. That is neither an error nor a fallback to a default — **the whole declaration is dropped and the color silently inherits from the parent**, so those tiers disappeared in all three themes while the UI still looked "colored", and nobody noticed for over two weeks. `tools/doc_audit.py` gained a hard check: a `var(--x)` naming a token nobody defines, with no fallback written, blocks the release, and `--self-test` builds a counter-example to prove the check actually fires. References that do carry a fallback are not in this class (they have a defined degradation), but the redundant ones were cleaned out while we were here: `var(--mono,ui-monospace,…)` had been quietly degrading to the system Consolas, bypassing the "fonts are bundled so the product looks the same across platforms" convention.
+- **从导入来源备份录制不再 404。** v0.4.15 给所有**读**面加了 `source=<label>`，但「备份」这条先读录制再写快照的链路两头都漏了：界面没发 `source`，`POST /api/snapshots` 也没转发——于是在本机命名空间里找导入来源的录制 id，返回 `not_found`。本机录制（source 为空）从不受影响，所以发布当天没人撞上：**必须先导入别机的归档、再在它上面备份**才会触发——第一位真机用户一天内就走完了这条链路。两端现已把 `source` 传穿，API 契约补记，并用当初失败的那条录制验证（不带 source 404、带则快照创建成功）。
+- **列表视图升级为读得动的步级简报流。** 长会话（上百步、子代理、成墙的工具调用）让录制在体感上成了黑箱：旧的步级行是机械事实——chips 和字数，没有"这步在干嘛"。现在点「AI 归纳」会同时生成**每步简报**（原料=该步的思考+回复；模型编造的步号被与轮级归纳同一个白名单剔除），按每批约 8K 字符分批调用——上百步的会话只是几次小请求，结果并入同一份 analysis 缓存，重开零成本。纯工具步不进模型：连续的聚成一行降权簇（`#12-18 [Grep×6 Read×4] · 14 次工具调用`），要说的就这么多。视图本身零点击：思考原文的钻探留在树视图（列表=读故事，树=查证据），signals chip 继续作为 AI 措辞的机械对照，失败的批如实自陈。*当晚拿真实 137 步会话迭代调优*：初版只要"做了什么"且限 40 字——落盘 80 字上限把简报拦腰截断、思考原料只取头丢了尾部的决定；现在任务显式要求**为什么这么做、发现了什么、放弃了什么**，用简单语言复述、不设字数限制（落盘 2000 字上限是跑飞护栏不是内容限制），长思考头尾保留中间截断。两个归纳提示词（轮级/步级）开放进设置页「LLM 模型」卡，照 AI 解读提示词的模式：留空=内置默认、防注入骨架内置不受影响、占位符里写明自定义必须保留的 JSON 输出格式。顺带修：analysis 落盘的模型名此前可能记空。
+- **录制分析子页从此只分析一条录制——名字和行为都说清楚了。** GUI 的"点两张对比"移除：贴纸板改为单选（点另一张直接换分析对象，点选中那张取消），tab 更名「录制分析agent行为」。提示词对比子页的双选对比保留。代价是有意为之并已记录在案：两条录制按 system / 工具集 / 对话历史三面对比——观察上下文腐烂的方式——只剩 `GET /api/snapshots/diff?face=` 这一条 API 通道，GUI 不再产生任何 `face` 值。
+- **多源指令清单默认折叠。** 拿真实的一天（633 条录制，一份归档）实测，清单被 harness 状态通知淹没：`<total_tokens>N tokens left</total_tokens>` 每轮一条、role=system——当天 13,058 条，数字逐条不同，"内容完全相同才合并"的既有规则合并不掉——把真正要看的指令源（16K 的 CLAUDE.md、重复注入的 421 字提醒、8.9 万字工具描述）埋在下面。卡片改为默认收起的 `<details>`，折叠头带条目数；收录逻辑、API、软件内分析上下文一概不动。
+- **两套浅色外观下的白板与贴纸不再是深色孤岛。** 切到「经典暖灰」或「实验室日光」后，分析视图里的白板与贴纸仍是深色：压暗的板面、深褐色的纸、纸上的白字。原因是这一族（260808 加入）把颜色全写死在组件里——纸色渐变、顶部胶带、右下折角、投影与内高光，一层都没走语义 token，而 `doc_audit` 的 token 检查对它完全沉默：它检查的是「深色块里定义的 token 在 classic/light 有没有取值」，这一族**根本没定义过 token**。现在四层一起 token 化（只换纸色会得到「浅色纸配黑折角」，比不换更糟），两套浅色各有自己的纸：经典暖灰是软木板配奶油/嫩绿/藕粉便签，实验室日光是冷矿物板面配清透纸片，录制快照那张继续保持「与另外三张一眼可分」的冷色差。纸上文字按**四张纸里最不利的那张**算对比度，正文、次级、时间戳、类别标签四项在三套外观下全部过 AA（时间戳与类别标签此前在深色下就只有 3.9~4.1:1，是照抄这个层级把两套浅色一起拖到线下的）。顺带修掉同族的欠账：列表行 hover 的金色 tint（冷色外观下与整体打架）、信号四色 chip、树视图的分叉色、`thinking` 徽章写死的深板岩底、开关的关态轨道（浅色下白滑块几乎看不出来）、行内字符级差异的高亮（浅底上 32% 混色几乎看不见，而它正是「改了哪几个字」的唯一提示）。
+- **CSS 里引用一个谁都没定义的 token，现在会挡发版。** 分析视图沿用的是一套老命名（`--text` / `--text-dim` / `--bg`），而 token 体系里从来没有它们：21 处引用落空。这不是报错也不是落回默认值，而是**整条声明作废、颜色静默继承父级**——「次级灰」这类分层在三套外观下一起消失，界面看着却「有颜色」，于是两周多没人发现。`tools/doc_audit.py` 新增一条硬检查：`var(--x)` 引用了谁都没定义、又没写 fallback 的 token 就挡下，`--self-test` 里造反例验证它真会响。带 fallback 的引用不算这一类（它有确定的降级结果），但顺手清掉了那批冗余兜底：`var(--mono,ui-monospace,…)` 一路降到系统 Consolas，把「字体打包进产物保证跨平台视觉一致」这条约定也悄悄绕过了。
 
 ## v0.4.15 - 2026-08-25
 
-- **The 20K input cap on translate / AI-explain / the analysis chat is now yours to set.** Two module-level constants (`LLM_INPUT_MAX`, `CHAT_CONTEXT_MAX`, both 20,000 characters) decided where long inputs got cut, and nothing could change it — yet a single recorded system prompt is routinely 40K+ characters, so the "translation" or "analysis" you got back was of half the evidence. Truncation has announced itself since 260801 (`input_truncated` in the SSE stream, a gold notice in the UI); what was missing was letting the user choose where the cut lands. Two settings now live on the Translate/AI card, in **characters** (not tokens — the client cannot count tokens, and the truncation notice reports characters, so the setting and the notice share one unit): `input_max_chars` for single-turn translate/explain/diff-explain, `chat_context_max_chars` for the snapshot context injected each analysis-chat turn. Both default to the old 20,000 — an existing config.json behaves identically until you touch them — and both clamp to 1,000–2,000,000 on read *and* write, because this is a knob that spends money: zero would truncate to an empty string while still claiming "truncated", and a mistyped billion would burn a request. The cut notice's tail no longer says "raising max output tokens won't help" (it was true, and useless); it now names the setting that actually moves the cut. The internal share budgets (sources list, history window, per-question cap) stay fixed on purpose — opening every internal allocation is knob soup; what users actually hit was these two walls.
-- **The HTTP API now has a human-readable face.** This tool has always been dual-mode — humans use the GUI, AI uses the HTTP API — but the two sides were separated by a wall: the only route returning HTML was `/`, every `/api/*` returned raw JSON, and `/api/ai-guide` returned raw Markdown. So after you copied that one line to your agent, **what the agent actually reads was invisible to you**. A tool whose whole premise is "never silently drop anything" was not inspecting its own output surface. Now `GET /view` lists every GET endpoint — grouped, one line of explanation each, one click each — and appending `format=html` to any GET endpoint renders it: JSON as a folding tree (arrays of like objects become a horizontally scrolling table), and the guide as a typeset document. **Without `?format=html` the response is byte-identical** — a selftest holds a baseline and compares byte for byte, because the AI channel is the other half of this product and a stray field or a reordered key is contract drift to whoever consumes it. The endpoint list is read from `app.url_map` rather than hardcoded, so a new endpoint appears there by itself; endpoints that need a path argument, plus `/api/captures/stream` (a long-lived SSE) and `/api/update/check` (hits the network), are listed but deliberately not clickable, with the reason spelled out on the row — hiding them would give the browse page a blind spot of its own.
-- **The detail view stopped silently cutting tool calls in half.** `tool_use` inputs were rendered through `JSON.stringify(...).slice(0, 1500)`: a hard cut with no expand button and no notice, while the `bigText` component sitting right next to it has offered "show all (N chars)" the whole time. Measured across six days of real recordings, **10.6% of `tool_use` blocks exceed 1,500 characters**, and the longest — a `Write` on 2026-08-15 — is **37,257 characters, of which the UI showed 4% and said nothing**. One in ten tool calls was being misrepresented in a tool built to reveal exactly this kind of thing. All of these now fold with a full-text toggle; list caps that dropped items outright (`web_search` results past the 6th, citations past the 8th) are gone, and the per-line character cuts that remain end in `…` so the cut is at least visible. Fixed alongside: those same paths escaped their text and then handed it to `bigText`, which escapes again — any title containing `&` or `<` was displayed double-escaped as `&amp;lt;`.
-- **Recordings can now be compacted in place, archived into one portable file, and imported from another machine.** Claude Code re-sends the whole conversation on every turn (that is what prompt caching is), and this tool writes each request out in full — so on a measured day (2026-08-09, 477 MB, 855 requests) **75.4% of the bytes are `messages`, of which only 6.6% is unique content**, and the tool definitions resent on all 855 requests hold 0.13 MB of unique content while occupying 84 MB of disk. The old "archive" action compressed that with zip DEFLATE, whose 32 KB window cannot see repetitions that sit megabytes apart — measured 2.6x. Compaction instead content-addresses every top-level block of `system`/`tools`/`messages`, stores each unique block once as its own zstd frame, and leaves the record skeleton pointing at integer blob ids: **that same day goes to 14.8 MB (33.9x)** while a single record still opens by random access (median 17 ms, p90 27 ms). Reading is unchanged — for any given date, list / DAG / detail / grep return byte-identical results before and after compaction; only `/api/stats` differs, in the three fields whose meaning *is* "how much space this takes now". Nothing is deleted: `uncompact` restores the original file byte-for-byte, and compaction only removes the original after verifying a full byte-for-byte reconstruction of the entire file first.
-- **The three storage actions are now distinct, in code and in the UI.** *Compact* shrinks in place and deletes nothing. *Archive* writes one portable `.ccwa` file and, by default, keeps the original. *Clear* is the only thing that deletes, and retention is the only thing that deletes automatically. Before this release the single menu entry "clear and archive" conflated the second and third, and the storage dropdown now spells the difference out per action. **Today is never compacted** — `append` is writing to it, and proxy transparency outranks disk space; the guarantee is structural (compaction only ever processes past dates), not a lock.
-- **Recordings from another machine open in this one.** `archive` produces a single file you copy across; `import` unpacks it into `sources/<label>/`, a namespace of its own, because two machines recording on the same day will always collide on the date — and the failure mode of mixing them is not an error message, it is reading another machine's evidence as if it were local. Every read surface takes `source=<label>` (`--source` on the CLI), `GET /api/sources` lists what is imported, and the capture page grows a source switcher whose selected state is deliberately loud.
-- **Fixed along the way**: an empty `?date=` was treated as a real (non-existent) date rather than "not given", which showed an empty list for a day that had records and reported no error at all; `tools/check_i18n_js.py` crashed instead of reporting when `node --check` failed on a line containing CJK text (it read the pipe as GBK), so the syntax gate failed exactly when it was needed; and `cli_selftest`'s retention assertion hard-coded a date that stopped being "recent" on 2026-08-11, so that check had been failing for two weeks on a date-dependent premise rather than on the behaviour it meant to test.
+- **翻译 / AI 解读 / 分析对话的 20K 输入上限，现在由你定。** 两个模块级常量（`LLM_INPUT_MAX` 与 `CHAT_CONTEXT_MAX`，各 20,000 字符）决定长输入被砍在哪里，什么都改不了它——而录制里单条 system prompt 40K+ 字符是常事，于是你拿到的那份「翻译」或「分析」看的是一半证据。截断自 260801 起就有自陈（SSE 流里的 `input_truncated` 事件、界面上的金色提示条）；缺的是让用户自己选刀口落在哪里。翻译/AI 卡上现在有两个设置，单位是**字符**（不是 token——客户端算不出 token 数，而截断提示报的本来就是字符，配置项与提示同一单位才所见即所得）：`input_max_chars` 管单轮翻译/解读/差异解读，`chat_context_max_chars` 管分析对话每轮注入的快照上下文。两个都默认 20,000——老 config.json 在你动它之前行为与现在完全一致——且**读写两侧都夹取**到 1,000~2,000,000：这是花钱的旋钮，0 会把文本截成空串还挂着「已截断」提示，手滑一个亿则一次请求就烧穿。截断提示的尾巴不再说「调大最大输出 tokens 救不回来」（那是对的，但没用），改成指出真正挪得动刀口的那个设置。内部的份额预算（多源清单、历史窗口、单条提问上限）有意保持写死——把内部分配全开放就是旋钮汤，用户实际撞的是这两堵墙。
+- **HTTP API 现在有了给人看的一面。** 这个工具一直是双模式的——人看 GUI，AI 走 HTTP API——但两侧之间隔着一堵墙：返回 HTML 的只有 `/`，`/api/*` 一律 JSON，`/api/ai-guide` 是 markdown 原文。于是你把「复制给 AI 的一句话」发出去之后，**agent 究竟读到了什么，你看不见**。一个以「绝不静默丢字」立身的工具，却不审计自己的输出面。现在 `GET /view` 列出全部 GET 端点——分组、每条一句话说明、每条一个可点链接；任意 GET 端点后加 `format=html` 即渲染：JSON 成折叠树（元素同构的数组转成可横向滚动的表格），说明书成排好版的文档。**不带 `?format=html` 时响应逐字节不变**——自测拿基线逐字节比对守这条，因为 AI 通道是本工具的另一半产品，多一个字段、一次 key 重排，对消费它的人就是契约漂移。端点清单从 `app.url_map` 现取而不是硬编码，新端点会自己出现在上面；需要路径参数的端点，以及 `/api/captures/stream`（SSE 长连接）与 `/api/update/check`（会联网），列出但有意不给链接，并在行内写明原因——藏起来就等于浏览面自己有了盲区。
+- **详情页不再把工具调用悄悄砍掉一半。** `tool_use` 的 input 此前走的是 `JSON.stringify(...).slice(0, 1500)`：硬切、没有展开按钮、也不吭一声，而紧挨着它的 `bigText` 组件一直都会给「展开全文（N 字符）」。实测最近 6 天的真实录制，**10.6% 的 `tool_use` 块超过 1,500 字符**，最长的一个——2026-08-15 的 `Write`——有 **37,257 字符，界面上只显示了 4%，且一个字都不说**。在一个专门用来揭示这类事情的工具里，十分之一的工具调用被呈现错了。这些现在一律折叠 + 可展开全文；整条丢弃的列表上限（`web_search` 第 7 条起、citations 第 9 条起）已经取消，剩下的按行字符截断都补上了 `…`，至少让"被切过"看得见。顺带修的：这几处都是先 `esc()` 一遍再交给 `bigText`，而后者自己还会 `esc` 一次——任何含 `&` 或 `<` 的标题都被双重转义成了 `&amp;lt;`。
+- **录制现在可以原地压实、打成单文件归档、并从另一台机器导入。** Claude Code 每轮把整段对话重发一遍（prompt caching 就是这么工作的），而本工具逐条全量落盘——于是实测的一天（2026-08-09，477 MB / 855 条请求）里 **`messages` 占了 75.4% 的字节，其中只有 6.6% 是唯一内容**；855 条请求各自重发的工具定义，唯一内容合计 0.13 MB，却占了 84 MB 磁盘。旧的「压缩存档」用 zip DEFLATE 压它，而 DEFLATE 的窗口只有 32 KB，看不见相隔几 MB 的重复——实测 2.6x。压实改成对 `system`/`tools`/`messages` 的每个顶层块做内容寻址：每个唯一块只存一份、各自一个 zstd 帧，记录骨架里只留整数 blob 下标。**同一天于是变成 14.8 MB（33.9x）**，而单条记录仍然是随机访问打开的（中位 17 ms，p90 27 ms）。读取行为没有变化——同一天压实前后，列表 / 时序图 / 详情 / 检索的返回逐字节相同，只有 `/api/stats` 有三个字段不同，而那三个字段的含义本来就是"现在占多少"。什么都没被删掉：`uncompact` 能逐字节还原回原文件，而压实只有在**把整个文件逐字节重建比对通过之后**才删原件。
+- **三个存储动作现在是分开的，代码里和界面上都是。** *压缩*原地缩小、什么都不删；*归档*产出一个可搬运的 `.ccwa`，默认保留原录制；*清除*是唯一真的删东西的动作，而保留天数是唯一自动删东西的动作。这一版之前，菜单里那条「清除并压缩存档」把后两者混成了一件事，现在下拉菜单逐条把区别写在文案里。**今天永远不压实**——`append` 正往里写，代理透明性高于省空间；这个保证是结构性的（压实只处理过去的日期），不是靠加锁。
+- **别的机器的录制能在这台机器上打开了。** `archive` 产出一个可以拷走的单文件，`import` 把它解到 `sources/<label>/` 这个独立命名空间——因为两台机器同一天都在录，日期必然撞车，而混在一起的失败形态不是报错，是把别的机器的证据当本机事实读。所有读取面都接受 `source=<label>`（CLI 是 `--source`），`GET /api/sources` 列出导入了什么，捕获页多了一条来源切换条，它的选中态是有意做得醒目的。
+- **顺带修的**：空的 `?date=` 被当成了一个真实（且不存在）的日期而不是"没给"，结果是明明有记录的一天显示成空列表、且完全不报错；`tools/check_i18n_js.py` 在 `node --check` 报错、而出错行含中日文时会自己崩掉而不是把错误报出来（它按 GBK 读管道），也就是说这道语法闸门恰好在最需要它的时候失灵；`cli_selftest` 的保留天数断言写死了一个日期，那个日期自 2026-08-11 起不再属于"近期"，于是这条断言两周来一直失败在"今天是哪天"上，而不是它本想测的行为上。
 
 ## v0.4.14 - 2026-08-10
 
-- **The identification system is now written down as one map instead of a dozen scattered heuristics.** How this tool decides "what kind of call is this / who started this turn / who spawned this subagent / which main line does this auxiliary belong to" is seven layers deep, and the new §2.6 of `docs/reference/开发约定.md` lays them out in one table — what each layer decides, which official Claude Code identifier is authoritative for it, and what the heuristic fallback is. The point of the map is the one row that stands out: **turn origin is the only layer with no official identifier on the wire**, which is why Claude Code's self-authored turns (suggestion completions, away recaps, internal search dispatches, background notifications) are matched by a wording whitelist and not by structure — every structural discriminator tested (`tools_n`, `max_tokens`, billing-header version hash) overlaps completely with real human turns. That also fixes the direction of the safety margin in writing: an unrecognised turn always falls back to `user`, because showing a synthetic turn as main is cosmetic while demoting a real human turn is not. The agent-facing manual gained the matching section — an agent reading `/api/dag` previously had no way to know `turns[].origin` existed, and would have counted machine-authored turns as user questions — plus a correction: the interactive-mode (`cc_entrypoint=cli`) subagent gap it still warned about was closed by a live captured session, so that warning is gone from the manual and from the Next steps above.
-- **Turn origin has been measured against ground truth for the first time, and it found a field we weren't using.** The wording whitelist that decides "human or Claude Code talking to itself" had never been checked against anything — it was designed to look right. A new development-time probe (`tools/origin_probe.py`, not shipped in the binary) joins recorded traffic against Claude Code's own local conversation logs, which carry a `promptSource` on every user message, via two joins anchored on official ids on both sides. Across 8 days and 2,339 judgeable turns the heuristic agrees **99.8%** of the time, and the direction that actually matters — a real human turn demoted to "synthetic" — happened **0 times**. The four turns it did miss shared no wording at all (a script can send anything), but all four carried `cc_entrypoint=sdk-cli`, with zero false hits across 2,180 human turns: so `origin` gained a fifth value, `sdk`, decided by that official header rather than by guessing. Two numbers worth carrying: on turns whose first request succeeded, **45% are Claude Code talking to itself** and only 50.3% are human; and turn counts are wildly inflated by retry storms — one recorded day had 2,049 "turns" of which 2,000 began with a 504, covering three real questions. Filter by status before you count anything per turn.
-- **Public presence launched.** Bilingual English/Chinese GitHub Pages site (canonical, hreflang, Open Graph, SoftwareApplication JSON-LD, sitemap), a 1280×640 social preview, and Google Search Console ownership verified. Three READMEs refreshed with the full product name, real `git clone` and `releases/latest` entry points, and platform/local-run trust signals (`c64dbe7`, `216b10d`). Community promotion deferred. The from-scratch reproducible tutorial lives in `promo/` (gitignored, local only).## v0.4.13 - 2026-08-09
+- **识别体系不再是十几处散落的启发式，落成了一张地图。** 这个工具怎么判断「这是什么类型的调用 / 这轮谁发起的 / 这个子代理是谁派生的 / 这次辅助归哪条主线」，其实是七层叠起来的一套；`docs/reference/开发约定.md` 新增的第 2.6 节把七层摊在一张表里——每层判什么、哪个 Claude Code 官方标识符对它是权威、启发式兜底又是什么。这张地图的价值在于表里格外扎眼的那一行：**「轮起源」是七层里唯一在 wire 上没有官方标识符的一层**。所以 Claude Code 自己合成的那些轮（建议补全、离开回顾、内部检索派发、后台任务通知）只能靠措辞白名单认，而不是靠结构——试过的结构判据（`tools_n`、`max_tokens`、计费头版本哈希）与真人轮**全部重叠**。这也把安全余量的方向写死了：认不出的轮一律落回 `user`——把伪轮显示成主线只是不好看，把真人回合弱化则不是。面向 agent 的说明书补了配套一节：此前 agent 读 `/api/dag` 根本不知道 `turns[].origin` 存在，会把机器自说自话的轮当成用户提问统计。同时更正一处：说明书里仍在警告的「交互模式（`cc_entrypoint=cli`）子代理未观测」缺口，已由一次现场采集的会话核对收口，该警告已从说明书与上面的「下一步」中移除。
+- **轮起源第一次拿真值量了准确率，顺手挖出一个一直没用的官方字段。** 判断「这轮是真人还是 Claude Code 自说自话」的那份措辞白名单，此前从没跟任何东西核对过——它只是"设计时看着像对的"。新增的开发期探针（`tools/origin_probe.py`，**不随产物发布**）把录到的流量与 Claude Code 自己的本地对话记录对起来——后者每条用户消息都带 `promptSource`——两条 join 链路都锚在双方各自的官方 id 上。8 天、2,339 个判得动的轮：启发式与真值**一致率 99.8%**，而真正要紧的那个方向——把真人轮误判成"伪轮"——**0 例**。漏掉的那 4 轮在措辞上毫无共同点（脚本想发什么发什么），但 4 条全带 `cc_entrypoint=sdk-cli`，且 2,180 条真人轮零误伤：于是 `origin` 多了第五个取值 `sdk`，判据是那个官方请求头，而不是猜。两个值得记住的数：在轮首请求成功的轮里，**45% 是 Claude Code 在跟自己说话**、真人轮只占 50.3%；而"轮数"会被重试风暴严重撑虚——某天录到 2,049 个"轮"，其中 2,000 个轮首是 504，背后只有三个真实问题。按轮统计任何东西之前，先按状态码过一遍。
+- **公开落地页上线。** 中英双语 GitHub Pages 站（canonical / hreflang / Open Graph / SoftwareApplication JSON-LD / sitemap 齐全）、1280×640 社交分享图、Google Search Console 所有权验证完成。三语 README 补全产品全称、真实的 `git clone` 与 `releases/latest` 入口、平台与本地运行的信任信号（`c64dbe7`、`216b10d`）。社区发帖后置。从零可复现的中文教程在 `promo/`（gitignored，仅本地）。## v0.4.13 - 2026-08-09
 
-### Fixed
+### 修复
 
-- **The in-app updater's Download button is no longer a leap of faith: locked single-flight + immediate feedback.** On v0.4.11, clicking Download looked dead for several seconds — the checksum-manifest fetch and the GitHub connect (both seconds through a proxy) all happened before any progress phase existed; worse, the progress poller treated that pre-connect window as a terminal state 500ms in and stopped, reverting the UI to an untouched-looking Download button that invited re-clicks — and every re-click passed the hollow duplicate-check and spawned another download thread. One real session fired **13 concurrent download threads writing the same `.part`**; the first finisher's rename then tripped over its own siblings' file handles, surfacing "the file is in use by another process" (WinError 32) — the file was held not by some other program but by our own threads.
+- **自动更新的「下载」不再是一无反馈的信仰之跃：单 flight 锁内占位 + 点击即反馈。** v0.4.11 上点「下载」后有好几秒像没点上——拉校验和清单与连 GitHub（走代理要数秒）都发生在进度阶段存在之前；更糟的是进度轮询启动 500ms 就把这个「还没连上」的窗口当终态停表，UI 退回原样的下载按钮，引你补点——而每一次补点都通过形同虚设的查重再放出一个下载线程。一次实测会话放出了 **13 个并发下载线程写同一个 `.part`**，第一个下完的线程改名时撞上自己兄弟的句柄，报出那句「另一个程序正在使用此文件」（WinError 32）——占用文件的不是别人，是我们自己的线程。
 
-  The fix gives each layer its own job: the backend registers the task under a lock as a `starting` phase *before* touching the network (repeat calls get `already_running`, and the UI reattaches the progress bar to the running task instead of erroring); the staging file name is unique per attempt (defence in depth — should the guard ever be bypassed again, two writers never share a file, so rename can never hit a sibling's handle); the frontend disables the button and optimistically renders the `starting` progress bar on click. Two adjacent bugs fixed along the way: checking for updates mid-download no longer clobbers the running task's phase back to `idle` (which used to stop the poller), and the checksum-manifest fetch moved from the request handler into the download thread (it was part of the silent seconds). Verified end-to-end with real clicks: five rapid clicks spawn zero extra threads, a mid-download update check leaves the progress bar alone, and the install entry appears once SHA-256 verification passes.
+  修复三层各管一段：后端在锁内把任务置为 `starting` 阶段**再**碰网络（重复调用收到 `already_running`，前端据此把进度条接回在跑的任务，而不是报错）；临时文件名每次唯一（纵深防御——即使并发守卫未来再被绕过，两个写者也不共享文件，rename 不再撞句柄）；前端点击即禁用按钮并乐观渲染 `starting` 进度条。另外两处顺带修：下载进行中点「检查更新」不再把任务状态盖回 idle（旧版前端轮询因此停表）；校验和拉取从请求 handler 挪进下载线程（它曾是「点了没反应」那几秒的一部分）。全链路用真实点击验证：连点 5 次后端零新增线程，下载中检查更新进度条不受影响，SHA-256 校验通过后正确出现安装入口。
 
-  **Upgrade guidance for v0.4.11 users**: the old version's updater UI carries this bug (the fix ships in the new version), so the reliable path is "Open releases page" and swap the file manually; or click Download **once** and wait patiently (the download is genuinely running — the UI just won't tell you), and do not re-click.
+  **给 v0.4.11 用户的升级指引**：老版本的更新 UI 带着这个 bug（修复在新版本里），最稳的路径是「打开发布页」手动下载替换；或在应用内**点一次下载后耐心等**（后台确实在下，只是界面不会告诉你），别补点。
 
 ## v0.4.12 - 2026-08-09
 
-### Added
+### 新增
 
-- **The sequence diagram now distinguishes who started a turn — and folds turns and their auxiliaries manually.** This is the third of a five-step rework (`issues/closed/260809_时序图折叠语义与手动折叠.md`), preceded by a comparison against Claude Code's own `~/.claude/projects/*.jsonl` (six sessions, 82 main-lane turns).
+- **时序图现在能分清一轮是谁发起的——轮与其辅助都能手动折叠。** 这是五步改造的第 1–4 步（`issues/closed/260809_时序图折叠语义与手动折叠.md`），动手前先拿 Claude Code 自己的 `~/.claude/projects/*.jsonl` 做了对照（六个会话、82 个主线轮）。
 
-  **About 37% of "turns" on the wire are not from you.** Turn boundaries were cut by one rule — "the last user message has a real text block" — but Claude Code synthesises pseudo-user messages (`[SUGGESTION MODE …]`, `The user stepped away …`, `Perform a web search …`, `[SYSTEM NOTIFICATION …]`) that satisfy the same rule, so a quarter to a third of the turn cards were CC talking to itself, drawn identically to ones you typed. There is **no structural discriminator on the wire**: `tools_n`, `max_tokens` and the billing-header version hash all overlap between human and pseudo turns, so a text-prefix whitelist is the heuristic — but jsonl carries authoritative `origin.kind` / `promptSource` markers that never cross the wire, so the whitelist was validated against ground truth first: of the 11 main-lane requests wire has and jsonl lacks, 10 are exactly the whitelist hits (the 11th is an interrupted human message). Turns now carry an `origin` (`user` / `synthetic` / `command` / `partial`); synthetic turns are drawn as a faded dashed card labelled "CC auto:" rather than merged or hidden — they trigger real work and real token cost, and hiding data the wire actually carried is failure mode ③. The whitelist falls back to `user` for anything it does not recognise, since mislabelling a human turn as noise is worse than mislabelling noise as human. One divergence kept deliberately: turns that open with an image paste stay `user` — jsonl marks those `isMeta` and does not count them as human prompts, but the timing shows eight consecutive pastes each driving 3–25 steps of real work, which is the human advancing the conversation. That is jsonl's blind spot, not ours.
+  **wire 上约 37% 的「轮」不是你发的。** 此前按一条规则切轮——「最后一条 user 消息含真实 text 块」——但 Claude Code 会自己合成伪 user 消息（`[SUGGESTION MODE …]`、`The user stepped away …`、`Perform a web search …`、`[SYSTEM NOTIFICATION …]`），同样满足这条规则，于是四分之一到三分之一的轮卡是 CC 在自说自话，却画成和你亲手发的轮一模一样。**wire 层没有结构性判据**：`tools_n`、`max_tokens`、计费头版本哈希在真人与伪轮之间全部重叠，所以文本前缀白名单是启发式——但 jsonl 里有权威 `origin.kind` / `promptSource` 标记（不过 wire），于是动手前先用真值验过这份白名单：wire 有而 jsonl 没有的 11 条主线请求里，10 条正是白名单命中者（第 11 条是被打断的真人消息）。轮现在带 `origin`（`user` / `synthetic` / `command` / `partial`）；伪轮画成半透明虚线卡、标签「CC 自动：」，而不是合并或隐藏——它们会带出真工作、有真实 token 成本，把 wire 实际跑过的数据藏起来就是惯犯③。白名单命中不了的新形态一律落回 `user`——把真人轮误判成噪声，比把噪声误判成真人更糟。一条刻意保留的分歧：以贴图开头的轮仍归 `user`——jsonl 把它们标 `isMeta`、不算人类提示，但时序显示连续八次贴图各带出 3–25 步真实工作，那就是人在推进对话。这是 jsonl 的盲区，不是我们的。
 
-  **Auxiliary aggregation now groups by turn, not by lane.** It used to key on the associated main lane, so a day with 2–4 lanes produced 2–4 aggregate cards and clicking one expanded that lane's entire day's auxiliaries (90+ requests on 08-09) with no middle level — yet the backend already attributes every auxiliary to its turn. Grouping by turn yields 25 cards for the same day, one "turn N · aux ×k" per turn; auxiliaries that map to no turn stay single (no silent drop). The turn card's aux badges are now clickable to fold/unfold that turn's auxiliaries in place. The whole loop was verified with real clicks, not scripted function calls — the collapse badge on an expanded aux group is pinned to the group's first *visible* member (`DG.auxFirstVisible`), because the nominal group head can be filtered out by "hide tool-loop steps", and then there is nothing in the DOM to click to fold the group back.
+  **辅助聚合从按泳道分组改成按轮。** 此前按关联主线分，一天只有 2–4 条泳道就 2–4 张聚合卡，点开一次展开该主线全天的辅助（08-09 一次 90+ 条），没有中间档——而后端其实早就把每条辅助归到了所属的轮。按轮分后同一天得到 25 张卡，每轮一张「轮 N · 辅助 ×k」；归不到轮的辅助保持单条（不静默丢）。轮卡上的辅助徽章现在可点，就地展开/收起该轮辅助。整条闭环用真实点击验证（不是脚本直调函数）——展开的辅助组上「折叠」徽章钉在组内第一个**可见**成员（`DG.auxFirstVisible`），因为名义组首可能被「隐藏工具循环步」滤掉，那样 DOM 里就没有可点的收回入口。
 
-  The comparison also surfaced the join key for the 0.6.x "wire ↔ jsonl" roadmap item: `response.headers_safe["request-id"]` matches jsonl's `assistant.requestId` exactly — 432/432 = 100% on 08-09. The first consumer is planned as a ground-truth override for this origin heuristic (when jsonl is present, its `origin.kind` wins). Two things to carry forward: wire stores local-naive timestamps while jsonl is UTC, and only Anthropic upstreams return `request-id` — the GLM/Kimi upstreams you alternate with answer `x-log-id` and cannot be joined this way.
+  对照还顺带挖出了 0.6.x「wire ↔ jsonl」路线图的 join key：`response.headers_safe["request-id"]` 与 jsonl 的 `assistant.requestId` 精确一致——08-09 实测 432/432 = 100%。第一个用途规划为给这份 origin 启发式当真值覆盖（jsonl 在场时 `origin.kind` 说了算）。两条要带走：wire 存本地时间而 jsonl 是 UTC；只有 Anthropic 上游回 `request-id`——你混用的 GLM/Kimi 上游回的是 `x-log-id`，这条路对不上。
 
-### Fixed
+### 修复
 
-- **A residual turn (recording started mid-turn) can now be folded back after expanding.** Expanding a partial turn used to leave no way to collapse just that turn: the turn-collapse badge was pinned to `t.head`, but a residual turn's head has `turn_start=False`, which `dagTierOf` demotes to the slim "mid" row — and the `mid` branch returned before reaching the badge. On 08-08 a 137-step residual turn expanded into 137 cards recoverable only via the global button, which also resets every other turn's expansion. The badge now rides the turn's first *visible* member (`DG.turnFirstVisible`, precomputed in the same order as the tier/hideMid filters), so it always lands on a card that actually renders.
+- **残轮（录制从轮中途启动）展开后能收回了。** 此前展开残轮后没有收回该轮的入口：「折叠本轮」徽章钉在 `t.head`，而残轮轮首 `turn_start=False`，会被 `dagTierOf` 降成细条「mid」行——而 `mid` 分支在到达徽章前就 return 了。08-08 一个 137 步的残轮展开成 137 张卡，只能靠全局按钮收，而全局按钮会连带清空其它所有轮的展开状态。徽章现在挂到该轮第一个**可见**成员（`DG.turnFirstVisible`，与 tier/hideMid 过滤同序预排），保证落在实际渲染的卡上。
 
-- **Settings now lists every running instance with its port, mode and recording state.** `serve` is doubly windowless — the build is `console=False`, and the `serve` branch never creates a pywebview window — so an instance can hold a port and run all day with nothing on screen to show for it. That is exactly what happened: a stale `serve` from an older build sat on port 5053 for seven hours while the real recording ran in a GUI on 5051, and it only surfaced because its own `.exe` refused to delete. Task Manager shows the process name but not the **port**, and the port is the one number that matters here — whichever one `ANTHROPIC_BASE_URL` points at is the instance that is actually recording. The card marks idle instances explicitly, since "running" and "recording" are not the same thing and the gap between them is the whole failure mode.
+- **设置页现在列出每个在跑的实例：端口、模式、是否正在录制。** `serve` 是双重无窗的——打包时 `console=False`，而 `serve` 分支根本不建 pywebview 窗口——所以一个实例可以占着端口跑一整天，屏幕上什么都不留。这件事真的发生了：一个旧版本的 `serve` 在 5053 上空转了七小时，真正在录的是 5051 上的 GUI，而它之所以被发现，只是因为它自己的 `.exe` 删不掉。任务管理器看得到进程名，但看不到**端口**——而端口是这里唯一要紧的那个数：`ANTHROPIC_BASE_URL` 指向谁，谁才在录。卡片会把空转的实例明确标出来，因为「在跑」和「在录」不是一回事，两者之间的落差正是这个故障的全部形状。
 
-  Discovery is a live port probe over `5051-5100` (`GET /api/instance`, new), **not** a read of `port.txt` / `serve.pid`. Those files are single-copy, last-writer-wins, carry no instance identity and are never cleaned up on exit — measured the same day, `serve.pid` still held a PID that had exited six days earlier, and PIDs get recycled. Answering HTTP proves something stronger than a live PID anyway: not "a process exists" but "an instance can do work". Because nothing persistent is involved, this view cannot go stale. Instances from older builds are still found via an `/api/about` fallback and flagged `legacy` (verified against the running v0.4.11). Scanning all 50 ports takes 0.18s (0.48s before the probe went fully concurrent). The port range is hard-coded and takes no parameters — an unauthenticated local endpoint that accepts a port range is a local port scanner — and the probe bypasses the system proxy, which matters more here than most places given what this tool does to `ANTHROPIC_BASE_URL`.
+  发现方式是对 `5051-5100` 做实时端口探测（新端点 `GET /api/instance`），**不是**去读 `port.txt` / `serve.pid`。那两个文件单份、后写覆盖、不带实例归属、退出也不清理——同一天实测，`serve.pid` 里还是六天前一个已经退出的 PID，而 PID 是会被系统复用的。何况「能应答 HTTP」本身就是更强的判据：它证明的不是「有个进程」，而是「有个能干活的实例」。因为不依赖任何持久化状态，这个视图不可能显示过期信息。旧版本实例经 `/api/about` 回退照样能被发现并标为 `legacy`（已对着正在跑的 v0.4.11 验过）。扫完 50 个端口耗时 0.18s（探测改为全并发之前是 0.48s）。端口段硬编码、不接受任何入参——一个无需认证的本机接口如果接受端口范围，它就是个本机端口扫描器；探测同时绕过系统代理，考虑到这个工具本身就在改 `ANTHROPIC_BASE_URL`，这一点在这里比在别处更要紧。
 
-- **The turn skeleton gained an AI semantic layer: what each turn is doing, what it wants, and what is worth watching.** Click "AI turn summary" once; the result is stored, shown directly on later visits without paying for it again, and re-runnable via "Summarise again". It uses the low-cost model already configured in Settings.
+- **轮次骨架多了一层 AI 语义归纳：每轮在做什么、想达到什么、哪里值得注意。** 点「AI 归纳轮次」跑一次，结果落盘，之后打开直接显示、不再花钱重算，想重跑就点「重新归纳」。用的是设置页已配的那个低成本模型。
 
-  **This is layering, not handing the skeleton to the AI.** The factual layer — which steps exist, what triggered them, which tools were called, where the turn boundaries are — is still extracted from the recording by code and can be recomputed; the AI only annotates turn boundaries. The reason is that wire-level truth is what this tool exists for, and putting "what actually happened in this conversation" in the hands of a component that hallucinates replaces the foundation with the model's good intentions. So the backbone on screen stays the program skeleton, and the AI lines carry an "AI" badge — when it gets something wrong you can check it against the factual rows right below it.
+  **这是分层，不是把骨架交给 AI 生成。** 事实层——有哪些步、谁触发、调了什么工具、轮次边界在哪——仍由程序从录制原文抽取，可复算；AI 只在轮次边界上贴一层语义。理由是这个工具的立身之本就是链路级真相，把「这条对话里发生了什么」押在一个会幻觉的组件上，等于把地基换成模型的自觉。所以界面上骨干仍是程序骨架，AI 那几行带「AI 归纳」角标，说错了你当场能对照它下面那几行事实。
 
-  The critical piece is that **the backend validates the step numbers the model cites**: anything absent from the program skeleton is dropped and reported in `dropped_steps`. Telling the prompt "only cite real step numbers" is a request, not a guarantee — without that check, "the AI summary is anchored to program facts" is just a claim: the model can summarise a turn made of steps that never existed and the UI will render it just as convincingly. Results live in `<sid>.analysis.json` rather than the snapshot envelope, because the envelope is immutable (a snapshot's value is that it does not change) while this is a recomputable derivative that re-analysis overwrites; it is deleted with its snapshot and counted in what cleanup says it can free.
+  最关键的一处是**后端会校验模型引用的步号**：不在程序骨架里的一律剔除，并如实记进 `dropped_steps` 显示出来。prompt 里写「只许引用真实步号」是要求，不是保证——没有这道校验，「AI 归纳挂在程序事实上」就只是一句说辞：模型完全可以归纳出一轮根本不存在的步骤，而界面照样渲染得像模像样。结果存成 `<sid>.analysis.json` 而不进快照信封，因为信封是不可改的（快照的价值就在于它不变），而这份东西是可重算的派生物、重新分析要覆盖写；它随快照一起删、也计入清理时说的「能腾出多少」。
 
-- **Settings now shows what the recordings cost on disk.** A tool that writes continuously should say how much it has written; until now that number existed only in the data directory. The card breaks out recording bodies, the write-time index, archives, snapshots and the run log, plus the day count and the largest single day — measured here at **4.81 GB over 15 days, with 1.10 GB in one day**, which is the concrete version of the "single day can reach GB scale" note behind the 0.5.x storage work. Display only: no cleanup or archive buttons, because both already exist on the Captures page and a second entry point for deleting user data is how the two drift apart.
+- **设置页现在显示录制占了多少磁盘。** 一个持续写盘的工具应该告诉你它写了多少，而在此之前这个数只存在于数据目录里。卡片分开列出录制正文、写时索引、存档、快照、运行日志，另给天数与最大的一天——本机实测 **4.81 GB / 15 天，其中单日 1.10 GB**，正是 0.5.x 存储治理那句"单日可达 GB 级"的具体版本。**只做展示**：不放清理与归档按钮，因为捕获页已经有了，而给"删用户数据"这种动作开第二个入口，正是两处行为开始分叉的方式。
 
-  **The endpoint only ever calls `stat`, never reads a file** — that is a contract, not an implementation detail. Cost must scale with file *count*, not data *volume*: `scandir` over 4.8 GB is 1.12 ms steady-state and stays 1.12 ms at 100 GB, whereas counting entries means reading lines (4.4 ms per day and growing, or 4.8 GB if read from the bodies via the existing `list_capture_dates`). That is also why the card shows no entry count: it is the one field that would make this view slow down as recordings accumulate. Being that cheap, it needs no cache either — a TTL would only add "this number is a few seconds old" as a new failure mode. `fmtBytes` grew a GB tier while we were here, since `4852.8 MB` asks the reader to do arithmetic.
+  **这个端点只 `stat`、绝不读文件内容**——这是契约，不是实现细节。成本必须随**文件数**走而不是随**数据量**走：`scandir` 扫 4.8 GB 稳态 1.12 ms，到 100 GB 仍是 1.12 ms；而要给出"条数"就得数行（每天 4.4 ms 且随索引变大而变大，若像现有的 `list_capture_dates` 那样去读正文就是读 4.8 GB）。这也是卡片不显示条数的原因：它是唯一会让这个视图随录制积累而变慢的字段。既然只要 1 ms，也就**不需要缓存**——加 TTL 只会引入"这个数是几秒前的"这种新故障模式。顺带给 `fmtBytes` 加了 GB 档，`4852.8 MB` 这种写法是在要求读者心算。
 
-### Fixed
+### 修复
 
-- **The delete button on board stickers is now actually clickable.** Clicking × did nothing, and not intermittently. Three causes were stacked on top of each other and only the outermost was visible: on a selected sticker the role badge (left / right / analyse) overlaps the ×'s rectangle and has a higher `z-index`, so it won the hit test. **But even with no badge at all, delete still failed entirely** — `mousedown` is bound to the whole sticker, × is inside it, and on `mouseup` the "didn't move ⇒ select" branch calls `anPick()`, which re-renders the board; the button carrying that click gets replaced via `innerHTML` before the browser can dispatch `click`. **The button was not broken — it was swapped out of the document before the click landed.** The badge now sits top-left with `pointer-events:none` (it is pure decoration and should never take part in hit testing), and `mousedown` ignores events originating in the × or the confirm overlay. This bug cannot exist in automation: calling `anAskDelete()` directly passes every time, because a function call goes through neither the hit test nor the "is this element still in the document" check — **verifying an interaction defect means actually clicking the element**.
+- **白板上的贴纸删除按钮现在真的能点了。** 点 × 此前没有任何反应——而且不是偶发。它有三层叠在一起的原因，只有最外面那层看得见：选中贴纸时右上角的角色徽章（左 / 右 / 析）与 × 矩形相交且 `z-index` 更高，赢走了命中测试；**但即使徽章从不存在，删除照样全线失效**——`mousedown` 绑在整张贴纸上，点 × 会命中它，`mouseup` 判定「没移动＝点选」后调 `anPick()` 重渲染整块板，于是承载这次点击的那个按钮在浏览器派发 `click` 之前就被 `innerHTML` 换掉了。**按钮没坏，是它在 click 之前就被从文档里换走了。** 现在徽章移到左上角并设 `pointer-events:none`（它是纯展示物，任何情况下都不该参与命中测试），`mousedown` 则排除来自 × 与二次确认框的事件。这个 bug 在自动化里不存在：直接调 `anAskDelete()` 一路绿灯，因为函数调用既不经过命中测试，也不经过「元素是否还在文档里」这一关——**验证交互缺陷必须真的去点那个元素**。
 
-- **Newly saved snapshots no longer land underneath older stickers.** The report was "I saved a prompt, switched to Analyse, and the board looked unchanged — I had to hit Tidy up before the new one appeared". Auto-placement put the *i*-th unplaced sticker in the *i*-th grid slot **without checking whether a manually positioned sticker already occupied it**, so once the old stickers had been dragged into place, every new one landed on (22,22) — directly under the first. Placement now skips occupied slots by rectangle intersection, which also preserves the original intent (after you drag a sticker away, the next new one should fall into the freed slot rather than queue up at the end): a freed slot is simply no longer occupied. Measured with old stickers on (22,22) and (274,22), the new one lands on (526,22) with zero overlap.
+- **新保存的快照不再被压在旧贴纸底下。** 现象是「保存了提示词，切到分析页白板还是老样子，必须点一下『整理贴纸』才看得到」。自动落位只按「第 i 张没摆过的纸放进第 i 个格位」算，**不检查那个格位有没有被手动摆放的纸占着**——一旦旧贴纸都拖动摆过位置，新的那张必然落在 (22,22)，正好压在最早那张下面。现在落位会按矩形相交跳过被占格位。这同时保住了原本的意图（挪走一张纸后，新纸该落进空出来的坑而不是排到队尾）：坑空出来了就不再被占，下一张自然落进去。实测旧纸占住 (22,22) 与 (274,22) 时，新纸落在 (526,22)，零重叠。
 
-- **`doc_audit` no longer fails the release gate over another tool's endpoint.** It flagged `/api/anthropic/v1/messages` as a ghost endpoint — but that path belongs to zcode, quoted in the guide on building this kind of analyzer *for other agent tools*, where writing down the target tool's endpoints is the point of the document. A permanently red gate is worse than no gate: it ends with someone adding `|| true` in CI, and the check stays hanging there pretending to be a defence. The fix is an audited `EXTERNAL_ENDPOINTS` allowlist (same shape as `KNOWN_BETAS` — hard-coded, one entry at a time, each naming which tool it belongs to), **not** skipping `docs/methodology/`: 4 of the 5 endpoint references in that directory are real endpoints of this project, so exempting the whole tree would trade one false positive for four lost checks. The allowlist is itself checked from both ends — an entry no longer cited by any document fails the self-test as dead, and an entry that becomes a real route fails the gate as a stale exemption that would otherwise silence the audit for that endpoint. Verified by mutation: a planted `/api/definitely-gone-endpoint` still fails the gate, so the exemption did not widen the rule.
+- **`doc_audit` 不再因为别的工具的端点卡住发版闸门。** 它把 `/api/anthropic/v1/messages` 判成了幽灵端点——可那条路径属于 zcode，出现在讲**怎么给其他 agent 工具做同类分析器**的手册里，而写下被测工具的端点正是那份文档的本职内容。一个永远亮红的闸门比没有闸门更糟：最终会等来有人在 CI 里加 `|| true`，而它还挂在那儿冒充防线。修法是一份可审计的 `EXTERNAL_ENDPOINTS` 白名单（形状同 `KNOWN_BETAS`：硬编码、一条一条加、每条注明属于哪个工具），**而不是**跳过 `docs/methodology/`——那个目录下 5 处端点引用有 4 处是本项目的真端点，整篇豁免等于拿一个误报换掉四处真覆盖。白名单自己也从两头查：某条不再被任何文档引用就在自测里判为死条目，某条变成了真实路由就作为过期豁免挡发版（否则它会让对账对那个端点永远闭嘴）。用变异测试验过判据没被放宽：塞一个 `/api/definitely-gone-endpoint` 进去，闸门照样红。
 
 ## v0.4.11 - 2026-08-09
 
-### Added
+### 新增
 
-- **"Check for updates" now finishes the job: download, verify, replace, restart.** It used to compare tags and print an address — the notification was done and the six laborious steps (write the address down, open a browser, find the asset, download it, close the running program, overwrite it) were all left to you. The whole pipeline now lives behind `/api/update/*`, so an agent can drive it too, and so the front end and back end cannot return two different answers about what the latest version is. **This is "one click and it is swapped", not "auto-update"**, and the distinction is not wording: this tool holds a patch on your `settings.json` while recording, so there is no timed check and no silent install — every step is a click, and **applying an update while recording is refused rather than stopping the proxy for you**, because stopping writes your settings.json back and that is not something the intent "I want to upgrade" should trigger in passing. Windows replaces in place: the running exe cannot be written to but **can be renamed**, so the sequence is stage into the same directory → rename the old one aside → move the new one in, with any step failing rolling the whole thing back — this is the only path in the project that touches an executable on the user's disk, and if it goes wrong the user is left without a working program. macOS deliberately stops at download-verify-reveal-in-Finder; the maintainer is on Windows, and replacing a running bundle also involves quarantine attributes and Gatekeeper. Being the first path here that **downloads and executes a binary**, it became safety invariant 10: the source repo is hardcoded (a configurable download address turns an unauthenticated local HTTP endpoint into "make this machine download and run an arbitrary binary"), https only with **every redirect hop** checked against a host allowlist (a release asset always redirects to object storage, so checking the first hop only is checking nothing), and the checksum is compared when the release ships `SHA256SUMS.txt` — when it does not, the panel **says so and shows the measured digest** instead of quietly downgrading to "transport security only". The self-test caught a real one: a failed download used to leave the previous, same-named package sitting in the updates directory, which is the worst possible residue — a plausible-looking exe of unclear provenance waiting to be double-clicked.
+- **「检查更新」现在把活干完：下载、校验、替换、重启。** 此前它比完 tag 打印一行地址就结束——通知做完了，最麻烦的六步（记地址、开浏览器、找资产、下载、关掉正在跑的程序、覆盖）全留给用户。整条链路现在在 `/api/update/*` 后面，于是 agent 也能驱动它，前后端也不会各查一次 GitHub 得到两个不同的答案。**这是「点一下就换好」，不是「自动升级」**，区别不是措辞：本工具在录制期间持有用户 `settings.json` 的 patch 态，所以没有定时检查、没有静默安装——每一步都对应一次点击，而且**录制中拒绝替换，不代劳停止代理**，因为停代理会写回你的 settings.json，那不该由「我想升级」这个意图顺带触发。Windows 就地替换：正在运行的 exe 不能被写，但**可以被改名**，所以顺序是同目录中转 → 把旧的改名挪开 → 把新的换进来，任一步失败整体回滚——这是本项目唯一会动用户磁盘上可执行文件的路径，出事时用户手上连一个能用的程序都没有。macOS 有意只做到下载、校验、在访达里指出来：维护者在 Windows，而替换一个正在运行的 bundle 还牵扯隔离属性与 Gatekeeper。作为这里第一条**会下载并执行二进制**的路径，它成了第 10 条安全不变量：来源仓库硬编码（下载地址一旦可配置，这个无需认证的本机 HTTP 接口就成了「让本机下载并运行任意二进制」的入口）、只走 https 且**逐跳**校验重定向主机（release 资产必然重定向到对象存储，只查第一跳等于没查）、release 带 `SHA256SUMS.txt` 就强制比对——没有时面板会**明说没有并给出实测校验值**，而不是悄悄降级成「仅传输层保护」。自测抓到一个真 bug：下载失败原本会把上一份同名安装包留在更新目录里，那是最糟的残留形态——一个看起来完好、来路不明的 exe 躺在那儿等人双击。
 
-- **The version is now visible without opening the program.** It only ever lived at runtime (`/api/about`, `--help`), so a downloaded exe had an empty "File version" in its properties and the only way to tell two builds apart was to double-click one — not a free action for a tool that patches `settings.json` on startup. The same `src/_version.py` that CI generates from the tag now feeds four outlets: the API, the Windows PE version resource, the macOS `Info.plist`, and the release asset file name (`cc-wire-analyzer-v0.4.11-windows.exe`). **The two spec files share `tools/version_res.py` rather than each carrying a copy** — they have diverged once before, when the macOS spec missed `brotli` and every non-streaming response lost its body on macOS; a shared module makes divergence structurally impossible, which beats adding a check that someone must remember to run. `doc_audit` still backstops it: whichever spec drops the import blocks the release. Release builds also ship `SHA256SUMS.txt`, which is what the in-app updater verifies against.
+- **不打开程序也能看到版本号了。** 版本号此前只活在运行期（`/api/about`、`--help`），下载到磁盘上的 exe 属性页里「文件版本」一栏是空的，想分辨两个版本只能双击打开其中一个——而对一个启动就可能 patch `settings.json` 的工具来说，「打开」不是零成本动作。CI 从 tag 生成的那份 `src/_version.py` 现在供给四个出口：API、Windows 的 PE 版本资源、macOS 的 `Info.plist`，以及 release 资产文件名（`cc-wire-analyzer-v0.4.11-windows.exe`）。**两份 spec 共用 `tools/version_res.py`，不各写一份**——它们分叉过一次（mac spec 没跟上 `brotli`，macOS 上每条非流式响应都丢了 body），共享模块让分叉在结构上不可能发生，比加一条要人记得跑的检查更彻底。`doc_audit` 仍兜一层：哪份 spec 掉了这个 import 就挡发版。release 另出 `SHA256SUMS.txt`，正是软件内自动更新用来校验的那一份。
 
-- **`tools/build.py`: local packaging with the same version / naming / checksums as CI.** `uv run python tools/build.py` produces `cc-wire-analyzer-v<version>-<platform>.exe` + `SHA256SUMS.txt`, matching what CI ships — the naming rule and the checksum glob previously lived only in `release.yml` (bash), and two languages each carrying a copy of a string-concatenation rule is exactly the shape of bug ⑦. `--from-git` reads the version from `git describe --tags`; `--self-test` independently reconstructs the expected file name and compares it against the function, so either side changing without the other will fire.
+- **`tools/build.py`：本地打包与 CI 同一份版本号 / 命名 / 校验和。** `uv run python tools/build.py` 产出 `cc-wire-analyzer-v<version>-<platform>.exe` + `SHA256SUMS.txt`，与 CI 一致——命名规则和校验和 glob 此前只在 `release.yml`（bash）里，两个语言各写一份字符串拼接规则正是惯犯⑦的形状。`--from-git` 从 `git describe --tags` 取版本；`--self-test` 独立拼出期望文件名再与函数对照，哪边改了没跟另一边就会响。
 
-### Fixed
+### 修复
 
-- **Switching the UI language now refreshes an already-rendered snapshot diff on the Analyse tab.** The comparison result — verdict line, tool buttons, hidden-difference table, body header — is built by `renderDiff`, which bakes `t18()` strings into the DOM as plain text (no `data-i18n`), so `applyI18n()` never reached it; switching language left it stuck in whatever language you ran the comparison in, until a page reload. The same gap the settings page hit on 260801 (`renderSettingsI18n`), only this time on the Analyse view that shipped in v0.4.10 — the 260801 lesson is written into the dev guide, but a text rule cannot stop a brand-new view from missing the rerender. `renderDiff` now caches its result per pane (`AN.pDiff` / `AN.rDiff`), and `setLang` re-renders from the cache when the pane still has two snapshots selected — selection state is the cache's validity guard, so a stale diff cannot be revived after the selection changes. No new API call, no flicker.
-- **The comparability-guard warnings in a snapshot diff now follow the UI language too.** Those warnings ("different request types", "the identity fingerprints differ — these were never two versions of one prompt", "different models"…) were hardcoded Chinese in `snapshot_diff.py` and rendered verbatim, so they stayed Chinese in every language — the same shape of gap as the entry above, only the text lived in the backend. `renderDiff` now maps each warning's `field` to an `an.guard.<field>` i18n key (three locales, five fields) and falls back to the backend `why` only if a key is missing; the backend text is kept verbatim for HTTP-API consumers (agents), so no API contract changed. Backend unchanged.
+- **切换界面语言后，Analyse 标签页里已渲染的快照对比结果现在会跟着刷新。** 对比结果——结论行、工具按钮、隐蔽差异表、正文表头——由 `renderDiff` 生成，它把 `t18()` 文案**直接拼成纯文本**写进 DOM（没有 `data-i18n`），`applyI18n()` 够不到；切语言后它停在「做对比那一刻」的语言上，要 reload 页面才更新。和 260801 设置页撞的是同一个坑（`renderSettingsI18n`），只是这次落在 v0.4.10 才加的 Analyse 视图上——260801 那条教训虽写进了开发约定，但一条文字规则拦不住一个全新视图再次漏掉重渲。`renderDiff` 现在按面板缓存结果（`AN.pDiff` / `AN.rDiff`），`setLang` 在该面板仍选中两个快照时用缓存重渲——选中状态本身就是缓存的有效性闸卫，选择变了就不会把失效的对比复活。无新 API 调用、无 loading 闪烁。
+- **快照对比里的可比性护栏 warnings 现在也跟随界面语言。** 这些 warnings（「请求类型不同」「提示词身份指纹不同——这两段本就是不同的提示词」「模型不同」……）原本是 `snapshot_diff.py` 里硬编码的中文、被原样渲染，于是在任何语言下都停在中文——和上一条同形的缺口，只是这段文本住在后端。`renderDiff` 现在把每条 warning 的 `field` 映射到 `an.guard.<field>` i18n 键（三语、五个 field），仅在缺键时回退后端 `why`；后端原文保留给 HTTP API 消费者（agent），API 契约不变。后端未改。
 
-- **The update relaunch now restores settings.json *before* spawning the new process.** The order used to be Popen → restore → exit, relying on the new process being slow to start (cold start 1–2s) while the restore is microsecond — a timing assumption, not a sequencing guarantee. If the new process (serve mode, which auto-patches `settings.json` on startup) ever won that race, the old process's restore would undo the new process's patch. The order is now restore → Popen → exit, all within one thread, so the sequencing is deterministic. The fix was exposed by a separate one: a variable renamed `on_exit` → `restore_fn` left a stale reference in the `Timer` line (`py_compile` does not catch it, `node --check` does not exist for Python — bug ⑥ on the Python side), which surfaced when a real e2e apply was run for the first time.
+- **更新重启现在先恢复 settings.json 再拉新进程。** 原来顺序是 Popen → 恢复 → 退出，靠"新进程冷启动慢（1~2 秒）、恢复微秒级"这个时序保证正确。但 serve 模式新进程启动时会自动 patch settings.json，万一旧进程的 restore 跑在新进程 patch 之后，就会撤销新进程刚做的 patch。改成 恢复 → Popen → 退出，三步在同一线程内顺序执行，不再依赖时序假设。这一时序问题是在修复另一个缺陷时暴露的：变量由 `on_exit` 改名为 `restore_fn` 后，`Timer` 那一行仍保留旧引用；`py_compile` 检查不出，而 Python 没有对应于 `node --check` 的这项检查——这是惯犯⑥在 Python 侧的表现。第一次运行真实的端到端更新应用流程时，该残留引用才触发运行错误。
 
-- **Local `uv run pyinstaller` builds crashed in serve mode with `PackageNotFoundError: werkzeug`.** Werkzeug 3.x calls `importlib.metadata.version("werkzeug")` in `BaseWSGIServer.__init__`; PyInstaller's auto metadata hook misses the `.dist-info` under uv's venv layout (hardlinks rather than standard site-packages). CI is unaffected (standard `pip install`). `version_res.runtime_metadata()` now collects the six dist-info directories (werkzeug / flask / click / jinja2 / itsdangerous / markupsafe) and both spec files append them to `datas` — shared, like the version resource, so the two specs cannot diverge.
+- **本地 `uv run pyinstaller` 打的 exe 在 serve 模式崩 `PackageNotFoundError: werkzeug`。** Werkzeug 3.x 在 `BaseWSGIServer.__init__` 里调 `importlib.metadata.version("werkzeug")`，PyInstaller 的自动 metadata hook 在 uv 的 venv 布局下（hardlink 而非标准 site-packages）找不到 `.dist-info`。CI 不受影响（标准 pip install）。`version_res.runtime_metadata()` 现在收集六个 dist-info（werkzeug / flask / click / jinja2 / itsdangerous / markupsafe），两份 spec 都追加到 `datas`——与版本资源一样共用一个模块，两份 spec 不会分叉。
 
 ## v0.4.10 - 2026-08-08
 
-### Added
+### 新增
 
-- **Snapshots: back up a prompt or a whole recording, then compare them down to the codepoint.** A fourth tab, Analyse, joins Captures / Timeline / Settings, and each of its two sub-pages is a **board** — what you backed up sits on it as a sticky note you can drag, and clicking notes is what starts an action. Prompt notes live on the prompt board and recording notes on the recording board, never mixed; picking two prompts diffs them, while on the recording board picking **one** analyses that recording and **two** compares them along a chosen face (system / tools / conversation history — that last one being how context rot becomes visible). Note positions are stored **on the snapshot** rather than in the config, because where a note sits is the user's own organisation of that set, and deleting a snapshot should take its position with it instead of leaving an orphan coordinate pointing at nothing. The entry point is deliberately *not* on that tab — you right-click in a capture's detail view, where you are already reading the thing you want to keep. The decisive measurement came first: a single late request already carries the **entire reasoning chain of the conversation so far** (CC replays historical `thinking` blocks in `messages` — the largest sampled request holds 66 blocks and 314,286 characters), so a snapshot unit is one request, not a session; packing a session would store the same history dozens of times over. The two snapshot kinds get deliberately **asymmetric metadata**: a recording snapshot keeps a thin envelope because the record already holds id/timestamp/model/upstream/billing header, and a parallel copy is this project's documented rot cause #1; a prompt snapshot is a fragment torn out of context, so it carries four metadata groups — where it came from, which record, under what conditions, and its fingerprints. Six of those fields exist because without them a difference cannot be *attributed*: the **upstream vendor** (the same CC through a gateway versus the official endpoint genuinely has different prompts), the **`agent_fp` identity hash** (two snapshots with different hashes were never two versions of one prompt — it doubles as a comparability guard), `wire_kind`, the declared `beta` set, the **block shape** (a prompt "changing" is sometimes blocks being split or merged, invisible if you only look at one block's text), and a **normalised fingerprint** that erases dates/times/UUIDs — without it, CC's embedded current date makes every day's snapshot differ from every other and the real changes drown. Snapshots are never touched by `retention_days`, following the rule `archives/` already set: what the user explicitly saved is never deleted automatically — so the Analyse tab shows total disk usage, because "it just accumulates" must at least be visible.
+- **快照：备份一条提示词或一整段录制，再逐码位比较。** 第四个标签页 Analyse 加入 Captures / Timeline / Settings 之列，它的两个子页面各自是一块**看板**——你备份的东西以可拖拽的**便利贴**形式摆在上面，点击便利贴才启动一个动作。提示词便利贴贴在提示词看板上、录制便利贴贴在录制看板上，互不混杂；在提示词看板上选**两条**做差异，而在录制看板上选**一条**是分析该录制、选**两条**是沿某个面（system / tools / 对话历史——最后一个面正是上下文腐化如何变得可见）做比较。便利贴位置存在**快照上**而不是配置里，因为便利贴摆在哪儿是用户对自己这套东西的自行组织，删掉一个快照就该把它带的位置一起带走，而不是留下一组指向空处的孤儿坐标。入口**有意不**放在那个标签页上——你在某个采集的详情视图里右键，也就是你正在阅读那个想留存的东西的地方。决定性的测量先做了：一条靠后的单个请求就已经带着**到此刻为止整段对话的完整思考链**（CC 在 `messages` 里回放历史的 `thinking` 块——采样到的最大一条请求含 66 个块、314,286 字符），所以快照单位是一条请求、而不是一个会话；把整个会话打包会把同一段历史存上几十遍。两种快照有意采用**非对称的元数据**：录制快照只留薄薄一层信封，因为记录本身已含 id/时间戳/模型/上游/计费头，而平行副本正是本项目有据可查的腐化成因 #1；提示词快照是从上下文里撕下来的一块碎片，所以带四组元数据——它从哪来、属于哪条记录、在什么条件下、以及它的指纹。这其中有六个字段存在，是因为没有它们一处差异就**无法被归因**：**上游供应商**（同一个 CC 走网关 versus 走官方端点，提示词确实不同）、**`agent_fp` 身份哈希**（哈希不同的两条快照绝不是一个提示词的两个版本——它顺带充当可比性闸卫）、`wire_kind`、声明的 `beta` 集合、**块形状**（一条提示词「变了」有时只是块被拆分或合并，只看一个块的文字看不出来），以及擦掉日期/时间/UUID 的**归一化指纹**——没有它，CC 嵌入的当前日期会让每天的快照都和别天不同，真正的变化被淹没。快照绝不被 `retention_days` 触碰，沿用 `archives/` 已立下的规矩：用户显式保存的东西永不被自动删除——所以 Analyse 标签页展示总磁盘占用，因为「就这么累积下去」至少得是可见的。
 
-- **You can now argue with the built-in model about a snapshot, turn after turn, and the argument is kept.** `POST /api/analyze/chat` streams a multi-turn conversation about one snapshot; the transcript lands next to it in `snap_xxx.chat.jsonl` and is readable over HTTP, so an external agent can see what the cheap in-app model already worked out instead of starting from zero — and so can the user tomorrow. Preset questions **switch by availability tier**: "which branches did it consider" only appears when there is a reasoning chain to answer from, and the tier-B system prompt carries a hard ban on describing what the model was thinking, with the specific reason quoted into it. Letting the model work that out for itself is unreliable, and we already know the answer, so it is written in. Three things follow from multi-turn that single-shot `/api/explain` never had to face. The snapshot context is **recomputed from the snapshot each turn and never persisted** — the snapshot is immutable so recomputation is deterministic, whereas persisting it would bloat every transcript with a 20K block and bury the actual conversation an agent came to read. The **guard is reassembled every turn** rather than trusted to the model's memory: untrusted recording text sits in the history from turn one, and by turn five a model can be well inside the role it was handed. And when history exceeds its budget the oldest turns are dropped **with a line telling the model they were dropped** — otherwise it assumes it can see the whole conversation and says "as we established earlier", which is the same failure the difference report's truncation notice exists to prevent. Persistence happens *after* an answer is produced: a missing API key should not leave a trail of questions nobody ever answered, while an answer cut off midway is stored **with its interruption reason appended**, because half an answer filed as a whole one is something the next turn will build on as settled.
+- **现在可以就一个快照跟内置模型一轮一轮地辩，辩的过程被留存下来。** `POST /api/analyze/chat` 流式输出围绕单个快照的多轮对话；逐字稿落在快照旁边的 `snap_xxx.chat.jsonl` 里、可通过 HTTP 读取，于是外部的 agent 能看到那个便宜的应用内模型已经搞清楚了什么，而不必从零开始——明天的用户也能看到。预设问题**按可得性档切换**：「它考虑过哪些分支」只在有思考链可作答时才出现，而 B 档的 system prompt 里带着一条硬性禁令：不许描述模型当时在想什么，并把具体原因引述进去。让模型自己琢磨出这条禁令是不可靠的，而我们已经知道答案，于是直接写死。多轮带来了单次问答的 `/api/explain` 从未面对过的三件事。快照上下文**每一轮都从快照重新算、绝不持久化**——快照是不可变的，所以重算是确定性的，而持久化会用一个 20K 的块撑大每份逐字稿、埋掉 agent 来读的那段真正对话。**防护每一轮都重新拼装**，而不是交给模型的记忆：不可信的录制文字从第一轮起就坐在历史里，到第五轮一个模型可能已经深深陷入被赋予的角色。而当历史超出预算时，最旧的那几轮被丢弃，**同时加一行告诉模型它们被丢弃了**——否则它以为自己看到的是整段对话，会说「正如我们之前确立的」，这正是差异报告的截断提示所要防止的同一种失败。持久化发生在答案产出之*后*：缺 API key 不该留下一串从没人回答过的问题，而中途被截断的答案在存储时**附上它被打断的原因**，因为半截答案被当成完整答案存下来，下一轮会把它当作既定结论往上搭。
 
-- **A bulk cleanup entry, the counterpart to "snapshots are never deleted automatically".** `retention_days` deliberately never touches `snapshots/` — what the user explicitly saved is not for a background job to remove — and the cost of that decision is accumulation, so the manual exit has to exist. Filter by kind, tag, or date (conditions are ANDed), **preview what matches and how many bytes it would free, and only then confirm**: deleting by tag cannot be undone, and a one-click button for it would eventually take something it should not. A failed deletion inside a batch does not stop the batch and is reported back by sid — stopping halfway leaves the user knowing neither what went nor what remains.
+- **一个批量清理入口，对应「快照永不被自动删除」。** `retention_days` 有意从不触碰 `snapshots/`——用户显式保存的东西不该由后台作业来删——而这一决定的代价是累积，所以手动的出口必须存在。按类型、标签或日期筛选（条件之间是与关系），**先预览匹配到什么、能腾出多少字节，再确认**：按标签删不可撤销，给它配一个一键按钮迟早会删掉不该删的。批次内某一条删除失败不会停掉整个批次，而是按 sid 回报——中途停下来会让用户既不知道什么走了、也不知道什么留下。
 
-- **The hidden differences now say *where* they are.** The census reported "ZWSP 0 → 1" and stopped there, which is the least useful place to stop: these differences are by definition invisible, so telling someone one exists somewhere in three thousand lines is telling them to search for something they cannot see. Each row now carries line-number buttons that scroll to the occurrence and flash it. The index is built from the same pass that renders the body, so the sentinel names in the census and the sentinels in the text can never drift apart.
+- **隐藏的差异现在会说清自己*在哪*。** 普查报一句「ZWSP 0 → 1」就停在那儿，而这是最不该停的地方：这些差异按定义就是看不见的，所以告诉别人三千行里有某处存在，等于叫他去搜一个看不见的东西。现在每一行都带行号按钮，点击会滚到出现处并使其闪烁。索引与渲染正文是同一遍扫描建出来的，所以普查里的占位标记名和正文里的占位标记永远不会漂移分开。
 
-- **A verdict from the built-in model, and translation, on the comparison itself.** `POST /api/snapshots/diff/explain` streams an assessment of what the differences mean — which are substantive rule changes and which are noise, what the metadata suggests caused them, and what a homoglyph difference implies (that kind is rarely typed by a human). It deliberately **does not send both full texts**: two 7K prompts alone exceed the input ceiling, and the question being asked is answered by the differences plus the metadata, not by re-reading the fifty-eight lines that did not change. The report is assembled server-side, is truncated against its own budget, and **says so inside the report when truncated** — otherwise the model would conclude "that's all of them" from a partial list.
+- **内置模型对比较本身给出裁断，外加翻译。** `POST /api/snapshots/diff/explain` 流式输出对差异含义的评估——哪些是实质性的规则变更、哪些是噪声、元数据暗示了什么成因，以及一处同形异码字差异意味着什么（那一类极少是人工敲出来的）。它有意**不同时发送两份全文**：仅两条 7K 的提示词就超过输入上限，而要回答的问题由差异加元数据就能答上，用不着重读那五十八行没变的。报告在服务端拼装、按自己的预算截断，**截断时在报告内部说明**——否则模型会从一份残缺的清单里得出「就这些了」的结论。
 
-- **A diff that shows the differences you cannot see.** Prompt differences are frequently invisible to the eye — the known instance being CC's character watermark for Chinese users, which swaps `-` for `/` inside dates and the apostrophe for one of four homoglyphs. A general-purpose diff renders those as "two identical-looking lines flagged as different", and the reader concludes the tool is broken. So this one **reveals first, then compares**: zero-width characters, NBSP, ideographic space, CR, and trailing whitespace become visible sentinels (`⟨ZWSP⟩`, `⟨CR⟩`…) *before* `difflib` sees them, which turns an invisible difference into an ordinary textual one while leaving identical invisibles identical. Homoglyphs are handled the opposite way — they are already visible, so rewriting them would flood the page; instead the inline character-level diff tags them (`U+0027 → U+2019`, "apostrophe"). Getting the homoglyph census honest took two corrections: the first grouping put `:` and `,` in one bucket, so a genuine `:`→`,` edit was labelled a homoglyph substitution — **a wrong assertion is worse than none**, since the reader believes they have found a hidden watermark; and counting the baseline ASCII character meant every normal edit changed the space count and lit the warning, and a permanently-lit warning is not a warning. Groups are now pairwise-exact and skip their baseline character.
+- **一种能展示你看不见的差异的差异比较。** 提示词的差异常常肉眼不可见——已知的一例是 CC 针对中国用户的字符水印，把日期里的 `-` 换成 `/`、把撇号换成四个同形异码字之一。通用的差异工具会把它们渲染成「两行看着一模一样却被标成不同」，读者于是断定工具坏了。所以这一版**先揭示、再比较**：零宽字符、NBSP、全角空格、CR 和行尾空白在 `difflib` 看到它们之*前*就变成可见的占位标记（`⟨ZWSP⟩`、`⟨CR⟩`…），把一处看不见的差异转成一处普通的文本差异，同时让相同的不可见字符保持相同。同形异码字的处置正好相反——它们本就可见，改写会刷满整页；于是用内联的字符级差异给它打标签（`U+0027 → U+2019`，「撇号」）。让同形异码字普查诚实花了两次修正：第一次分组把 `:` 和 `,` 放进同一个桶，于是真正的 `:`→`,` 编辑被标成了同形异码字替换——**一句错的断言比没有断言更糟**，因为读者会相信自己找到了一处隐藏的水印；而把基线 ASCII 字符也计数，意味着每次正常编辑都改变了空格计数并点亮告警，而一只永远亮着的告警就不算告警了。现在分组逐对精确，并跳过各自的基线字符。
 
-- **The step skeleton gained a tree view, and the signals gained colours.** The list answers "how big was each step"; the tree answers "where did it weigh something, and what did it do about it" — the spine is the step order, a blue dot marks a branch or self-correction, and under each node sit **the sentences that matched** alongside the tools that step actually called. Those sentences are what makes it a tree worth reading: a node saying "branch ×1" carries no information, while one saying *"I should ask which direction to continue, or check issues/open first"* followed by *actually ran: Glob, Bash* shows the choice and its resolution. The boundary is stated on the page itself: **these are mechanically detected candidates, not conclusions** — the model never wrote its decision tree down, and a keyword match is not proof it was deliberating. Signals are coloured by class (hesitation / branch / self-correction / uncertainty), which took one correction: the per-class colours had the same specificity as the pre-existing generic `.chip.sig` background but came earlier in the file, so all four rendered identically until the fallback was moved ahead of them.
+- **步骤骨架多了树状视图，信号也上了色。** 列表回答「每步有多大」；树回答「它在哪儿权衡过、又是怎么处理的」——脊柱是步骤顺序，一个蓝点标记一处分支或自我修正，每个节点下面坐着**命中的句子**以及那一步实际调用的工具。正是这些句子让这棵树值得读：一个写着「branch ×1」的节点不带任何信息，而一个写着*「我该问该往哪个方向继续，还是先查 issues/open」*、后面跟着*实际执行：Glob、Bash*的节点，则同时展示了选择与它的结局。边界就写在页面本身上：**这些是机械检出的候选，不是结论**——模型从没把它的决策树写下来，一次关键词命中也不能证明它当时在斟酌。信号按类（犹豫 / 分支 / 自我修正 / 不确定）着色，这中间改了一次：按类上色与既有的通用 `.chip.sig` 背景选择器特异性相同，却在文件里排得更靠前，于是四种全都渲染成同一样子，直到把回退规则挪到它们前面才好。
 
-- **Reasoning-chain extraction in three layers, with a budget that is actually enforced.** The input ceiling for the built-in model is 20,000 characters against a 314,286-character reasoning chain — a factor of 15, so mechanical compression is the whole feature, not a detail. L0 is a skeleton (one line per step: what triggered it, how much it thought, which tools, which mechanical signals), L1 an excerpt-per-step summary, L2 one step's full text. Excerpt space is **weighted by signal density** rather than split evenly — the question being asked is "where did it hesitate, which branches did it weigh", and an even split gives the pivotal step exactly as much room as the dullest one. The budget itself had to be gotten wrong three times before it was right, each time the same mistake: **estimating instead of measuring** (rows assumed at 60 characters were really 230; reply excerpts were added outside the measured skeleton; then the summary counters themselves were added after the final measurement). The output is now built, serialised, measured, and shrunk in a loop, and reports `size` / `budget` / `over_budget` truthfully rather than claiming to have stayed inside.
+- **思考链抽取分三层，预算也真正被守住。** 内置模型的输入上限是 20,000 字符，对着一条 314,286 字符的思考链——十五倍之差，所以机械压缩就是整个特性本身，不是某个细节。L0 是骨架（每步一行：什么触发了它、想了多少、调用了哪些工具、有哪些机械信号），L1 是每步摘要带摘录，L2 是某一步的全文。摘录空间**按信号密度加权**而不是均分——要回答的问题是「它在哪儿犹豫过、权衡过哪些分支」，均分会让关键步骤和最乏味的一步分到完全一样的篇幅。预算本身得先错三次才改对，每次都是同一个错：**靠估而不靠量**（按 60 字符估的行实为 230；回复摘录加在了已量过的骨架之外；接着摘要计数器本身又在最后一次测量之后才加上）。现在输出是「构建、序列化、测量、再压缩」循环进行的，并如实汇报 `size` / `budget` / `over_budget`，而不是嘴上说没超。
 
-- **Three tiers of availability, because "no reasoning chain" is normal, not an edge case.** Measured across 1,000 requests: claude-sonnet-5 tier is `thinking: disabled` in **23 of 23** cases, glm-5v-turbo has reasoning in 1 of 44, while glm-5.2 / k3 / opus-5 sit at 63–89% — and `adaptive` is the dominant mode, meaning **the same model reasons on some steps and not others**, so the judgement is made per step, never per model. Tier B falls back to a **behaviour chain** (tool sequence plus repetition evidence: the same tool in a row, the same target repeatedly, retries after errors) and states the specific reason rather than showing an empty panel. The line it must not cross is written into the prompts themselves: behaviour answers *what it did and where it went in circles*, never *what it was hesitating about* — handing a model only tool logs and asking about its state of mind is an invitation to invent one, so the B-tier prompt forbids it and drops the "which branches did it consider" question entirely. Tier C marks upstream-encrypted `redacted_thinking` without pretending to parse it. A related caution surfaces when a tier-A capture also contains encrypted blocks: "it never considered X" may only mean that part was unreadable.
+- **三档可得性，因为「没有思考链」是常态、不是边角情况。** 跨 1,000 条请求实测：claude-sonnet-5 档在 **23/23** 的情况下是 `thinking: disabled`，glm-5v-turbo 在 44 条里有 1 条带推理，而 glm-5.2 / k3 / opus-5 落在 63–89%——况且 `adaptive` 是占主导的模式，意味着**同一个模型在某些步上推理、在另一些步上不推理**，所以判断按步骤做、绝不按模型做。B 档回退到一条**行为链**（工具序列加重复证据：连续同一个工具、反复同一个目标、出错后重试）并给出具体原因，而不是摆一块空面板。不可逾越的界线写进了提示词本身：行为回答的是*它做了什么、在哪儿兜圈子*，从不回答*它在犹豫什么*——只给一个模型看工具日志、然后问它的心理状态，等于请它编一个出来，所以 B 档提示词明令禁止、并把「它考虑过哪些分支」一问整个去掉。C 档标注上游加密的 `redacted_thinking`（加密思考块），不假装能解析。当 A 档采集里也混有加密块时，还会浮出一条相关告诫：「它从没考虑过 X」可能只是说明那部分不可读。
 
-- **The instruction-source list, which is where conflict analysis has to start.** Not "read everything and look for contradictions" — a single main-line request was measured to carry **five** separate places issuing instructions (three system blocks, the injected user CLAUDE.md, and a mid-conversation `role=system` message), plus tool descriptions totalling 81,911 characters, **thirteen times the system prompt itself**. Identical repeated injections are merged into a count, because "the same rule was injected nine times" is itself the finding — it crowds the context, and the repetition may be why the model stopped honouring it. This also settled a design question: prompts do not live only in `system`, so snapshotting supports system blocks, message blocks, and free selection alike.
+- **指令来源清单——冲突分析必须从这儿开始。** 不是「把所有东西读一遍找矛盾」——实测单条主线请求就带着**五**处各自下发指令的位置（三个 system 块、注入的用户 CLAUDE.md，以及对话中途一条 `role=system` 消息），加上合计 81,911 字符的工具描述，**是 system prompt 本身的十三倍**。相同的重复注入被合并成一个计数，因为「同一条规则被注入了九次」本身就是发现——它挤占了上下文，而这种重复可能正是模型不再遵守它的原因。这也顺带定了一个设计问题：提示词不只住在 `system` 里，所以快照对 system 块、message 块和自由选取一视同仁地支持。
 
-- **Nine HTTP endpoints and a copy button that hands another agent the keys rather than the data.** The full snapshot surface is registered in the API contract and the shipped `AI_USAGE.md`, so an agent on another machine can drive it without the repository. The copy button produces **instructions, not content**: this machine's real port, the endpoint list, the snapshot's metadata summary, and the analysis task — pasting 800KB of recording into a chat box neither fits nor allows follow-up questions, whereas an address lets the agent drill in on its own. The text switches by tier and comes in all three UI languages, and it lives in the backend because the endpoint list is a backend fact that would fork the moment it were copied into the front end.
+- **九个 HTTP 端点，外加一个复制按钮——它交给另一个 agent 的是钥匙而不是数据。** 完整的快照界面已登记进 API 契约和随产物发布的 `AI_USAGE.md`，于是另一台机器上的 agent 不用仓库也能驱动。复制按钮产出的是**指令、不是内容**：本机的真实端口、端点清单、该快照的元数据摘要，以及分析任务——把 800KB 的录制粘进聊天框既装不下、也不允许追问，而一个地址能让 agent 自己往里钻。文本按可得性档切换、并备齐三套界面语言，它放在后端是因为端点清单是后端的事实，一旦抄进前端就会分叉。
 
-- **`src/snapshot_selftest.py` — the seventh self-test, and it earned its place immediately.** It caught a real bug that manual verification had passed: environment extraction ran its regex over `json.dumps(body)`, where newlines are escaped and the whole body is one line, so `(.+)` matched several hundred thousand characters instead of one path. Real-data checking had "confirmed" this field twice — both times the printout was truncated before reaching it. Extraction now walks actual text values. The suite asserts the things most likely to fail silently: budgets genuinely held across four sizes, tier B producing a reason and a behaviour chain rather than a blank, watermark-grade differences being revealed, and — inverted — a genuine edit **not** being reported as a homoglyph.
+- **`src/snapshot_selftest.py`——第七条自测，而且立刻就证明了它值这个位置。** 它抓到一个手工核对已经放行的真 bug：环境抽取把正则跑在 `json.dumps(body)` 上，那儿换行被转义、整个 body 是一行，于是 `(.+)` 匹配上了几十万字符而不是一条路径。真实数据检查曾两次「确认」过这个字段——两次都是在到达它之前输出就被截断了。抽取现在遍历真实的文本值。这套自测断言的全是最可能悄悄坏掉的东西：四种尺寸下预算确实守住、B 档给出一个原因和一条行为链而不是一片空白、水印级差异被揭示出来，以及——反向地——一处真正的编辑**不**被报成同形异码字。
 
-- **`tools/check_refs.py` — a static audit that every front-end reference resolves.** Two checks, one idea: each JS call name must resolve to a definition (including calls inside HTML `onclick=` handlers), and each class used in static HTML must actually be matched by one of its own CSS rules. Both shapes bit in the same round: a success branch called `loadStatus()` when the real name is `refreshStatus()` (the ReferenceError threw the branch into `catch`, so the repair worked but its green receipt never appeared), and a note element carried `class="sub"` whose only rule is `.srow .sub` while the element sat as a direct child of `.scard` (wrong font size — the user spotted it). **Neither is a syntax error**, so `node --check` cannot see them, and the six selftests are all backend. Getting to zero false positives took two lexical stages: blanking strings and comments (47 → 24 noise) and then recognizing **regex literals** — a quote inside `/['"]/` opens a phantom string that swallows the rest of the file, which had 24 defined functions (including `toast`) reported as undefined. On the CSS side, a compound selector like `.turn-badge.sub` is *not* a bare `.sub` rule (its other classes are requirements on the element itself), and classes added at runtime via `classList.add` must be exempt or every state-styled element is a false positive. `--self-test` mutates the file in memory to recreate both real bugs and proves the checks fire.
+- **`tools/check_refs.py`——静态审计前端的每一个引用能否解析。** 两项检查同一个念头：每个 JS 调用名必须解析到定义（含 HTML `onclick=` 内联处理器里的调用），每个静态 HTML 里用到的类必须真的被它自己的某条 CSS 规则命中。两种形状在同一轮里都咬了一口：成功分支调了 `loadStatus()` 而真名是 `refreshStatus()`（ReferenceError 把成功分支甩进 `catch`，于是修复成功但绿色回执从不出现），提示元素写着 `class="sub"` 而 `sub` 的唯一规则是 `.srow .sub`、元素却是 `.scard` 的直接子元素（字号不对，是用户看出来的）。**两者都不是语法错**，`node --check` 看不见，而六条自测全在后端。做到零误报走了两级词法台阶：先剥字符串与注释（噪声 47 → 24），再识别**正则字面量**——`/['"]/` 里的引号会开一个假字符串把后面整段吞掉，实测让 24 个有定义的函数（含 `toast`）被误判为未定义。CSS 侧两条判据同样是踩出来的：`.turn-badge.sub` 这种**复合**选择器不是裸 `.sub` 规则（同复合里的其他类是对元素自身的要求），而 `classList.add` 在运行时加的类必须豁免，否则每个带状态样式的元素都是误报。`--self-test` 在内存里变异复刻这两个真 bug，证明检查真会响。
 
-- **Upstream config history, and one-click repair when a switcher tool freezes the proxy's local address into a provider.** The failure is a delayed one, which is why it was so hard to place: while recording, `ANTHROPIC_BASE_URL` points at `http://127.0.0.1:<port>`; if you switch providers at that moment, the switcher saves the *current* settings.json — local address and all — into the provider you are leaving. Nothing breaks then. It breaks whenever you switch *back*: Claude Code is now pointed at a local port nobody is listening on, and third-party tokens and the official subscription fail alike, while the config still *looks* fine. `docs/reference/AI_USAGE.md` has warned about this since 260713 and concluded the tool could not defend against it — still true at the moment it happens, but it is now repairable afterwards. The app keeps the last 5 real upstream `ANTHROPIC_*` combinations (local addresses are never recorded), collected by the settings watcher and pinned once more right before each recording starts; Settings gets a dropdown plus a repair button, and `GET /api/settings/upstream-history` / `POST /api/settings/upstream-restore` expose the same thing to an agent. Restore aligns the whole `ANTHROPIC_*` namespace — token and model mapping come back together, and a provider that never had a `BASE_URL` key (official subscription) is repaired by *deleting* the keys rather than writing any URL. The entry whose credential matches the current one is preselected: that is the clean version of the very provider you are stuck on, so the repair really is one click. Tokens are redacted in the API and never leave the machine in cleartext.
+- **上游配置历史，以及切换工具把代理本机地址固化进供应商之后的一键修复。** 这个故障是延迟发作的，所以格外难定位：录制期间 `ANTHROPIC_BASE_URL` 指向 `http://127.0.0.1:<port>`，此刻若切换供应商，切换工具会把**当时的** settings.json——连同那个本机地址——保存进你正要离开的那个供应商。当场什么都不坏，坏在**你切回来的时候**：Claude Code 指着一个没人监听的本地端口，第三方 token 与官方订阅一并失效，而配置表面上「看着是好的」。`docs/reference/AI_USAGE.md` 从 260713 起就警告过这一条，并断定工具侧防不住——发生的当时依然防不住，但现在事后可以修了。软件保留最近 5 套真实上游的 `ANTHROPIC_*` 组合（本机地址一律不记），由配置监视线程采集，并在每次开始录制前再钉一次；设置页给出下拉与修复按钮，`GET /api/settings/upstream-history` 与 `POST /api/settings/upstream-restore` 把同一份能力交给 agent。还原按整个 `ANTHROPIC_*` 命名空间对齐——token 与模型映射一起回来，而本来就没有 `BASE_URL` 键的供应商（官方订阅）靠**删键**修复，而不是写任何 URL。凭据与当前相同的那条会被默认选中：它正是你卡住的那个供应商的干净版本，所以「一键」是真的一键。token 在接口层一律脱敏，明文不出本机。
 
-- **The packaging configuration is reconciled too.** Two hard checks: **every source path in a spec's `datas` must exist**, and **the two specs may not diverge**. The first closes a hole this release actually walked into — when `AI_USAGE.md` moved into `docs/reference/`, the source paths inside both spec files were found by hand with grep, and missing one would have shipped a binary without its manual while `/api/ai-guide` **silently fell back** to a minimal cheat sheet that nobody would notice. The second guards against something that already happened: a comment in the spec records that the two files once diverged, with the macOS spec missing `brotli`, so macOS builds lost the body and usage of every non-streaming response — and the safety classifier is non-streaming. Differing platform backends are legitimate, so only the explicitly pinned parts are compared.
+- **对账也管住了打包配置。** 两条都是硬差异：**spec 里 `datas` 的源路径必须存在**，以及**两份 spec 不许分叉**。第一条堵的是本轮真实发生过的事——把 `AI_USAGE.md` 移进 `docs/reference/` 时，两份 spec 里的源路径是靠人工 grep 找出来的，漏了会让产物少一份说明书，而 `/api/ai-guide` 找不到文件时**静默回落**到最小速查，谁也不会发现。第二条价值更高，它防的是已经发生过的事故：spec 注释自己记着「两个 spec 分叉」——mac spec 当时没跟上 `brotli`，导致 macOS 产物对非流式响应（安全分类器正是非流式）的 body 与 usage 整段丢失。平台后端不同是合理的，所以只对账显式写死的那部分。
 
-- **Three enumerations joined the reconciliation: `kind`, `err_kind`, and doctor rule codes.** The maintenance strategy had long designated an authoritative location for each, with nothing verifying that the values copied into the docs still matched. Documentation listing an enum value the code does not have now blocks the release — an agent would write handling for a branch that never fires, a human would go looking for a rule that does not exist. **The first attempt at the criterion was wrong in an instructive way**: one general "backticked items separated by slashes" rule to recognize enumerations produced 149 findings, every one a false positive, because field listings like `input` / `output` / `cache_read` have exactly that shape. These values are ordinary English words — `main`, `other`, `connect` — so **any extraction not anchored to context is guaranteed to misfire**. The two directions now use opposite criteria: ghosts are found through each enum's own anchor syntax (preferring misses), undocumented values through a wide match (does this word appear at all). One false positive survived that tightening, `aux`, which turned out to be a *lane* kind — a different enumeration that happens to share the name `kind`. The docs were right; the tool did not know about a fourth enum. Both wrong turns are now regression cases in `--self-test`.
+- **对账新增三类枚举：`kind` / `err_kind` / doctor 规则 code。** 文档维护策略早就为这三类各指定了权威位置，却没有任何东西验证文档抄过去的值还对得上。现在文档若列出一个代码里不存在的枚举值就挡发版——agent 会为一个永不出现的分支写处理逻辑，人会去找一条不存在的规则。**首版判据错得很彻底，值得记下来**：用一条通用的「反引号斜杠列举」规则去认枚举，结果一次报出 149 处全是误报——文档里 `input` / `output` / `cache_read` 这类字段列举是同一个形态。这些枚举值本就是 `main`、`other`、`connect` 这样的普通英文词，**任何不锚定上下文的提取都必然误报**。改成两个方向两套判据：查幽灵用各自专属的锚点语法（宁可漏报），查未文档化用宽匹配（只问这个词出现过没有）。收紧后仍剩一处 `aux` 误报，追下去发现它是**泳道**的 kind——与请求的 kind 是两个枚举、恰好同名，文档完全正确，是对账工具不认识第四个枚举。两次翻车都固化成了回归用例。
 
-- **The documentation audit became a gate instead of a report, and CI finally verifies anything at all.** `tools/doc_audit.py` used to exit 0 unconditionally, on a rationale written into the script: "lay out the evidence, report only differences — a difference is not an error, judgment is left to a human." That rationale holds for exactly half the differences. They are now split: **the documentation asserting something untrue of the code** (ghost endpoints, broken links, a stale `IDX_SCHEMA`, a self-test file that does not exist, a theme missing a token value) **blocks the release**, because a reader following it walks into a wall; **the code having something the docs omit** (unregistered internal endpoints and subcommands, dead tokens) only warns — the reader may fail to find it, but is never misled. Not drawing that line has a predictable ending: the first deliberately-undocumented internal endpoint stalls a release, someone appends `|| true` in CI, and **the gate is permanently dead while still posing as a defense**. `--json` obeys the exit code too (otherwise one flag bypasses the gate), and gained an `ok` field for agents. Alongside it, `release.yml` gained a `verify` job that `build` now depends on — **until now this workflow went from checkout straight to PyInstaller and then to publishing a release, with nothing in between; a tag whose self-tests had never run could ship**. Ten checks (syntax, four static reconciliations, six self-tests) now run before packaging. **The first CI run surfaced two problems that only a clean environment can show**: Windows runners default to pwsh, which does not expand globs like `src/*.py` (local Git Bash does, so local runs were always green), and — far worse — **Actions takes only the last command's exit code for a multi-line pwsh step**, so several failing reconciliations followed by one passing check would report success, silently disabling the gate in exactly the way it exists to prevent. The `verify` job is pinned to bash for that reason. The gate also caught a broken link to `src/_version.py`, which CI generates from the tag and the repo excludes, though a development machine has one — the docs were right and the audit was wrong to treat every mentioned path as a file that must exist, so `git check-ignore` now exempts generated files. The gate's own `--self-test` gained 8 classification assertions, 3 of them **inverted** (soft differences must *not* block) — a miscategorized gate would wave things through while printing "reconciliation passed", which is the exact shape of this project's repeat-offender bug ③.
+- **文档对账从「报告」变成「闸门」，CI 也终于有了验证环节。** `tools/doc_audit.py` 此前退出码永远是 0，理由写在脚本里：「摊开证据、只报差异——差异不等于错误，判断留给人」。这个理由只对一半差异成立。现在差异分两类：**文档说了一件代码里不成立的事**（幽灵端点、断链、过期的 `IDX_SCHEMA`、不存在的自测文件、某套外观缺 token 取值）会**挡发版**，因为读者照着做会直接撞墙；**代码有而文档没写**（未登记的内部端点与子命令、死 token）只提示，读者顶多查不到、不会被骗。不这么分而一律拦截的后果是可预见的：第一个有意不公开的内部端点就会卡住发版，接着有人会在 CI 里加 `|| true`，**闸门永久失效——那比没有闸门更糟，因为它还挂在那里冒充防线**。`--json` 同样遵守退出码（否则换个参数就绕过了），并新增 `ok` 字段供 agent 判断。与此同时，`release.yml` 补上了 `verify` job 且 `build` 依赖它——**此前这个 workflow 从 checkout 直接到 PyInstaller 再到发 release，中间没有任何验证，一次没跑过自测的 tag 可以直接产出 release**。现在十条（语法 + 四条静态对账 + 六条自测）在打包之前跑完。**CI 首跑就抓出两个只在干净环境才暴露的问题**：Windows runner 默认 pwsh，`src/*.py` 这类 glob 不展开（本地 Git Bash 会，所以本地永远绿）；更要命的是 **Actions 在 pwsh 下只取多行命令里最后一条的退出码**——前面几条对账全失败、只要最后一条成功，step 照样是绿的，**闸门会在 CI 里静默失效**，正是它要防的病。`verify` job 因此固定用 bash。另外闸门自己抓到 `src/_version.py` 的断链：它由 CI 从 tag 生成、不进仓库，开发机上却有——文档没写错，是对账把所有提到的路径都当成了应存在的仓库文件，现在用 `git check-ignore` 排除生成物。闸门自身的 `--self-test` 加了 8 条分类断言，其中 3 条是**反向**的（软差异不该挡）——分类错了的闸门会一边放行一边打印「对账通过」，那正是本项目惯犯 bug ③ 的形状。
 
-### Changed
+### 变更
 
-- **The BASE_URL warning banner carries a "Fix it" button straight to Settings.** The banner detected the loopback address but only said "check `~/.claude/settings.json`" — it left you to find the repair entry yourself (buried in Settings), and the banner's branch had no button at all. The button opens Settings directly; the wording now names the one-click repair and separates contamination/leftover (fixable) from an intentional local gateway such as vLLM (ignore). This closes the loop the previous entry also touched: detect → guide to the repair → banner clears on success.
+- **BASE_URL 警告横幅加了「一键修复」按钮，直达设置页。** 横幅此前能检出回环地址，却只丢一句「检查 `~/.claude/settings.json`」——把找修复入口的活留给你自己（埋在设置页深处），而且横幅所在的那条分支根本没有按钮。新按钮直接打开设置页；文案也点明了一键修复，并把「污染 / 残留」（可修）与「有意为之的本地网关如 vLLM」（忽略）区分开。这就合上了上一条也碰过的那个闭环：检出 → 引导到修复 → 成功后横幅自动清除。
 
-- **`docs/` is now layered by rot risk and maintenance strategy instead of sitting flat.** Eight documents shared one directory while being fundamentally different things: `reference/` (architecture overview, dev guide, API contract, UI tour, AI_USAGE) describes the implementation precisely and goes stale the moment code changes; `methodology/` (problem-domain handbook, wire-format reader) is about *how to build this kind of observability tool* — it holds for a different harness and barely moves with this project's code. The root keeps the meta-document plus a new [`docs/README.md`](docs/README.md) index. Flattening them forced a single choice: either govern everything by the strictest rule or let the ones that matter slip through the loosest. **The real win of directories is that the reconciliation scope becomes a path rule rather than a maintained file list** — a new reference document lands in `reference/` and is covered automatically, whereas a list is exactly the thing people forget to update.
-- **The single 1376px content cap is gone; width is now per-view.** On a fullscreen or ultrawide monitor every view sat in the same centered 1376px column with most of the screen empty on both sides — and the timeline DAG, a canvas of fixed-pitch lanes (300px each) with its own scroll, is exactly the view that suffers most: a busy day with a dozen-plus lanes could only be seen by scrolling horizontally or shrinking the graph with fit-width. The capture list now caps at 1760px (its summary column gets ~400px more text per row), and the timeline lifts the cap to `min(2560px, 100vw − 240px)` — wide enough that a 25-lane day fits whole at a comfortable zoom, but **not full-bleed**: the first version removed the cap entirely and edge-to-edge read as ugly, so the rule guarantees at least 120px of margin on any screen. Detail and settings views are unchanged, and so is everything below 1760px of window width.
-- **The rot list in `文档维护策略.md` became a table of lessons instead of a chronicle (12KB → 4.8KB).** Its heading used to read `## 腐化清单（#1-12 260726 / #13-14 260729 / #15 260730 / #16-17 260802）` — **appended to four times, a date range stapled on each round** — in a meta-document about how to prevent documentation rot. Most of the dozen-plus itemized entries were already-fixed history; someone editing docs does not need to know that entry #1 was a missing endpoint fixed in some version, they need the **lesson** — and the lessons were already distilled in the notes below the table, coexisting with the details and drowned by them. What remains is four classified causes (copies always diverge / a remedy requiring manual sync is itself the next rot / numbers transcribed once will diverge / "some document mentions it" is not reconciliation), each with its most convincing instance; the itemized history goes back where it belongs, to `issues/` and the changelog. The document matrix, now duplicated by the new `docs/README.md`, is gone too. **The file itself said "this list has rotted before" — it knew, and answered by appending one more entry, which is the definition of patching over patching.**
-- **`界面导览.md` drops the "reflections" that have already been addressed (20KB → 18.8KB).** Each view in that document carries a fixed structure (what you see / where the data comes from / reflection / traps), where the reflection covers what's currently wrong with the UI — but two of them described problems **fixed long ago** (collapsed response headers, three dead config toggles), and one duplicated §2.4 sentence by sentence, down to the same quoted code comment and field list. The reflections that remain all point at real present-day limits. A dozen-odd "as of v0.4.0 this does X" / "changed on 260801" annotations went with them — **someone reading about the UI only needs to know what the UI does now**; the change history is the changelog's job. A few stay: that subagent lane keys are the official CC instance ID for new recordings while pre-07-31 recordings still carry a meaningless hash, for instance, explains why an older recording on the reader's disk looks different.
-- **Two documents whose names misdescribed them were renamed.** `开发指南.md` ("dev guide") → **`开发约定.md`** ("dev conventions"): its content is what you must not break when changing code — safety invariants, repeat-offender bugs, the self-test list — while "guide" promises onboarding and how-to, which is exactly `CONTRIBUTING.md`'s job. The two collided in the reader's head. The file's own opening line already called it "the single source of truth for this project's development conventions"; the name now matches. `问题域手册.md` ("problem-domain handbook") → **`同类工具构建手册.md`** ("building a tool of this kind"): "problem domain" is too abstract to tell a reader whether to open it, and the content is about which classes of problem you must solve to build a comparable observability tool on another harness. **`AI_USAGE.md` deliberately keeps its English name** — it ships inside the binary to users worldwide and its primary reader is an agent, so an all-Chinese filename would raise the barrier rather than lower it. That is an audience judgment, not a cost compromise.
-- **`架构总览.md` is back to answering only "how the modules are layered".** It had grown to 44KB with three sections at the end that belonged elsewhere: the evolution narrative (overlapping CHANGELOG and release tags), four design principles (a second telling of the dev guide — one of them literally annotated as "a direct restatement of repeat-offender bug ④"), and a prose summary of the codebase's temperament. **One of them had already started saying something false**: the evolution section closed with "what remains is cross-day trends", which shipped back in v0.4.6 — narrative growing on the end of a reference manual rots on its own schedule. Each of the four principles was checked against its home in the dev guide before deletion; nothing was lost. The document now opens with a boundary clause as a guardrail: it covers module layering and data flow only, while history, code-change rules, and design trade-offs each have their own home — **ask which of those three a new addition is before adding it here**.
+- **`docs/` 按「腐化风险与维护策略」分层，不再平铺。** 八份文档此前平铺在一个目录里，而它们的性质完全不同：`reference/`（架构总览 / 开发约定 / API 契约 / 界面导览 / AI_USAGE）精确描述当前实现，代码一改就过时；`methodology/`（同类工具构建手册 / 报文解读）讲的是 *怎么做这类观测工具*——换个 harness 照样成立、几乎不随本项目代码变；根下留元文档与新的 [`docs/README.md`](docs/README.md) 索引。混在一起的代价是只能二选一：要么用最严的规矩管住不需要管的，要么用最松的漏掉必须盯的。**分目录最实在的收益是对账范围从「一份要维护的文件清单」变成「一条路径规则」**——新增参考手册放进 `reference/` 就自动进对账，而清单恰恰是最容易忘记维护的东西。
 
-### Fixed
+- **统一的 1376px 内容宽度上限取消，宽度改为按视图各自设定。** 在全屏或带鱼屏上，所有视图都挤在同一个居中的 1376px 列里，两边大片空白——而时序 DAG 是定宽泳道（每条 300px）组成的画布、自带滚动条，恰恰是受这个上限毒害最深的视图：一天十几条泳道，只能横向滚动或者用 fit-width 把图缩小了看。采集列表现在封顶 1760px（每行摘要列多出约 400px 文字），时序则放宽到 `min(2560px, 100vw − 240px)`——宽到 25 条泳道的一天能在一个舒服的缩放比下整张看全，但**不铺满**：第一版直接把上限拿掉、铺满到边的观感很难看，所以这条规则保证任意屏幕至少留 120px 边距。详情和设置视图不变，窗口宽度不足 1760px 时一切照旧。
 
-- **The prompt board's "swap sides" button threw instead of swapping.** It called the board renderer with no argument after the renderer had gained a `which` parameter (one board per sub-page), so it dereferenced an undefined config and died on a `TypeError` — the two snapshots swapped in memory, the board never redrew, and the diff below re-rendered identically because it reads the same two ids in the same order. Introduced in the same round that split the boards; caught by reading the call sites rather than by any test, since neither `node --check` nor the reference audit can see an arity mismatch.
+- **`文档维护策略.md` 的腐化清单从编年史改成教训表（12KB → 4.8KB）。** 它的标题原本是 `## 腐化清单（#1-12 260726 / #13-14 260729 / #15 260730 / #16-17 260802）`——**被追加过四次，每次贴一个日期段**，而这是一份讲「怎么防文档腐化」的元文档。表里十几条逐条明细绝大多数是已修复的历史，改文档的人并不需要知道「第 1 条是某个端点没进契约、哪一版修的」，他需要的是 **教训**；而教训早已被提炼在表下几段注里，与明细并存、被明细淹没。现在只留归类后的四种病因（副本必然分叉 / 需要人工同步的药方自己就是下一处腐化 / 数字抄一份就分叉 /「某份文档提过」不等于有对账），每种配一个最有说服力的实例，逐条明细回到它们本来的归宿——`issues/` 与 CHANGELOG。与新的 `docs/README.md` 重复的文档矩阵表也一并删掉。**这份文档自己写着「这份清单本身也曾腐化」——它知道，却用「再加一条」来响应，这正是「缝缝补补」的定义。**
 
-- **One-click repair now clears the top BASE_URL banner, and the doctor's stuck-config advice no longer dead-ends.** Two loose ends in the upstream-history repair shipped above. The red BASE_URL banner is driven by a module-level cache (`_base_url_warning`) that refreshed only when the proxy started; the repair endpoint rewrites `settings.json` through a different path and never touched that cache, so the banner stayed lit after a successful repair — the in-page notice cleared (it re-reads the file each time), but the top banner kept showing the pre-repair loopback address until you restarted the app. The cache is now reconciled on every repair (`resolve_base_url_warning`). Separately, the doctor's `self_reference_state` and `dead_port_leftover` rules advised "stop, then start again" / "start the proxy" — but starting the proxy when BASE_URL points at the tool's own port is refused by the self-reference guard, so the advice walked into a wall in exactly the cc-switch-contamination case the repair feature exists to fix. Both now direct you to Settings → Upstream config history → Fix it.
+- **`界面导览.md` 删掉已经修完的「反思」（20KB → 18.8KB）。** 这份文档给每个视图配了固定结构（你看到什么 / 数据从哪来 / 反思 / 容易踩的坑），其中「反思」讲界面当下的不足——但有两节讲的问题**早就修好了**（响应头默认折叠、三个死配置开关），还有一节与 §2.4 逐句重复，连引用的代码注释和字段清单都一样。删完后剩下的反思节全部指向真实存在的当前局限。另有十几处「v0.4.0 起如何」「260801 改成什么」的改动记录标注一并清理——**看界面的人只需要知道界面现在是什么样**，改动史是 CHANGELOG 的职责。少数保留：比如「新录制的子代理泳道键是 CC 官方实例 ID，07-31 前的老录制仍是无意义短码」，它解释了读者手上旧录制为什么显示不同。
 
-- **Two silent-failure points in the documentation audit itself, exposed by that reorganization.** `doc_audit` used `glob("*.md")`, which only sees the top level of `docs/` — move documents into subdirectories and the whole batch drops out of reconciliation while the script still prints "all clean". It also hard-coded a read of `docs/reference/开发约定.md` to extract the self-test list, and `_read()` returns an empty string for a file it cannot open, so "the document moved" masquerades as "the document has no problems". The first is now `rglob`; the second goes through a new `_read_required()` that exits with an error naming the path constant to fix. **An audit tool that reports its own blindness as a pass is worse than no audit**, because it also hands you false confidence.
-- **`serve` no longer exits when it cannot patch settings.json.** It used to `sys.exit(1)`, which created a dead end precisely for the failure above: a local self-referencing BASE_URL makes the snapshot guard refuse to patch, and the endpoint that repairs it lives *inside that very process*. The service now starts anyway (just not recording), and logs the three commands that get you out.
-- **The proxy's auto-start in `serve` mode was a copy of the `/api/proxy/start` logic, not the same logic.** Its comment claimed they were identical while the new history collection had only been added to the route — so `serve` never recorded any history. Both now call `app.begin_recording()`.
-- **Settings no longer contradicts itself about the current BASE_URL.** That row reads the in-memory snapshot ("what stopping the proxy would restore"), so during this failure it showed the last known real upstream while the warning right below it said `127.0.0.1` — and it showed `—` outright when the proxy had never successfully started. It now falls back to the on-disk value whenever recording is not active.
-- **Non-UTF-8 characters in upstream error messages are no longer destroyed on the way in.** Error bodies were decoded as UTF-8 unconditionally (`errors="replace"`), so a gateway answering in GBK turned every illegal byte into `�` **at the moment of writing** — not a display problem: read the index file as binary and the replacement characters are what is stored, with nothing left to recover. That lands squarely on this project's central claim — "a failed upstream response is not noise, it is a problem report the upstream has already diagnosed once" — because a problem report you cannot read voids that claim for every non-UTF-8 upstream. The charset declared in `Content-Type` is now honored; with no declaration, UTF-8 is tried **strictly** first, then GBK, and finally latin-1 as a floor (**it never fails and loses no bytes** — the original bytes can still be recovered from the text, which is the exact opposite of `errors="replace"`). Every fallback is recorded and surfaced in the UI. The order cannot be reversed: GBK decodes a great many UTF-8 byte sequences "successfully", just into garbage. **The two in-protocol decodes were deliberately left alone** — SSE and JSON bodies follow the Anthropic protocol, which mandates UTF-8; the error body comes from the gateway itself and is bound by no such protocol. This is the second layer of one disease: `_decode_body` has always handled content-**encoding** (compression) and nobody ever handled **charset**.
-- **One burst of rate limiting no longer shatters into 16 groups.** The failure-fingerprint normalizer knew two identifier shapes, a `req_*` prefix and a canonical UUID, while this gateway's request id is a 30-character undelimited hex string (`20260802082259ad76…`) — neither matches, and even the catch-all "4+ digit number" rule cannot reach it, because there is no word boundary between a digit and a letter. So a single two-minute burst on 2026-08-02 became 16 separate groups of `count=1`. That is more than untidy: CLI output is bounded (20 groups by default), so **the fragments push genuine cross-day patterns out of view** — the more errors there are, the finer they shatter, and the aggregation fails exactly when it is needed most. Long hex identifiers are now normalized, with a 16-character threshold (shorter hex may be a meaningful error code — a reverse assertion in the self-test guards that line).
-- **The four static-reconciliation scripts in `tools/` no longer fail spuriously on a default Windows console.** They lacked the `sys.stdout.reconfigure(encoding="utf-8")` that `src/` self-tests have always had: a GBK console cannot encode `✓`, so `check_render` **passed every check and then crashed on its own `[ALL PASSED]` line, exiting non-zero** — a guard that reports "all passed" as "failed" is worse than no guard. The other three only printed Chinese so they did not crash, but their output was mojibake and unreadable to humans and agents alike.
+- **两份名不副实的文档改了名。** `开发指南.md` → **`开发约定.md`**：它的内容是「改代码时不能破什么」（安全不变量、惯犯 bug、自测清单），而「指南」这个词承诺的是入门与怎么做——那恰恰是 `CONTRIBUTING.md` 的职责，两份文档在读者心里一直撞车。它自己开头就写着「本篇是项目开发约定的单一真源」，现在名副其实。`问题域手册.md` → **`同类工具构建手册.md`**：「问题域」抽象到读者无法据此判断要不要读，而它讲的是「换个 harness 做同类观测工具要解决哪些类问题」。**`AI_USAGE.md` 有意保持英文名**——它随产物分发给全球用户、主要读者是 agent，全中文文件名反而抬高门槛；这不是成本妥协，是受众判断。
 
-## v0.4.9 - 2026-08-03 (hotfix)
+- **`架构总览.md` 收敛回「模块怎么分层组织」。** 它长到 44KB，末尾却挂着三节本该在别处的内容：演进主线（与 CHANGELOG 和发版 tag 重叠）、设计哲学四条（开发约定的二次表述，其中一条自己标注着「惯犯 bug ④ 的直接表述」）、以及一段总结代码气质的散文。**迁出时它们中确实有一条已经在说错话**：演进主线结尾写着「剩下的是跨天趋势」，而跨天失败趋势在 v0.4.6 就做完了——一份参考手册末尾长出叙事，叙事就会独自腐烂。删前逐条核对过四条设计哲学在开发约定里的落点，无知识遗漏。文档开头新增一条边界声明作为护栏：本篇只讲模块分层与数据流，演进史、改代码的约定、设计取舍各有归宿，**加内容前先问它是不是这三类之一**。
 
-### Fixed
+### 修复
 
-- **The aux aggregate card's per-kind counts are visible again.** v0.4.8's aggregate card reused the plain node height (62px) for a three-row layout (time row / meta row / per-kind badge row ≈ 72px); the card is a flex column with `overflow:hidden`, so the badge row was first squeezed by `flex-shrink` and then clipped to a 10px sliver — the per-kind counts (title / security / count_tokens) were in the DOM and the tooltip but visually unreadable ("the counts are gone"). The card gets its own height constant (`NH_AGG` = 76); `dagPlace` is shared by full and incremental renders, so both paths pick it up. Worth noting for the next fixed-height card: flex squeezes the last row *inside* the box before `overflow` clips it, so `scrollHeight == clientHeight` — a pure overflow check cannot see this; you have to measure the last row's own height.
-- **CLI `errors` now returns `ok: true`** like the other ten subcommands. It was the only one without the top-level flag, so an agent checking `data["ok"]` got `undefined`.
+- **提示词看板的「交换两侧」按钮一按就抛异常，而不是交换。** 看板渲染器此前新增了一个 `which` 参数（每个子页一个看板），而按钮调用它时没传任何参数，于是解引用了一个 undefined 的配置，死在 `TypeError` 上——内存里两张快照确实交换了，看板却从不重绘，下方的 diff 也渲染得和原来一模一样（因为它按同样顺序读同样两个 id）。这是拆分看板那一轮引入的；靠人工读调用点抓到，而不是任何测试——`node --check` 和引用审计都看不见形参个数不匹配。
 
-### Added
+- **一键修复现在会清掉顶部 BASE_URL 横幅，体检里「配置卡住」的建议也不再是死路。** 这是上面那个上游历史修复留下的两个尾巴。红色的 BASE_URL 横幅由一个模块级缓存（`_base_url_warning`）驱动，只在代理启动时刷新；修复端点走另一条路径改写 `settings.json`、从不碰那个缓存，于是修复成功后横幅仍然亮着——页内通知倒是清掉了（它每次都重新读文件），但顶部横幅一直显示修复前的回环地址，直到你重启应用。现在每次修复都对账这个缓存（`resolve_base_url_warning`）。另外，体检的 `self_reference_state` 和 `dead_port_leftover` 两条规则此前建议「先停再启」/「启动代理」——可 BASE_URL 指着工具自己的端口时，启动代理会被自指守卫拒掉，于是这条建议恰好撞进一堵墙，撞的正是这个修复功能要解决的 cc-switch 污染场景。两条现在都直接把你导向「设置 → 上游配置历史 → 一键修复」。
 
-- **`tools/check_render.py` — a static audit that a fixed-height card's content rows fit its height constant.** The root cause shared by both recent visual bugs (v0.4.7 hiding the aux lane, v0.4.8 clipping the aggregate card) is that the six selftests are all backend data-layer e2e — front-end visual completeness had zero automated cover. The project has no browser automation (single-exe, no playwright), so runtime DOM overflow scans can't be automated; instead this maintains a `card → rows → padding → height-constant` table and asserts `rows × 18 + padding ≤ constant`, with the constants parsed live from `const DGX={}` so changing one needs no script edit. It catches the v0.4.8 shape (NH_AGG=62 would report 70 > 62); `--self-test` mutates NH_AGG to 62 to prove the check actually fires. Added to the dev guide's static-reconciliation list alongside `check_i18n_js` and `doc_audit`.
+- **文档对账自己的两个静默失效点，借这次分层暴露了出来。** `doc_audit` 用 `glob("*.md")` 只扫 `docs/` 顶层——文档一旦进子目录就整批脱离对账，而脚本照样打印「对账干净」；同时它硬编码读 `docs/reference/开发约定.md` 来提取自测清单，而 `_read()` 对读不到的文件返回空字符串，于是「文档被移走」会伪装成「文档里没有问题」。前者改用 `rglob`，后者改用新的 `_read_required()`：具名依赖缺失直接报错退出并提示去改路径常量。**一个会把「检查失效」报成「检查通过」的审计工具，比没有审计更危险**，因为它还额外奉上一份虚假的安心。
 
-## v0.4.8 - 2026-08-02 (hotfix)
+- **`serve` 在无法 patch settings.json 时不再退出。** 它此前直接 `sys.exit(1)`，这恰好为上面那个故障造出一条死路：本机自指的 BASE_URL 会让快照守卫拒绝 patch，而修复它的端点**就在这个进程里**。现在服务照常启动（只是没在录制），并在日志里给出三条自救命令。
 
-### Fixed
+- **`serve` 模式的自动启动是 `/api/proxy/start` 的副本，而不是同一套逻辑。** 它的注释声称两者一致，而新增的历史采集只加进了路由那一份——于是 serve 模式从不记录任何历史。两边现在都调 `app.begin_recording()`。
 
-- **The aux lane is back in the folded timeline — one aggregate card per session.** v0.4.7's turn fold hid every attributed auxiliary call into turn-card badges; on a day where all aux had an owning turn (124/124 on 08-02), the aux lane vanished outright, and every near edge degenerated into a self-loop hidden behind its turn card — "which session did this security audit belong to" ceased to be visible unless you already knew which turn to expand. Now each main lane's auxiliaries fold into a single aggregate card in the aux lane: lane-coloured border and count chip, per-kind badges, placed at its first member's time slot, with near edges converging from the turn cards onto it. Clicking expands that session's auxiliaries in place; expanding a turn pulls that turn's own auxiliaries out as individual cards and the aggregate's count shrinks accordingly. Unattributed auxiliaries still show individually — folding those away would be silent data loss. Measured on 08-02: 192 nodes → 71 cards (68 turn cards + 3 aggregate cards), versus 68 with the lane gone.
+- **设置页不再自相矛盾地显示当前 BASE_URL。** 那一行读的是内存快照（语义是「停止代理会恢复成这个」），于是故障期间它显示着最后已知的真上游，而正下方的警告说是 `127.0.0.1`；代理从未成功启动过时更是直接显示 `—`。现在只要没在录制，它就以磁盘上的真值为准。
+
+- **上游错误消息里的非 UTF-8 字符不再被不可逆地损坏。** 错误体此前无条件按 UTF-8 解码（`errors="replace"`），网关若用 GBK 等编码回中文，每个非法字节**在写盘那一刻**就变成 `�`——不是显示问题，二进制读索引文件存的就是替换字符，事后无从还原。这件事正打在本项目的核心主张上：「上游的失败响应不是噪声，是已经被上游诊断过一次的问题报告」——一份读不出内容的问题报告，等于这条主张在所有非 UTF-8 上游那里整个落空。现在按 `Content-Type` 声明的 charset 解，没声明就 UTF-8 严格优先、失败退 GBK，最后用 latin-1 兜底（**它永不失败且不丢字节**，原始字节仍可从文本还原——这正是 `errors="replace"` 的反面），任何一次回退都写进记录并在界面标出。顺序不能反：GBK 能「成功」解码大量 UTF-8 字节序列而不报错，只是解出乱码。**协议内的两处解码没有动**——SSE 与 JSON 正文走 Anthropic 协议，规定就是 UTF-8；出问题的错误体来自网关自身，不受这份协议约束。这是同一个病的第二层：`_decode_body` 一直只管 content-**encoding**（压缩），从来没人管 **charset**。
+
+- **同一次速率限制不再碎成 16 组。** 失败指纹的归一化表只认 `req_*` 前缀和标准 UUID 两种标识符形状，而本网关的请求 id 是 30 位无分隔十六进制串（`20260802082259ad76…`）——两条都不匹配，连兜底的「≥4 位数字」规则也够不着它，因为数字与字母之间不存在词边界。于是 2026-08-02 两分钟内的一次连续速率限制变成 16 个 `count=1` 的独立组。这不只是难看：CLI 输出是有界的（默认 20 组），**碎片会把真正的跨天模式挤出视野**——错误越多、碎得越碎、越看不见重点，聚合功能在最需要它的时候失效。现在长 hex 标识符统一归一，阈值 16 位（短 hex 可能是有诊断意义的错误码，自测里有反向断言守着这条线）。
+
+- **`tools/` 的四个静态对账脚本在 Windows 默认控制台下不再假失败。** 它们缺了 `src/` 自测一直有的 `sys.stdout.reconfigure(encoding="utf-8")`：GBK 控制台编不出 `✓`，于是 `check_render` **检查全部通过、却崩在最后那句 `[ALL PASSED]` 上并以非零码退出**——一条把「全过」报成「失败」的防线，比没有防线更坏。另外三个脚本因为只输出中文没崩，但输出是一片乱码，人和 agent 都读不了。
+
+## v0.4.9 - 2026-08-03（紧急修复）
+
+### 修复
+
+- **辅助聚合卡的分类计数徽章重新可见。** v0.4.8 的聚合卡复用了普通节点高度（62px）装三行内容（时间行 / meta 行 / 分类徽章行 ≈ 72px）；卡片是 flex 纵列 + `overflow:hidden`，徽章行先被 `flex-shrink` 压扁、再被裁成 10px 一条缝——分类计数（标题 / 安全 / 计数）在 DOM 和 tooltip 里都有，视觉上却读不出来（「计数不见了」）。聚合卡现在有自己的高度常量（`NH_AGG` = 76）；`dagPlace` 全量与增量渲染共用，两条路径同时生效。值得给下一张固定高度卡记一笔：flex 会先在盒内把末行压扁、overflow 才裁，所以 `scrollHeight == clientHeight`——纯 overflow 判据测不出来，得量末行自身的高度。
+- **CLI `errors` 现在返回 `ok: true`**，与其他十个子命令一致。此前唯独它没有这个顶层字段，agent 判 `data["ok"]` 会拿到 `undefined`。
+
+### 新增
+
+- **`tools/check_render.py`——静态审计固定高度卡的内容行数是否塞得下高度常量。** 最近两个视觉 bug（v0.4.7 藏掉辅助泳道、v0.4.8 裁掉聚合卡计数）的共同根因是：六条自测全是后端数据层 e2e，前端视觉完整性零自动化覆盖。项目无浏览器自动化（单 exe、无 playwright），运行时 DOM 溢出扫描无法自动化；改为维护一张「卡片 → 行数 → padding → 高度常量」表，断言 `rows × 18 + padding ≤ constant`，常量从 `const DGX={}` 实时解析，改常量不用改脚本。它能抓 v0.4.8 的形状（NH_AGG=62 会报 70 > 62）；`--self-test` 把 NH_AGG 改 62 验证检查确实会报。已加进开发约定的静态对账清单，与 `check_i18n_js`、`doc_audit` 并列。
+
+## v0.4.8 - 2026-08-02（紧急修复）
+
+### 修复
+
+- **辅助泳道回到折叠时序图——一条主线一张聚合卡。** v0.4.7 的按轮折叠把所有有归属的辅助调用折进了轮卡徽章；当一天里辅助全部有归属轮时（08-02 当天 124/124），aux 列整列消失，每条 near 边退化成压在轮卡背后的自环——「这次安全审查属于哪条会话」除非你先猜到该展开哪一轮，否则根本看不见。现在每条主线的辅助折成 aux 列里的一张聚合卡：边线与计数章用主线色、带分类明细徽章、立在组首的时间槽，near 虚线从各轮卡汇聚到它。点卡原地展开该主线的全部辅助；展开某一轮，该轮的辅助单独成卡、聚合卡计数相应减少。没有归属的辅助照常单条显示——把它们折掉就是静默丢数据。08-02 实测：192 个节点 → 71 张卡（68 轮卡 + 3 聚合卡），对比列消失的 68 张。
 
 ## v0.4.7 - 2026-08-02
 
-### Added
+### 新增
 
-- **The timeline folds by conversation turn instead of hiding tool calls.** What survived the old filter were still *requests*, while the thing you actually search by is what you said. Now it is one card per turn: your message as the body, badges for the subagents that turn spawned and counts for the auxiliary calls it triggered; click to expand the individual requests (measured: 19 lanes / 192 nodes down to 18 lanes / 68 cards on a real day). A card only goes red when *every* request in the turn failed — 29 of 68 turns on that day contain at least one failure, and tinting them all would waste the colour. Adds `turn_user` to the index (`IDX_SCHEMA` 14→15), which **must** be computed at write time: `last_user` is capped at 2000 chars while CC's injected reminders reach 9960.
-- **Three interface themes, dark by default.** Dark Professional / Classic Warm (identical to v0.4.6) / Lab Daylight, switching instantly. The choice lives in a cookie plus localStorage and **never reaches the backend `config.json`** — that file is the source of truth for proxy behaviour. The same pass fixed toast and status-chip contrast, keyboard activation, ARIA semantics, reduced motion, and narrow and high-zoom layouts. Lane palettes are per-theme: one set of six colours cannot sit on charcoal and on paper and pass AA on both.
-- **Blind-spot radar `/api/unknowns` — every value outside the known sets, in one call.** Previously "unknowns" could only be found by a human scanning jsonl. `index_record` computes an `unknowns` block per record (block types and fields, request fields, stop_reason, thinking.type), and the endpoint aggregates each dimension into `{value, count, samples, content snippet, hosts, cc_versions}`. The first run over 12 days and 5414 records surfaced six classes, including `tool_use.caller` (464 records, never parsed at all) and `thinking.type=adaptive` (3206, a non-standard enum value).
-- **Cross-day failure trends `/api/diagnose/trends`.** The single-day view cannot answer "new or recurring, and concentrated on which vendor or CC version?". Groups merge across days on the same fingerprint, giving per-day curves, a trend tag, and by_host / by_model / by_cc_version slices. **HTTP and CLI only, no GUI** — the cross-day dimension explosion is an agent's sweet spot and a human's nightmare.
-- **`/api/grep` and `/api/stats` HTTP endpoints.** Previously CLI-only, so an agent that wanted to search content had to read the jsonl directly — exactly what ai-guide rule ① forbids. The logic moved into `capture_store` as a single source shared by CLI and HTTP: `stats` losing `cache_creation` (~38% of the cost) happened because the two sides each had their own copy.
-- **`unknowns` and `trends` on the CLI; every read-only surface takes a session filter.** The self-audit workflow has to be CLI-first for a concrete reason: `serve` patches your real `settings.json` (that is how recording works) while auditing is supposed to be read-only. "What unknowns piled up this week" should not require the one action in the project that has side effects.
-- **`tools/doc_audit.py` — machine reconciliation of code facts against documentation claims.** It checks six mechanically decidable things: endpoints present in `API契约.md` (the designated source — "some doc mentions it" doesn't count), CLI subcommands documented, doc-referenced paths that exist, the `IDX_SCHEMA` value asserted in prose, the self-test list, and references to endpoints that no longer exist. Reports differences, never verdicts, always exits 0. The first run found four.
-- **Two new kinds, `quota_probe` and `hook_eval`; `other` drops to zero.** The 10 records that fell through to `other` turned out to be two stable shapes: CC's quota probe and StopConditions hook evaluation.
-- **`host` and `cc_version` in the index (`IDX_SCHEMA` 12→13).** `host` is the wire-level fact about **which vendor served the request** — the same `claude-opus-5` may go to the official endpoint, a gateway or an aggregator, and the model name cannot tell you which.
-- **Auto fit-width no longer shrinks below 50%.** On the 19-lane day it computed 21%, where no text on any card is readable — "fit width" was a promise it could not keep.
+- **时序图改为按对话轮折叠，取代「隐藏工具调用」。** 过滤之后剩下的仍然是**请求**，而人回溯时的检索键是自己说过的那句话。现在一轮一张卡：你的话是主体，下面是这轮派生的子代理徽章与辅助调用计数，点开才是逐条请求（实测某天 19 列 192 节点 → 18 列 68 卡）。整卡染红只留给「整轮全挂」——一天 68 轮里 29 轮含至少一次失败，一律染红等于把红色用废。索引新增 `turn_user`（`IDX_SCHEMA` 14→15，**必须写时算**：`last_user` 只存 2000 字，而 CC 注入的 system-reminder 可达 9960 字）。
+- **三套界面外观，默认改为深色。** 深色专业 / 经典暖灰（与 v0.4.6 一致）/ 实验室日光，切换即时生效；选择只写 cookie + localStorage，**绝不进后端 `config.json`**——那份配置是代理行为的真源。同轮补齐 toast 与状态标记对比度、键盘激活、ARIA、reduced motion、窄屏与高缩放。泳道色板按外观分三份：同一组六色不可能既落在炭底又落在纸面，还两边都过 AA。
+- **盲区雷达 `/api/unknowns`：已知集合外的值一键可查。** 此前「未知」只能靠人翻 jsonl。`index_record` 对每条算 `unknowns`（块类型 / 块字段 / 请求字段 / stop_reason / thinking.type），端点按维度聚合成 `{value, count, samples, content snippet, hosts, cc_versions}`。扫 12 天 5414 条首跑即发现六类，其中 `tool_use.caller` 464 条此前完全没解析、`thinking.type=adaptive` 3206 条是非标准枚举。
+- **跨天失败趋势 `/api/diagnose/trends`。** 单天视图答不了「新发还是复发、集中在哪个供应商 / CC 版本」。按与单天同一归并键跨天合并，给每日曲线 + 趋势标记 + by_host/by_model/by_cc_version 切片。**只走 HTTP 与 CLI、不进 GUI**——跨天维度爆炸是 AI 审计的甜区、人看的灾难。
+- **`/api/grep` + `/api/stats` 两个 HTTP 端点。** 此前只有 CLI，AI 想搜内容只能直读 jsonl——那正是 ai-guide 铁律①禁止的。逻辑抽到 `capture_store` 单一真源、CLI 与 HTTP 共用：`stats` 漏 `cache_creation`（约占成本 38%）的根因就是两边各抄了一份。
+- **CLI 补 `unknowns` 与 `trends`，所有只读面都接会话过滤。** 自审工作流必须 CLI 优先，理由很实在：`serve` 会 patch 你真实的 `settings.json`（那是录制机制的一部分），而审计的铁律是只读——「看一眼这周积了什么未知」不该卡在项目里唯一有副作用的那条路径上。
+- **`tools/doc_audit.py`——代码事实与文档说法的机器对账。** 查六项机器可判定的事：端点有没有进 `API契约.md`（指定的端点真源，「某份文档提过」不算）、CLI 子命令有没有文档、文档指向的路径在不在、文档里断言的 `IDX_SCHEMA` 数值、自测清单、已删端点的残留引用。只报差异、不下判断、退出码永远 0。首跑查出四处。
+- **两个新 kind `quota_probe` / `hook_eval`，`other` 归零。** 原先落 other 的 10 条经分析实为两类稳定形状：CC 配额嗅探与 StopConditions hook 评估。
+- **索引新增 `host` + `cc_version`（`IDX_SCHEMA` 12→13）。** `host` 是**路由供应商**在 wire 层的直接事实——同一个 `claude-opus-5` 可能走官方、走网关、走聚合中转，model 名定不了供应商，host 才行。
+- **自动适应宽度不再缩到 50% 以下。** 19 条泳道那天它算出 21%，那个尺寸下卡片上的字一个也读不出来——「适应宽度」成了假承诺。
 
-### Changed
+### 变更
 
-- **Radar: three corrections to what it was actually pointing at** (found by re-checking 5505 real records over 12 days). (1) Each unknown now carries `hosts` / `cc_versions`: on the day re-checked, **all five unknowns came from one third-party gateway**, while the endpoint's note said "protocol evolution — fold the stable ones into `KNOWN_*`". Doing that would widen the criteria for the official link based on one gateway's shape, and the radar would go quiet the day the official endpoint really does emit a same-named different block. (2) `betas` is now scored by lift (`P(beta|records with this unknown) ÷ P(beta|all)`, kept at ≥1.5) instead of raw counts: raw counts always report whichever flags every request carries, and for an unknown seen once every beta ties, degrading `most_common` into "the first few in the header". **An empty list is now the honest answer.** (3) This tool's own degradation markers (`_input_raw` and friends) are reported as a separate `degraded` dimension rather than as protocol evolution.
-- **Trends: `burst`, staleness, and no more junk-drawer group.** A 2650-failure single-day incident used to be tagged `sporadic` (the old definition only asked whether a group appeared on one day); a group that stopped two weeks ago still read as `recurring` (shape and freshness are two things — now separated into `days_since_last` / `stale`); and every vendor's opaque `Error` or `timeout` merged into one cross-vendor junk drawer (now split by host).
-- **Radar known-set coverage**: the `compaction` block — **assembled by this tool's own SSE accumulator** — was neither in the known sets nor handled by any renderer. We did not recognise a block we build ourselves.
-- **`stats` reads the index.** It used to parse the main file line by line and call `classify(full record)` on each one, re-running the whole of `index_record` — including matching against the ~108K security ruleset — for every record.
-- **`/api/dag` results are cached by date plus recording-file size**; list rows show a session short code when a day holds more than one session (silent otherwise), and `/api/captures` summaries carry `session_id`.
-- **`server_tool_use` blocks get their own renderer** (previously a raw JSON dump that hid what was called); **`output_config.format` is indexed**; and **startup warns when `BASE_URL` is already a local address** (leftover, profile contamination or a manual edit — a non-proxy port is not refused, since it may be a legitimate local gateway).
+- **雷达：三处「它到底指向哪」的修正**（拿 12 天 5505 条真实录制复查得出）。① 每项现在带 `hosts` / `cc_versions`：复查那天**全部 5 条未知都来自同一个第三方网关**，而端点当时只说「协议演进、稳定的并入 `KNOWN_*`」——照着做等于拿某个网关的形状去放宽官方链路的判据，将来官方真出现同名异构块，雷达反而哑掉。② `betas` 改算提升度（`P(beta|records with this unknown) ÷ P(beta|all)`，只留 ≥1.5）而非裸计数：裸计数报出来的永远是当天出现率 100% 的那几个，而只出现一次的未知所有 beta 全平局，`most_common` 退化成「取 header 里的前几个」。现在**空列表才是诚实的答案**。③ 本工具自己的降级标记（`_input_raw` 等）单列 `degraded`，不再混进「协议演进」。
+- **趋势：加 `burst`、加新鲜度、不再有垃圾桶组。** 单日 2650 次的事故原本被标成 `sporadic`（旧定义只看「是否只在一天出现」）；两周前就停了的组仍读作 `recurring`（形状与新鲜度是两件事，现在分开给 `days_since_last` / `stale`）；各家空洞的 `Error` / `timeout` 并成一个跨供应商的垃圾桶组（现按 host 拆开）。
+- **雷达已知集合的覆盖面**：`compaction` 块——**本工具自己的 SSE 累积器组装出来的**——既不在已知集合里也没有渲染分支。自己造的块自己不认识。
+- **`stats` 改走索引。** 原先逐行 parse 主文件，每条还调 `classify(full record)`——等于把整条 `index_record` 重算一遍，含拿 ~108K 的安全规则库做匹配。
+- **`/api/dag` 结果按日期 + 录制文件 size 缓存**；多会话时列表行显示 session 短码（单会话静默），`/api/captures` 摘要带上 `session_id`。
+- **`server_tool_use` 块专门渲染**（此前整块 JSON dump，看不出调了什么）；**`output_config.format` 进索引**；**启动时 `BASE_URL` 已是本机地址会主动提醒**（残留 / profile 污染 / 手改，非本代理端口不拒绝——可能是合法的本地网关）。
 
-### Documentation
+### 文档
 
-- **A documentation pass driven by reconciliation rather than by feel**: `API契约.md` gained the grep / stats sections it never had plus a radar field table, `AI_USAGE.md` gained the full 17-row CLI table and the session filter, `开发指南.md` had its radar section rewritten and the three-theme frontend conventions added, and `问题域手册.md` gained unit 10, which writes the radar up as a portable method.
-- **All twelve README screenshots (4 views × 3 languages) were retaken**: the default look changed, and the front page should not advertise the old one. Generated from `dev_seed`'s synthetic captures — screenshots go into a public repository and must not carry real recorded traffic.
+- **由对账驱动的一轮文档重整**，不是凭手感：`API契约.md` 补上从来没有过的 grep / stats 两节与雷达字段表，`AI_USAGE.md` 补全 17 行 CLI 表与会话过滤，`开发指南.md` 重写雷达一节并加上三主题的前端约定，`问题域手册.md` 新增单元 10 把雷达写成可迁移方法。
+- **README 12 张截图（4 视图 × 3 语言）全部重出**：默认外观变了，门面不能还挂着旧界面。用 `dev_seed` 的合成数据生成——截图进公开仓库，不能带一行真实录制。
 
 ## v0.4.6 - 2026-08-01
 
-### Added
-- **Session filters on every inspection surface.** `/api/captures`, `/api/dag` and
-  `/api/diagnose/errors` accept `session` / `exclude_session`, and CLI `list` / `dag` / `errors`
-  accept `--session` / `--exclude-session`. The driving scenario is two Claude Code instances
-  side by side — one doing work, one auditing it through the proxy: the auditor's own requests
-  land in the same capture and pollute every view. Matching is by prefix, so the first few
-  characters of a session id are enough; filtering happens before pagination, so `total` stays
-  honest. Point `exclude_session` at the auditor's own session id and every surface shows only
-  the audited traffic.
-- **A loading badge while a date loads.** Switching to a date whose index needs (re)building —
-  first view after an upgrade, or a big day — can take seconds to tens of seconds with zero
-  feedback, and the app looked dead. A small pill bottom-right (spinner + "Loading {date}…")
-  now shows whenever a capture-list or DAG request is in flight. A reference counter handles
-  the overlapping pair that the DAG date chips fire, so the badge hides only when the last
-  response lands, and a `finally` guarantees it never sticks. No progress bar: an index
-  rebuild has no progress signal, and fake progress is worse than none.
+### 新增
+- **所有检查面都支持会话过滤。** `/api/captures`、`/api/dag`、`/api/diagnose/errors` 接受 `session` / `exclude_session` 参数，CLI 的 `list` / `dag` / `errors` 接受 `--session` / `--exclude-session`。驱动场景是两个 Claude Code 并排跑——一个干活、一个经代理审计它：审计者自己的请求会落进同一份录制，污染每个视图。匹配按前缀，会话 id 给前几个字符就够；过滤发生在分页之前，`total` 保持真实。把 `exclude_session` 指向审计者自己的会话 id，每个视图就只剩被审计的流量。
+- **日期加载期间有加载徽标了。** 切到需要（重）建索引的日期——升级后首次查看、或大体积录制——后端要数秒到数十秒才响应，期间界面毫无反馈，看起来就像软件死了。现在只要有列表或时序图请求在飞，右下角会浮出一个小胶囊（旋转环 + 「正在加载 {date}…」）。引用计数处理时序图日期按钮同时发出的一对请求，最后一份响应落地才隐藏；`finally` 保证它永不残留。不做进度条：索引重建没有进度信号，假进度比没进度更糟。
 
-### Changed
-- **`grep` searched 14% of a request and could not say so.** `--in all` covered three places —
-  the `system` field, `role=user` text, and the response's text blocks — while the rest of the
-  request body went unsearched: tool definitions (44% of the body, re-sent in full every
-  request), tool results (25%), tool-call arguments (8%), and `role=system`
-  mid-conversation messages (6.5%), which is where Claude Code puts the skill list and its
-  injected reminders. A search for a skill name returned `hits: 0` — indistinguishable from
-  "searched everywhere and it isn't there". For a tool an agent drives, that is the dangerous
-  shape of wrong: a confident negative it will reason from. `--in` now also accepts `sysmsg`,
-  `tool_result`, `tool_use`, and `tools`; `all` means everything except `tools` (a static schema
-  repeated on every request would drown every hit). And every result carries a `coverage` block
-  naming what was searched, what was skipped, and the skipped share of the body — measured
-  during the scan, not hardcoded — with an explicit note on zero hits. The share is reported
-  only when the scan ran to completion; if matches hit `--limit` first, it is `null` rather than
-  a number computed from a partial pass.
+### 变更
+- **`grep` 只搜了请求的 14%，而且没法告诉你这件事。** `--in all` 覆盖三处——`system` 字段、 `role=user` 的文本、响应里的文本块——请求体其余部分一概不搜：工具定义（占请求体 44%，每个请求全量重发）、工具返回（25%）、工具调用参数（8%），以及 `role=system` 的 mid-conversation 消息（6.5%）——Claude Code 的 skill 清单和注入的提醒正是放在那里。搜一个 skill 名字返回 `hits: 0`，与「全都搜过了、确实没有」在输出上无从分辨。对一个由 AI agent 驱动的工具来说，这是最危险的那种错：一个它会据以推理的、自信的否定结论。 `--in` 现在还接受 `sysmsg` / `tool_result` / `tool_use` / `tools`；`all` 表示除 `tools` 外的全部（一份每请求重发的静态 schema 会把每条命中都淹掉）。每次返回都带一个 `coverage` 块，写明搜了哪些区域、跳过了哪些、跳过部分占请求体多少——比例是扫描时实测的，不是写死的 ——0 命中时另附一句明确提示。该比例只在扫完全部记录时给出；若命中先撞上 `--limit`，它是 `null`，而不是一个用部分扫描算出来的数字。
 
-### Fixed
-- **`stats` left `cache_creation` out of its token totals** — 4% of the tokens, but around 38%
-  of the cost, because writing to the cache is priced 12.5–20× a read (depending on TTL).
-  The normalizer had all four fields; the consumer took three. Anyone reading `stats` to
-  understand spend was under-counting by a third, and under-counting precisely the part that
-  says "the context is being rebuilt" — the most actionable signal there. Token totals now
-  carry all four, plus a `cache_hit_ratio`. No dollar conversion is built in: rates vary by
-  model, route, and TTL, so a hardcoded one would rot.
-- **`get <id>` without `--date` could silently return a stripped-down record.** The date scan
-  behind the CLI (`list_capture_dates`) globbed `*.jsonl`, which also matches the write-time
-  index files named `<date>.idx.jsonl` — so `f.stem` yielded pseudo-dates like `2026-08-01.idx`.
-  Harmless as noise in `dates`, but `get` falls back to walking history when no `--date` is
-  given, index lines carry **the same `id` as the real record**, and reverse sort puts
-  `"2026-07-31.idx"` *ahead of* `"2026-07-31"` — so the index line always won. The result was
-  the worst kind of failure: not an error but `ok: true` with `data: null` for every body-bearing
-  part (`system`, `messages`, `tools`, `request`, `response`), plus a `kind` misread as `other`
-  because the classifier had no body to work with. An agent reading that would conclude "this
-  request carried no system prompt". The scan now accepts only `YYYY-MM-DD` stems, which also
-  covers `.archiving.*` temp files and any future derived name. Note this bug was already known
-  and fixed on the GUI path — `capture_store._available_dates()` has filtered by date regex since
-  the index was introduced (260719), with a comment saying it shows up "the moment index files
-  exist"; the config-side twin was simply missed.
-- **A response that could not be decoded was invisible to failure statistics.** When the upstream
-  body fails to decompress — a gzip stream truncated mid-transfer is the observed case — the
-  record keeps `status: 200` and no `error`: the detail page honestly showed `decode_error`,
-  but failure aggregation reads only the index, and the index never carried the field. The
-  request counted as a success while its body was gone (one sat recorded for days before being
-  spotted by hand). `decode_error` is now indexed (schema v8 — old indexes rebuild automatically)
-  and counts as a failure of its own kind, `decode_failed` — deliberately not merged into the
-  upstream error kinds, because "the upstream refused us" and "we could not read the upstream's
-  answer" are different conclusions. A real upstream error kind still wins when both are present.
-- **The protocol-extension baseline no longer false-alarms on pre-rename recordings.**
-  `server-side-fallback-2026-06-01` is the old name of `fallback-credit-2026-06-01` (old name
-  last seen 2026-07-14, new name first seen 2026-07-25 — same date stamp, renamed between CC
-  versions). The baseline held only the new name, so opening a recording from before the rename
-  flagged the old one as an unknown extension. Both names are in now.
+### 修复
+- **`stats` 的 token 汇总漏掉了 `cache_creation`**——它占 token 数的 4%，却占成本约 38%，因为写缓存的单价是读缓存的 12.5~20 倍（随 TTL 而定）。归一层四个字段都在，消费端只取了三个。任何用 `stats` 判断花费的人都会少算三分之一，而少算的恰恰是「上下文正在被反复重建」这个最该据以行动的信号。token 汇总现在四项齐全，另加 `cache_hit_ratio`。不内置美元换算：单价随模型、链路、TTL 变化，写死必然腐化。
+- **`get <id>` 不带 `--date` 时会静默返回残缺记录。** CLI 背后的日期扫描（`list_capture_dates`）用 `*.jsonl` 通配，而写时索引文件名是 `<date>.idx.jsonl`——同样以 `.jsonl` 结尾被一并匹配，`f.stem` 于是产出 `2026-08-01.idx` 这种假日期。在 `dates` 里只是噪音，但 `get` 在不给 `--date` 时会回落遍历历史，索引行**带着与真记录相同的 `id`**，而倒序排列下 `"2026-07-31.idx"` 排在 `"2026-07-31"` **之前**——索引行永远先被命中。于是成了最坏的失败形态：不报错，而是 `ok: true` 配 `data: null`（`system`/`messages`/`tools`/`request`/ `response` 这些带正文的 part 全中招），`kind` 还因为没有正文可判被误读成 `other`。AI agent 读到这个只会得出「这次请求没带 system prompt」的结论。现在扫描只认 `YYYY-MM-DD` 形态的文件名，顺带挡住 `.archiving.*` 临时文件与未来任何派生命名。附带一提：这个 bug 在 GUI 那条路径上早已知晓并修过——`capture_store._available_dates()` 自索引引入（260719）起就按日期正则过滤，注释里写着「索引文件引入后必现」；config 侧的同型只是漏了。
+- **解不开的响应在失败统计里是隐形的。** 上游响应体解压失败时（实测案例是 gzip 流中段被截断），记录保持 `status: 200` 且无 `error`：详情页诚实地标着 `decode_error`，但失败聚合只读索引，而索引从没带过这个字段。于是这条请求在每个计数里都算成功，而它的正文其实已经没了（有一条就这么躺了好几天，靠人工偶然撞见）。`decode_error` 现在进索引（schema v8，旧索引自动重建），并作为独立的失败类别 `decode_failed` 计数——刻意不并进上游错误类别，因为「上游拒绝了我们」和「我们没读懂上游的回答」是两个不同的结论。两者同时存在时仍以真实的上游错误类别为准。
+- **协议扩展基线不再对改名前的老录制误报。** `server-side-fallback-2026-06-01` 是 `fallback-credit-2026-06-01` 的旧名（旧名 07-14 最后出现、新名 07-25 首次出现—— 同一日期段，CC 版本间改了名）。基线只收了新名，打开改名前的录制会把旧名标成未知扩展。现在两个名字都在。
 
 ## v0.4.5 - 2026-08-01
 
-### Changed
-- **Auxiliary calls now attach to their owning session lane exactly, not to whichever main lane
-  was latest in time.** Aux requests carry `X-Claude-Code-Session-Id` too — 1 163 records across
-  10 days, 100 % have it, 99.7 % map to a main lane captured the same day — so the `near` edge now
-  resolves through the session id and only falls back to time proximity when the owning session
-  was never recorded (3 records in the whole set). On the busiest multi-session day the old
-  heuristic had mis-attached 9 of 745 aux calls, and every mis-attachment also mis-colored the
-  node and hid it with the wrong lane on cascade. Legend updated in all three languages
-  ("aux owner"). Same audit rule as the agent-id change below: where a heuristic guess and an
-  official field coexist, the official field wins. (Methodology written into `docs/开发指南.md`
-  and `docs/问题域手册.md` for reuse on other harnesses.)
-- **Subagent lanes are now keyed by CC's own agent id** (`X-Claude-Code-Agent-Id` header) whenever
-  it is present, instead of the `md5(spawner|prompt)` key derived from prompt alignment. Evidence
-  over 10 days of real captures (225 subagent requests): the header appears on every subagent
-  request since CC added it (23/23 on 2026-07-31), is stable within a spawn instance, is never
-  reused across instances, and — cross-checked against `~/.claude/projects/` — is the *same id*
-  CC writes into `subagents/agent-<id>.jsonl` transcript filenames and async `toolUseResult.agentId`
-  (3/3 match). The lane id can now be joined straight to the subagent's own jsonl transcript.
-  Recordings from before the header existed keep the md5 lane key (prompt alignment stays as the
-  fallback), and trigger edges — the only source of parent linkage — are still inferred by prompt
-  alignment either way. The main-vs-subagent *kind* decision is unchanged (billing header).
-- **Hiding a timeline lane now cascades through everything it spawned.** Hiding 主线 N also hides
-  the subagent lanes it spawned — including nested chains where a subagent spawned another
-  subagent — and the auxiliary calls attached to it; those rows in the lane dropdown are marked
-  "hidden with 主线 N". To look at one subagent on its own, re-check it: it comes back alone
-  while the parent stays hidden. Re-showing the parent restores every descendant you did not hide
-  individually. (Previously only the auxiliary calls followed their main lane; subagent lanes
-  stayed and kept occupying columns.) Toggling is single-click in both directions — no
-  "click twice to really reopen" intermediate state.
-- **Subagent lanes are tinted with a washed-out version of their spawner's color** instead of all
-  sharing one flat blue. Nested spawns wash out one step further, so a whole spawn family reads as
-  one color family at a glance (lane head dot, node left border, sequence edges, trigger edges all
-  follow). Subagents whose spawner was never captured — Workflow spawns carry no trigger edge —
-  keep the plain blue, and blue now has a meaning: "the spawner is not on this chart". The legend
-  says so.
+### 变更
+- **辅助调用改为按 session id 精确挂到所属主线**，不再挂「全局时序最近的那条」。辅助请求同样带 `X-Claude-Code-Session-Id`——10 天 1163 条 100% 带、99.7% 精确对上当天主线——near 边从此走会话头解析，只有所属会话根本没被录到时才退回时序邻近（全集里仅 3 条）。在最大的多会话日，旧启发式挂错了 745 条里的 9 条，而每一处错挂还会连带着节点着色错误、级联隐藏时跟着错误的主线消失。图例三语同步改为「辅助归属」。与下面 agent-id 改动同一条对账纪律：启发式推断与官方字段并存的地方，一律官方字段优先。（方法论已写入 `docs/开发指南.md` 与 `docs/问题域手册.md`，供迁移到其他 harness 时复用。）
+- **子代理泳道键改用 CC 官方 agent id**（`X-Claude-Code-Agent-Id` 头），取代由 prompt 对齐推出来的 `md5(spawner|prompt)` 键。10 天真实录制取证（225 条子代理请求）：这个头自 CC 引入起每条子代理请求都带（2026-07-31 是 23/23）、同一派生实例内稳定、跨实例零复用，且与 `~/.claude/projects/` 交叉核对证实就是 CC 写进 `subagents/agent-<id>.jsonl` 文件名和异步派生 `toolUseResult.agentId` 的同一个 id（3/3 全对上）。泳道键从此能直接 join 子代理自己的 jsonl 对话记录。头还不存在年代的老录制保持 md5 键（prompt 对齐保留为兜底），trigger 边——父子关系的唯一来源——无论走哪条键路径都照常由 prompt 对齐推断。main/subagent 的 kind 判别不变（仍归计费头定案）。
+- **时序图里关闭泳道现在是级联的。** 关掉主线 N 会连同它派生的子代理泳道（包括子代理再派生子代理的嵌套链）和挂在它上面的辅助调用一起隐藏；泳道下拉里这些行会标注「随 主线 N 隐藏」。想单独看某个子代理，再勾它一下——它单独显示，父级仍藏。重新打开主线后，没被单独关过的子代理全部恢复。（此前只有辅助调用会跟着主线走，子代理泳道留在图上继续占列。）开与关都是单击生效，没有「要再点一下才真正打开」的中间态。
+- **子代理泳道改用派生方同色的淡化色**，不再全部共用一种蓝。嵌套派生逐级再浅一层，一族派生一眼可辨（泳道头圆点、节点左边条、顺序边、派生边全部跟随）。派生方没被录到的子代理 ——Workflow 派生不带 trigger 边——保持原来的蓝色，蓝色从此有了明确含义：「派生方不在这张图上」。图例已同步说明。
 
-### Fixed
-- **`serve` exited instantly on a machine that has no `settings.json` yet.** Fresh machines (CC
-  never ran, or the file was deleted) hit `backup_file()`'s `read_bytes()` on a nonexistent file,
-  the exception path in `_serve` called `sys.exit(1)`, and the log showed a clean startup line
-  followed by an immediate atexit with no error. `_read_settings` now treats a missing file as
-  `{}` (patching then creates a minimal file) and `backup_file` skips a file that does not exist —
-  restore of "the key was never there" is a no-op anyway.
-- **The one line you hand to your AI stayed Chinese no matter the interface language.** The
-  translations had been there all along; the rendering was the problem. That sentence embeds this
-  machine's guide URL (the port is picked dynamically), so it cannot live in a static `data-i18n`
-  node — it is written by JS inside `loadConfig()`. `setLang` re-renders every other JS-built panel
-  and misses the settings page, so the sentence froze in whatever language was active when the page
-  was opened. Worse than a display bug: the copy button copies `S.aiPrompt`, so the interface could
-  be English while the clipboard held Chinese. There is now one `renderSettingsI18n()` that owns
-  every derived string on the settings page (that sentence and the backup count), called from
-  `setLang`. Deliberately **not** `loadConfig()` — that would overwrite form fields the user is
-  editing but has not saved yet.
-- **"I raised max output tokens, saved it, and the output is still cut off."** Persistence was never
-  the problem (`set_config` writes, `_llm_request` re-reads the config on every call). The setting
-  did reach the upstream; what was missing is any way to tell **why** the text stopped. Three
-  different causes looked identical on screen — the source text was cut by *this tool* before
-  sending (20 000 characters, a cost guard that no `max_tokens` can undo), the upstream stopped at
-  `max_tokens` (and the model has its own ceiling, so a larger local value may change nothing), or
-  upstream content filtering intervened. All three now say so, in a notice at the top of the result
-  block. The stream path had never read `finish_reason` at all: only the non-streaming path — used
-  solely by the "test connection" button — reported truncation, while translate and explain, the
-  ones people actually use, are streaming. Two optional SSE events were added
-  (`input_truncated` / `truncated`; see `docs/API契约.md`). Separately, `HTTPError` is now caught
-  ahead of `URLError` and its body is read, so an upstream 400 that says "max_tokens must be
-  <= 8192" reaches the user instead of a bare `HTTP Error 400: Bad Request`.
-- **Text you could read but not select or copy**, in the packaged app: the `req_xxxxxx` id at the
-  top of the detail view, the settings page's paths and BASE_URL, the data directory and log path in
-  About. Selectability was an **allow-list** of CSS classes whose neighbouring comment already
-  described the opposite intent ("interactive controls not selectable, body text always
-  selectable") — so every display component added since missed the list. WebView2 gives no native
-  context menu, and the self-drawn one bails out when it finds neither a selection nor a known
-  block, which is why those elements had no copy path at all: not merely awkward, impossible. The
-  rule is now a **deny-list** — body text selectable by default, `user-select: none` only on
-  buttons, tabs, date chips, toggles and DAG nodes/lane heads — and the right-click "copy block"
-  selector covers the crumb bar, settings rows, the About row and DAG nodes. Button labels
-  ("← Back", "Open", "Check for updates") are stripped from a copied block.
-- **Switching dates fast could leave the timeline on the wrong day's data.** `loadDag()`
-  had no request guard, so two overlapping loads — one fired by entering the DAG view
-  (`S.date` = today) and one fired a moment later by clicking a date chip (`S.date` = a
-  historical day) — raced: whichever response landed second won, regardless of which date
-  it was for. The observed symptom was a historical chip highlighted while the content area
-  read "no captures for this date" (today's empty response had arrived last). The API data
-  was never wrong; this was a pure frontend timing bug. `loadDag` now records the date and
-  a monotonically increasing sequence number before the fetch, and discards a response whose
-  date or sequence no longer matches. One subtlety the fix respects: the guard is taken
-  **after** the first-load `fetchCaptures`, not at the entry — `fetchCaptures` itself sets
-  `S.date` (null → today on a first visit), so a guard taken too early would discard the
-  legitimate first load every time. Low impact in practice (you had to click fast, on two
-  dates, with one of them empty); recorded when found, fixed before this release.
+### 修复
+- **`serve` 在还没有 `settings.json` 的机器上启动即退。** 全新机器（CC 从未运行、或文件被删）会撞上 `backup_file()` 对不存在的文件 `read_bytes()`，`_serve` 的异常路径直接 `sys.exit(1)`，日志里只有一行干净的启动记录、紧跟一次没有任何报错的 atexit。现在 `_read_settings` 把文件不存在按 `{}` 处理（patch 随之创建最小文件），`backup_file` 跳过不存在的文件——反正「这个键本来就没有」的 restore 本来就是 no-op。
+- **要复制给 AI 的那句话，不管界面切成什么语言都是中文。** 三语译文一直都在，问题出在渲染：那句话里要嵌入本机的说明书 URL（端口是动态挑的），所以它没法做成带 `data-i18n` 的静态节点，而是 `loadConfig()` 里用 JS 写进去的。`setLang` 把其他 JS 拼出来的面板都重渲了，唯独漏掉设置页 ——于是它冻在「打开设置页那一刻」的语言上。比显示不对更糟的是：复制按钮拷的是 `S.aiPrompt`，界面已经是英文、剪贴板里却还是中文。现在由一个 `renderSettingsI18n()` 统一收口设置页所有 JS 派生文案（这句话 + 备份份数），`setLang` 调它。**刻意不用 `loadConfig()`**：那会把用户正在编辑、还没保存的表单输入冲回旧值。
+- **「我把最大输出 tokens 改大、保存了，输出还是被截断。」** 落盘从来不是问题（`set_config` 确实写盘，`_llm_request` 每次调用都现读配置），设置也确实送到了上游；缺的是**任何一种告诉用户「为什么停在这里」的手段**。三种完全不同的成因在界面上长得一模一样：原文在发出去之前就被**本工具**砍短了（20000 字符的成本护栏，调多大 `max_tokens` 都救不回来）、上游到了 `max_tokens`（而模型自身也有输出上限，本机填得再大也可能没用）、上游内容审查中断。现在三种都会在结果块顶部明说。流式路径此前**根本没读 `finish_reason`**：只有非流式路径会提示截断，而它只被「测试连通」用；日常真正在用的翻译与 AI 解读走的恰恰是流式。为此新增两个可选 SSE 事件（`input_truncated` / `truncated`，见 `docs/API契约.md`）。另外 `HTTPError` 现在排在 `URLError` 前面单独接住并读出 body——上游那句「max_tokens must be <= 8192」能到用户眼前了，而不是只剩光秃秃的 `HTTP Error 400: Bad Request`。
+- **看得见却选不中、拷不走的文本**（编译版）：详情页顶部的 `req_xxxxxx`、设置页的各条路径与 BASE_URL、关于卡片里的数据目录与日志路径。可选中性此前是一份 CSS 类的**白名单**，而紧挨着它的注释写的却是相反的意图（「交互控件不可选，正文一律可选」）——于是此后新增的每一个展示组件都漏在名单外。WebView2 不给原生右键菜单，而自绘的那个在「既没选中内容、又找不到已知块」时会直接放弃劫持，所以这些元素**一条复制通路都没有**：不是不方便，是不可能。现在改成 **黑名单**：正文默认可选，只有按钮 / 标签页 / 日期 chip / toggle / DAG 节点与泳道头显式 `user-select: none`；右键「复制整块」的选择器也覆盖了面包屑栏、设置页行、关于行与 DAG 节点。复制整块时会剔掉按钮文字（「← 返回」「打开」「检查更新」）。
+- **快速切换日期时，时序图可能停在错误那天的数据上。** `loadDag()` 没有请求守卫，于是两个交叠的加载——进 DAG 视图触发的那份（S.date=今天）和紧接点日期芯片触发的那份（S.date=某历史日）——竞速：哪份响应后落地哪份赢，不管它属于哪个日期。实测表现是历史日芯片高亮着、内容区却显示「该日期没有捕获记录」（今天那份空响应晚到了）。API 返回的数据本身从不出错，纯前端时序问题。`loadDag` 现在在 fetch 前记下日期和一个单调递增的序号，响应落地时若日期或序号已对不上就丢弃。修法尊重一个细节：守卫取在首次加载的 `fetchCaptures` **之后**而非函数入口——`fetchCaptures` 本身会设 `S.date` （首次访问 null→今天），取早了会把每次合法的首次加载都误杀。实际影响面低（要点得快、点两个日期、且其中一天为空）；发现时先记账，发版前补上。
 
 ## v0.4.4 - 2026-08-01
 
-### Fixed
-- **Leave the app running past midnight and it stopped showing anything.** Reported as "the new
-  day's captures are slow to appear"; measured, it is worse than slow — they never appear.
-  `S.date` is only ever assigned by `fetchCaptures`, which runs on startup, on a date-chip click,
-  and after a purge; **no timer re-fetches it** (the 5-second interval only refreshes the status
-  card). So once the clock rolls over, `S.date` is stuck on yesterday, and the guard at the top of
-  the live-update handler — correct in itself, it stops today's traffic being added to a historical
-  day's totals — **silently discards every capture of the new day**. The date chips come from the
-  same response, so today never even gets a chip to click. Reproduced in a browser: with `S.date`
-  set to yesterday, a pushed capture leaves the list at 18 rows and never reaches the DOM. There is
-  now a `followToday` flag (set from whether the fetched date *is* today) and a rollover check on
-  the existing 5-second poll, plus one on the live path so a busy day switches immediately instead
-  of waiting for the next tick. Picking a historical date deliberately sets `followToday` false —
-  the rollover must never yank someone off a day they chose. Separately, the currently viewed date
-  is now always present in the chip row: on a fresh day the jsonl does not exist yet, so
-  `dates_available` omits today and the selected state pointed at a chip that wasn't there.
-- **Small text was below WCAG AA, which is what "the font looks blurry" actually was.** Reported on
-  a 2K display at 100% scaling. Measured against the relative-luminance formula (AA wants 4.5:1 for
-  small text): `--apple-secondary` `#9C9489` was **3.00:1** on a white card and is used 29 times —
-  including `.cap-time`, the 11 px timestamp column of every list row — and `--text-faint`
-  `#B0A892` was **2.37:1**, used 16 times including `.cap-ttft` (10.5 px) and `.thinking-text`
-  (11.5 px italic). A 2.37:1 ten-and-a-half-pixel italic does not read as "low contrast" to anyone;
-  it reads as blurry, and more so the denser the display. The warm-grey ladder is re-cut to pass on
-  **both** the white card and the `#F4F2EF` soft background while keeping its four tiers distinct
-  (7.27 / 6.32 / 5.65 / 5.17 on white) and the same hue. Only the four variable definitions changed
-  — the 45 usages were untouched, which is the whole point of having had them as variables.
+### 修复
+- **软件开着过了午夜，界面就什么都不再显示了。** 用户报的是「新一天的录制刷出来有点慢」；实测比慢更糟——**根本不会出现**。`S.date` 只在 `fetchCaptures` 里被赋值，而它只有三个调用点（启动、点日期 chip、清理完成后），**没有任何定时器会重新取**（5 秒轮询只刷状态卡）。于是跨过午夜后 `S.date` 永远停在昨天，而实时更新入口那条守卫——它本身是对的，防的是今日流量被累加进历史日期的计数——**把新一天的每一条录制都静默丢掉**。日期 chip 出自同一个响应，于是连"今天"这一格都不会出现，用户想切都无从下手。浏览器实测：把 `S.date` 置成昨天后推一条录制，列表停在 18 行、DOM 里查不到新行。现在有了 `followToday` 标志（由取回的日期是不是今天决定）+ 挂在既有 5 秒轮询上的跨天检查，实时路径上也加了一次，忙的时候立刻切、不必等下一拍。用户主动点历史日期会把 `followToday` 置 false——跨天自愈**绝不能把主动选了某一天的人抢走**。另外，当前查看的日期现在一定在 chip 行里：新一天的 jsonl 还没写出来时 `dates_available` 里没有今天，选中态会落在一个不存在的格子上。
+- **小字颜色低于 WCAG AA，用户说的"字虚"就是这件事。** 报告场景是 2K 分辨率、系统缩放 100%。按相对亮度公式实测（小字 AA 要求 4.5:1）：`--apple-secondary` `#9C9489` 在白卡上只有 **3.00:1**，被引用 29 次——其中包括 `.cap-time`，也就是列表每一行 11px 的时间列；`--text-faint` `#B0A892` 只有 **2.37:1**，被引用 16 次，包括 `.cap-ttft`（10.5px）与 `.thinking-text`（11.5px 斜体）。一个 2.37:1 的 10.5px 斜体，没有人会把它读成"对比度低"，只会读成"虚"，而屏幕像素越密越明显。暖灰阶梯已重新裁定，在**白卡与软底 `#F4F2EF` 两个背景上都过线**，同时保住四档层次（白卡 7.27 / 6.32 / 5.65 / 5.17）与原有色相。只改了四个变量的定义，45 处引用一行没动——这正是当初把颜色收口成变量的价值。
 
-### Added
-- **Interface scale (90%–200%) in Settings → Interface**, applied and saved immediately, like the
-  language switch. Every dimension in the stylesheet is an absolute px, so on a 2K/4K panel at 100%
-  system scaling the text is genuinely small and until now the only remedy was changing the *system*
-  scale, which affects every application. Implemented with CSS `zoom`, deliberately **not**
-  `transform: scale()` — the latter is a bitmap scale and would make the text blurry, which is half
-  of what this setting exists to fix. The value is clamped to 80–200 on both read and write:
-  the frontend writes it straight into `zoom`, so a 0 or a stray large number would leave a window
-  you cannot open the settings page in to undo it.
+### 新增
+- **设置 → 界面 加「界面缩放」（90%~200%）**，选完立即生效并保存，与语言切换同款体验。样式表里每个尺寸都是绝对 px，2K/4K 面板在系统缩放 100% 下字确实小，而此前唯一的办法是改**系统**缩放——那会波及所有软件。实现用 CSS `zoom`，刻意**不用** `transform: scale()`：后者是位图缩放，会把字变虚，而这正是这个设置要治的病之一。取值在读写两侧都夹到 80~200：前端把它直接写进 `zoom`，一个 0 或一个天文数字会让窗口变成打不开设置页去撤销的状态。
 
-### Changed
-- **The failure-grouping panel is no longer a banner on the first screen.** Added one release ago
-  directly under the status card, it sat at the visual weight of an *alert*, alongside "recording
-  failed to reach disk" and the config-check errors. It is not an alert — it is a summary you reach
-  for **when investigating**; the failures themselves are already visible as red rows in the list.
-  Putting a summary where an alert goes costs twice: it takes first-screen height away from the
-  actual content, and a banner that is present every day drags the real alerts down with it into
-  being ignored — the same mechanism the config check's own rules warn about ("after the second
-  false alarm nobody reads the banner again"). It is now a small button in the date row's tool area
-  next to *Clear* — `● 2 failed · 2 groups`, not rendered at all when the day has none — and the
-  panel opens in place below it. The first screen goes back to: status card → real alerts, if any →
-  date row → **the capture list**.
+### 变更
+- **失败聚合面板不再是首屏上的横幅。** 上一版把它加在状态卡正下方，视觉权重等同于**告警**，和"录制没落盘"、体检 error 平起平坐。它不是告警——它是**查问题时**才要的归纳，而失败本身在列表里已经以红行示人。把归纳摆在告警的位置，代价是双向的：占掉主内容的首屏高度，同时一个天天都在的横幅会把真告警一起拖进"看不见"——正是配置体检自己的铁律警告过的那个机制（"第二次误报之后横幅就再没人看"）。现在它是日期行工具区里、紧挨"清理"的一个小按钮——`● 失败 2 · 2 组`，当天没有失败时不渲染——面板点开后在它下方就地展开。首屏重新回到：状态卡 →（真告警，若有）→ 日期行 → **捕获列表**。
 
 ## v0.4.3 - 2026-08-01
 
-### Added
-- **Failure grouping finally has a way in from the UI — the gap this project had been calling its
-  largest for six weeks.** The backend has compressed a bad day's failures into a handful of groups
-  since 2026-07-25 (measured: 2,719 failures → 7 groups in 0.09 s), and until now the only ways to
-  see that were the HTTP API and a source-only CLI subcommand. Anyone using the app as an app saw a
-  wall of red rows and no explanation. The capture view now carries a fold under the status card —
-  *"N failures today → M groups"*, not rendered at all when the day has none — and each group is one
-  card: the count, the error kind and status, which request kinds were hit (`title×19` breaks
-  session naming and nothing else), **the upstream's own error sentence**, the request-side fields,
-  and sample ids that jump straight to the record. The request-side fields keep the distinction that
-  *is* the diagnosis: a **bold** field was identical across the whole group (a candidate cause),
-  a bracketed list spans several values (that field is ruled out). The frontend only renders — the
-  grouping rules stay solely in `diagnose.py`, because a second implementation is a second thing to
-  drift. Live updates re-fetch only when the incoming batch actually contains a failure, so a day of
-  successful traffic doesn't turn a summary panel into an 800 ms full scan.
-- **The binary now carries its own manual, so an agent on someone else's machine can learn to drive
-  it.** `docs/AI_USAGE.md` is thorough, and it lived only in this repository — while what people
-  download from Releases is a single executable. An AI on that machine had all three routes closed:
-  `--help` printed nothing (and, worse, **opened the GUI**), the binary shipped no documentation,
-  and the running service had twenty `/api/*` endpoints but not one that answered "what are you and
-  how do I use you". Three small changes close it: the guide is packed into the build (`datas`),
-  `GET /api/ai-guide` returns it as Markdown **prefixed with this machine's runtime facts** (real
-  listening port, absolute data paths, whether it is currently recording — the document says
-  `~/.cc-wire-analyzer/` and "the port starts at 5051 and moves up", which is not what a caller can
-  act on), and `cc-wire-analyzer --help` prints the same text and exits without a window. Settings
-  gains a **For AI agents** card with one copyable sentence — "this machine is running CC Wire
-  Analyzer, read `http://127.0.0.1:<port>/api/ai-guide` and drive it from there" — which is the one
-  hop that was missing between *the user has the app* and *their AI knows how to use it*. If the
-  document is missing from both the bundle and the repo, the endpoint falls back to a built-in
-  cheat sheet rather than erroring: output to an agent may be short, but it may not be an error page.
-- **A documented platform limit turned out to be wrong, and it had cost three weeks of
-  discoverability.** `desktop.py`, `docs/AI_USAGE.md`, `docs/开发指南.md`, `docs/架构总览.md` and
-  `docs/问题域手册.md` all stated that a noconsole binary "has no stdout, so CLI subcommands can't
-  print anything" — the stated reason for having no `--help` at all. Measured: noconsole means no
-  *console is allocated*, so a double-clicked process indeed has nothing to write to; but when a
-  shell starts it **through a pipe or a redirect** — which is exactly how every agent harness runs a
-  command — fd 1 is a valid handle and `os.write(1, …)` works. Verified across bash pipe, PowerShell
-  pipe, `cmd /c … > file` (all print), `$out = & exe --help` (empty — PowerShell not waiting on a
-  GUI-subsystem process, unrelated to stdout) and double-click (nothing, which is why the guide is
-  also written to `<data dir>/ai-guide.md`). The conclusion that HTTP is the right channel for
-  agents still stands and the full CLI stays unpackaged; what changed is that the *reason* is no
-  longer a false claim that quietly blocked the most natural entry point. The five documents now
-  carry the measurement matrix instead of the assertion.
-- **The detail view now shows the two usage fields CC reports that we were dropping.** Every
-  response from a third-party gateway carries `server_tool_use` (with `web_search_requests`) and
-  `service_tier` inside `usage`; we recorded them verbatim, but `usage_norm` and the detail panel
-  surfaced only input/output/cache_read/cache_creation, so the server-side tool-call count and the
-  service tier were invisible. The Usage card now appends a `tier:` / `web_search:` line straight
-  from the raw `resp.usage` (not the normalised short names). `web_search_requests > 0` is exactly
-  the signal that server-side web search happened — a radar for the next blind spot. Surfaced by
-  the capability audit; the 260731 protocol audit had no such traffic to see it.
-- **The protocol-extensions panel now folds, collapsed by default.** It was a flat chip row occupying vertical space; it now folds like the other sections and starts collapsed, with the extension count (and any unknown-extension warning) in the summary, so the "new extension = next blind spot" radar survives being collapsed.
-- **Response headers are collapsed by default again.** v0.4.0 had opened them so the wire-only fields (ratelimit / request-id) weren't hidden; with the protocol-extensions panel now surfacing the capability radar on its own, the response headers demote back to collapsed (wire fields still bolded when expanded).
+### 新增
+- **失败聚合终于有了界面入口——这是项目连续六周自称的最大一道缝。** 后端从 2026-07-25 起就能把糟糕的一天压成几组（实测 2,719 条失败 → 7 组，0.09 秒），而在此之前唯一的看法是 HTTP API 和一条只存在于源码里的 CLI 子命令：把这软件当软件用的人，看到的只是一墙红行，没有任何解释。捕获页状态卡下方现在有一个折叠区——「本日失败 N 条 → 归并为 M 组」，当天没有失败时整块不渲染——展开后每组一张卡：次数、错误类型与状态、受影响的请求类型（`标题×19` 意味着只坏了会话命名、别的都不影响）、**上游自己写的那句错误原文**、请求侧字段，以及可点开跳到该条详情的样本 id。请求侧字段保留了那个「本身就是诊断」的区分：**加粗**表示全组一致（可能的病因），方括号列表表示跨多个值（这个字段可以排除）。前端**只渲染不重算**——归并规则仍只在 `diagnose.py` 一处，第二份实现就是第二份会分叉的东西。LIVE 期间只在新到的增量里确实含失败时才重取，免得一天的成功流量把一个归纳面板变成 800 毫秒一次的全量扫描。
+- **产物现在自己带着说明书，别人机器上的 AI 能直接学会怎么用它。** `docs/AI_USAGE.md` 写得很完整，但它只存在于这个仓库里——而人们从 Release 下载到的是单个可执行文件。那台机器上的 AI 三条路全堵：`--help` 什么都不打印（更糟的是**会弹出 GUI 窗口**）、产物里没有任何文档、跑起来的服务有二十个 `/api/*` 端点却没有一个回答「你是谁、怎么用你」。三处小改动补上：说明书打进构建产物（`datas`）；`GET /api/ai-guide` 以 Markdown 返回它，**前面追加本机的运行期事实**（实际监听端口、数据目录绝对路径、当前是否在录制——文档里写的是 `~/.cc-wire-analyzer/` 和「端口从 5051 起挑」，那不是调用方能直接拿去用的东西）；`cc-wire-analyzer --help` 打印同一份正文后退出，不开窗。设置页新增**「给 AI 用」**卡片，给出一句可复制的话——「这台机器上开着 CC Wire Analyzer，读 `http://127.0.0.1:<port>/api/ai-guide`，然后按说明驱动它」——这正是「用户手上有这个软件」到「他的 AI 知道怎么用」之间缺的那一跳。产物与仓库两处都取不到文档时，该端点回落到内置的最小速查而不是报错：给 AI 的输出可以短，但不能是一个错误页。
+- **一条被写进文档的"平台限制"其实是错的，它让最自然的入口白空了三周。** `desktop.py`、`docs/AI_USAGE.md`、`docs/开发指南.md`、`docs/架构总览.md`、`docs/问题域手册.md` 五处都写着 noconsole 二进制「没有 stdout，CLI 子命令什么都打印不出来」——这正是此前不做 `--help` 的理由。实测：noconsole 的含义是**不分配控制台**，双击运行时确实无处可写；但当 shell 以**管道或重定向**启动它时（也就是每个 agent 调命令的标准姿势），fd 1 是有效句柄，`os.write(1, …)` 照样能写。验证矩阵：bash 管道、PowerShell 管道、`cmd /c … > file`（都能打印），`$out = & exe --help`（空——那是 PowerShell 不等 GUI 子系统进程，与 stdout 无关），双击（无输出，所以说明书同时也落到 `<data dir>/ai-guide.md`）。「HTTP 才是给 agent 的正确通道」这个结论不变，完整 CLI 仍不打包；变的是这个结论的**理由**不再是一句悄悄堵死入口的错误断言。五份文档现在写的是实测矩阵，不是断言。
+- **详情页现在展示 CC 报给我们的两个 usage 字段。** 第三方网关每个响应的 usage 里都带 `server_tool_use`（含 `web_search_requests`）和 `service_tier`；我们原样录了，但 `usage_norm` 和详情页只摆出 input/output/cache_read/cache_creation，于是服务端工具调用次数和服务档一直看不见。Usage 卡片现在从原始 `resp.usage` 直接追加一行 `tier:` / `web_search:`（不走归一短名）。`web_search_requests > 0` 正是 server 端 web search 流量发生的信号——发现下一个盲区的雷达。由能力面审计发现；260731 的协议面审计当时没有这类流量可看。
+- **协议扩展区现在可折叠，默认收起。** 此前是平铺的 chip 行占着空间；现在像其他区块一样可折叠且**默认折叠**，摘要里显示扩展数量（及未知特性警告），「新扩展 = 下一个盲区」的雷达信号收起后仍可见。
+- **响应 Headers 改回默认折叠。** v0.4.0 曾默认展开，让 wire 层独有字段（ratelimit / request-id）不被藏起来；现在协议扩展区已单独扛起能力雷达的展示，响应 Headers 退回默认折叠（展开后 wire 字段仍高亮）。
 
-### Fixed
-- **A failed request could still show a green dot in the capture list.** The row's status dot only
-  went red when there was an error *and* the status was absent or ≥ 500 — which was true until this
-  release added `stream_error`, an in-stream failure that keeps HTTP 200. Such a row landed in the
-  2xx branch and got a **green** dot, in the same release whose own note says consumers must judge
-  failure by `error`/`has_error` and never by status alone. Any `has_error` row now takes the error
-  colour; 4xx keeps its own shade, since "the upstream refused" and "the request blew up" are worth
-  reading apart.
-- **The detail view called every non-streaming response an SSE stream.** The header chose between
-  "SSE · N chunks" and "non-streaming" on `resp.chunks_count != null`, while `_finalize` writes
-  `chunks_count` for *every* response (it is the body's chunk count, 1–4 on a plain reply). The
-  condition was therefore always true and the "non-streaming" label had never once rendered on real
-  traffic — every security-classifier and count_tokens response, all non-streaming, was mislabelled.
-  Not cosmetic: "the security classifier is non-streaming" is the premise behind several pieces of
-  this project's logic (the non-streaming parse path is where the 260713 usage loss and the 260731
-  brotli blind spot both came from), and the UI was stating the opposite. It now reads the request
-  body's `stream` field — truthily, because real non-streaming requests **omit** the key rather than
-  sending `false`.
-- **Switching language left the config-check and failure-group items in the old language.**
-  `setLang` re-rendered the status card, the date row and the capture list, but those two panels are
-  built in JS and only their static labels carry `data-i18n` — so the drawer contents stayed put
-  while the rest of the interface changed.
-- **The macOS build spec had drifted from the Windows one and would have shipped a bug that was
-  already fixed.** `build.spec` lists `brotli` / `zstandard` in `hiddenimports` (added this release,
-  after a missing brotli caused every security-classifier response to record empty); `build-mac.spec`
-  never got them. Both specs now carry the same list — and the same `docs/AI_USAGE.md` data entry.
-- **Capability-side recording audit: run, and one documentation posture fixed.** The 260731 audit
-  was *protocol-side* (what CC declares). This runs the other half — *capability-side*: spawn a
-  real `claude -p` for each CC ability (tool calls, parallel tools, thinking, subagents, vision)
-  through the proxy and check the recording parses it. 14 captures across 7 dimensions;
-  **core parsing had zero hard bugs** — tool_use/tool_result, parallel tool_use in one response,
-  thinking blocks with signatures, subagent identity (`cc_is_subagent` + `x-claude-code-agent-id`,
-  zero counterexamples again), the spawn edge (including multi-level A→B→C nested subagent chains), and base64 image blocks were all recorded and
-  classified correctly. The Workflow tool's subagents are recorded too, but their spawn relation does not resolve — prompts live in a dynamic JS template literal inside `input.script` (`${VAR}` runtime-interpolated), invisible to the wire layer; the trigger edge stays unresolved by design (see issue A6), but the fallback lane now keys on `agent-id` (instance-level) instead of the type-level `agent_fp` fingerprint, so Workflow's parallel subagents at least split into separate columns instead of merging into one. `issues/closed/260801_能力面录制盲区审计.md`. The audit did surface one
-  documentation P0: the "isolated capture" posture in `CLAUDE.md` / `docs/开发指南.md` §5 /
-  `tools/lane_probe.py` claimed `ANTHROPIC_BASE_URL=… claude -p` works because "process env takes
-  precedence over settings.json". It does not — CC 2.1.220 ignores the process-level var (a dead
-  port still connects straight through, records nothing, raises no error; reproduced in bash and
-  PowerShell), so anyone following the docs silently captured nothing. Fixed to `claude -p …
-  --settings '{"env":{"ANTHROPIC_BASE_URL":…}}'`, with a note on *why* the process env fails.
+### 修复
+- **失败的请求在捕获列表里仍可能是个绿点。** 行首的状态点只有在「有错误」**且**「无状态或 ≥500」时才变红——这在本版新增 `stream_error`（流内失败但 HTTP 仍是 200）之前一直成立。这样一条记录落进 2xx 分支，拿到一个**绿点**，而同一版的说明里明写着消费方判断失败必须看 `error`/`has_error`、不能只看 status。现在任何 `has_error` 的行一律走错误色；4xx 保留自己的色（「上游明确拒绝」和「请求炸了」值得分开读）。
+- **详情页把所有非流式响应都标成了 SSE 流式。** 表头用 `resp.chunks_count != null` 在「SSE 流式 · N chunks」和「非流式」之间二选一，而 `_finalize` 对**每一个**响应都写 `chunks_count`（那是 body 的分块数，普通响应 1~4）。于是这个条件恒真，「非流式」这条文案在真流量里**一次都没渲染过**——安全分类器和 count_tokens 的响应全是非流式，全被标错。这不是美观问题：「安全分类器是非流式」是本项目好几处逻辑的前提（非流式解析路径正是 260713 的 usage 丢失与 260731 的 brotli 盲区的来源），而界面在说反话。现在改用请求体的 `stream` 字段判断，取真值——真实的非流式请求是**没有这个键**，而不是发 `false`。
+- **切换语言后，体检与失败聚合面板里的条目仍是旧语言。** `setLang` 重渲了状态卡、日期行与捕获列表，但这两个面板的条目是 JS 拼的、只有静态标签带 `data-i18n`——于是界面其他部分已经切过去了，抽屉里的内容还留在原语言。
+- **macOS 打包 spec 与 Windows 侧分叉，会发出一个已经修好的 bug。** `build.spec` 的 `hiddenimports` 里有 `brotli` / `zstandard`（本版新加，起因是缺 brotli 导致每个安全分类器响应都录成空的）；`build-mac.spec` 一直没跟上。现在两个 spec 带同一份清单——以及同一条 `docs/AI_USAGE.md` 数据项。
+- **能力面录制审计：跑完了，并修掉一处文档姿势。** 260731 的审计是协议面（CC 声明了什么）。这次跑另一半——能力面：把 `claude -p` 实际跑 CC 每个能力（工具调用、并行工具、thinking、子代理、视觉）过代理，检查录制解析对不对。7 个维度 14 条录制；**核心解析零硬 bug**——tool_use/tool_result、单响应里的并行 tool_use、带签名的 thinking 块、子代理身份（`cc_is_subagent` + `x-claude-code-agent-id`，再次零反例）、spawn 边（含多级 A→B→C 嵌套子代理链）、base64 图片块全部正确录制与分类。Workflow 工具的子代理也录得到，但派生关系推断不出——派生 prompt 藏在 `input.script` 的 JS 反引号 template literal 里（`${VAR}` 运行时插值），wire 层看不到变量值；trigger 边是设计限制不修（见 A6），但 fallback lane 已改用 `agent-id`（实例级）而非 `agent_fp`（类型级），Workflow 的并行子代理至少分成各自的列、不再挤一列。详见 `issues/closed/260801_能力面录制盲区审计.md`。审计也暴露了一处文档 P0：`CLAUDE.md` / `docs/开发指南.md` §五 / `tools/lane_probe.py` 的「隔离采集」姿势声称 `ANTHROPIC_BASE_URL=… claude -p` 能用，理由是「进程 env 优先于 settings.json」。并不——CC 2.1.220 无视进程级该变量（设死端口仍直连、录不到、无报错；bash 与 PowerShell 双 shell 复现），照文档做的人会静默录不到任何东西。已改为 `claude -p … --settings '{"env":{"ANTHROPIC_BASE_URL":…}}'`，并写明进程 env 为何不生效。
 
-- **A tool-call turn no longer shows a blank summary in the capture list.** `index_record` took
-  the response's first text block as the summary, so a pure tool-call turn (thinking + tool_use,
-  no text — subagent middle steps, tool loops) left the list row empty; the list (`_public_summary`)
-  had no fallback while the DAG (`_node_summary`) fell back to `last_user`, so the two disagreed.
-  The summary now falls back to the first tool_use's name (`🔧 Glob`, `🔧 Agent`) — that describes
-  what the turn *did*, which is what the summary is for. `IDX_SCHEMA` 6→7 so old captures rebuild
-  with the fallback (~5 s/day, jsonl untouched). Verified on real captures: two previously-blank
-  rows now read `🔧 Glob` / `🔧 Agent`.
+- **工具调用轮在捕获列表里不再是空白摘要。** `index_record` 取响应第一个 text block 作摘要，于是纯工具调用轮（thinking + tool_use，无 text——子代理中间步、工具循环）列表行空着；列表（`_public_summary`）没有兜底，而 DAG（`_node_summary`）兜底用 `last_user`——两者不一致。摘要现在兜底取首个 tool_use 的工具名（`🔧 Glob`、`🔧 Agent`）——这描述了这一轮「做了什么」，正是摘要该干的。`IDX_SCHEMA` 6→7 让旧录制重建获得兜底（~5 秒/天，jsonl 不动）。真流量验证：此前两条空行现在显示 `🔧 Glob` / `🔧 Agent`。
 
-- **A failed request was being recorded as a successful one.** When an upstream reports an
-  error *inside* the SSE stream, the HTTP status is still 200 — the error rides in an
-  `event: error` frame. Our SSE parser had no branch for it, so the frame was skipped, no
-  `error` was written (only `status >= 400` wrote one), and the request went into the
-  recording as a **success** that merely happened to have no content. The damage was never
-  limited to the single record: failure grouping keys off `has_error`, so in-stream errors
-  have never entered the failure statistics at all — **we have been under-reporting the
-  upstream failure rate**, and an observability tool that under-reports errors is worse than
-  one that reports none. Both of the paths CC's own SDK throws on are now recognised (the
-  `event: error` frame name, and `type == "error"` in the data), recorded as a new error kind
-  `stream_error` with `status: 200`. **Consumers must judge failure by `error`/`has_error`,
-  never by status alone.**
+- **失败的请求此前被录成了成功。** 上游在 SSE 流**内部**报错时，HTTP 状态仍是 200——错误藏在 `event: error` 帧里。我们的 SSE 解析器没有对应分支，这一帧直接被跳过，`error` 不写（此前只有 `status >= 400` 才写），于是这条请求在录制里是一次**成功**，只是正文莫名空着。危害从来不止单条记录失真：失败聚合以 `has_error` 为判据，流内错误因此**从来没有进过失败统计**——我们报的上游失败率一直偏低，而一个观测工具报错误率偏低，比不报更糟。现在 CC 自己 SDK 会抛错的两条路径都认（`event: error` 帧名，以及 data 内 `type == "error"`），录成新的错误类型 `stream_error`，`status` 为 200。**消费方判断请求是否失败必须看 `error`/`has_error`，不能只看 status。**
 
-- **Decompression and decode failures now leave a trace instead of a blank.** Previously a
-  failure meant `body_text` / `usage` / `content_blocks` all silently went missing, with
-  nothing on screen to say why — it looked like the upstream had returned nothing. The
-  response now carries `decode_error` (`missing_codec:br` / `unknown_encoding:…` /
-  `decompress_failed:…` / `utf8_decode_failed`) and the detail view shows it. An encoding
-  outside the list CC advertises is now reported rather than passed off as plain text.
+- **解压/解码失败现在如实落痕，不再静默留空。** 此前一旦失败，`body_text` / `usage` / `content_blocks` 一起消失，界面上却毫无痕迹——看起来就像上游没返回内容。现在响应带 `decode_error`（`missing_codec:br` / `unknown_encoding:…` / `decompress_failed:…` / `utf8_decode_failed`），详情页如实显示。CC 声明清单之外的编码也会明确报出来，不再被当成未压缩正文往下走。
 
-- **Context-compaction blocks and the matched stop sequence are recorded.** `compaction_delta`
-  is aggregated into a `compaction` block (CC advertises the `context-management-2025-06-27`
-  beta and 3,488 of 4,652 sampled requests carry a `context_management` field — this is a
-  feature in active use, and when compaction happens is exactly what the wire layer should
-  reveal). `message_delta.stop_sequence` is kept as `response.stop_sequence`: 200 responses in
-  the sample ended on a stop sequence without our ever recording *which* one, and that value
-  is what explains why the body cuts off where it does (the security classifier's truncated
-  `<severity>8` is this mechanism at work).
+- **上下文压缩块与命中的停止序列现在录得到。** `compaction_delta` 聚合成 `compaction` 块（CC 声明了 `context-management-2025-06-27` beta，抽样 4,652 条里 3,488 条带 `context_management` 字段——这是在用的能力，而压缩何时发生正是 wire 层最该揭示的东西之一）。`message_delta.stop_sequence` 记为 `response.stop_sequence`：抽样中有 200 条响应以停止序列结束，却从没记下**命中的是哪个**，而这个值恰恰解释了正文为什么断在那里（安全分类器那个残缺的 `<severity>8` 就是这个机制的产物）。
 
-  These three came out of a full audit against what CC itself declares — request headers,
-  request body fields, and the SSE accumulator branches in CC's own source. The method is
-  written up in `docs/开发指南.md` §2.5, and generalised for other harnesses as unit 0 of
-  `docs/问题域手册.md`. Verified by new `proxy_selftest` cases `[3d]`/`[3e]` (an error frame
-  must be recorded as a failure *and* reach failure grouping; a compaction block must
-  aggregate and not be judged a failure) and four new `dev_seed` samples. The audit also found five suspected gaps that turned out to be
-  non-issues, and one dead i18n key (`ek.parse`, a kind the code never produces — the v0.4.3
-  doc pass fixed the contract but left the key) which is now gone.
+  这三条出自一次对账审计——对账的是 CC 自己声明的东西：请求头、请求体字段，以及 CC 源码里 SSE 累积器的分支清单。方法写在 `docs/开发指南.md` 第 2.5 节，泛化到其他 harness 的版本是 `docs/问题域手册.md` 的单元 0。`proxy_selftest` 新增 `[3d]`/`[3e]` 用例验证（error 帧必须录成失败**且**能进失败聚合；compaction 块必须正确聚合且不被误判为失败），`dev_seed` 增四条样例。审计同时排除了 5 处误报，并清掉一个死 i18n 键（`ek.parse`，代码从不产出这个类型——v0.4.3 那轮文档修订改了契约却漏了这个键）。
 
-- **What CC declares about itself is now recorded and surfaced.** Every request carries an
-  `anthropic-beta` header listing the protocol extensions CC has enabled (18 distinct features
-  across the sample, in 18 combinations, drifting with CC's version) — it was buried in one
-  long comma-separated line inside a collapsed Headers panel, where nobody would ever read it.
-  It now renders as its own row of chips, with anything outside the known baseline highlighted
-  and called out: **a newly enabled capability is how you find the next recording blind spot**,
-  usually before the unfamiliar field or response block shows up. The index also keeps
-  `context_management` / `diagnostics` / `stop_sequences` / `thinking.budget_tokens`, which CC
-  actively uses and we had never parsed (`IDX_SCHEMA` 5 → 6).
+- **CC 对自己的声明现在录得下、也看得见。** 每个请求都带 `anthropic-beta` 头，列着 CC 启用了哪些协议扩展（抽样里 18 个特性、18 种组合，随 CC 版本漂移）——它此前埋在折叠的 Headers 面板里一行长逗号串中，没有人会去读。现在它单独成行拆成 chips，基线之外的特性高亮并明确提示：**新启用的能力正是发现下一个录制盲区的入口**，而且通常早于那个陌生字段或响应块出现。索引同时记下 CC 实际在用、我们从没解析过的 `context_management` / `diagnostics` / `stop_sequences` / `thinking.budget_tokens`（`IDX_SCHEMA` 5 → 6）。
 
-- **`signature_delta` and `citations_delta` are aggregated** — a thinking block's signature
-  (assignment) and a text block's citations (append). The two accumulate differently; both
-  follow CC's own accumulator rather than what looks reasonable.
+- **`signature_delta` 与 `citations_delta` 现在会聚合**——thinking 块的签名（赋值）与 text 块的引用（追加）。两者累加语义不同，一律照 CC 自己的累积器实现，不按"看起来应该"写。
 
-- **`x-claude-code-agent-id` is recorded as a cross-check on subagent identity.** It agrees
-  with the billing-header flag in all 225 subagent requests across 4,629 sampled captures,
-  with no counterexample, and carries per-instance resolution. **The identity verdict itself is
-  unchanged** — one more agreeing signal is not grounds to overturn a measured finding. Worth
-  noting for the open identity question: those 225 were all `cc_entrypoint=cli`, the mode that
-  had never been measured. That is statistical evidence from historical captures, not the
-  hand-verified capture the question actually calls for, so the question stays open.
+- **`x-claude-code-agent-id` 作为子代理身份的交叉校验位录下来。** 4,629 条抽样里 225 条子代理请求全部与计费头判别位一致，零反例，且带实例区分度。**判别结论本身不变**——多一个一致的信号不构成推翻实测定案的理由。对那个仍挂着的判别悬案有一条值得记的：这 225 条全部是 `cc_entrypoint=cli`，正是从未实测过的那个模式。但这是从历史录制统计出的旁证，不是悬案真正要求的人工核对采集，所以悬案不关。
 
-- **Recording now covers every compression format CC advertises** (`Accept-Encoding:
-  gzip, deflate, br, zstd`). DeepSeek compresses non-streaming responses — exactly the
-  security-classifier requests — with brotli; without the `brotli` package the proxy logged
-  the compressed bytes and the recording dropped `body` / `usage` / `content_blocks`
-  entirely (every security request showed up empty). Added `brotli` + `zstandard` deps
-  (their C extensions also go into `build.spec` hiddenimports) and a zstd branch in
-  `_decode_body`. `proxy_selftest` gains a `[3c]` case: a mock upstream returning
-  `Content-Encoding: br` must round-trip transparently to the client **and** be decompressed
-  into the recording. `dev_seed` gains an O4 DeepSeek-shaped security sample.
-  See `issues/open/260731_安全分类器响应丢失_brotli压缩盲区与harness分析不足.md`.
-  *(Fix authored by Claude Code session `d61ee348` — actual upstream model
-  deepseek-v4-flash[1M] — on 2026-07-31; real-traffic verification still pending because the
-  security classifier kept failing while the fix was verified.)*
-
-- **The version the app reports now always matches the release tag.** The version had been
-  hand-copied in three places (git tag, `src/app.py:VERSION`, `pyproject.toml`) with nothing
-  keeping them in sync, so releases shipped showing the wrong version — v0.4.2's exe still
-  reported v0.4.1 in About. The tag is now the single source of truth: CI generates
-  `src/_version.py` from the tag before building (the `Inject version from tag` step in
-  `release.yml`), `app.py` reads it with a `dev` fallback for local runs, and `pyproject.toml`
-  is synced in the same step. The convention in `docs/开发指南.md` §9 is widened from "no
-  version in README" to "no hardcoded version anywhere".
-
-- **Documentation consistency pass.** A multi-agent audit caught 26 instances of drift accumulated
-  since v0.4.0: the six-way recovery list had diverged between the dev guide and the architecture
-  overview (the dev guide misnamed the sixth path as "CLI restore"), the API contract listed a
-  phantom `parse` error kind the code never produces, `IDX_SCHEMA` was documented as 4 (actually
-  5), idx field lengths and the i18n key count (245, not 225) were stale, and CONTRIBUTING still
-  hardcoded port 5051. Fixed across 12 files; the §9 "no hardcoded version" rule and the
-  doc-maintenance strategy's SSOT pointers were tightened at the same time.
+- **录制现在覆盖 CC 声明的全部压缩格式**（`Accept-Encoding: gzip, deflate, br, zstd`）。DeepSeek 对非流式响应——恰好就是安全分类器请求——用 brotli 压缩；缺 `brotli` 包时代理录到的是压缩字节，`body` / `usage` / `content_blocks` 整个丢（安全请求全部显示为空）。已加 `brotli` + `zstandard` 依赖（其 C 扩展也进 `build.spec` hiddenimports），`_decode_body` 补 zstd 分支；`proxy_selftest` 新增 `[3c]` 用例：mock 上游返回 `Content-Encoding: br` 的响应必须转发透传**且**录制侧解压出来；`dev_seed` 增 O4 DeepSeek 形态安全样例。详见 `issues/open/260731_安全分类器响应丢失_brotli压缩盲区与harness分析不足.md`。*（本修复由 Claude Code 会话 `d61ee348`——实际上游模型 deepseek-v4-flash[1M]——于 2026-07-31 完成；真流量验证待 DeepSeek 分类器恢复后补做。）*
+- **app 自报的版本号现在始终与发布 tag 一致。** 版本号曾手抄于三处（git tag / `src/app.py:VERSION` / `pyproject.toml`）却无机制保证同步，导致发布的 exe 显示错误版本——v0.4.2 的 exe 在「关于」页仍自报 v0.4.1。现在 tag 是唯一真源：CI 构建前从 tag 生成 `src/_version.py`（`release.yml` 的 `Inject version from tag` 步骤），`app.py` 运行时读它、本地无该文件时 fallback 到 `dev`，`pyproject.toml` 同步覆盖。`docs/开发指南.md` §9 铁律从「README 不写版本号」扩展为「任何地方都不写死」。
+- **文档一致性梳理。** 多 agent 审查发现 26 处自 v0.4.0 起积累的漂移：六重恢复清单在开发指南与架构总览之间分叉（开发指南误把第六道写成 CLI restore）、API 契约列了代码从不产出的幻值 `parse` 错误类型、`IDX_SCHEMA` 文档写 4 实际为 5、idx 字段截取长度与 i18n 键数（245 而非 225）过期、CONTRIBUTING 仍把端口写成固定 5051。跨 12 个文件修复；开发指南 §9「版本号不写死」铁律与文档维护策略的 SSOT 指针也一并收紧。
 
 ## v0.4.2 - 2026-07-30
 
-### Fixed
-- **The two columns of the detail view line up again.** Moving `model` / `stream` to the request
-  side in v0.4.1 left them as a bare chip row (21 px tall) facing the response side's meta **card**
-  (46 px) — so from the second block down, **every card in the two columns was 27 px out of step**.
-  The request side now has a card of its own, and `stream` always states `true`/`false` instead of
-  vanishing when false (non-streaming is exactly what count_tokens and security requests are).
-  Measured across five request kinds (main / compact / security / title / error): both columns'
-  first three blocks now share identical y positions to the pixel. Chips also carry a transparent
-  1 px border now, so a bordered chip no longer sits 1 px taller than a solid one — that alone had
-  the two columns 1 px apart on error captures.
-- **The capture list is now a real table.** It was a flex row, so whether a row had a kind chip
-  (48 px) and how long its model name was (`glm-5.2` vs `glm-5v-turbo`, 32 px) shifted every column
-  after it: measured across 13 rows, the summary column started anywhere from 452 px to 753 px.
-  It is now a fixed-column CSS grid — every column starts at the same x on every row, in all three
-  languages, at both the 1080 px minimum window and full width. Long paths and model names ellipsize
-  with the full value on `title`. Column widths are sized for the **longest** language, not Chinese
-  (Japanese `エージェント` and `初回応答 550ms` were being cut mid-glyph).
-- **Timeline legend is left-aligned when it wraps.** `margin-left:auto` was meant to push the
-  line-style legend to the right on wide windows; after wrapping it kept pushing, so lines 2 and 3
-  hung off the right edge at ragged offsets (46 / 344 / 262 px).
-- **Settings: the "open" button no longer breaks into two lines** and a long `settings.json` path no
-  longer squashes its own label to 86 px across three lines. Buttons never wrap (`white-space:nowrap`);
-  the label column has a floor and long values wrap instead.
-- **Security nodes in the timeline now say what was being reviewed.** v0.4.1 fixed the list row but
-  not the DAG, which still showed the response fragment (`<severity>8`,
-  `<block>yes</block><category>…`) — the least informative summary available. The formatting is now
-  a single shared helper, and `_node_summary` carries `sec_action` for security nodes only.
+### 修复
+- **详情页左右两栏重新对齐。** v0.4.1 把 `model` / `stream` 移到请求侧时，只放了一个裸 chip 行（高 21px），对面响应侧是一张 meta **卡片**（高 46px）——于是**从第二块起，两栏每一张卡片都错开 27px**。现在请求侧也是一张卡片，且 `stream` 恒显示 `true`/`false`，不再在 false 时整个消失（count_tokens 与 security 恰恰都是非流式）。五种请求实测（主线 / 压缩 / 安全 / 标题 / 异常）：两栏前三块的 y 坐标逐像素相同。另给 chip 加了透明 1px 边框——带边框的 chip 原本比纯色 chip 高 1px，仅此一项就让异常请求的两栏差 1px。
+- **捕获列表现在是真正的表格。** 原为 flex 行，于是「这行有没有 kind chip」（48px）和「模型名多长」（`glm-5.2` vs `glm-5v-turbo`，32px）会推动它后面的所有列：13 行实测，摘要列起点在 452px 到 753px 之间漂。现在是固定列宽的 CSS grid——三种语言下、1080px 最小窗口与全宽下，每列在每一行都从同一个 x 开始。过长的路径与模型名截断，完整值挂 `title`。列宽按**最长的那个语言**给，不是按中文（日文的 `エージェント` 与 `初回応答 550ms` 原本被切在字形中间）。
+- **时序页图例换行后左对齐。** `margin-left:auto` 本意是宽屏时把线型图例推到右侧，换行后它继续推，于是第 2、3 行以参差的偏移（46 / 344 / 262px）吊在右边缘。
+- **设置页「打开」按钮不再折成两行**，长 `settings.json` 路径也不再把自己的标签挤成 86px 三行。按钮一律不折行（`white-space:nowrap`）；标签列有下限，长值改为自己换行。
+- **时序页的安全节点现在会说清审的是什么。** v0.4.1 修了列表行但没修 DAG，节点上仍显示响应残片（`<severity>8`、`<block>yes</block><category>…`），即所有可选摘要里最没信息量的那段。格式化现在收口成一个共用函数，`_node_summary` 仅给 security 节点带上 `sec_action`。
 
-### Changed
-- **Release assets use one naming scheme on both platforms**: `cc-wire-analyzer-windows.exe` and
-  `cc-wire-analyzer-macos.zip` (was `CCWireAnalyzer-mac.zip`). The macOS bundle is renamed to
-  `cc-wire-analyzer.app` as well, so the serve command reads the same on both:
-  `cc-wire-analyzer.exe serve` / `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`.
-  Note for macOS users upgrading: the old `CCWireAnalyzer.app` in `/Applications` is not replaced —
-  delete it yourself.
+### 变更
+- **两个平台的 release 产物统一命名**：`cc-wire-analyzer-windows.exe` 与 `cc-wire-analyzer-macos.zip`（原 `CCWireAnalyzer-mac.zip`）。macOS 应用包同时改名 `cc-wire-analyzer.app`，于是两平台的 serve 命令写法一致：`cc-wire-analyzer.exe serve` / `cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve`。macOS 升级用户注意： `/Applications` 里旧的 `CCWireAnalyzer.app` 不会被替换，需自行删除。
 
 ## v0.4.1 - 2026-07-29
 
-### Added
-- **Security reviews now say what was being reviewed and how it was judged.** Claude Code runs a
-  background security classifier on the agent's actions — on a busy day it is one request in six
-  (measured: 59 of 388, and 175 of 510 on another). The recording had all of it, and the UI showed
-  none of it: the request renders as a ~108,000-character collapsed `system` block plus 170-odd
-  flat `messages` blocks, so **the action actually under review is the 174th block** and you have
-  to scroll to it; the list row meanwhile summarized the response as `<block>yes</`, the least
-  informative 80 characters available. Three things are now surfaced, parsed once in
-  `classifier.py` (`sec_request` / `sec_verdict`) and only rendered by the frontend:
-  - **What is being judged** — the last block of the transcript, i.e. the command CC was about to
-    run, as tool + argument. The list row now reads `reviewing PowerShell · Set-Location …`
-    instead of a fragment of the answer.
-  - **How it was judged** — a chip carrying either the `severity` score (0-100, **50 is the
-    allow/block boundary**) or the block/allow verdict, with the matched rule name and the
-    upstream's stated reason in the detail card. Parsing matches on the opening tag only:
-    responses end on `stop_reason=stop_sequence`, so the real wire text is a bare `<severity>8`
-    with the closing tag eaten — requiring balanced tags would have failed on 100% of real traffic.
-  - **What the review sent upstream** — the rule base (~108 KB), **your CLAUDE.md in full**
-    (~14 KB, sent as "context about the user's environment and intent"), and how many prior actions
-    of the transcript went with it. This is exactly the kind of fact only a wire-level view can
-    state.
+### 新增
+- **安全审查现在会说清楚「审的是什么、判成了什么」。** Claude Code 会在后台对 agent 的动作跑安全分类器——重度使用日里大约每六条请求就有一条是它（实测 388 条中 59 条，另一天 510 条中 175 条）。录制里这些数据一直都在，界面上却一样都看不出来：请求渲染成一个约 108,000 字符的折叠 `system` 块外加 170 多个平铺的 `messages` 块，**真正被审查的那个动作是第 174 块**，得一路翻到底；而列表行把响应摘要成 `<block>yes</`，恰好是能取到的最没信息量的 80 个字符。现在三件事都被抬到面上，解析只在 `classifier.py` 做一次（`sec_request` / `sec_verdict`），前端只负责渲染：
+  - **在判定什么**——transcript 的最后一块，即 CC 正要执行的那条命令，拆成工具 + 参数。列表行现在读作 `审查：PowerShell · Set-Location …`，而不再是一段响应残片。
+  - **判成了什么**——一个 chip，显示 `severity` 分数（0-100，**50 是放行/拦截的分界**）或 block/allow 判定，命中的规则名与上游给出的理由放在详情卡片里。解析只匹配开标签：响应以 `stop_reason=stop_sequence` 结束，wire 上真实的文本就是裸的 `<severity>8`、闭合标签被吃掉——要求成对标签的话，在真实流量上会 100% 解析失败。
+  - **这次审查向上游发送了什么**——规则库（约 108 KB）、**你的 CLAUDE.md 全文**（约 14 KB，作为「用户环境与意图的上下文」发出）、以及随行的历史动作条数。这正是只有 wire 层视角才说得出来的事实。
 
-  Measured against real captures: `sec_request` parsed 59/59 and 175/175, `sec_verdict` 56/59 and
-  172/175, with zero false positives on 120 sampled non-security requests. The six that produced no
-  verdict were checked rather than waved off — three were upstream timeouts, and **three were the
-  model ignoring the required output format**: asked to `Respond with <severity>N</severity> ONLY.
-  No other text.`, it began writing prose about the action and hit its 64-token ceiling, so that
-  review reached no conclusion at all. The card says so explicitly (`no verdict`, with the
-  `stop_reason`) rather than rendering blank — a security check failing silently is precisely the
-  kind of thing this tool exists to make visible. Index schema bumped 4 → 5 (the action lives at
-  the *end* of the transcript, past the 2,000-character `last_user` cutoff), so indexes rebuild
-  once on first access (~5 s for an 866 MB day, ~7 s for 1.18 GB; the jsonl is untouched).
-  `dev_seed.py` gained all three verdict shapes — its old security sample had a shape that does not
-  occur in reality, so none of this path would have been exercised by UI self-tests.
-  See issues/closed/260729_安全审查可读性.md.
-- **[docs/报文解读.md](docs/报文解读.md)** — a user-facing guide to the 7 request kinds CC sends
-  (main / subagent / title / compact / security / count_tokens / other): what each one is, its payload
-  shape, why CC sends it, how to recognize it, and the common confusion points. Includes a "don't trust
-  surface features" methodology section (count_tokens and security look alike on stream/output but are
-  unrelated) and the system three-block explainer. Cross-linked from 界面导览 / 架构总览 / 文档维护策略.
-- **Check for updates** in the About panel — fetches the latest GitHub release and compares versions
-  (12s timeout, degrades to a manual-link hint on network failure).
-- **System blocks now show their role** in the detail view — each `system[i]` chip is annotated by content
-  (billing header / identity / security rules / compact / title), so e.g. a security request's ~108K-char
-  `sys[1]` is visibly labeled "Security rules" instead of being an inscrutable collapsed block.
+  在真实录制上实测：`sec_request` 解析 59/59 与 175/175，`sec_verdict` 56/59 与 172/175，在 120 条非安全审查请求的抽样中误判为 0。那 6 条没有产出判定的请求逐条查清，而非一笔带过——3 条是上游超时，另外 **3 条是模型没有遵守要求的输出格式**：请求明确写着 `Respond with <severity>N</severity> ONLY. No other text.`，模型却开始就该动作写起散文，撞上 64 token 的上限被截断，这次审查实际上没有得出任何结论。卡片会如实标注（`未产出判定`，并给出 `stop_reason`）而不是渲染成空白——安全检查静默失效，正是本工具存在的意义所在。索引 schema 由 4 升到 5（待判定动作位于 transcript **末尾**，超出 `last_user` 的 2,000 字符截断范围），因此首次访问时索引会重建一次（866 MB 的一天约 5 秒，1.18 GB 约 7 秒；主 jsonl 文件不动）。`dev_seed.py` 补齐了三种判定形态——原先的安全审查样例形状在现实中并不存在，这条路径在 UI 自测里根本走不到。详见 issues/closed/260729_安全审查可读性.md。
+- **[docs/报文解读.md](docs/报文解读.md)**——面向使用者的「CC 7 种请求」解读指南（main / subagent / title / compact / security / count_tokens / other）：每种是什么、报文长什么样、CC 为什么发、怎么认、易混点。含「别被表面特征骗」识别方法论（count_tokens 与 security 在 stream/output 上撞脸但毫不相关）与 system 三 block 结构说明。已从 界面导览 / 架构总览 / 文档维护策略 交叉链接。
+- **关于页「检查更新」**——拉取 GitHub 最新 release 比对版本（12s 超时，网络不通降级为手动链接）。
+- **详情页 system block 标注角色**——每个 `system[i]` chip 按内容标角色（计费头 / 身份声明 / 安全审查指令 / 压缩指令 / 标题指令），例如 security 那条 ~108K 字符的 `sys[1]` 现在显眼地标成「安全审查指令」，不再是个看不出名堂的折叠块。
 
-### Changed
-- **Capture list now shows a kind chip for non-main rows.** main threads stay unmarked; the others get a
-  chip (计数 / 安全 / 标题 …) so a row's role is visible at a glance. Backend `_public_summary` now carries
-  `kind` (computed via `classifier.classify_idx`).
-- **Backup count moved from the capture status card to the Settings panel.** "备份 N 份" in the capture
-  header was contextually odd; it now shows under Settings → 备份目录 ("当前 N 份").
-- **ttft label localized** (zh 首字时间 / en ttft / ja 初回応答) in the list row and the detail header.
-- **Detail-panel field placement fixed**: `model` and `stream` come from the request body, so they moved
-  from the response meta-row to the request side. The response meta-row now keeps only response-origin
-  fields (status / stop_reason / ttft / total) — `model` was never server-returned; this tool records no
-  response model field.
-- **Request-side thinking blocks** now render with a chip + bigText toolbar (translate / explain),
-  matching the response side. (CC usually omits thinking from request history, so this mainly matters
-  when it doesn't.)
+### 变更
+- **捕获列表为非 main 行加 kind chip**。主线不加标记；其余（title / security / count_tokens / compact / subagent / other）各加一个 chip（计数 / 安全 / 标题…），一眼看出每行是什么角色。后端 `_public_summary` 现带 `kind`（经 `classifier.classify_idx` 现算）。
+- **备份份数从捕获状态卡移到设置页**。「备份 N 份」放在捕获页头部语境不通，现移至 设置 → 备份目录（「当前 N 份」）。
+- **ttft 本地化**（zh 首字时间 / en ttft / ja 初回応答），列表行与详情头。
+- **请求侧 thinking 块**改为 chip + bigText 工具条（翻译 / AI 解读），与响应侧统一。（CC 通常不在请求历史里带 thinking，故主要在它带的时候生效。）
+- **详情页字段归属纠正**：`model` 与 `stream` 来自请求体，从响应 meta-row 移到请求侧。响应 meta-row 现只留响应侧字段（status / stop_reason / ttft / total）——model 从来不是服务器返回的，本工具不录制响应 model。
 
-### Fixed
-- **Hiding a main lane now also hides its auxiliary calls.** Closing a main lane in the timeline used to
-  leave its title / security / count_tokens / compact calls visible in the shared aux column with no sign
-  of whom they belonged to. Aux nodes whose `near`-edge parent lane is hidden now hide too, an emptied aux
-  column no longer reserves space, and the lane menu carries a hint explaining the linkage.
-- **Removed the estimated cost (≈ ¥x · PRICING) from the response panel.** It was computed from official
-  list prices, which are wrong for users on third-party gateways (the common case for this tool's
-  audience). The raw Usage token counts remain.
-- **A role hint that could never fire, and a classification error nothing would have reported.**
-  Post-v0.4.0 code review, each finding checked against real captures rather than reasoned about:
-  - The detail view's system-block role hint carried a `compact` rule matching on
-    `summarizing conversations` / `summary of the conversation`. Measured on real compact requests
-    (07-26 `req_fbab1f0` / `req_c012395`): their `system` is the ordinary main-thread prompt
-    (`You are an interactive agent…`) and the compaction instruction sits in the **last user
-    message** — which is what the classifier keys on too. So the branch, and its three
-    `sysRole.compact` strings, could never render. Removed, with the measurement written into the
-    function's comment so it does not get re-added on intuition.
-  - `_public_summary` degraded a failed `classify_idx` to `kind: "other"` with no log line. A change
-    to the index fields would have turned a whole day's capture list into `other` with nothing
-    anywhere to notice it by — the project's own recurring bug type ③. Now counted and logged like
-    the existing write/index failure counters, and bounded (first occurrence, then every 100th)
-    because the function runs once per list row and real failures come in sheets.
-  - Nine dead i18n keys removed, left behind by earlier removals: `detail.usageNote` (the dropped
-    cost estimate), `status.backups` (the relocated backup count), `row.probe` (superseded by
-    `kindLabel`). The three language tables are now key-for-key identical at 245 entries each.
-    The `.cap-row.probe` CSS class keeps its historical name — it is now driven by `isAux` (any
-    auxiliary call, not just token probes) — with a comment saying so.
+### 修复
+- **关闭主线泳道联动隐藏其辅助调用**。时序图里关掉一条主线，原先挂在它上面的 title / security / count_tokens / compact 调用仍留在共用的 aux 列里、看不出属于谁。现在 aux 节点若其 `near` 边父泳道被隐藏也一并隐藏，空的 aux 列不再占位，泳道菜单加了联动提示。
+- **移除响应区的成本估算（≈ ¥x · PRICING）**。它按官方刊例折算，对走第三方网关的用户（本工具受众的常见情形）并不准。原始 Usage token 数保留。
+- **一条永远不会触发的角色标注，与一处没人会知道的分类失败。** v0.4.0 之后的代码复查，每条发现都以真实录制核对，而非仅凭推理判断：
+  - 详情页 system block 的角色标注中有一条 `compact` 规则，匹配 `summarizing conversations` / `summary of the conversation`。以真实压缩请求实测（07-26 的 `req_fbab1f0` / `req_c012395`）：其 `system` 就是普通主线 prompt（`You are an interactive agent…`），压缩指令位于**最后一条 user 消息**——分类器判定 compact 依据的也正是这里。因此该分支及其三语 `sysRole.compact` 文案永远不会渲染。现已删除，并将实测结论写入函数注释，避免日后有人凭直觉再次添加。
+  - `_public_summary` 在 `classify_idx` 失败时降级为 `kind: "other"`，且不记任何日志。一旦索引字段发生变动，整天的捕获列表会全部变成 `other`，而任何位置都不会有迹象——正是本项目自己归纳的反复出现的 bug 类型 ③。现已比照既有的写盘/索引失败计数器，加入计数与日志，并做有界处理（首次必记，此后每 100 次记一条），因为该函数按列表行调用，真出问题时会成片失败。
+  - 删除 9 条死 i18n 键，均为此前功能移除后的遗留：`detail.usageNote`（已移除的成本估算）、`status.backups`（已迁至设置页的备份份数）、`row.probe`（已由 `kindLabel` 取代）。三语字典现已逐键一致，各 245 条。`.cap-row.probe` 这个 CSS 类沿用历史名称——它现在由 `isAux` 驱动（涵盖任意辅助调用，不再限于计数探针）——并加注释说明。
 
-  Verified: all six self-tests green; `kind` measured at 0.033 ms/row and computed only over the
-  paged window (the DAG path does not use `_public_summary`), so no regression; the frontend
-  re-checked in a browser against a 510-record day in an isolated `CCWA_HOME` — kind chips, system
-  role labels in all three languages, no raw keys leaking, and lane-hiding still taking its
-  auxiliary nodes with it (56-node main lane hidden → 78 nodes gone).
+  验证：六项自测全绿；`kind` 实测 0.033 ms/行，且仅对分页窗口计算（DAG 路径不经 `_public_summary`），无性能回归；前端在隔离的 `CCWA_HOME` 中以 510 条真实录制复验——kind chip、三语 system 角色标注、无 raw key 漏出，泳道隐藏仍会带走其辅助节点（隐藏 56 节点的主线，总节点减少 78）。
 
-### Docs
-- **The documentation is now organised by what you're trying to do, and the development
-  conventions have exactly one home.** The `docs/` folder had grown to six files without anyone
-  asking what set of jobs it was supposed to cover. Answering that question surfaced a defect
-  worse than any single stale sentence: **the project's development conventions existed in three
-  places at once** — `CLAUDE.md` (local, not in this repo), `CONTRIBUTING.md` (a public summary),
-  and four chapters of `docs/架构总览.md`. Two of those were copies, and both had drifted.
-  `CONTRIBUTING.md` listed 2 self-tests when there were 6, listed 3 safety invariants when there
-  were 8, and stated twice that "the dev server reads templates live, no rebuild needed" — which
-  is false (Jinja caches templates under `debug=False`), and which actually misled someone on
-  2026-07-29 into debugging a cached page for half an hour. `docs/架构总览.md` carried a second,
-  fuller copy of the invariants plus the recurring-bug table and the module dependency tree, and
-  its further-reading appendix cited counts that no longer matched anything.
-  - **New: [`docs/开发指南.md`](docs/开发指南.md)** — the single source of truth for conventions:
-    eight safety invariants each paired with what it prevents, the four recurring bug types with
-    their first occurrence and their recurrence, the defensive-design table, the subagent-identity
-    ruling, all six self-tests, the frontend rules, the module dependency tree, and the
-    issue-first workflow. It was **migrated, not rewritten** — putting a fourth copy into the
-    world would have been the very disease being treated. `docs/架构总览.md` keeps the
-    architecture narrative (five layers, data flow, evolution, design philosophy) and now links
-    here for the rules; `CONTRIBUTING.md` is a thin shell covering setup, building and the PR
-    checklist, and stopped restating anything.
-  - **New: [`docs/问题域手册.md`](docs/问题域手册.md)** — for building the equivalent tool for a
-    different agent harness (Codex CLI, opencode, a bespoke agent). This is the one thing the
-    existing docs could not answer: `docs/架构总览.md` explains how *this* project is built,
-    which is the wrong layer for a port — `proxy.py` becomes irrelevant, while every problem it
-    solves remains. Distilled from 45 archived iteration records plus this changelog, it covers
-    nine capability units (non-invasive config takeover / lossless recording / request attribution
-    / semantic classification / indexing at volume / timeline visualisation / diagnosis /
-    dual-mode consumption / desktop packaging). Each unit states the problem, why the naive
-    approach fails, the ruling, and **which conclusions survive a change of harness**. Every
-    "naive approach" listed is one this project actually shipped and had to undo. The headline
-    finding: only two of the nine units are harness-specific, and they are exactly the two that
-    can only be settled with real traffic and human ground truth — the ones that cost this
-    project twelve days.
-  - **[`docs/界面导览.md`](docs/界面导览.md) is now only about using the app.** Its "layer three:
-    optimisation opportunities" chapter (about 150 lines) was a development backlog living inside
-    a user guide, and it had gone stale — three of its twelve entries were already implemented,
-    while the P0 it described is still open. Removed; the surviving entries were re-verified
-    against the code and moved out of the published docs.
-  - The four development-facing documents now differ by **when you reach for them**: understand
-    the project → 架构总览; about to change code → 开发指南; changing the docs → 文档维护策略;
-    building the same tool elsewhere → 问题域手册. That criterion (same audience, different
-    trigger) was added to `docs/文档维护策略.md`, along with two new rot entries and a
-    strengthened lesson: the "prescription that itself rots" pattern has now been observed three
-    times (the hand-written README version line, the CONTRIBUTING summary, the architecture
-    chapters), and the test for it is simply **is this content written down in a second place?**
-- **The READMEs now open with when you'd want this, a case where it paid off, and what it does
-  with your traffic.** The repository has been public since 2026-07-12, and the landing page led
-  with its technical category — `MITM proxy`, `wire-level`, `SSE`. That is clear to someone who
-  already knows they need a packet capture, and opaque to a Claude Code user who does not yet
-  know which of their own bad afternoons this addresses — while "MITM" plus "records everything"
-  raises an entirely reasonable question about whether it is safe to point a session at it. All
-  three READMEs (en/zh/ja) now open with three sections instead:
-  - **When you'd reach for this** — three situations to recognize yourself in (CC going through
-    a third-party gateway when something is off; wanting to see what CC actually transmits —
-    system prompt as sent, spawned subagents, background security-classifier calls, upstream
-    token counts; wanting a session on record to go back through). It also says who should
-    *not* bother: if you are on the official endpoint, nothing is wrong, and you want
-    conversation history, `~/.claude/projects/*.jsonl` already has it and reads better.
-  - **A real example** — the effort/400 finding from v0.4.0, end to end: session titles silently
-    not generating, every title request coming back `400`, the upstream's own sentence naming
-    the field, the root cause (`effortLevel: low` in `settings.json` overridden by
-    `CLAUDE_CODE_EFFORT_LEVEL: max` in the environment), and how it became two rules in the
-    config check. Real redacted capture data, no mock — and it states plainly that the tool
-    fixes nothing for you; it shows what happened and names the field.
-  - **Is it safe to point your traffic at it?** — four points: no recording leaves the machine
-    (with the app's own outbound calls listed explicitly), one config field edited and restored
-    on exit, credentials redacted but bodies stored verbatim so captures are sensitive files,
-    and how it coexists with official-direct / third-party / cc-switch setups.
+### 文档
+- **文档按「你想干什么」重新切分，开发约定从此只有一处。** `docs/` 长到六份，从没人问过它到底该覆盖哪几件事。回答这个问题时暴露出一个比任何一句过时描述都严重的缺陷：**项目的开发约定同时存在于三个地方**——`CLAUDE.md`（本地，不在本仓库）、`CONTRIBUTING.md`（公开摘要）、`docs/架构总览.md` 的四个章节。其中两份是副本，且两份都已分叉。`CONTRIBUTING.md` 的自测清单停在 2 条（实际 6 条）、安全不变量停在 3 条（实际 8 条），还两处写着「dev server 实时读模板、无需重新构建」——这句话是错的（`debug=False` 下 Jinja 会缓存模板），而且它 2026-07-29 真的骗到了人：有人照它的说法对着缓存的旧页面查了半小时改动为何不生效。`docs/架构总览.md` 里则是第二份、更完整的不变量副本，外加惯犯 bug 表与模块依赖树，而它的「进一步阅读」附录引用的数字早已对不上任何东西。
+  - **新增 [`docs/开发指南.md`](docs/开发指南.md)**——开发约定的单一真源：八条安全不变量（每条配一句「防什么」）、四类惯犯 bug（含「第一次撞」与「同型再现」）、防御性设计对照表、子代理判别定案、**六项**自测、前端约定、模块依赖树、issue 先行流程。它是**迁移出来的，不是重写的**——再造第四份副本，正好就是这次要治的那个病。`docs/架构总览.md` 保留架构叙事（五层、数据流、演进主线、设计哲学），规则部分改为链接过去；`CONTRIBUTING.md` 收成薄壳（环境搭建 / 构建 / PR 清单），不再复述任何约定。
+  - **新增 [`docs/问题域手册.md`](docs/问题域手册.md)**——给**换一个 agent 工具**（Codex CLI、opencode、自研 agent）做同类分析器的人看。这是现有文档唯一答不了的问题：`docs/架构总览.md` 讲的是**这个项目**怎么搭的，而那对移植来说是错的层级——`proxy.py` 会整个作废，但它解决的每一个问题一个不少地还在。本篇从 45 篇已归档的迭代记录 + 本变更日志蒸馏而成，覆盖九个能力单元（无侵入接管配置 / 全量落盘不丢 / 请求归属判别 / 语义分类 / 大流量索引 / 时序可视化 / 主动诊断 / 双模式消费 / 桌面打包）。每个单元讲清：要解决什么、天真做法为什么错、我们的定论、**换 harness 时哪些结论还成立**。里面列的每一条「天真做法」都不是假想的反面教材，全是这个项目真的写过一遍、撞了才改的。最值得记的一条结论：九个单元里只有两个是 harness 特有的，而那两个恰恰只能靠真实流量 + 人工 ground truth 才能定——它们让这个项目卡了 12 天。
+  - **[`docs/界面导览.md`](docs/界面导览.md) 现在只讲怎么用。** 它的「第三层：优化机会」章节（约 150 行）是塞在使用文档里的开发待办，而且已经滞后——十二条里有三条早已实现，它描述的那条 P0 却至今还开着。该章节已移出；其中仍然成立的条目对着代码逐条复核后移到公开文档之外。
+  - 四份面向开发的文档现在按**触发时机**区分：想读懂这个项目 → 架构总览；正要动手改代码 → 开发指南；要改文档 → 文档维护策略；要在别处做同类工具 → 问题域手册。这条判据（受众相同、触发时机不同）已写进 `docs/文档维护策略.md`，同时补了两条腐化记录，并把那条教训加强了一档：「药方本身就是下一处腐化」这个模式至今已出现三次（手写的 README 版本行、CONTRIBUTING 的约定摘要、架构总览的不变量章节），而识别它的判据其实很简单——**这份内容有没有第二个地方也写了？**
+- **三份 README 改为以「何时需要它」「它帮人找到过什么」「它拿你的流量做什么」开场。** 仓库自 2026-07-12 公开，而落地页一直以技术类别开场——`MITM proxy`、`wire-level`、`SSE`。这对已经知道自己需要抓包的人足够清楚，对尚不知道它对应自己哪一个糟糕下午的 Claude Code 用户则是不透明的；而「MITM」加上「完整录制」，又会让人合理地担心把会话指向它是否安全。现在三份 README（en/zh/ja）改以三节开场：
+  - **什么时候你会需要它**——三个可自认的场景（CC 走第三方网关而某处不对劲；想看清 CC 实际发送了什么——发送态的 system prompt、被派生的子代理、后台安全分类器调用、上游报告的 token 数；想把一次会话留档以便回头翻查）。同时明说谁**不必**费这个事：如果你用官方端点、一切正常、只想看对话历史，`~/.claude/projects/*.jsonl` 已经有了，而且更好读。
+  - **一个真实案例**——v0.4.0 那次 effort/400 发现的完整链条：会话标题静默地不再生成、每条 title 请求都返回 `400`、上游自己那句点名字段的话、根因（`settings.json` 的 `effortLevel: low` 被环境变量 `CLAUDE_CODE_EFFORT_LEVEL: max` 盖掉），以及它如何变成配置体检的两条规则。真实脱敏录制数据，无 mock——并明说本工具不替你修任何东西：它让你看到发生了什么，并指出是哪个字段。
+  - **把流量交给它安全吗**——四点：录制不出本机（并**显式列出**本应用自身的外发调用）、只编辑一个配置字段且退出即恢复、凭据脱敏但 body 原样存储故 capture 属敏感文件、以及它如何与官方直连 / 第三方端点 / cc-switch 共存。
 
-  The screenshots moved up to sit right after the first section, since three new prose sections
-  had pushed them three screens down. See issues/open/260725_公开README入口与信任表达.md — the
-  remaining item there (a release kit for a target community) is deliberately left undone: it is
-  an outward-facing action and stays the maintainer's call.
-- **The README no longer carries a hand-written version number.** v0.4.0 added a
-  `Current version: vX.Y.Z` line to all three READMEs because GitHub's rendered README does not
-  show the current tag. **That line went stale at the very next release** — v0.4.0 shipped while
-  all three READMEs still said v0.3.2, and it took three independent doc audits to notice. The
-  fix was itself the rot: a version number's single source of truth is the git tag, so a copy in
-  the README is guaranteed to diverge, and "edit one line in three files on every release" is an
-  obligation nobody keeps. The line and its maintainer note are gone; the header keeps
-  `Releases · Changelog` links, and GitHub points the first one at the latest release for free.
-  The general lesson, now recorded in [docs/文档维护策略.md](docs/文档维护策略.md): **a remedy for
-  documentation rot that needs periodic human syncing is itself the next piece of rot** — prefer a
-  zero-maintenance pointer over a maintainable copy.
-- **`docs/AI_USAGE.md` translated to Chinese, and the en/ja READMEs now flag which docs are
-  Chinese.** The deep-dive docs are written in Chinese; the English and Japanese READMEs linked
-  them without saying so, leaving a reader to discover it by clicking. Each link is now marked
-  (ZH), with a line suggesting machine translation. A full multilingual docs policy is deferred to
-  its own release.
-- **`docs/API契约.md` corrections and one dead field removed from the code.** The `start` response
-  documented (and returned) `orphan_recovered`, permanently `null` — the frontend only ever reads
-  `orphan_recovered_at_startup` from `/api/proxy/status`. Field dropped from `src/app.py` and the
-  contract; error-code enumerations for `start` corrected against the code, and a non-existent
-  `parse` value removed from `err_kind`.
+  截图节上移至第一节之后——三段新增正文把它推到了三屏之外。详见 issues/open/260725_公开README入口与信任表达.md；该 issue 中剩下的一项（面向目标社区的发布素材包）有意未做：那属于对外动作，决定权在维护者。
+- **README 不再手写版本号。** v0.4.0 曾在三份 README 顶部各加一行 `当前版本：vX.Y.Z`，因为 GitHub 渲染的 README 页面看不到当前 tag。**这行字在紧接着的那次发版就腐化了**——v0.4.0 已经发布，三份 README 仍写着 v0.3.2，直到三份独立的文档审计交叉确认才被发现。药方本身就是病灶：版本号的唯一真源是 git tag，README 抄一份必然分叉，而"每次发版改三个文件里的一行字"这种义务没人守得住。该行连同其维护者注释已删除，顶部只留 `发版列表 · 更新日志` 链接，GitHub 会让前者自动指向最新发布。这条通用教训已记入 [docs/文档维护策略.md](docs/文档维护策略.md)：**给文档腐化开的药方如果需要人工定期同步，它自己就是下一处腐化**——优先选零维护的指针，而不是可维护的副本。
+- **`docs/AI_USAGE.md` 中文化，en/ja README 标注哪些文档是中文的。** 深度文档以中文撰写，而英文与日文 README 直接链过去却不加说明，读者只能点进去才发现。现在每个链接都标注 (ZH) 并附一行提示可用机器翻译。完整的多语言文档策略留待单独版本处理。
+- **`docs/API契约.md` 修正，并从代码里删掉一个死字段。** `start` 响应中曾定义（并返回）恒为 `null` 的 `orphan_recovered`——前端实际只读 `/api/proxy/status` 的 `orphan_recovered_at_startup`。该字段已从 `src/app.py` 与契约文档中删除；`start` 的错误码枚举按代码核对更正，`err_kind` 中一个并不存在的 `parse` 值已删。
 
 ## v0.4.0 - 2026-07-28
 
-### Changed
-- **UI readability pass — translate technical enums and surface wire-only headers.** Three small
-  UX improvements from the audit-driven optimization list ([docs/界面导览.md](docs/界面导览.md)
-  P1-P2). `stop_reason` (`end_turn`/`tool_use`/…) and `err_kind` (`upstream_4xx`/…) now render
-  through i18n lookup tables (`stopReasonLabel` / `errKindLabel`, mirroring the existing
-  `kindLabel`), with zh/en/ja coverage and English fallback — non-programmers no longer see raw
-  Anthropic API enum values. Response headers panel is now **open by default** (was collapsed)
-  and wire-only fields (`anthropic-ratelimit-*` / `request-id` / `anthropic-organization-id` /
-  `x-should-retry`) are bolded with a hint line "only visible at wire layer, not in CC's jsonl"
-  — the project's own code comments call these "the most valuable information at the wire
-  layer"; the collapsed state was hiding them from anyone who didn't know to look. Verified
-  lane head already uses "Session N" numbering. See issues/closed/260726_P1-P2_前端微调批次.md.
+### 变更
+- **UI 可读性提升：技术枚举本地化，并凸显 wire 层独有字段。** 来自审计驱动的优化清单（[docs/界面导览.md](docs/界面导览.md) P1-P2），共三处改动。其一，`stop_reason`（`end_turn`/`tool_use`/…）与 `err_kind`（`upstream_4xx`/…）改为走 i18n 查表渲染（`stopReasonLabel` / `errKindLabel`，与已有 `kindLabel` 风格一致），三语覆盖、英文兜底，不再向非程序员直显 Anthropic API 的内部枚举值。其二，响应 Headers 面板改为**默认展开**（原先折叠），wire 层独有字段（`anthropic-ratelimit-*` / `request-id` / `anthropic-organization-id` / `x-should-retry`）以加粗 + 品牌色高亮，并附一行提示"仅在 wire 层可见，CC 的 jsonl 不记录"。其三，核实主线泳道头已采用"主线 N"序号。这些字段正是项目代码注释所称的"wire 层最有价值的信息"，原先的折叠状态使不知情者无从发现。详见 issues/closed/260726_P1-P2_前端微调批次.md。
 
-### Fixed
-- **Parallel same-template subagent spawn no longer collapses into one lane.** When N same-type
-  agents (e.g. 4 Explore) were spawned in one main response with templated prompts that shared
-  their first ~120 chars (common opening + task description), the lane alignment matched all N
-  first-user messages to `prompts[0]` and hashed them all under the same lane key — N agents
-  ended up stacked on a single lane (visually: one color, one column). Root cause and fix in
-  `classifier.py`: bumped `PROMPT_PROBE_LEN` 120→300 and `PROMPT_MATCH_LEN` 200→1000,
-  `first_user_task` 600→1500, `IDX_SCHEMA` 3→4 (forces rebuild of stale v3 indexes on first
-  access — ~5s/day for the maintainer's 866MB day, jsonl untouched, no data loss). The remaining
-  edge case (first 300 chars still identical across prompts) is left to a future bidirectional
-  matching strategy. See issues/closed/260725_并行同模板子代理泳道撞车.md.
+### 修复
+- **并行同模板子代理派生不再挤在同一条泳道。** 主线在一次响应中派生 N 个同类型 agent（例如 4 个 Explore），且派生 prompt 的前约 120 字相同（公共开场白 + 任务说明）时，泳道对齐会将 N 个子代理的首条 user 全部匹配到 `prompts[0]`，用同一个 lane_key 归入同一条 lane，导致 N 个 agent 在视觉上呈现为一色一列。根因与修复均位于 `classifier.py`：`PROMPT_PROBE_LEN` 由 120 提升至 300，`PROMPT_MATCH_LEN` 由 200 提升至 1000，`first_user_task` 由 600 提升至 1500，`IDX_SCHEMA` 由 3 提升至 4（首次访问时会 unlink 旧的 v3 索引并重建；维护者 866MB 那一天约耗时 5s，主 jsonl 文件不动，无数据丢失）。剩余约 5% 的边界情形（前 300 字仍完全相同）留待未来的双向匹配策略解决。详见 issues/closed/260725_并行同模板子代理泳道撞车.md。
 
-### Docs
-- **Catch-up: docs back in line with the code, plus three new guides.** A 7-perspective audit
-  (frontend / backend API / data pipeline / recording core / shell & tests / evolution / design
-  tradeoffs) surfaced 8 places where docs had drifted from code. Fixed:
-  - `docs/API契约.md` — added missing `/api/health/config` and `/api/diagnose/errors` sections;
-    rewrote `/api/translate` and `/api/explain` as SSE (described as non-streaming); documented
-    the dual-track `usage` field names (raw JSONL = Anthropic full names, list/DAG API output =
-    normalized short names via `classifier.usage_norm`); documented `lane_id` naming rules;
-    removed dead `orphan_recovered` field on `start` and the deleted `redact_headers` config key;
-    supplemented `write_errors` and `external_change` on `/api/proxy/status`.
-  - `docs/AI_USAGE.md` — maintainer note on the dual-track `usage` names + sibling-doc links.
-  - `README` × 3 (en/zh/ja) — added a "Current version" line and a docs navigation block.
-  - `CLAUDE.md` — corrected the "dead config" lesson: all three (`retention_days` /
-    `auto_start_proxy` / `redact_headers`) were fixed in 260713 (first two wired up, third
-    deleted along with its UI toggle); kept as historical reference.
-- **Three new docs added**: [docs/界面导览.md](docs/界面导览.md) (human-audit view of all 4 UI
-  screens + 13 prioritized UX optimization opportunities), [docs/架构总览.md](docs/架构总览.md)
-  (5-layer architecture + data flow + evolution主线 + design philosophy + 8 invariants),
-  [docs/文档维护策略.md](docs/文档维护策略.md) (meta: 5 strategies for keeping docs from
-  diverging again, with a 12-item current-rot list). "Self-check sentences" appended to major
-  sections of each core doc ("if you change X, also update Y/Z") make the maintenance policy
-  actionable.
-- **CLAUDE.md restructured for clarity.** The local AI-onboarding file had accreted ~1700 words
-  of release-by-release narrative inside a single "current status" bullet, with the
-  repeated-bug-types lesson and the subagent-detection rules buried in the overview instead of
-  under "developer conventions" where they belong. Reorganized along the workspace's three-section
-  skeleton (overview / background / conventions): overview slimmed to four bullets, the four
-  recurring bug types pulled into a table, subagent rules given their own section, the
-  architecture sketch redrawn as an ASCII tree, the macOS-real-machine status corrected to
-  "260714 green". No facts removed — only relocated and rephrased. See
-  issues/closed/260726_CLAUDE_md_结构整理.md.
-- **Chinese changelog rephrased into a more formal register.** `CHANGELOG.zh.md` had carried over
-  the conversational, first-person tone of the English original ("a bad day", em-dash asides,
-  colloquial verbs) plus a few Anglicisms ("surface" → 抬出, "the complaint" → 抱怨,
-  "in a way that" → 以…的方式). Rephrased throughout into standard written Chinese while keeping
-  every fact, figure, code identifier, path, link, and the document structure unchanged. English
-  `CHANGELOG.md` is unaffected. See issues/closed/260726_CHANGELOG_zh_风格改正式文档腔.md.
-- **Project Overview section added at the top of the changelog.** The AI-onboarding
-  snapshot (position / current status / next steps) used to live in the local CLAUDE.md;
-  it now opens this file so anyone landing on the changelog sees the project's current
-  state first. Rule-type key decisions stay in CLAUDE.md (developer conventions); a
-  sanitized public navigation view lives here.
+### 文档
+- **追平：让文档重新对齐代码，另加三份新指南。** 一次七视角排查（前端 / 后端 API / 数据链路 / 录制基座 / 外壳与测试 / 演进史 / 设计取舍）发现 8 处文档与代码不符的腐化。修复内容：
+  - `docs/API契约.md`——补齐缺失的 `/api/health/config` 与 `/api/diagnose/errors` 节；将 `/api/translate` 和 `/api/explain` 改写为 SSE 协议（原文档描述为非流式）；说明 `usage` 字段名的双轨制（raw JSONL 使用 Anthropic 全名，列表/DAG API 出参使用 `classifier.usage_norm` 归一后的短名）；补充 `lane_id` 命名规则；删除 start 响应中恒为 null 的 `orphan_recovered` 死字段以及已删除的 `redact_headers` 配置键；补全 `/api/proxy/status` 的 `write_errors` 与 `external_change` 字段。
+  - `docs/AI_USAGE.md`——新增维护者备注，说明 `usage` 字段双轨制，并添加兄弟文档链接。
+  - 三份 README（en/zh/ja）——新增"当前版本"行与文档导航块。
+  - `CLAUDE.md`——修正"死配置"教训的描述：三个配置（`retention_days`/`auto_start_proxy`/`redact_headers`）已于 260713 全部修复（前两个接线，第三个连同 UI 开关一并删除），保留作为历史教训对照。
+- **新增三份文档**：[docs/界面导览.md](docs/界面导览.md)（4 个视图的人类审计视角 + 13 条按优先级排序的 UX 优化机会）、[docs/架构总览.md](docs/架构总览.md)（5 层架构 + 数据流 + 演进主线 + 设计哲学 + 8 条安全不变量）、[docs/文档维护策略.md](docs/文档维护策略.md)（元方法论：5 条防腐化策略 + 12 条当前腐化清单）。在每份核心文档的关键章节末尾添加"自检句"（"如果你改了 X，也要同步改 Y/Z"），使维护策略可执行。
+- **CLAUDE.md 结构整理。** 本地 AI 接手文档堆砌感明显——"当前状态"单个 bullet 内塞了约 1700 字按版本堆叙事，反复出现的 bug 类型教训与子代理判别规则都混在速览里，未归入应属的"开发约定"。按工作区三段式骨架（速览 / 背景与目标 / 开发约定）重组：速览精简为 4 个 bullet；4 类反复出现的 bug 抽成表格；子代理判别规则独立成节；架构速记改用 ASCII 树状图；"评估"段补上 macOS 260714 真机全绿。不删除任何事实，仅调整位置并精简表达。详见 issues/closed/260726_CLAUDE_md_结构整理.md。
+- **中文更新日志改用较正式的书面表达。** `CHANGELOG.zh.md` 此前沿用了英文原文的对话式、第一人称语气（如「糟糕的一天」、破折号插话和口语动词），以及几处翻译腔（将 surface 译为「抬出」、the complaint 译为「抱怨」、in a way that 译为「以……的方式」）。全文调整为规范书面中文，保留所有事实、数字、代码标识、路径、链接和文档结构。英文 `CHANGELOG.md` 未改动。详见 issues/closed/260726_CHANGELOG_zh_风格改正式文档腔.md。
 
-### Added
-- **Failure groups — captured errors turned into something an agent can diagnose from.** A bad day
-  fills the timeline with red cards and nothing more: 2719 failed requests in one measured day, all of
-  them shown, none of them explained. Worse, the ones that matter get missed — the effort/400 finding
-  in this release sat in the timeline for days and was only noticed while screenshotting something
-  else. But a failed request is not noise: **the upstream already diagnosed it once**, naming the
-  offending field and what to use instead. `GET /api/diagnose/errors` (and `cc-wire-analyzer errors`)
-  groups a day's failures by error message — request ids and numbers normalized, so one root cause is
-  one group — and puts the request side next to the complaint:
+- **更新日志顶部新增「项目速览」段。** AI 接手快照（定位 / 当前状态 / 下一步）原先在本地 CLAUDE.md，现移至本文件顶部，让任何打开更新日志的人先看到项目当前状态。属规则/不变量的关键判断留在 CLAUDE.md（开发约定）；此处仅保留脱敏的公开导航视图。
+
+### 新增
+- **失败聚合：将录到的错误转化为 agent 可据以诊断的依据。** 重度录制日的时序图会被红卡填满，此后再无任何分析或处置：实测某日 2719 条失败请求，全部绘制出来，但一条都未被解释。更严重的是，重要的失败反而会被遗漏——本次发版涉及的 effort/400 发现在时序图中已存在数日，是在为其他事项截图时才偶然被发现。但失败请求并非噪声：**上游在返回时已经完成过一次诊断**，明确指出了哪个字段不正确、应改用什么。`GET /api/diagnose/errors`（以及 `cc-wire-analyzer errors`）按错误消息对当日失败进行归并——请求 id 与数字会被归一化，因此同一根因归为一组——并将**请求侧的字段与错误消息并列展示**：
 
   ```json
   {"count": 2, "status": 400, "message": "output_config.effort 'max' is not supported when thinking is disabled …",
@@ -1205,414 +513,143 @@
    "req_fields": {"model": "claude-opus-5", "effort": "max", "thinking": "disabled", "tools_n": 0}}
   ```
 
-  `req_fields` carries the diagnosis: a **single value** means every request in the group had it, a
-  **list** means the group spans several values. `effort: "max"` + `thinking: "disabled"` as single
-  values identify the cause; `model: ["glm-5.2", "glm-5v-turbo"]` says the model is not what these
-  failures share. `kinds` says which request types are hit — a failure confined to `title` breaks
-  session naming and nothing else.
+  `req_fields` 即诊断依据：**单值**表示组内每条请求均为该值，**列表**表示该组跨越多个值。`effort: "max"` 与 `thinking: "disabled"` 均为单值，故病因在于 effort 设置；而 `model: ["glm-5.2", "glm-5v-turbo"]` 则说明模型并非这些失败的共同点。`kinds` 指出哪些请求类型受影响——仅限于 `title` 的失败只影响会话命名功能，其余一切正常。
 
-  Measured on the 2993-record day: **2719 failures → 7 groups in 0.09 s**, and the groups were
-  immediately informative — 2650 upstream 504 timeouts, plus 19 `401 令牌已过期或验证不正确` whose
-  `model` was `claude-fable-5`/`claude-sonnet-5`, i.e. official model names being sent to a
-  third-party endpoint. Output is bounded (`limit`, default 20, `truncated` flag) because a single
-  capture can exceed 5 MB and 2719 raw errors would bury an agent's context.
+  在 2993 条那一天实测：**2719 条失败 → 7 组，耗时 0.09 秒**，且分组即刻具备信息量——其中 2650 条为上游 504 超时，另有 19 条 `401 令牌已过期或验证不正确`，其 `model` 为 `claude-fable-5`/`claude-sonnet-5`，即官方模型名被发送到了第三方端点。输出有界（`limit` 默认 20，带 `truncated` 标志）：单条录制可超过 5MB，2719 条原始错误会直接占满 agent 的上下文。
 
-  This module only shapes data — **no LLM call, no analysis**. The reasoning belongs to the agent
-  reading it, which is the same division of labour as the rest of the AI-facing surface.
+  本模块只整理数据，**不调用 LLM、不进行分析**。推理工作留给读取它的 agent——这与本项目面向 AI 的其他接口是同一种分工。
 
-- **Config check — a read-only doctor for "CC suddenly can't connect".** Switching back and forth
-  between an official subscription and a third-party endpoint leaves configurations half-finished,
-  and each half-finished state fails in a way that is hard to attribute: BASE_URL pointing at a
-  third-party endpoint with no token (CC sends its subscription OAuth bearer there and is rejected),
-  BASE_URL left pointing at a local port nothing listens on any more, expired subscription OAuth,
-  effort settings the upstream rejects. None of these are bugs in this tool — but this tool is the
-  only thing positioned to see them, since it reads `settings.json`, knows its own patch state, and
-  watches the upstream's actual responses. Rather than keep patching the edge cases that
-  half-switching produces, it now points the contradiction out before you start the proxy:
+- **配置体检：针对「CC 突然连不上」的只读诊断。** 在「官方订阅」与「第三方端点」之间反复切换，容易留下半成品的配置，而每一种半成品配置都会以难以归因的方式失败：BASE_URL 指向第三方却未配置 token（CC 会将订阅的 OAuth 凭据发送过去，必然被拒）、BASE_URL 仍指向早已无人监听的本地端口、订阅 OAuth 过期、effort 设置被上游拒绝。这些都不是本工具的 bug，但**只有本工具所处的位置能够观察到它们**：它同时读取 `settings.json`、知晓自身是否处于 patch 状态，还能看到上游的真实响应。与其逐一修补半成品配置引发的边界情形，不如在启动代理之前就将矛盾指出：
+  - `GET /api/health/config` → `{ok, intent, patched, issues[]}`；CLI 的 `cc-wire-analyzer doctor` 向 agent 返回同一份数据。
+  - 界面：`error` 级红色横幅、`warning` 级黄色横幅，并附一个**配置体检**抽屉，逐条列出具体字段、当前值与修改建议。
+  - `POST /api/proxy/start` 会先执行体检，遇到 error 级问题时返回 **409 `config_unhealthy`**，避免在一个已经错误的配置之上再叠加一层代理（这正是此类状态难以排查的原因——`snapshot` 会将死端口记录为上游）。`?force=1` 可越过该拦截，横幅上也提供该按钮：规则可能误判，而用户比规则更了解自己的环境。
 
-  - `GET /api/health/config` → `{ok, intent, patched, issues[]}`; `cc-wire-analyzer doctor` in the
-    CLI returns the same payload for agents.
-  - UI: a red banner for `error`, a yellow one for `warning`, and a **Config check** drawer listing
-    every finding with the exact field, its current value, and what to change.
-  - `POST /api/proxy/start` runs the check first and refuses with **409 `config_unhealthy`** on an
-    `error`-level finding, so a broken config does not get a proxy layered on top of it (which is
-    what makes these states so confusing to debug — `snapshot` would record the dead port as the
-    upstream). `?force=1` overrides it, and the banner offers exactly that: the rules can be wrong,
-    and the user knows their environment better than the rules do.
+  三条约束：**绝不写入** `settings.json` 或凭据文件，也不提供自动修复（修改配置是用户的决定，而"只撤销我们仍能证明是自己做的那一笔改动"是本项目的既有不变量）；**宁可漏报不可误报**（误报的代价大于漏报——两次误报之后，便再无人关注横幅）；**绝不把用户锁死**。凡规则无法区分的情形，一律不予报告：loopback BASE_URL 若该端口**有人**在监听，可能是另一个实例或 cc-switch，故不报告；自身 patch 期间则穿透读取 marker 中的真实上游，不将自身地址当作残留；macOS 上凭据存储于 Keychain、文件确实不存在，OAuth 类规则静默跳过，而非报告"找不到凭据"。
 
-  Three constraints it is built under: **it never writes** to `settings.json` or credentials and
-  offers no auto-fix (fixing configuration is the user's call, and "only ever undo the one change we
-  can still prove we made" is a standing invariant of this project); it **prefers missing a problem
-  to inventing one** (a false alarm is worse than a miss — after the second one, nobody reads the
-  banner again); and it **never locks the user out**. Where a rule cannot tell two situations apart,
-  it stays quiet: a loopback BASE_URL whose port *is* being listened on could be another instance or
-  cc-switch, so it says nothing; during our own patch it reads the real upstream out of the marker
-  instead of reporting its own address as a leftover; on macOS, where credentials live in the
-  Keychain and the file genuinely does not exist, the OAuth rules skip silently instead of reporting
-  "credentials missing".
-
-  One of the eight rules came out of this release's own capture data rather than from design.
-  Real recordings showed every session-title request failing:
+  八条规则中有一条源自本次发版自己的录制数据，而非设计。真实录制显示，每一次会话标题请求都在失败：
 
   ```
   400 invalid_request_error: output_config.effort 'max' is not supported when thinking is
       disabled on this model. Use effort 'high' or below, or enable thinking.
   ```
 
-  The maintainer's own config had top-level `effortLevel: low` and env
-  `CLAUDE_CODE_EFFORT_LEVEL: max` — the env value wins, so session titles had been quietly broken
-  with no sign of it in the CC interface. That is now two rules (`effort_level_conflict` for the
-  contradiction, `effort_max_rejected_upstream` for the consequence), the second one gated on the
-  upstream actually being the official endpoint, since third-party endpoints do not reject it.
+  维护者本机的配置正是顶层 `effortLevel: low` 加 env `CLAUDE_CODE_EFFORT_LEVEL: max`——env 优先，于是会话标题功能一直静默失效，而 CC 界面上看不出任何迹象。这现已拆分为两条规则（`effort_level_conflict` 报告矛盾本身，`effort_max_rejected_upstream` 报告后果），后者以"上游确实是官方端点"为前提，因为第三方端点不会拒绝它。
 
-### Fixed
-- **The timeline showed subagents as main threads, and (in SDK mode) demoted real main
-  threads to subagents.** Reported from real use twelve days earlier, but unfixable until
-  now: no capture on hand contained a single `Task`/`Agent` spawn (194 records across three
-  days — zero spawns), so there was nothing to derive a rule from, and changing the
-  classifier without data would have been guessing. A dedicated capture settled it —
-  `claude -p` spawning `Explore` / `general-purpose` / `Plan` serially, 15 records, ground
-  truth written down by hand — and it showed that **CC states subagent identity on the wire
-  itself**, in the billing header of system block[0]:
+### 修复
+- **时序视图把子代理显示成主线，而在 SDK 模式下又把真正的主线降级成子代理。** 该问题来自 12 天前的真实使用反馈，此前一直无法修复：手头没有任何一次录制包含 `Task`/`Agent` 派生（三天共 194 条，派生数为 0），规则无从制定；脱离数据修改分类器等同于盲目猜测。本轮通过专门采集才得以定案——`claude -p` 串行派生 `Explore` / `general-purpose` / `Plan`，共 15 条录制，ground truth 由人工记录——并由此发现 **CC 自身已在 wire 上标注了子代理身份**，位置在 system block[0] 的计费头：
 
   ```
   main:     x-anthropic-billing-header: cc_version=2.1.220.8f8; cc_entrypoint=sdk-cli;
   subagent: x-anthropic-billing-header: cc_version=2.1.220.a83; cc_entrypoint=sdk-cli; cc_is_subagent=true;
   ```
 
-  Present on 8/8 subagent requests, absent on 7/7 non-subagent ones. No heuristic needed —
-  and the same data refuted every previously assumed signal:
+  8/8 的子代理请求携带它，7/7 的非子代理请求不携带。无需任何启发式判断——而同一批数据也推翻了此前所有的假设：
 
-  | Assumption | Measured |
+  | 原假设 | 实测 |
   |---|---|
-  | Subagents start their own `X-Claude-Code-Session-Id` → usable as a discriminator | They **reuse the parent's** (13 requests, one id) → session id is a *lane* key only |
-  | `cc_entrypoint` changes for subagents | 15/15 `sdk-cli` — subagents **inherit** it |
-  | CC withholds the Agent tool from subagents (no nesting) → "no Agent tool ≈ subagent" | `general-purpose` subagents **do** carry it (75 tools) |
-  | `system` block[1] wording distinguishes them | 15/15 identical (`"You are a Claude agent…"`) |
+  | 子代理另起 `X-Claude-Code-Session-Id`，可作判别信号 | **复用父会话 id**（13 条同一个）→ session id 只能用作泳道键 |
+  | `cc_entrypoint` 在子代理里变值 | 15/15 全是 `sdk-cli`，子代理**继承** |
+  | CC 不给子代理派生工具（禁套娃）→「无 Agent 工具 ≈ 子代理」 | `general-purpose` 子代理**携带** Agent 工具（75 个） |
+  | `system` block[1] 措辞可区分 | 15/15 完全相同（`"You are a Claude agent…"`） |
 
-  Tool count is no signal either: one main thread went 40 → 77 tools within a session
-  (deferred tool loading), overlapping the subagents' 62/75/71.
+  工具数同样不是信号：同一条主线在一个会话内从 40 增长到 77（deferred tool 按需加载），与子代理的 62/75/71 完全重叠。
 
-  Four fixes, all evidence-driven:
+  四处修复，每一处均有实测依据：
+  1. **`cc_is_subagent` 成为权威判据**，在任何主线指纹之前判定（子代理携带主线措辞，故按措辞排序必然失败）。
+  2. **主线指纹表新增 `"you are an interactive agent"`**，未知形状的 fallback 从 `subagent` 反转为 `main`。原有的 `MAIN_SYSTEM_FP = "you are claude code"` 只在交互模式命中；SDK 模式下两处都不包含它，于是每条 `claude -p` 主线请求都落入 `tools_n > 0 → subagent` 而被降级——5/5 全错，正是旧准确率 10/15 的全部错项。
+  3. **`build_dag` 不再跳过已判定为 main 的记录。** 此前那一行短路将全场最强的信号锁在门外：子代理一旦被误判为 main 就再也无法改判（"终身 main"），而每个被误判的子代理还会各自成为一条独立的"主线"泳道——正是用户看到的满屏主线。
+  4. **派生 prompt 对齐从前缀匹配改为「剥掉 `<system-reminder>` 后子串匹配」。** 子代理的首条 user 与主线一样被注入 reminder 前缀，派生 prompt 被推到其后，两头 `startswith` 实测命中 **0/8**。剥掉 reminder 后，派生 prompt 逐字位于开头：8/8。（注入体量还随 agent 类型变化——`Explore`/`Plan` 约 550 字，`general-purpose` 携带完整 CLAUDE.md 约 9,960 字——因此定长前缀方案根本无法成立。）
 
-  1. **`cc_is_subagent` is now the authoritative check**, evaluated before any main-thread
-     fingerprint (subagents carry main-thread wording, so wording-based ordering must lose).
-  2. **The main-thread fingerprint list gained `"you are an interactive agent"`** and the
-     unknown-shape fallback flipped from `subagent` to `main`. `MAIN_SYSTEM_FP =
-     "you are claude code"` only ever matched interactive mode; in SDK mode nothing matched,
-     so every `claude -p` main request fell through to `tools_n > 0 → subagent` and was
-     demoted — 5/5 of them, and the entire error set behind the old 10/15 accuracy.
-  3. **`build_dag` no longer skips records already classified `main`.** That one-line
-     short-circuit locked out the strongest signal available: once a subagent was misread as
-     main it could never be corrected ("main for life"), and each misread subagent then
-     became its own "main" lane — exactly the wall of main threads that was reported.
-  4. **Spawn-prompt alignment switched from prefix match to substring match after stripping
-     `<system-reminder>` blocks.** Subagent first-user messages are injected with the same
-     reminder preamble as main threads, pushing the spawn prompt past the start, so
-     `startswith` in either direction matched **0 of 8**. Stripping the reminders leaves the
-     spawn prompt verbatim at the front: 8/8. (Injection size also varies by agent type —
-     `Explore`/`Plan` get ~550 characters, `general-purpose` gets the full CLAUDE.md at
-     ~9,960 — so a fixed-length prefix could never have worked.)
+  对照人工 ground truth 的准确率：**10/15 → 15/15**。采集当天的时序图从"0 主线 / 13 条分不清的子代理"且**零**派生边，变为 5 主线 / 8 子代理、**3** 条派生边，与实际派生次数一一对应。
 
-  Accuracy against hand-recorded ground truth: **10/15 → 15/15**. On the capture day the
-  timeline goes from 0 main / 13 subagent lanes-worth of confusion and **zero** spawn edges
-  to 5 main / 8 subagent with **3** spawn edges, one per actual spawn.
+- **同一个 CC 会话被切成多条「主线」泳道。** 旧泳道键是"首条 user 文本 + user_id"的 md5，其 docstring 自承在 autocompact 之后会断裂。实际断裂范围更广：866MB 基准日中，该 hash 分出 **42 个分组键，而真实会话只有 13 个**；更早的一天则将 2 个会话切分为 7+2。现改为以 CC 会话 id 作为泳道键（`X-Claude-Code-Session-Id`，回落至 `metadata.user_id` 内的 session id，两者都缺失时才回落旧文本 hash）——实测覆盖率 15/15 与 2993/2993。子代理与父会话共用 session id，因此按派生实例分组（派生者 id + 派生 prompt），同一个子代理的所有请求归入同一条泳道；此前泳道键取自记录自身的 id，导致同一个子代理的每条请求各占一列。
 
-- **One CC session was split across many "main" lanes.** The lane key was an md5 of
-  "first user text + user_id", which its own docstring admitted broke on autocompact. It
-  breaks more widely than that: on the 866 MB reference day that hash yields **42 distinct
-  grouping keys for 13 real sessions**, and on an earlier day it split 2 sessions into 7+2.
-  The lane key is now the CC session id (`X-Claude-Code-Session-Id`, falling back to the
-  session id inside `metadata.user_id`, then to the old text hash for captures that have
-  neither) — measured coverage 15/15 and 2993/2993. Subagents, which share the parent's
-  session id, are keyed per spawn instance instead (spawner id + spawn prompt), so all
-  requests of one subagent land in one lane; previously the lane key was built from the
-  record's own id, giving each request of the same subagent its own column.
+- **自测抢固定端口，端口被占时静默地去测了别人的实例。** `proxy_selftest` 将自身的 app 绑定在 5051；当已有 `serve` daemon 或 dev server 占用该端口时，Flask 在后台线程中 bind 失败，而主流程仍照常打印"已启动"，并将请求发送给**那个别的实例**——它的上游是真实端点，于是 fake token 换回 401，报错指向"转发损坏"这一完全无关的方向。它还向对方的录制写入了两条假请求。现改为：自测从 5150 起挑选空闲端口（避开工具自身的 5051–5100 区间），mock 上游端口回写至 fake settings 而不再写死，"app 已启动"也改为 `/api/proxy/status` 探活断言，而非 `sleep` 之后无条件宣布。验证方式：**在 dev server 占用 5051 的情况下**运行整套自测，全绿，且该实例的录制条数一条未变。
 
-- **Self-tests grabbed a fixed port and, when it was taken, silently tested someone else's
-  instance.** `proxy_selftest` bound its app to 5051; with a `serve` daemon or dev server already
-  there, Flask's bind failed inside a background thread while the main flow printed "started" anyway
-  and sent its requests to **that other instance** — whose upstream is a real endpoint, so the fake
-  token came back 401 and the failure pointed at "forwarding is broken", which was not the problem at
-  all. It also wrote two fake requests into the other instance's captures. Self-tests now pick free
-  ports from 5150 (outside the tool's own 5051–5100 range), the mock upstream port is threaded through
-  the fake settings instead of hardcoded, and "the app is up" is a `/api/proxy/status` liveness
-  assertion rather than a `sleep` followed by an unconditional announcement. Verified by running the
-  suite green *while* a dev server held 5051, with that instance's capture count unchanged.
+- **索引 schema 变化后，陈旧索引被静默复用。** `_read_idx_entries` 仅校验 `off`/`len`，因此在为索引记录增加字段后，旧索引依然"结构有效"——新字段在旧录制上读作缺失，分类器悄然退化为回落分支，而任何地方都不会报错。现改为：索引记录携带 schema 版本号，版本不符即整体作废并重建（须先删除文件，否则 append 模式的回填会追加在陈旧行之后，导致每次读取都重新触发一次重建）。实测重建：426MB 日耗时 5.3 秒，此后缓存命中 0.001 秒。
 
-- **Stale capture indexes were silently reused after the index schema changed.**
-  `_read_idx_entries` validated only `off`/`len`, so adding fields to an index record left
-  old indexes structurally "valid" — the new fields would read as missing on older captures,
-  the classifier would quietly fall back, and nothing anywhere would error. Index records
-  now carry a schema version; a mismatch discards and rebuilds the whole index (the file is
-  deleted first, otherwise the append-mode backfill would re-append behind the stale rows
-  and re-trigger a rebuild on every read). Measured rebuild: 5.3 s for a 426 MB day, then
-  0.001 s from cache.
-
-### Changed
-- **The config check now declares its own scope.** `check()` returns `scope: "settings_file"` plus a
-  note, and the UI drawer says it outright: the check reads the settings file, while a **running** CC
-  session keeps the environment it was started with. Right after a user edits `settings.json` the
-  check can report zero issues while the session they are talking to still behaves the old way —
-  observed live, when removing an effort setting turned the check green while the running session
-  stayed on `max`. Reading another process's environment to close that gap was deliberately rejected:
-  cross-platform, permission-sensitive, and this tool is often not CC's child process at all (it
-  isn't when launched by double-click). A rule that cannot tell the difference does not get added —
-  it says what it covers instead. (`/api/diagnose/errors` has no such blind spot: it looks at requests
-  that actually happened.)
-- **Timeline lane labels show the real CC session id** (first 8 characters, full id on
-  hover) instead of the internal lane hash — it matches the `.jsonl` filenames under
-  `~/.claude/projects/`, so a lane can be traced to its session. Subagent lanes keep their
-  spawn-instance code, since they share the parent's session id and would otherwise display
-  a label identical to their parent's.
-- **`dev_seed.py` sample captures now have the shape of real traffic**: 3-block system
-  (billing header / identity / body), `X-Claude-Code-Session-Id` request header,
-  `metadata.user_id` as a JSON string, and for subagents a `cc_is_subagent=true` billing
-  header plus a `<system-reminder>`-wrapped first user message. The old samples used shapes
-  that do not occur in reality (no billing header, no session header, bare spawn prompt), so
-  none of the identity or session logic was exercised by UI self-tests — the same class of
-  blind spot that shipped four bugs in v0.2.0. A second subagent request was added to cover
-  "multiple requests of one spawn share one lane".
-- `tools/lane_probe.py` reports the authoritative flag and cross-checks it against the
-  classifier's verdict, flagging disagreement in either direction — it is now a regression
-  probe for new CC versions rather than a rule-discovery tool.
+### 变更
+- **配置体检现在会交代自己的边界。** `check()` 返回 `scope: "settings_file"` 并附一句说明，界面抽屉也直接写明：体检读取的是配置**文件**，而**正在运行**的 CC 会话保持其启动时的环境。用户刚修改完 `settings.json` 的那一刻，体检可能报告零问题，而其正在对话的会话行为依旧——这是当场观测到的：删除 effort 配置后体检立刻全绿，而运行中的会话仍是 `max`。**刻意否决了**"读取其他进程的环境变量以弥补该缺口"的方案：跨平台、权限敏感，且本工具常常根本不是 CC 的子进程（双击启动时即非）。无法区分的规则不予添加，改为如实说明自身覆盖范围。（`/api/diagnose/errors` 不存在此盲区：它查看的是**实际发生过的请求**。）
+- **时序图泳道标签显示真实 CC 会话 id**（前 8 位，hover 显示完整 id），不再显示内部泳道 hash。该 id 与 `~/.claude/projects/` 下的 `.jsonl` 会话文件名一致，泳道可直接对应到具体会话。子代理泳道仍显示派生实例码：因其与父会话共用 session id，若也显示 session，便会与父主线标签完全相同。
+- **`dev_seed.py` 的样例录制改为真实流量的形状**：3 块 system（计费头 / 身份声明 / 正文）、`X-Claude-Code-Session-Id` 请求头、`metadata.user_id` 为 JSON 字符串，子代理则携带 `cc_is_subagent=true` 计费头 + 被 `<system-reminder>` 包裹的首条 user。旧样例使用的是现实中不存在的形状（无计费头、无 session 头、裸派生 prompt），因此身份与会话逻辑在 UI 自测中一条都测不到——与 v0.2.0 放过四个 bug 的盲区同属一类。此外新增第二条子代理请求，覆盖"同一次派生的多条请求归入同一条泳道"。
+- `tools/lane_probe.py` 输出权威位，并与分类器判断进行双向交叉核对，不一致时标记警告——其定位从"制定规则的工具"转为"更换 CC 版本时的回归探针"。
 
 ## v0.3.2 - 2026-07-19
 
-### Fixed
-- **Timeline (DAG) view silently truncated at 1000 records, and the whole UI got sluggish
-  on busy capture days.** A heavy day of recording easily exceeds 1000 requests (measured:
-  2993 records / 826 MB in a single day, ~276 KB average per record), and the pipeline had
-  four compounding bottlenecks:
+### 修复
+- **时序（DAG）视图在 1000 条处静默截断，大流量日下整个界面卡顿。** 重度录制日很容易超过 1000 条请求（实测：单日 2993 条 / 826MB，单条均值约 276KB），而链路上存在四个叠加的瓶颈：
+  1. `list_full()` 将 DAG 输入写死在 1000 条——实测当天泳道图仅显示 1000 节点 / 5 泳道，而真实情况为 2993 节点 / 13 泳道，当日后 2/3 的内容根本未进入图。
+  2. `list_captures()` 每次列表请求都 `readlines()` 整个主文件，并对最新的 200 行（恰是最大的行——上下文随时间增长）进行 JSON 解析：826MB 文件实测峰值内存 3.3GB、读盘 2.6s。
+  3. `/api/dag` 每次调用都重读并重新解析整个录制文件，而前端在每条 LIVE 捕获事件后（800ms 防抖）都会重新调用——流量越大调用越频繁，单次也越来越慢。
+  4. `get_capture()` 线性扫描并逐行 JSON 解析——打开一条详情最坏需解析整个 826MB 文件。
 
-  1. `list_full()` hard-capped the DAG input at 1000 records — on the measured day the
-     timeline showed 1000 nodes / 5 lanes instead of the real 2993 nodes / 13 lanes;
-     the back two-thirds of the day never made it into the graph.
-  2. `list_captures()` `readlines()`-ed the entire main file and JSON-parsed the newest
-     200 lines (which are the largest ones — context grows over the day) on every list
-     request: measured 3.3 GB peak memory and 2.6 s of disk reading for one 826 MB day.
-  3. `/api/dag` re-read and re-parsed the whole capture file on every call, and the
-     frontend re-calls it (800 ms debounce) on every live capture event — more traffic
-     meant more calls, each slower than the last.
-  4. `get_capture()` linear-scanned and JSON-parsed line by line — worst case parsing the
-     entire 826 MB file to open one detail view.
+  根治方案：**写时轻量索引**。`append()` 时完整 record 本就在内存中，顺手将列表/泳道所需的全部字段连同主文件字节偏移写成 1~2KB 的索引记录（`{date}.idx.jsonl`）。列表和时序图只读索引（2993 条约 5MB，约 50ms），1000 条上限随之消失；详情按偏移直接 seek（实测 826MB 文件的最后一条仅 22ms）。索引记录自带偏移，索引缺失或落后（旧录制、崩溃断写）会从主文件增量回填自愈。索引写失败绝不阻塞转发（与主写同一不变量）——而是计数、记日志、经 `/api/proxy/status` 的 `write_errors.idx_count` 上报至 UI，并由回填兜底。前端：LIVE 更新已有的列表行改为单行 DOM 替换，不再每条 SSE 事件整表重建。
 
-  Root fix: **write-time lightweight index**. `append()` already has the full record in
-  memory, so it now also writes a 1–2 KB index record (`{date}.idx.jsonl`) carrying every
-  field the list/DAG need plus the byte offset of the full record in the main file.
-  Lists and the timeline read only the index (2993 records ≈ 5 MB, ~50 ms), the 1000-record
-  cap is gone, and detail views seek directly to the record (measured 22 ms for the last
-  record of an 826 MB day). Index records hold their own offsets, so a missing/stale index
-  (old captures, crashed writes) self-heals by incremental backfill from the main file.
-  Index write failures never block forwarding (same invariant as the main write) — they are
-  counted, logged, surfaced via `/api/proxy/status` (`write_errors.idx_count`), and healed
-  by backfill. Frontend: live updates to an existing list row now replace that single row's
-  DOM instead of rebuilding the whole list per SSE event.
+  826MB / 2993 条实测：DAG 1000→2993 节点（完整），一次性 5s 回填后构建耗时 147ms；列表 2.6s / 3.3GB → 1ms / 0.1MB；详情打开由数秒降至 22ms。
 
-  Measured on the 826 MB / 2993-record day: DAG 1000→2993 nodes (complete), build 147 ms
-  after a one-time 5 s backfill; capture list 2.6 s / 3.3 GB → 1 ms / 0.1 MB; detail open
-  seconds → 22 ms.
+- **大流量日 LIVE 录制时时序视图冻结（前端），且 3000 节点的图无法阅读。** 即使后端索引已达毫秒级，每条 LIVE 捕获事件仍会触发前端全量重建——实测单次产出 1.7MB innerHTML（2993 个节点 div + 3725 条 SVG path），流量流动时约每秒一次约 1.1s 的主线程繁忙。布局按时间递增、新节点只可能追加在底部，因此 LIVE 更新改为**仅增量 append 新节点/新边**（实测 2ms，布局与全量重建逐节点比对完全一致）；全量重渲只在进入视图/切换日期/切换过滤、lane 数变化或节点档位改判时发生。工具栏新增两个过滤开关以提升大流量日的可读性：**隐藏工具循环步**（收起工具循环的中间步）与**隐藏辅助调用**（收起标题/安全/计数调用——实测占当日节点的 1/4），2993 节点的当日降至 2050 个可见节点 / 12 泳道。节点 CSS `transition: all` 收窄为具体属性。文案的中、英、日三语齐全。
 
-- **Timeline view froze during live recording on busy days (frontend), and 3000-node graphs
-  were unreadable.** Even with the fast index backend, every live capture event triggered a
-  full frontend rebuild of the graph — measured 1.7 MB of innerHTML (2993 node divs + 3725
-  SVG paths), ~1.1 s of main-thread work every ~1 s while traffic flowed. The layout is
-  time-ordered and new nodes only ever append at the bottom, so live updates now **append
-  only the new nodes/edges** (measured 2 ms, layout verified identical to a full rebuild
-  node-by-node); a full re-render happens only on view/date/filter switches, lane-count
-  changes, or turn-tier reclassification. Two new toolbar filters keep big days readable:
-  **Hide tool-loop steps** (collapses tool-loop middle steps) and **Hide auxiliary calls**
-  (collapses title/security/count calls — measured 1/4 of all nodes on the reference day),
-  taking the 2993-node day down to 2050 visible nodes / 12 lanes. Node CSS `transition: all`
-  narrowed to specific properties. All labels in zh/en/ja.
-
-### Added
-- **Collapse runs of consecutive errors into one red "×N" card.** A dead-upstream day floods
-  the graph with retry errors (measured 2029 error nodes in one day — "errors never get
-  visually downgraded" is a deliberate design rule, but 2029 full-height cards made the graph
-  168k px tall and unreadable). Consecutive errors in the same lane (≥2) now fold into a
-  single striking red card with count, time span, and first summary — visible nodes on the
-  reference day drop 2993 → 969. Click to expand into individual error cards (first card
-  gets a collapse badge); live-appended errors extend the count in place with zero re-layout.
-  Sequence/trigger edges resolve folded members to the run card's position.
-- **Lane picker in the timeline toolbar.** Fit-width zoom on a 13-lane day is ~29% — text
-  unreadable. The new "Lanes" dropdown lists every lane (color dot, name, count) and toggles
-  visibility; hidden lanes free their column so remaining lanes fit at a larger zoom (one
-  main lane + agent + aux → 100%). Selection resets on date change (lane ids differ per day).
+### 新增
+- **连续错误折叠成一张「×N」红卡。** 上游失效的一天会用重试错误灌满整张图（实测单日 2029 个错误节点——"错误永不降档"是刻意的设计规则，但 2029 张全高卡片将图撑至 16.8 万像素高，无法阅读）。同泳道的连续错误（≥2）现折叠为一张醒目的红卡，带数量、首末时间与首条摘要——参考日当日可见节点从 2993 降至 969。点击可展开为逐张错误卡（首张带"折叠"徽章，可收回）；LIVE 新到的错误原地更新数量，零重排。会话顺序/派生触发边会将折叠成员解析到折叠卡的位置。
+- **时序工具栏泳道选择器。** 13 泳道的当日适应宽度后 zoom 仅约 29%，文字无法看清。新的"泳道"下拉列出所有泳道（色点、名称、条数），可逐个切换显隐；隐藏的泳道让出列宽，剩余泳道适应宽度后自然变大（仅留一条主线 + 子代理 + 辅助时 zoom 回到 100%）。切换日期时重置选择（泳道 id 每天不同）。
 
 ## v0.3.1 - 2026-07-18
 
-### Fixed
-- **Self-reference loop that made the proxy forward requests to itself (P0 regression introduced in v0.3.0).**
-  When `~/.claude/settings.json`'s `ANTHROPIC_BASE_URL` pointed at the proxy's own local address
-  (leftover patch state / cc-switch switched to a "recording endpoint" profile / hand edit),
-  `snapshot_original()` accepted that self-referential URL as the "real upstream". `forward()` then
-  routed CC's requests to "the upstream" = itself → infinite recursion → every request
-  504 GATEWAY TIMEOUT. The marker persisted `original == listen`, so stop/restart couldn't recover
-  (restore wrote back the polluted original; cross-restart orphan recovery prolonged the deadlock).
-  v0.2.0 was unaffected — the code path wasn't reachable without the watcher. Three-layer fix:
+### 修复
+- **snapshot 自指致代理把请求转发给自己（v0.3.0 的 P0 回归）。** 当 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL` 指向本代理自身的本地地址（残留 patch 态 / cc-switch 切换至"录制端点"配置 / 手动修改）时，`snapshot_original()` 会将该自指地址当作"真上游"记录。随后 `forward()` 将 CC 的请求转发给"上游"= 本代理自身 → 无限递归 → CC 的所有请求 504 GATEWAY TIMEOUT。而且 marker 会将 `original == listen` 的自指值持久化，导致 stop/重启都无法解套（restore 恢复到受污染的 original；跨重启的孤儿自愈反而为死循环续命）。v0.2.0 不受影响——没有 watcher，该代码路径当时不可达。三层修复：
+  1. **`snapshot_original()` 自指守卫。** BASE_URL 解析到本代理自身（loopback 主机 + 同端口）时抛出 `SettingsGuardError` 拒绝启动，并附带通俗提示。端口精确比对，合法的本地 OpenAI 兼容上游（如 `:8080` 的本地 vLLM）仍然放行。
+  2. **`check_orphan_backup()` 的 marker.original 守卫。** marker 记录的 `original` 若为本地回环地址（说明已被 v0.3.0 这个 bug 污染过），只清除 marker，绝不将自指值写回 settings.json（否则跨重启自愈反而为死循环续命）。
+  3. **`proxy.forward()` 深度防御。** upstream 若等于本代理 patch 进去的监听地址，则拒绝转发，返回 502 + 通俗提示（snapshot 守卫是第一道，这是最后一道）。
 
-  1. **`snapshot_original()` self-reference guard.** A BASE_URL that resolves to the proxy's own
-     listener (loopback host + same port) now raises `SettingsGuardError` with a plain-language
-     hint instead of starting. Port-precise comparison, so legitimate local OpenAI-compatible
-     upstreams (e.g. a local vLLM at `:8080`) are still accepted.
-  2. **`check_orphan_backup()` marker.original guard.** If the marker's recorded `original` is a
-     loopback address (meaning it was polluted by the v0.3.0 bug), clear the marker only — never
-     write the self-reference back to settings.json (otherwise cross-restart recovery perpetuates
-     the loop).
-  3. **`proxy.forward()` deep defense.** If the upstream equals our own patched listen address,
-     refuse to forward and return 502 with a plain-language error (the snapshot guard is the first
-     line; this is the last).
-
-  Root cause is "guard function existed but caller was missing": `_is_local_proxy_url()` was
-  already used by `check_orphan_backup` and `restore`, but not by `snapshot_original` or
-  `recover_from_orphan` — the two entry points that write an externally-read URL into
-  `_original_base_url`. Hardened into a safety invariant: *any* entry point that reads a URL from
-  outside (file/marker) intending to record it as `original` or write it back to settings.json
-  must pass a self-reference check.
+  根因是"守卫函数存在但调用点缺失"——`_is_local_proxy_url()` 早已在 `check_orphan_backup` 和 `restore` 中使用，唯独 `snapshot_original` 与 `recover_from_orphan` 这两个"将外部读取的 URL 写入 `_original_base_url`"的入口漏掉了。补强为安全不变量：凡是从外部（文件/marker）读取 URL 并准备记为 original 或写回 settings.json 的入口，都必须通过自指检查。
 
 ## v0.3.0 - 2026-07-17
 
-### Added
-- **Three-tier visual hierarchy in the timeline (DAG) view.** Every request used to be an
-  equally sized card, so one user message followed by a long tool loop filled the main lane
-  with same-weight nodes and drowned the story. Nodes are now tiered by two purely structural
-  criteria (no semantic guessing, validated against three days of real captures first):
-  a request whose last user message carries real text (not just `tool_result` blocks) starts
-  a **user turn** → full card; tool-loop follow-ups → **slim rows** (compressed row height,
-  reduced opacity — long loops visually contract); a turn with zero tool calls (asking the
-  agent to recap, follow-up questions, clarifications) → **💬 chat-only turn** with a dashed
-  border. Error nodes are never demoted. Legend explains the tiers in all three languages.
-- **External-change watchdog for `settings.json`.** Switching endpoints with cc-switch (or editing
-  the file by hand) rewrites `ANTHROPIC_BASE_URL`, so CC silently bypasses the proxy while the UI
-  still says "running" — monitoring stops with no sign of it. A background thread now compares the
-  value every 2 s (a few-KB JSON read; deliberately no mtime baseline, which had a race window right
-  after patching, and no file-watcher dependency). On mismatch it flags the state as disconnected,
-  clears the marker, **never touches the file** (the new value is the user's intent), surfaces a
-  red banner with the new upstream, and offers one-click **Re-attach** — a plain start that
-  snapshots and captures the new upstream. `/api/proxy/status` exposes `external_change` so an
-  agent driving `serve` mode sees it too.
-- **Exit logging that can answer "how did the last session end?".** `run.log` used to record
-  shutdowns only as a side effect (a `restored BASE_URL` line, and only if the proxy was running) —
-  a session on 07-15 left literally one line and no trace of how it ended. Now: a startup banner
-  (`=== started mode=gui|serve pid=… version=… port=… ===`), explicit exit lines on every path
-  that can write one (window close, GUI shutdown, user stop via API, atexit, signals), and a
-  plain-language "previous process did not exit cleanly (killed / power loss / crash)" warning
-  when orphan recovery triggers. A banner with no matching exit line now reliably means a hard kill.
+### 新增
+- **时序（DAG）视图节点三档视觉分层。** 此前每条请求都是等大的卡片：用户一条消息后跟随着一长串工具循环，主线泳道被同等重量的节点填满，叙事被淹没。现按两个纯结构判据分档（不猜测语义，动手前已在三天真实录制上验证）：最后一条 user 消息含真实文本（而非仅有 `tool_result` 块）的请求是 **用户消息轮**的起点 → 完整卡片；工具循环回传 → **细条**（行高压缩 + 降低透明度，长循环段整体收紧）；整轮零工具调用的轮次（让 AI 回顾、追问、澄清）→ **💬 纯对话轮**，虚线边框。错误节点永不降档。图例以三语说明三档含义。
+- **settings.json 外部修改监视。** 使用 cc-switch 切换端点（或手动修改文件）会覆写 `ANTHROPIC_BASE_URL`——CC 将静默绕过代理直连上游，而 UI 仍显示"运行中"，监控断档且毫无征兆。现改为后台线程每 2 秒比对一次值（读取几 KB 的 JSON；刻意不使用 mtime 基线——patch 后存在竞态窗，也不引入文件事件库依赖）。发现不符即置为"已断开"状态、清除 marker、**绝不回写文件**（新值代表用户的新意图），界面以红色横幅显示新上游并提供一键**重新接管**——其本质即一次普通 start，snapshot 会自然收编新上游。`/api/proxy/status` 暴露 `external_change` 字段，serve 模式下驱动它的 AI 同样能感知。
+- **能回答「上次会话怎么结束的」的退出日志。** run.log 此前仅以副产品形式记录退出（一行 `restored BASE_URL`，且仅当代理在运行时）——07-15 的一次会话仅留下孤零零一行日志，如何结束无从知晓。现改为：启动横幅（`=== started mode=gui|serve pid=… version=… port=… ===`）、每条可落笔的退出路径的显式记录（关窗、GUI 收尾、API 手动停止、atexit、信号），以及孤儿自愈触发时的一句通俗提示"上次进程未正常退出（强杀/断电/崩溃）"。启动横幅后没有对应的退出行，即可判定为强杀。
 
-### Fixed
-- `run.log` was written in the OS locale encoding (GBK on Chinese Windows), so Chinese log lines
-  showed as mojibake in any UTF-8 tool. Logging is now explicitly UTF-8 (historical GBK segments
-  are left as-is).
-- The release publish job crashed on checkout at its first tag-triggered run: `fetch-tags: true`
-  conflicts with the ref the checkout action itself fetches for the triggering tag
-  ("Cannot fetch both … to refs/tags/…"). The annotated tag object (used as the release-notes
-  fallback) is now fetched explicitly after checkout instead.
+### 修复
+- `run.log` 此前按系统 locale 编码写入（中文 Windows 为 GBK），中文日志在任何 UTF-8 工具中均为乱码。现改为显式 UTF-8（历史 GBK 段不迁移）。
+- release 发布 job 首次被 tag 触发即在 Checkout 阶段崩溃：`fetch-tags: true` 与 checkout 动作自身为触发 tag 拉取的 ref 冲突（"Cannot fetch both … to refs/tags/…"）。改为 checkout 后显式拉取 annotated tag 对象（release notes 的 fallback 来源）。
 
-### Changed
-- **Release notes are now sourced from `CHANGELOG.md`.** The release workflow had used
-  `generate_release_notes`, which groups entries by pull request — meaningless for this
-  solo-commit project, so the v0.1.0 and v0.2.0 release pages showed only a bare
-  "Full Changelog" link while the detailed changelog went unread. The release job now
-  extracts the current tag's section from this file (with tag-message and placeholder
-  fallbacks), so release pages carry the full changelog automatically.
+### 变更
+- **release notes 现在取自 `CHANGELOG.md`。** 发布工作流此前使用的是 `generate_release_notes`，它按 pull request 分组列出条目——对这种单人直接提交（无 PR）的项目毫无意义，因此 v0.1.0 与 v0.2.0 的 release 页面只剩一行孤零零的 "Full Changelog" 链接，详细的 changelog 根本无人读到。现改为 release job 从本文件提取当前 tag 对应的段落（带 tag message 和占位兜底），release 页面会自动带上完整的 changelog。
 
-### Added
-- Chinese translation of this changelog at [`CHANGELOG.zh.md`](CHANGELOG.zh.md), kept in
-  sync with the English version. Release notes on GitHub stay English; the Chinese file is
-  a documentation mirror.
+### 新增
+- 本更新日志的中文版 `CHANGELOG.zh.md`，与英文版保持同步。
 
 ## v0.2.0 - 2026-07-14
 
-### Changed
-- **Merged into a single binary.** Was: GUI exe + CLI exe (51 MB, two files). Now: one noconsole GUI exe
-  with a `serve` subcommand. Double-click → GUI for a human; `cc-wire-analyzer.exe serve` → background HTTP
-  service + proxy, no window, for an agent. The agent talks to the same HTTP API the GUI already uses
-  (`/api/proxy/*`, `/api/captures`, `/api/dag`). This works because a Windows noconsole binary has no
-  stdout — so there was never a way for a CLI subcommand to print back to an agent anyway; HTTP is the
-  right channel. macOS is a single binary too (it never had the console/windowed split). See
-  [docs/AI_USAGE.md](docs/AI_USAGE.md). `cli.py` stays in the source tree as a developer convenience
-  (`uv run python src/cli.py`), but is no longer packaged or shipped.
+### 变更
+- **合并为单一二进制。** 此前：GUI exe + CLI exe（51 MB，两个文件）。现在：一个 noconsole GUI exe，附带 `serve` 子命令。双击 → 供人使用的 GUI；`cc-wire-analyzer.exe serve` → 后台 HTTP 服务 + 代理，不开窗，供 agent 使用。agent 调用的是 GUI 早已在使用的同一套 HTTP API（`/api/proxy/*`、`/api/captures`、`/api/dag`）。其可行性在于：Windows 的 noconsole 二进制没有 stdout——CLI 子命令本就无法将结果打印回给 agent；HTTP 才是正确的通道。macOS 同样为单一二进制（它从未有 console / 窗口态的区分）。参见 [docs/AI_USAGE.md](docs/AI_USAGE.md)。`cli.py` 作为开发者便利保留在源码树中（`uv run python src/cli.py`），但不再打包或随发行版分发。
 
-### Added
-- Copy support in the UI: a **Copy** button on every content block (copies the full text even when
-  collapsed), a **custom right-click menu**, and a **Ctrl/Cmd+C** handler. pywebview disables WebView2's
-  native context menu outside debug mode, and its WebKit backend builds no Edit menu at all — so on macOS
-  Cmd+C did nothing. Copying is now handled entirely in the frontend and behaves the same on both platforms.
-- **Response headers panel** in the detail view. The proxy had been recording `response.headers_safe` all
-  along and the UI simply never showed it — throwing away the most valuable thing at this layer:
-  `anthropic-ratelimit-*`, `request-id`, `x-should-retry`, the model the upstream actually served.
-- `tools/lane_probe.py` — dumps the candidate signals for telling main threads from subagents
-  (`X-Claude-Code-Session-Id`, `cc_entrypoint`, presence of the `Agent` tool, system-block structure,
-  spawn-prompt alignment) so the classifier can be calibrated against real traffic instead of guesses.
-- `CCWA_HOME` / `CCWA_CLAUDE_SETTINGS` environment overrides, and `src/cli_selftest.py`. The most
-  dangerous path in this project — rewriting the user's `~/.claude/settings.json` — previously could not
-  be tested end-to-end without experimenting on the user's real Claude Code config. Now it runs against a
-  temp directory.
+### 新增
+- 界面复制支持：每个内容块上的**复制**按钮（折叠时也能复制全文）、**自定义右键菜单**，以及 **Ctrl/Cmd+C** 处理。pywebview 在 debug 模式之外会禁用 WebView2 的原生右键菜单，而其 WebKit 后端不构建 Edit 菜单——因此 macOS 上 Cmd+C 原本无响应。现改为复制完全由前端处理，两个平台行为一致。
+- 详情视图中的**响应头面板**。代理一直在录制 `response.headers_safe`，界面却从未展示——等于丢弃了这一层最有价值的信息：`anthropic-ratelimit-*`、`request-id`、`x-should-retry`、上游实际服务的模型。
+- `tools/lane_probe.py`——将区分主线与子代理的候选信号列出（`X-Claude-Code-Session-Id`、`cc_entrypoint`、是否携带 `Agent` 工具、system 块结构、派生 prompt 对齐），使分类器能对照真实流量校准，而非凭猜测。
+- `CCWA_HOME` / `CCWA_CLAUDE_SETTINGS` 环境变量覆盖，以及 `src/cli_selftest.py`。本项目最危险的路径——改写用户的 `~/.claude/settings.json`——此前无法端到端测试，除非在用户真实的 Claude Code 配置上试验。现改为在临时目录中运行。
 
-### Fixed
-- **Exit did not restore `ANTHROPIC_BASE_URL`.** Restoration was hung off `webview.start()` returning, but
-  on macOS Cmd+Q / red-dot close go through `NSApplication.terminate:` → C `exit()`, which unwinds no
-  Python stack and runs no `atexit` hooks. `settings.json` was left pointing at a dead local port and
-  **Claude Code could no longer reach any upstream** — after the tool had already been closed. Now hooked
-  to the window's `closing` event, the only event pywebview dispatches synchronously, and the one both
-  macOS quit paths raise. Verified on macOS (pywebview 6.2.1): both red-dot and Cmd+Q restore `BASE_URL`
-  and clear the marker — the source-level assumption (`closing` = synchronous `Event(self, True)`, both
-  Cocoa quit paths route through `should_close()`) still holds unchanged in 6.2.1.
-- **Stale recovery marker could delete the user's config.** `recover_from_orphan()` acted on the marker
-  file without ever checking what `settings.json` currently contained. If the app was killed while patched
-  and the user then set their own `ANTHROPIC_BASE_URL` (e.g. via cc-switch), the next launch would
-  overwrite it — or, for a `had_key: false` marker, *delete the key outright*. Recovery now only proceeds
-  when the current value still equals the address we patched in. (`_is_local_proxy_url()` had been sitting
-  in the code unused since the marker refactor; the guard is back.)
-- **Retention was a dead setting.** The settings page promised "captures older than N days are cleaned up
-  automatically" and nothing in the codebase ever read `retention_days`. Recordings accumulated forever —
-  13 records already weigh 5.6 MB. Now enforced at startup, with the result reported back to the UI, and
-  available as `clear --older-than N`.
-- **Non-streaming responses lost their usage, content blocks and stop reason.** The non-SSE branch looked
-  for token counts only at the *top level* of the JSON (the shape `count_tokens` happens to return), while
-  a normal `/v1/messages` response nests them under `"usage"`; and `content_blocks` / `stop_reason` were
-  only ever parsed in the SSE branch. Claude Code's **security-classifier calls are non-streaming** — they
-  run in the background of every session, are invisible to the user, and cost real money (551 input +
-  28,224 cached, measured). Their cost was being thrown away by the one tool meant to reveal it.
-- **A failed capture write was silently swallowed.** On a full disk, a permissions problem or a locked
-  file, `append()` dropped the `OSError` and carried on — while the LIVE deque and SSE push, sitting
-  outside the `try`, kept firing. The UI went on ticking with new captures while nothing reached the disk.
-  Write failures are now counted, logged, surfaced in `/api/proxy/status` and shown as a red banner.
-  (Forwarding is still never blocked by a write failure — that part was right.)
-- The DAG nodes' token counts were always empty, and the CLI's token totals always 0: both read the short
-  `usage.input` keys while SSE aggregation produces Anthropic's full names (`input_tokens`,
-  `cache_read_input_tokens`). Key normalization now lives in exactly one place (`classifier.usage_norm`) —
-  the bug appeared twice precisely because that logic had been copied around.
-- The upstream error's actual cause was never displayed. The proxy records `{kind, detail}` on a
-  connect/timeout failure, but the UI only rendered `kind`/`status`/`body_snippet` — so a failed upstream
-  connection showed up as a bare `connect`, with the reason discarded. Ironic, for a debugging tool.
-- `auto_start_proxy` was a dead setting, like `retention_days`: the settings page offered the toggle,
-  stored it faithfully, and nothing ever read it. Now wired up.
-- The self-test's mock SSE used token key names that do not exist in reality (`input`, `output` instead of
-  `input_tokens`, `output_tokens`), which is why the key mismatch above stayed invisible. Fixed, and a
-  non-streaming upstream case was added — the whole non-SSE path had never been asserted on.
-- **Long-text translation failed silently.** `_llm_chat` sent no `max_tokens` (upstream's small default
-  truncated long output) and timed out at 120 s; on failure the UI only flashed a toast and left the
-  translation area blank, so the user saw an empty "重译" with no reason. Now sets `max_tokens`, raises the
-  timeout to 180 s with a dedicated `timeout` error code, and **persists the error in the result area**
-  (with `error_code` + the upstream `finish_reason` hint, e.g. length / content_filter) instead of
-  vanishing. Verified: a 106 K-character security prompt (truncated to 20 K) translates in ~38 s.
-- **API Key / Base URL with non-ASCII characters** produced an opaque `'latin-1' codec can't encode…`
-  traceback (HTTP headers are latin-1). Zero-width spaces and full-width characters sneak in easily when
-  copying from web pages. Now caught up front with a human-readable message naming the offending character.
-- Translation/explain output sometimes leaked the `<text>` / `<content>` delimiter tags the engine wraps
-  content in. They are now stripped from the result.
+### 修复
+- **退出时不恢复 `ANTHROPIC_BASE_URL`。** 恢复逻辑挂在 `webview.start()` 返回之上，但 macOS 的 Cmd+Q / 红点关窗走的是 `NSApplication.terminate:` → C 层 `exit()`，不展开任何 Python 调用栈，也不运行任何 `atexit` 钩子。`settings.json` 被留在指向一个已失效的本地端口的状态，**Claude Code 再也无法连接任何上游**——而且是在工具已经关闭之后。现改为挂到窗口的 `closing` 事件上——这是 pywebview 唯一同步派发的事件，也是 macOS 两条退出路径都会触发的那个。已在 macOS 上验证（pywebview 6.2.1）：红点关窗与 Cmd+Q 都会恢复 `BASE_URL` 并清除 marker——源码层面的假设（`closing` = 同步的 `Event(self, True)`，两条 Cocoa 退出路径都经 `should_close()`）在 6.2.1 依然成立。
+- **陈旧的恢复 marker 可能删掉用户的配置。** `recover_from_orphan()` 仅依据 marker 文件即采取行动，从不检查 `settings.json` 当前的实际内容。如果 app 在 patch 状态下被强制终止、用户随后又自行设置了 `ANTHROPIC_BASE_URL`（例如使用 cc-switch），下次启动就会覆盖它——或者，对于 `had_key: false` 的 marker，**直接将该键删除**。现改为恢复仅在当前值仍等于我们 patch 进去的地址时才进行。（`_is_local_proxy_url()` 自 marker 重构后一直是一段零调用的死代码；该守卫现已恢复。）
+- **保留天数是个死配置。** 设置页声称"超过 N 天的录制会自动清理"，但代码库中没有任何代码读取 `retention_days`。录制持续累积——13 条就已达到 5.6 MB。现改为在启动时强制执行，结果回传至界面，并提供 `clear --older-than N` 命令。
+- **非流式响应丢失了 usage、内容块和停止原因。** 非 SSE 分支只在 JSON 的*顶层*查找 token 计数（恰好是 `count_tokens` 返回的形状），而正常的 `/v1/messages` 响应将它们嵌在 `"usage"` 之下；`content_blocks` / `stop_reason` 又只在 SSE 分支中解析。Claude Code 的**安全分类器调用正是非流式的**——它们在每个会话后台运行、用户不可见、却消耗真实成本（实测 551 input + 28,224 cached）。其成本被这个"专门用于揭示成本"的工具丢弃了。
+- **失败的录制写入被静默吞掉。** 磁盘满、权限问题或文件被锁时，`append()` 吞掉 `OSError` 照常继续——而位于 `try` 之外的 LIVE deque 和 SSE 推送仍在照常触发。界面继续跳动新录制，磁盘上却什么都没落盘。现改为写入失败会被计数、记录、暴露至 `/api/proxy/status`，并以红色横幅展示。（转发仍然绝不被写入失败阻塞——这部分是对的。）
+- DAG 节点的 token 计数永远为空，CLI 的 token 总数永远为 0：两者都读取短的 `usage.input` 键，而 SSE 聚合产生的是 Anthropic 的全名（`input_tokens`、`cache_read_input_tokens`）。键名归一化现在只在一个地方（`classifier.usage_norm`）——这个 bug 之所以出现两次，正是因为那段逻辑被多处复制。
+- 上游错误的真实原因从不显示。代理在连接/超时失败时记录 `{kind, detail}`，但界面只渲染 `kind`/`status`/`body_snippet`——因此一次失败的上游连接只显示为一个孤零零的 `connect`，原因被丢弃。对调试工具而言，这颇为反讽。
+- `auto_start_proxy` 是个死配置，与 `retention_days` 一样：设置页提供开关、如实地存储它，却从无代码读取它。现已接线。
+- 自测的 mock SSE 使用了现实中不存在的 token 键名（`input`、`output`，而非 `input_tokens`、`output_tokens`），这正是上述键名错位一直未被发现的原因。已修复，并补充了一个非流式上游用例——整条非 SSE 路径此前从未被断言过。
+- **长文本翻译静默失败。** `_llm_chat` 不发送 `max_tokens`（上游较小的默认值会截断长输出），并在 120 秒超时；失败时界面仅弹出一次 toast、翻译区留白，用户看到一个空的"重译"，且没有任何原因说明。现改为设置了 `max_tokens`、将超时提升至 180 秒并附带专属 `timeout` 错误码，**将错误持久化至结果区**（带 `error_code` + 上游 `finish_reason` 提示，如 length / content_filter），而非无声消失。已验证：一段 106K 字符的安全 prompt（截至 20K）约 38 秒译完。
+- **带非 ASCII 字符的 API Key / Base URL** 会产生一段晦涩的 `'latin-1' codec can't encode…` traceback（HTTP 头为 latin-1）。从网页复制时，零宽空格与全角字符很容易混入。现改为在前端即予以拦截，给出一条可读、点名出问题字符的提示。
+- 翻译/解读的输出有时会泄漏引擎包裹内容所用的 `<text>` / `<content>` 定界符标签。现改为从结果中剥离。
 
-### Removed
-- **The standalone CLI binary** (`cc-wire-analyzer-cli.exe`) — folded into the GUI binary's `serve` mode
-  (see Changed). The "Header redaction" toggle below is also gone.
-- The **"Header redaction" toggle**. It never did anything (`_redact()` was always applied unconditionally),
-  and rather than wire it up we removed it: making it real would mean offering to write API keys in
-  plaintext into the capture files — the same files an agent now reads. Redaction is
-  unconditional and no longer pretends to be optional.
-- `config.read_port()` — dead since the shell stopped being a separate process.
+### 移除
+- **独立的 CLI 二进制**（`cc-wire-analyzer-cli.exe`）——并入 GUI 二进制的 `serve` 模式（见"变更"）。下方的"头部脱敏"开关也一并移除。
+- **"头部脱敏"开关。** 它从未生效（`_redact()` 一直被无条件应用），与其将其接线，不如直接移除：让它真正生效，意味着提供将 API key 明文写入录制文件的选项——而那些文件现在正被 agent 读取。脱敏是无条件的，不再假称为可选。
+- `config.read_port()`——自 shell 不再是独立进程后即为死代码。
 
 ## v0.1.0
 
-Initial open-source release.
+首个开源发行版。

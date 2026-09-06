@@ -1,37 +1,37 @@
-# Changelog
+# 变更记录
 
-> Full notes for released versions live in [`CHANGELOG-history.md`](CHANGELOG-history.md). One line per change here; the reasoning, evidence and rejected alternatives live in the git commits and in the local `issues/` records.
+这里记录项目速览、未发布改动和当前版本。更早版本的完整说明见[变更历史](CHANGELOG-history.md)；详细取证、方案、否决理由和验证过程留在对应 commit 与本地 issue 中。
 
-## Project Overview
+## 项目速览
 
-> Position / current status / next steps — the AI-onboarding snapshot. Navigation only; key decisions that are rules or invariants live in the local CLAUDE.md (developer conventions). Issue paths in entries below refer to local maintenance records (gitignored, not in this repo).
+本节只作接手导航，长期规则在 CLAUDE.md 与开发约定中；文中 issue 指本地迭代记录。
 
-- **Position**: A local MITM-proxy desktop app that transparently records the full HTTP traffic between Claude Code and its upstream endpoint, surfacing the wire-level dimension that jsonl logs and OTLP telemetry cannot see. Dual mode: a GUI for humans, and a `serve` subcommand exposing a headless HTTP API so an AI agent can drive its own inspection — the agent-facing manual ships inside the binary (`--help`, and `GET /api/ai-guide` once running), so no repository is needed.
-- **Current status**: **v0.4.27 baseline; local restructuring (2026-09-06)** — product, development and usage sources are separated. Disclosure is frozen; no publishing or synchronization.
-- **Heads-up for macOS upgraders** (unchanged since v0.4.2): the bundle was renamed `CCWireAnalyzer.app` → `cc-wire-analyzer.app`; the old one in `/Applications` is not replaced, delete it yourself.
-- **Next steps**:
-  0. Use the local manual and issue workflow for real iterations; reconsider disclosure updates only after this structure proves useful.
-  1. Turn a recurring failure pattern into a check automatically — `/api/diagnose/trends` answers "new or recurring?", but writing the rule is still manual.
-  2. Decide whether turn origin should ever be corrected at runtime from Claude Code's local logs. It currently is not, and that restraint is the point — the app's data surface is the traffic it recorded plus one settings field.
-  3. Storage follow-ups, both measured and deliberately deferred: delta-encode the skeleton's pointer lists (est. 477 MB → ~10 MB), and let retention compact before it deletes.
+- **定位**：本地 HTTP 代理桌面应用，透明记录 Claude Code 与上游的请求和响应，补充本地对话日志和 OTLP 指标无法提供的链路信息。人通过界面查看，Agent 通过本地 HTTP 接口分析；随软件提供的 `--help` 和 `GET /api/ai-guide` 无需源码仓库即可读取使用说明。
+- **当前状态**：已发布基线为 v0.4.27。本地文件体系已按产品、开发和使用分工，说明书可独立生成并包含三类文档的协作思考；公开材料冻结，暂不推送、发布或同步。
+- **下一步**：先在真实迭代中使用 README、HTML、issue 和规则文档，检验能否更容易理解项目与下发需求，再考虑更新公开内容。
+- **保留的产品问题**：把反复出现的故障转为检查规则，目前 `/api/diagnose/trends` 只能辅助判断是否复发；是否利用 Claude Code 本地日志修正轮次来源，尚未采用；存储方面仍有骨架指针增量编码和“先压实再清理”的后续方案。指针列表从约 477 MB 降到约 10 MB 是历史估算，尚非本轮实测结果。
+- **macOS 升级提示**：自 v0.4.2 起，应用名由 `CCWireAnalyzer.app` 改为 `cc-wire-analyzer.app`，不会覆盖 `/Applications` 中的旧名称，旧应用需要自行移除。
 
-## Unreleased
+## 未发布
 
-- The local manual explains three documentation roles and their iteration loop, with a direct reading entry.
-- Local product sources now rebuild the manual independently; disclosure is frozen and README navigation serves local work.
-- Tests and tools have explicit homes; resource loading, verification and local packaging follow the new paths.
-- Development conventions and API contracts return to `docs/reference/*.md`; the manual is generated from them.
-- The manual now bundles five reference documents; doc links point at the online manual and stay readable on GitHub.
-- `doc_audit` gains a body-length gate: a named document reduced to a redirect page now fails.
-- The Chinese changelog catches up with v0.4.27.
+- README 改为人读项目介绍，再引导到 HTML。
+- 两份变更记录统一中文，清除固定宽度硬折行。
+- CLAUDE 列明目录职责、维护方式和证据去向。
+- 本地说明书加入三类文档协作思考及直达入口。
+- 产品源可独立生成说明书，公开材料冻结保留。
+- 测试与工具分类，资源读取和打包使用新路径。
+- 开发约定与 API 契约正文回归 Markdown。
+- 说明书聚合五篇参考正文；此前已统一公开阅读链接。
+- 文档审计拦截正文被掏空的具名参考文档。
+- 此前已补齐 v0.4.27 的中文披露记录。
 
 ## v0.4.27 - 2026-09-06
 
-- Default settings enable rolling compaction and prefill DeepSeek, with larger analysis limits; API keys remain empty.
-- The website explains prompts, run timelines, snapshots, translation and AI explanations, with online documentation and expandable screenshots.
-- Documentation maintenance rules join the product manual; research findings and remaining design questions replace duplicate historical notes.
-- API contracts and development conventions now live in the product manual; compatibility links and documentation checks remain intact.
+- 默认启用滚动压实，预填 DeepSeek 并提高分析上限；API 密钥保持为空。
+- 官网补充提示词、运行时序、快照、翻译和 AI 解读说明，提供在线文档与可放大的截图。
+- 文档维护规则并入产品说明书，研究结论与未决设计问题替代重复历史稿。
+- API 契约与开发约定曾迁入产品说明书，并保留兼容链接与文档检查；同日后续已改回 Markdown 正文作为维护源。
 
-## Earlier versions
+## 更早版本
 
-v0.4.26 and earlier: [CHANGELOG-history.md](CHANGELOG-history.md).
+v0.4.26 及以前的说明见 [CHANGELOG-history.md](CHANGELOG-history.md)。

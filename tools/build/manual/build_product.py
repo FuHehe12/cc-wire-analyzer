@@ -18,7 +18,7 @@ data['presentation']={
     'subtitle':data['subtitle'],
     'label':'功能 / 使用 / 要求 / 后续设计' if modern else '建议定位 · 可以修改',
     'note':'已有软件与本版新增设计并列维护。实现状态、代码证据与截图分别标注，避免把设计当成已完成。' if modern else '产品定位与首版范围为待验证提案。',
-    'reading':'初次使用从第 1 节开始；操作步骤见“使用方法”，功能说明见“当前功能”。功能要求描述预期行为，标为后续设计的内容尚未提供。' if modern else '先讨论用户、问题和定位，再选择功能。',
+    'reading':'先读 README 了解项目，再用本书深入阅读：从第 0 节认识产品，沿工作流查用法、设计与限制；协作方式见顶部“三类文档与协作”。后续设计不代表已经实现。' if modern else '先讨论用户、问题和定位，再选择功能。',
     'groupSuffix':'按所在工作流归属；待定方向不等于已否决或已承诺交付。' if modern else '不默认全部进入首版。'
 }
 catalog=json.loads((DATA/'capabilities.json').read_text(encoding='utf-8'))

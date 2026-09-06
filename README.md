@@ -1,15 +1,26 @@
 # CC Wire Analyzer
 
-本地开发与使用入口。记录 Claude Code 与上游的 HTTP 流量，供人和 agent 检查上下文、调用与失败证据。
+CC Wire Analyzer 用来查看 Claude Code 与模型服务之间实际交换的信息。它在本机记录请求和响应，让你能检查模型收到了哪些提示词与工具结果、调用在哪里失败，以及时间和 Token 消耗在哪些环节。
 
-| 要做什么 | 入口 |
-|---|---|
-| 理解产品、整理需求与作决定 | [产品资料](docs/product/README.md)，具体任务在 `issues/open/` |
-| 修改项目 | [CLAUDE.md](CLAUDE.md) → [本地工作约定](CONTRIBUTING.md) |
-| 用 agent 操作软件 | [AI_USAGE](docs/usage/AI_USAGE.md) |
-| 查界面、API、架构或方法 | [文档导航](docs/README.md) |
-| 看变化 | [CHANGELOG](CHANGELOG.md) |
+当对话界面的提示不足以解释问题时，可以回到这里查原始记录：先找到相关请求，再读错误与返回内容，沿时间顺序检查重试和子代理调用，也可以保存快照作比较。人通过桌面界面查看；分析 Agent 可以通过本地 HTTP 接口查询同一批记录。
 
-启动桌面：`uv run python src/desktop.py`。生成本地说明书：`uv run python tools/build/build_manual.py`，结果在 `dist/manual/index.html`。
+这个项目也在探索如何把运行证据用于改进 Agent 的工作条件：看清目标、执行和结果之间的差距，再判断该补资料、改工具说明还是调整规则。当前已有流量记录、查询与分析能力；可对话、可绘图的观测 Agent 等后续设计，在说明书中与现有功能分开标注。
 
-`public/` 保留冻结披露断面，当前本地修改不回写、不推送、不发布。原始录制存放位置由软件配置决定，不属于文档工作区。
+## 接下来读什么
+
+**先用这份 README 了解项目，再打开[本地 HTML 说明书](dist/manual/index.html)。** HTML 按工作流展开功能、操作步骤、截图、设计与限制；顶部“三类文档与协作”解释负责人、开发 Agent 和使用软件的 Agent 如何分工。你可以从中理解项目、整理需求，再沿具体问题查看依据。
+
+只有需要修改或核对某个细节时，再进入对应文件：
+
+- 准备开发：读 [CLAUDE.md](CLAUDE.md) 的目录说明与工作约定。
+- 让 Agent 操作已安装的软件：读 [AI_USAGE](docs/usage/AI_USAGE.md)。
+- 查看最近变化或历史演进：读[变更记录](CHANGELOG.md)和[变更历史](CHANGELOG-history.md)。
+- 查正文放在哪里：读[文档导航](docs/README.md)。
+
+## 在本机运行
+
+启动桌面应用：`uv run python src/desktop.py`。环境和测试命令见[本地工作约定](CONTRIBUTING.md)。
+
+如果还没有生成 HTML，运行 `uv run python tools/build/build_manual.py`，再打开 `dist/manual/index.html`。HTML 可单独复制阅读；修改内容应回到源文件，重新构建。
+
+目前先在本地使用和改进这套工作方式。旧公开材料集中在 `public/` 保留为披露断面，暂不更新或发布。

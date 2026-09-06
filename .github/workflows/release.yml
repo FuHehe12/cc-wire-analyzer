@@ -41,6 +41,9 @@ jobs:
       - name: Syntax
         run: uv run python -m compileall -q src tests tools
 
+      - name: Build local manual linked from README
+        run: uv run python tools/build/build_manual.py
+
       # doc_audit 是**闸门**：文档说了代码里不成立的事就退出 1（幽灵端点/断链/过期 IDX_SCHEMA/
       # 不存在的自测文件/缺取值的 token）。「代码有、文档没写」只提示，不挡——否则第一个
       # 有意不公开的内部端点就会卡住发版。判据见 tools/checks/doc_audit.py 的 _rows()。
