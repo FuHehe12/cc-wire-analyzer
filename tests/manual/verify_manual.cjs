@@ -12,6 +12,24 @@ const root=path.resolve(__dirname,'../..'),out=path.join(root,'dist/manual'),qa=
  p.on('pageerror',e=>errors.push(e.message));
  await p.route('**/*',r=>{if(r.request().url()===url)return r.continue();external.push(r.request().url());return r.abort();});
  await p.goto(url);assert.equal(await p.locator('script[src]').count(),0);
+ const collaborationKey='AI_三类文档与项目协作.md';
+ await p.locator('#collaboration').click();
+ assert.equal(await p.locator('#bookSelect').inputValue(),collaborationKey);
+ assert.equal(await p.evaluate(k=>BOOK.documents[k].text,collaborationKey),fs.readFileSync(path.join(root,'docs/product/reading',collaborationKey),'utf8').replace(/\r\n/g,'\n'));
+ for(const width of [1440,390,320]){
+  await p.setViewportSize({width,height:960});
+  assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert(await p.locator('#bookDialog').evaluate(d=>d.scrollWidth<=d.clientWidth));
+  await p.screenshot({path:path.join(qa,`book-collaboration-${width}.png`)});
+ }
+ await p.keyboard.press('Escape');
+ assert.equal(await p.evaluate(()=>document.activeElement.id),'collaboration');
+ await p.goto(url+'#doc='+encodeURIComponent(collaborationKey));
+ assert.equal(await p.locator('#bookSelect').inputValue(),collaborationKey);
+ assert(await p.locator('#bookDialog').isVisible());
+ await p.keyboard.press('Escape');
+ await p.locator('#collaboration').click();assert(await p.locator('#bookDialog').isVisible());
+ await p.keyboard.press('Escape');
  await p.locator('#manual').click();
  assert.equal(await p.locator('#manual').getAttribute('aria-pressed'),'true');
  assert.equal(await p.locator('#tree details[id^="manual-"]').count(),9);
@@ -28,7 +46,7 @@ const root=path.resolve(__dirname,'../..'),out=path.join(root,'dist/manual'),qa=
  }
  await p.locator('.reference').click();
  const keys=await p.locator('#bookSelect option').evaluateAll(os=>os.map(o=>o.value));
- assert.deepEqual(keys.sort(),['AI_内容整合与阅读路径.md','AI_术语与范围.md','AI_阅读说明.md','第三方声明.md','API契约.md','开发约定.md','架构总览.md','界面导览.md','报文解读.md'].sort());
+ assert.deepEqual(keys.sort(),['AI_三类文档与项目协作.md','AI_内容整合与阅读路径.md','AI_术语与范围.md','AI_阅读说明.md','第三方声明.md','API契约.md','开发约定.md','架构总览.md','界面导览.md','报文解读.md'].sort());
  const model=await p.locator('#data').textContent();
  assert(!model.includes('验收条件：'));
  assert(!/D:[\\/]|C:[\\/]Users[\\/]|AI_历史决策复核|AI_存量矛盾裁定/.test(model),'model must exclude internal paths and obsolete adjudication');
@@ -47,6 +65,6 @@ const root=path.resolve(__dirname,'../..'),out=path.join(root,'dist/manual'),qa=
   const temp=await dl.path();assert(fs.readFileSync(temp).equals(fs.readFileSync(path.join(out,name))),name);
  }
  assert.deepEqual(external,[]);assert.deepEqual(errors,[]);await b.close();
- fs.writeFileSync(path.join(qa,'book-qa.json'),JSON.stringify({standalone:true,isolated,bytes:fs.statSync(file).size,manuals:9,documents:keys.length,widths:[1440,390,320],externalRequests:external,errors,checks:['single copied HTML','inline scripts','all images decode','manual filter','source archive','Escape close','basis toggle','export byte equality']},null,2));
+ fs.writeFileSync(path.join(qa,'book-qa.json'),JSON.stringify({standalone:true,isolated,bytes:fs.statSync(file).size,manuals:9,documents:keys.length,widths:[1440,390,320],externalRequests:external,errors,checks:['single copied HTML','collaboration entry and source parity','collaboration deep link and reopen','dialog fit and focus restoration','inline scripts','all images decode','manual filter','source archive','Escape close','basis toggle','export byte equality']},null,2));
  console.log('PASS: standalone HTML, 9 manuals, public images and reference documents, downloads; zero external requests');
 })().catch(e=>{console.error(e);process.exit(1)});

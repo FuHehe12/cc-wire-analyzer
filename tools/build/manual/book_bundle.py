@@ -25,7 +25,7 @@ def bundle(project: Path, out: Path):
         documents[path.name] = {
             'title':path.stem.removeprefix('AI_'),
             'text':path.read_text(encoding='utf-8'),
-            'notice': '产品参考 · 对应 v0.4.26 功能说明'}
+            'notice': '本地产品与协作资料 · 功能基线和适用范围以各篇正文为准'}
     documents['第三方声明.md'] = {'title':'第三方资产声明','notice':'离线渲染资产的来源与许可。',
         'text':(TOOLS/'vendor'/'NOTICE.txt').read_text(encoding='utf-8')}
     for folder, name in [

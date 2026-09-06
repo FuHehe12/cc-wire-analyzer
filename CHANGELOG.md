@@ -17,6 +17,7 @@
 
 ## Unreleased
 
+- The local manual explains three documentation roles and their iteration loop, with a direct reading entry.
 - Local product sources now rebuild the manual independently; disclosure is frozen and README navigation serves local work.
 - Tests and tools have explicit homes; resource loading, verification and local packaging follow the new paths.
 - Development conventions and API contracts return to `docs/reference/*.md`; the manual is generated from them.

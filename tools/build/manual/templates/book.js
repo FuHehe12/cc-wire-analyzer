@@ -41,6 +41,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(BOOK.files[raw]){a.href=bookAsset(raw);a.download=raw;}
   }
   const ref=document.querySelector('.reference');ref.textContent='阅读说明与开发参考';ref.setAttribute('href','#book-documents');
+  const collaboration=document.createElement('button');
+  collaboration.id='collaboration';collaboration.type='button';collaboration.textContent='三类文档与协作';
+  collaboration.onclick=()=>showDoc('AI_三类文档与项目协作.md');
+  document.querySelector('.toolbar').append(collaboration);
   document.getElementById('planningDocs').remove();
   document.getElementById('evidence').textContent='当前功能与截图';
   document.getElementById('buildNote').textContent='功能说明基线：v0.4.26 · 操作截图与历史示例分别标注 · 可通过目录、搜索与章节链接阅读。';
