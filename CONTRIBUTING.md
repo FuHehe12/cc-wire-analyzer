@@ -79,6 +79,6 @@ not locally. If you're on macOS, please test builds before release. Platform-spe
 | drive the tool from an AI agent | [`docs/reference/AI_USAGE.md`](docs/reference/AI_USAGE.md) |
 | understand the UI | [`docs/reference/界面导览.md`](docs/reference/界面导览.md) |
 | understand what Claude Code actually sends | [`docs/reference/报文解读.md`](docs/reference/报文解读.md) |
-| edit the docs themselves | [`docs/文档维护策略.md`](docs/文档维护策略.md) |
+| edit the docs themselves | [Development conventions · documentation maintenance](docs/product-manual.html#doc=开发约定.md) |
 
 Issue reports and PRs welcome.

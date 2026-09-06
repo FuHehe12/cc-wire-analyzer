@@ -16,6 +16,7 @@
 
 ## Unreleased
 
+- Documentation maintenance rules join the product manual; research findings and remaining design questions replace duplicate historical notes.
 - API contracts and development conventions now live in the offline product manual; compatibility links and documentation checks remain intact.
 
 ## v0.4.26 - 2026-09-05

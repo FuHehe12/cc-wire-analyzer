@@ -35,10 +35,9 @@ port.txt
 # CLAUDE.md = 给 AI 的本地维护说明；issues/ = 本地迭代记录（issue 先行）
 # .claude/ = 本地操作规程（workflows/self-audit.md 等，含本机路径与采集姿势）
 # research/ = 本地文档的家（260828 建，260829 起归拢全部本地文档，不随开源仓库发布）：
-#   轨迹观测/（方法论与判据）/ 项目曝光/（SEO 教程，原 promo/）/
-#   路线与待办/（260902 从根目录收进来的 ROADMAP.local.md 与 UI-BACKLOG.local.md）
+#   项目曝光教程保留独立用途；轨迹方法和候选已整合进产品说明书。
 #   注：prototypes/（十一代可视化原型）已于 260829 收官删除——管线全部吸收进 src/trajectory.py，
-#   演进史与脚本对应关系留在 research/轨迹观测/原型演进史.md
+#   演进史与独有复算条件归入 issues/；原始录制不变。
 #   注：项目断面/（原 sections/，0.4.x 冻结快照）已于 260902 删除，机制记录留在
 #   issues/closed/260807_引入项目断面机制与首份0.4.x断面.md
 CLAUDE.md
