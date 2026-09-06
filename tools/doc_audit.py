@@ -70,25 +70,14 @@ HANDBOOK = ROOT / "handbook"
 # 它引用本项目的端点与文件路径，断链和幽灵端点照样要查（只是不在"描述当前实现"那一类里）。
 REFERENCE = DOCS / "reference"
 # 具名依赖的文档路径集中在此，配 `_read_required` 使用（见那个函数的 docstring）。
-GUIDE = REFERENCE / "开发约定.md"  # 逻辑文档标识；正文从单文件说明书读取
-MANUAL = DOCS / "product-manual.html"
-EMBEDDED_DOCS = {"API契约.md", "开发约定.md"}
+GUIDE = REFERENCE / "开发约定.md"
 
-
-def _manual_documents() -> dict:
-    """具名正文缺失或载荷损坏必须失败，不能回落到兼容跳转页。"""
-    try:
-        html = MANUAL.read_text(encoding="utf-8")
-        match = re.search(r'<script id="bookData" type="application/json">(.*?)</script>', html, re.S)
-        if not match:
-            raise ValueError("缺少 bookData")
-        docs = json.loads(match.group(1))["documents"]
-        for name in EMBEDDED_DOCS:
-            if not isinstance(docs.get(name, {}).get("text"), str) or not docs[name]["text"].strip():
-                raise ValueError(f"缺少正文 {name}")
-        return docs
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise SystemExit(f"[doc_audit] 单文件说明书开发参考不可读：{exc}") from exc
+# 具名参考文档的正文下限（字符）。**防的是「文件在、正文没了」**：260906 一次文档合并把
+# 开发约定与 API 契约掏成 3 行「正文已并入说明书」的兼容跳转页，文件仍然存在，于是
+# `_read_required` 的「不存在就报错」拦不住，所有正则匹配不到任何东西，每条检查静默变成
+# 「永远通过」——正是本文件反复防的惯犯 ③（静默吞异常），只是换了个入口。
+# 阈值取 2000：最短的具名文档也在万字量级，跳转页在百字量级，中间隔着一个数量级。
+MIN_REQUIRED_CHARS = 2000
 
 # 文档面：仓库里会提到端点/命令/路径的公开文档（本地 CLAUDE.md 与 issues/ 不进对账——
 # 它们是过程记录，允许留下当时的说法）。
@@ -111,8 +100,6 @@ EXTERNAL_ENDPOINTS = {
 
 
 def _read(p: pathlib.Path) -> str:
-    if p.parent == REFERENCE and p.name in EMBEDDED_DOCS:
-        return _manual_documents()[p.name]["text"]
     try:
         return p.read_text(encoding="utf-8")
     except OSError:
@@ -130,14 +117,18 @@ def _read_required(p: pathlib.Path) -> str:
     260808 把 `docs/` 拆成子目录时就差点踩中：自测清单检查硬编码读 `DOCS / "开发约定.md"`，
     而那份文档已经移进了 `reference/`。
     """
-    if p.parent == REFERENCE and p.name in EMBEDDED_DOCS:
-        return _read(p)
     if not p.exists():
         raise SystemExit(
             f"[doc_audit] 具名文档不存在：{p.relative_to(ROOT)}\n"
             f"  文档被移动或改名了？请更新本文件顶部的路径常量——\n"
             f"  别让这条检查静默失效（那比没有检查更坏，因为它还会报「对账干净」）。")
-    return p.read_text(encoding="utf-8")
+    text = p.read_text(encoding="utf-8")
+    if len(text) < MIN_REQUIRED_CHARS:
+        raise SystemExit(
+            f"[doc_audit] 具名文档只剩 {len(text)} 字符：{p.relative_to(ROOT)}\n"
+            f"  正文被搬走了？这份 Markdown 是真源，说明书由它生成，不是反过来——\n"
+            f"  留一页「正文已并入…」的跳转页会让本脚本的每条检查静默变成永远通过。")
+    return text
 
 
 def _routes() -> set[str]:
