@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const qa = path.resolve(process.env.CCWA_SITE_QA || path.join(root, '.site-qa'));
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.svg': 'image/svg+xml', '.ttf': 'font/ttf' };
 const widths = [1600, 2560, 390, 320];
-const sections = ['read', 'flow', 'compare', 'trajectory', 'agent', 'start'];
+const sections = ['read', 'flow', 'compare', 'reading-assistance', 'agent', 'start'];
 let server, browser;
 
 (async () => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CC Wire Analyzer：提示词、子代理、快照比较与运行轨迹</title>
+  <title>CC Wire Analyzer：提示词、子代理、快照比较与 AI 辅助阅读</title>
   <meta name="description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
   <meta name="theme-color" content="#172b46">
   <link rel="canonical" href="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
@@ -17,7 +17,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CC Wire Analyzer">
   <meta property="og:locale" content="zh_CN">
-  <meta property="og:title" content="CC Wire Analyzer：提示词、子代理、快照比较与运行轨迹">
+  <meta property="og:title" content="CC Wire Analyzer：提示词、子代理、快照比较与 AI 辅助阅读">
   <meta property="og:description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
   <meta property="og:url" content="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
   <meta property="og:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
@@ -25,7 +25,7 @@
   <meta property="og:image:height" content="640">
   <meta property="og:image:alt" content="实际软件的捕获列表，显示示例请求、失败、耗时和 Token">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="CC Wire Analyzer：提示词、子代理、快照比较与运行轨迹">
+  <meta name="twitter:title" content="CC Wire Analyzer：提示词、子代理、快照比较与 AI 辅助阅读">
   <meta name="twitter:description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
   <meta name="twitter:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
 
@@ -231,55 +231,15 @@
 <a class="section-link" href="../manual.html#manual-analyze">了解快照与比较</a>
 </div>
 </section>
-<section class="section trajectory" id="trajectory">
+<section class="section" id="reading-assistance">
 <div class="shell">
-<div class="section-head">
-<h2>进一步看：任务是怎样推进的。</h2>
-<p>轨迹分析把多次请求整理成节点和阶段，从产物、检查、反复与开销几个角度观察同一段运行。</p>
-</div>
-<div class="trajectory-grid">
-<div class="process-strip">
-<p class="process-title">轨迹的阅读方式示意</p>
-<div class="process-nodes">
-<span>读取材料</span>
-<i aria-hidden="true">
-</i>
-<span>修改产物</span>
-<i aria-hidden="true">
-</i>
-<span>运行检查</span>
-<i aria-hidden="true">
-</i>
-<span>继续推进</span>
-</div>
-<div class="process-questions">
-<div>
-<strong>材料从哪来</strong>
-<p>哪些输入可能支撑了产物</p>
-</div>
-<div>
-<strong>哪里检查过</strong>
-<p>写入之后有哪些读取与检查迹象</p>
-</div>
-<div>
-<strong>哪里出现反复</strong>
-<p>错误、阻断和重试出现在何处</p>
-</div>
-<div>
-<strong>代价花在哪里</strong>
-<p>结合时间与 Token 看执行开销</p>
-</div>
-</div>
-</div>
-<div class="trajectory-copy">
-<p>现有八视图包括状态快照、物料血统、验证矩阵、阀门与回路、能耗与方差、物料生命线，以及反事实表和时序图。</p>
-<p>先看整体变化，再进入节点，最后回到请求与工具结果。图形帮助提出和核对问题，不能替代证据本身。</p>
-<a href="../manual.html#research-reading-model">阅读轨迹分析方法</a>
-<p class="note">阶段摘要来自模型归纳；关系和检查等级包含程序推断。“最优轨迹”是规则下的事后候选，不是经过证明的最佳方案。</p>
-</div>
-</div>
-</div>
-</section>
+<div class="section-head"><h2>读懂长文本，多一点帮助。</h2><p>在请求详情里直接翻译或解读文本块，减少来回复制、切换工具的步骤。</p></div>
+<div class="agent-grid">
+<article class="agent-col"><h3>翻译：跨过语言障碍</h3><p>遇到英文提示词、混合语言的工具结果或模型响应，可以从文本块的翻译入口查看译文。</p><ul><li>适合阅读长段 System、Messages 和响应内容。</li><li>译文显示在原文旁边，术语和关键措辞可以随时对照。</li></ul></article>
+<article class="agent-col"><h3>AI 解读：帮助理解内容</h3><p>从文本块发起 AI 解读，辅助理解复杂提示词、工具内容或模型返回的文字。</p><ul><li>先定位相关内容，再让分析模型帮助阅读。</li><li>解释与原始记录分别保留，判断时仍可回到原文核对。</li></ul></article>
+</div><p class="note">这两项是按需使用的辅助功能，需要配置分析模型端点；所分析的内容会发送到该端点，解释结果需要结合原文判断。</p>
+<a class="section-link" href="../manual.html#manual-read">查看详情阅读与辅助功能</a>
+</div></section>
 <section class="section" id="agent">
 <div class="shell">
 <div class="section-head">
@@ -289,7 +249,7 @@
 <div class="agent-grid">
 <article class="agent-col">
 <h3>在软件内分析</h3>
-<p>配置模型端点后，可翻译和解读文本、讨论快照，或生成轨迹语义摘要。</p>
+<p>配置模型端点后，可翻译和解读文本，也可以围绕保存的快照继续讨论。</p>
 <ul>
 <li>先选定材料，再发起对应分析。</li>
 <li>解释与原始内容分别保留。</li>
@@ -359,7 +319,7 @@
 </details>
 <details>
 <summary>能自动判断根因或保证任务成功吗？</summary>
-<p>错误聚合、图形、模型解释和反事实候选都用于辅助调查。能否形成结论取决于证据和分析；产品说明书把已有能力与后续设计分开标明。</p>
+<p>错误聚合、时序图和模型解释用于辅助调查。能否形成结论取决于证据和分析；产品说明书把已有能力与后续设计分开标明。</p>
 </details>
 </div>
 <div class="manual-banner">

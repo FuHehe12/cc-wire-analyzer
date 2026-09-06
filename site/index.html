@@ -231,55 +231,15 @@
 <a class="section-link" href="manual.html#manual-analyze">Snapshots and comparison (中文)</a>
 </div>
 </section>
-<section class="section trajectory" id="trajectory">
+<section class="section" id="reading-assistance">
 <div class="shell">
-<div class="section-head">
-<h2>Go further: how did the task progress?</h2>
-<p>Trajectory analysis organizes requests into nodes and phases, offering several views of artifacts, checks, repetition and cost.</p>
-</div>
-<div class="trajectory-grid">
-<div class="process-strip">
-<p class="process-title">A schematic for reading a trajectory</p>
-<div class="process-nodes">
-<span>Read material</span>
-<i aria-hidden="true">
-</i>
-<span>Change artifact</span>
-<i aria-hidden="true">
-</i>
-<span>Run a check</span>
-<i aria-hidden="true">
-</i>
-<span>Continue</span>
-</div>
-<div class="process-questions">
-<div>
-<strong>Inputs and outputs</strong>
-<p>Which inputs may support an artifact?</p>
-</div>
-<div>
-<strong>Checks after changes</strong>
-<p>What was read or checked after a write?</p>
-</div>
-<div>
-<strong>Repetition and recovery</strong>
-<p>Where did failures, blocks and retries occur?</p>
-</div>
-<div>
-<strong>Time and usage</strong>
-<p>Where were time and tokens spent?</p>
-</div>
-</div>
-</div>
-<div class="trajectory-copy">
-<p>Eight views cover state snapshots, material lineage, verification, gates and loops, energy and variance, material lifelines, and counterfactual tables and timelines.</p>
-<p>Move from the overall change to a node, then back to the recorded request and tool result. The views help you form and check questions.</p>
-<a href="manual.html#research-reading-model">Trajectory analysis methods (中文)</a>
-<p class="note">Phase summaries use model interpretation; relationships and verification levels include heuristics. An “optimal trajectory” is a retrospective candidate, not a proven best workflow.</p>
-</div>
-</div>
-</div>
-</section>
+<div class="section-head"><h2>A little help with the long passages.</h2><p>Translate or explain text blocks directly in request details, without copying them between tools.</p></div>
+<div class="agent-grid">
+<article class="agent-col"><h3>Translate across languages</h3><p>Use a text block’s translation action to read prompts, mixed-language tool results or model responses in translation.</p><ul><li>Useful for long System, Messages and response passages.</li><li>The translation appears beside the original so you can check terminology and wording.</li></ul></article>
+<article class="agent-col"><h3>Ask AI to explain a passage</h3><p>Start an AI explanation from a text block for help understanding complex prompts, tool content or returned text.</p><ul><li>Locate the relevant content, then ask the analysis model for reading assistance.</li><li>Explanations remain separate from the recorded text so you can check the source.</li></ul></article>
+</div><p class="note">These optional tools require an analysis model endpoint. Selected material is sent to that endpoint; check explanations against the original.</p>
+<a class="section-link" href="manual.html#manual-read">Details and reading assistance (中文)</a>
+</div></section>
 <section class="section" id="agent">
 <div class="shell">
 <div class="section-head">
@@ -289,7 +249,7 @@
 <div class="agent-grid">
 <article class="agent-col">
 <h3>Analyze inside the app</h3>
-<p>Configure a model endpoint to translate or explain text, discuss snapshots, or generate semantic trajectory summaries.</p>
+<p>Configure a model endpoint to translate or explain text, or continue a discussion around saved snapshots.</p>
 <ul>
 <li>Select the material before starting the analysis.</li>
 <li>Keep interpretations separate from the original content.</li>
@@ -359,7 +319,7 @@
 </details>
 <details>
 <summary>Does it automatically prove a cause or guarantee success?</summary>
-<p>Error groups, views, model interpretations and counterfactual candidates support investigation. Conclusions depend on the evidence and analysis. The manual distinguishes current behavior from future design.</p>
+<p>Error groups, timelines and model interpretations support investigation. Conclusions depend on the evidence and analysis. The manual distinguishes current behavior from future design.</p>
 </details>
 </div>
 <div class="manual-banner">
