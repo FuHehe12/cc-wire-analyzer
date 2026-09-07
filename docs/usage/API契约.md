@@ -364,6 +364,49 @@ user 角色（内环把结果喂回去才有了下一条请求），但读的人
 
 `lane` 是分类器现算的（索引里没有），本端点走 `/api/dag` 那份缓存取，同一天不重算。
 
+### `GET|POST /api/observations` — 外环观测状态（一个路径两个方法）
+
+外环观测者维护的清单存在这里。**内环**是被观测的 agent 自己那圈；**外环**是另开的一个 AI，
+读 `/api/actions` 拿会话全文，判断完把结论小批量写回来。CCWA 负责事实、持久化与显示，
+**不跑模型**——事实由程序产出，AI 只解释意义。界面上是「实时分析」标签页。
+
+**`GET`**：不带 `id` 列全部（摘要，不含条目正文）；带 `id` 取一份完整状态。
+
+**`POST`**：body 不带 `id` = 新建（`{scope:{date,source,lane,session}, title}`，返回含 `id`）；
+带 `id` = 提交一批操作；带 `delete:true` = 删除。
+
+```json
+{"id":"obs_ba645ca","submission_id":"客户端生成的唯一串","base_revision":12,
+ "ops":[{"op":"add_item","kind":"finding","text":"seq151 起换了模型…",
+         "evidence":["req_ba6f13a"],"status":"supported","client_ref":"f1"},
+        {"op":"link_items","from":"f1","to":"i_cec8f9","type":"belongs_to"},
+        {"op":"update_item","id":"i_cec8f9","patch":{"status":"supported"}},
+        {"op":"retract_item","id":"i_9f31aa","reason":"证据不足"},
+        {"op":"set_cursor","cursor":153}]}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `submission_id` | **不能省**。外环是另一个进程，超时重试是常态；同一个 id 重放原样退回当前状态、不重复建条目（响应 `replayed:true`） |
+| `base_revision` | 对不上返回 **409**，body 里连当前 `state` 一起给——只回一句「版本不对」的话，调用方还得再拉一次才能合并。不给这个字段则跳过版本检查（首版单写者的便利口子） |
+| `client_ref` | 本批内给新条目起的临时名，`link_items` 可直接引用；响应 `refs` 给出临时名 → 真实 id 的对照表。**省一轮往返**：不必先提交一次拿 id 再提交第二次 |
+| `kind` | `phase` 阶段 / `finding` 发现 / `open` 未决 / `prediction` 预测 / `deviation` 偏差 |
+| `status` | `tentative` 待证 / `supported` 有据 / `unresolved` 未解 / `retracted` 已撤回。**与被观测工作的进度分开**——不能用一个 done 同时表示「任务结束」和「结论正确」 |
+| `type`（关联） | `belongs_to` / `depends_on` / `produces` / `supports` / `contradicts` |
+| `evidence` | `req_` 开头的步号，界面上可点回那条请求 |
+| `cursor` | 外环自报读到第几步（对应 `/api/actions` 的 `seq`）。界面显示它，外环停了也显示停了多久——**观测者退出不能让界面假装还在跟** |
+
+三条硬要求，都由 `tests/observe_selftest.py` 守着：
+
+1. **幂等**——同 `submission_id` 重放不增条目、不推进 `revision`。
+2. **事务**——一批里有任何非法操作则整批不生效，合法的那几条也不写进去；提交流水与状态在同一次
+   原子替换里落盘，不会出现「水位前移了、状态没保存」。
+3. **改判回改原条目并留痕**——`update_item` / `retract_item` 把旧版压进 `history`（留最近 20 版）。
+   只追加不回改，最新结论会被埋在中间。
+
+存储是 `~/.cc-wire-analyzer/observations/<id>.json`，原子替换。与原始录制隔离：不覆盖
+`.analysis.json` / `.semantic.json`，也不塞进 snapshot note。
+
 ### `POST /api/captures/clear` — 清除录制
 
 **请求**：`{ "date": "2026-07-12", "mode": "purge"|"archive", "source"?: "标签", "label"?: "机器名" }`。`date` 缺省=今天；`mode` 缺省=`purge`。`date` 经 `YYYY-MM-DD` 格式 + 语义校验（防路径穿越）。

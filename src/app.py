@@ -218,6 +218,7 @@ _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/captures/stream":         ("captures", "capturesStream"),
     "/api/dag":                     ("captures", "dag"),
     "/api/actions":                 ("captures", "actions"),
+    "/api/observations":            ("captures", "observations"),
     "/api/grep":                    ("captures", "grep"),
     "/api/stats":                   ("captures", "stats"),
     "/api/sources":                 ("captures", "sources"),
@@ -884,6 +885,66 @@ def actions_view():
     tb = ((first_rec or {}).get("request", {}).get("body") or {}).get("tools") or []
     out["tools"] = tb if want_tools else actions.tool_names(first_rec)
     return jsonify(out)
+
+
+@app.route("/api/observations", methods=["GET", "POST"])
+def observations():
+    """外环观测状态：一个路径两个方法。
+
+    **内外环**：内环是被观测的 agent 自己那圈；外环是另开的一个 AI，读 `/api/actions`
+    拿会话全文，判断完把结论小批量写回这里。CCWA 负责事实、持久化与显示，不跑模型。
+
+    - `GET`：不带 `id` 列全部（摘要，不含条目正文）；带 `id` 取一份完整状态。
+    - `POST`：body 不带 `id` = 新建观测（`{scope:{date,source,lane,session}, title}`）；
+      带 `id` = 提交一批操作。
+
+    提交形状（三条硬要求，见 `observe_store` 模块 docstring）：
+
+    ```json
+    {"id":"obs_…","submission_id":"客户端生成的唯一串","base_revision":12,
+     "ops":[{"op":"add_item","kind":"finding","text":"…","evidence":["req_…"],
+             "client_ref":"a"},
+            {"op":"link_items","from":"a","to":"i_ab12cd","type":"supports"},
+            {"op":"set_cursor","cursor":153}]}
+    ```
+
+    `submission_id` 不能省——外环是另一个进程，超时重试是常态；同一个 id 重放原样退回
+    当前状态，不重复建条目。`base_revision` 对不上返回 409 加当前状态，不静默覆盖别人的改判。
+    """
+    import observe_store as OB
+    try:
+        if request.method == "GET":
+            oid = request.args.get("id", "")
+            if not oid:
+                return jsonify({"items": OB.listing()})
+            st = OB.read(oid)
+            if st is None:
+                return jsonify({"error": "not_found", "id": oid}), 404
+            return jsonify(st)
+
+        body = request.get_json(silent=True) or {}
+        oid = body.get("id") or ""
+        if not oid:
+            return jsonify(OB.create(body.get("scope") or {}, body.get("title") or ""))
+        if body.get("delete"):
+            return jsonify(OB.delete(oid))
+        r = OB.apply(oid, body.get("submission_id") or "",
+                     body.get("base_revision"), body.get("ops") or [])
+        return jsonify({"ok": True, "replayed": r["replayed"], "refs": r["refs"],
+                        "revision": r["state"]["revision"], "state": r["state"]})
+    except OB.ObserveError as e:
+        # 冲突要把**当前状态**一并退回：只给一句"版本不对"，调用方还得再拉一次才能合并。
+        code = 409 if e.code == "conflict" else 400
+        out = {"ok": False, "error": e.code, "detail": str(e)}
+        if e.code == "conflict":
+            try:
+                out["state"] = OB.read(request.get_json(silent=True).get("id"))
+            except Exception:
+                pass
+        return jsonify(out), code
+    except Exception as e:
+        log.exception("观测状态操作失败")
+        return jsonify({"ok": False, "error": "internal", "detail": str(e)}), 500
 
 
 def _store_call(fn, *args, **kw):
