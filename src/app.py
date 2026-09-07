@@ -817,7 +817,9 @@ def actions_view():
 
     其余参数：`date` / `source` / `lane` / `session` / `limit` / `tools`（`1` 时附完整工具
     schema，默认只给工具名——那段 168 KB / 约 45k token 且整段会话一字不变，是上下文膨胀
-    最大的单一来源）。
+    最大的单一来源）/ `view`（`full` 缺省=对话全文；`dialog`=纯对话流——只有用户/AI 输出
+    与思考，工具明细压成每步一行摘要，给"读懂会话讲了什么"的外环分析用，形状见
+    `actions.py` 模块说明）。
     """
     import actions
 
@@ -834,6 +836,9 @@ def actions_view():
     since = max(0, _to_int(request.args.get("since", 0), 0))
     limit = max(1, min(_to_int(request.args.get("limit", 500), 500), 5000))
     want_tools = request.args.get("tools", "") in ("1", "true", "yes")
+    view = request.args.get("view", "full")
+    if view not in ("full", "dialog"):
+        view = "full"                 # 未知值回退缺省，别 500（与 _to_int 同一姿势）
     try:
         capture_store._validate_date(date)      # 格式 + 语义，防路径穿越（不变量 5）
     except capture_store.StoreError as e:
@@ -850,16 +855,28 @@ def actions_view():
     page = [(i, e) for i, e in rows if i >= since][:limit]
 
     # 去重要从头看起：只输出**首次出现**的历史消息，而 since 之前那些已经给过了，
-    # 得把它们的哈希先喂进 seen，否则续读会把整段历史重新吐一遍。
+    # 得把它们的哈希先喂进 seen，否则续读会把整段历史重新吐一遍。块级 bseen 同理
+    # （warm 请求的响应块 + 历史 assistant 正文），否则续读会把已出过的 [说] 重出成 [助手]。
     warm = [(i, e) for i, e in rows if i < since]
     recs = capture_store.records_by_index([e for _, e in warm + page], date, src)
     seen: set = set()
+    bseen: set = set()
     for (_, e), rec in zip(warm, recs[:len(warm)]):
         if not rec:
             continue
         body = (rec.get("request") or {}).get("body") or {}
         for m in (body.get("messages") or []) if isinstance(body, dict) else []:
             seen.add(actions._msg_key(m))
+            if m.get("role") == "assistant":
+                c = m.get("content")
+                blocks = c if isinstance(c, list) else (
+                    [{"type": "text", "text": c}] if isinstance(c, str) and c.strip() else [])
+                for b in blocks:
+                    if isinstance(b, dict) and b.get("type") in ("text", "thinking"):
+                        bseen.add(actions._blk_key(b))
+        for b in ((rec.get("response") or {}).get("content_blocks") or []):
+            if isinstance(b, dict) and b.get("type") in ("text", "thinking"):
+                bseen.add(actions._blk_key(b))
 
     lines: list[str] = []
     size = 0
@@ -867,7 +884,7 @@ def actions_view():
     stopped = False
     for (seq, e), rec in zip(page, recs[len(warm):]):
         n = node_of.get(e.get("id")) or dict(e)
-        chunk = actions.render_step(n, rec, seen)
+        chunk = actions.render_step(n, rec, seen, bseen, view)
         add = sum(len(x.encode("utf-8")) + 1 for x in chunk)
         if lines and size + add > actions.MAX_BYTES:
             stopped = True          # 在步边界停，不切断某一步的正文
