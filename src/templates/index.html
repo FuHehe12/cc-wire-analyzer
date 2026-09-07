@@ -95,6 +95,10 @@
   --terminal-text:#D6D6DE; --input-focus-bg:#2F2F3C;
   --danger-node-hover:#3A2020; --node-hover-ring:rgba(232,184,85,0.35);
   --theme-selected-ring:rgba(232,184,85,0.24);
+  /* 「定位到的那张卡」（260907）：从详情页 ⌖ 跳过来时高亮目标节点。**不能复用
+     --node-hover-ring**——hover 环是 1px 的瞬时反馈，而这是要在上千个节点里一眼捞出来的
+     持久标记，两者的强度差着一个量级。三层：实环 + 外扩光晕 + 卡面微染。 */
+  --hit-ring:#E8B855; --hit-glow:rgba(232,184,85,0.30); --hit-bg:rgba(232,184,85,0.10);
   /* ---- 白板与贴纸（260826 token 化）----
      此前这一族颜色全写死在组件里，于是两套浅色外观下白板是嵌在纸面上的一块深色孤岛。
      纸感由四层构成——纸色渐变 / 顶部胶带 / 右下折角 / 投影+内高光——四层都得跟着外观换：
@@ -163,6 +167,7 @@ html[data-theme="classic"]{
   --terminal-bg:#F5F2EC; --terminal-code-bg:#EEE9E0; --terminal-text:#39342E;
   --input-focus-bg:#FFFDF9; --danger-node-hover:#F8E3DC; --node-hover-ring:rgba(201,138,37,0.32);
   --theme-selected-ring:rgba(201,138,37,0.22);
+  --hit-ring:#C98A25; --hit-glow:rgba(201,138,37,0.28); --hit-bg:rgba(201,138,37,0.11);
   /* 白板走软木/牛皮的暖调，贴纸是奶油、嫩绿、藕粉三色便签，字用深棕。
      纸上文字对比度按**四张纸里最不利的那张**算（小字 AA≥4.5）：正文 #3A3026 ≥9.7:1、
      次级 #6B5C46 ≥4.9:1、时间戳 #665942 ≥5.1:1、类别标签 #6E6049 ≥4.6:1，四项全过。 */
@@ -230,6 +235,7 @@ html[data-theme="light"]{
   --terminal-bg:#F1F6F7; --terminal-code-bg:#E5EFF1; --terminal-text:#263640;
   --input-focus-bg:#FFFFFF; --danger-node-hover:#F8DEDC; --node-hover-ring:rgba(30,105,114,0.32);
   --theme-selected-ring:rgba(30,105,114,0.22);
+  --hit-ring:#1E6972; --hit-glow:rgba(30,105,114,0.26); --hit-bg:rgba(30,105,114,0.09);
   /* 白板是冷矿物板面 + 青蓝网格，贴纸走清透的浅色纸（便签黄 / 冷绿 / 淡紫），
      录制快照那张继续用更冷的蓝，保持「整条录制 vs 一段提示词」一眼可分。
      纸上文字同样按最不利的那张纸算：正文 #17212B ≥11.9:1、次级 #4A5B66 ≥5.1:1、
@@ -567,6 +573,18 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
 .crumb-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .crumb-id{font-family:var(--font-mono);font-size:13px;font-weight:700;}
 .crumb-meta{font-family:var(--font-mono);font-size:11px;color:var(--apple-secondary);}
+/* 详情页导航组（260907）：上一条 / 位置 / 下一条 / 定位到时序图。
+   与「← 返回」之间留一条竖分隔——返回是"离开这条"，导航是"在这条链路里走"，两件事。 */
+.crumb-nav{display:flex;align-items:center;gap:6px;padding-left:12px;
+  border-left:1px solid var(--border-soft);}
+.crumb-nav .btn{padding:6px 10px;}
+.btn.nav.loc{display:inline-flex;align-items:center;gap:5px;}
+/* 边界禁用的导航按钮不是"正在加载"：.btn:disabled 的 cursor:wait 是给真正等待中的按钮用的，
+   照搬到这里会让「已经是第一条」读成「还在转」。 */
+.btn.nav:disabled{cursor:default;}
+.nav-pos{font-family:var(--font-mono);font-size:11px;color:var(--apple-text-secondary);
+  min-width:104px;text-align:center;white-space:nowrap;}
+.nav-pos.off{color:var(--text-faint);}
 .detail-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
 @media (max-width:1080px){.detail-cols{grid-template-columns:1fr;}}
 .col-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
@@ -703,6 +721,23 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
   display:flex;flex-direction:column;gap:3px;box-shadow:var(--apple-shadow-sm),var(--apple-highlight);}
 .dag-node:hover{background:var(--bg-warm-3);transform:translateY(-1px);box-shadow:var(--apple-shadow),0 0 0 1px var(--node-hover-ring);}
 .dag-node.new{animation:fadeIn .45s ease;}
+/* 从详情页 ⌖ 定位过来的那张卡（260907）。三件事一起做才够醒目：**实环**（2px，压过
+   hover 的 1px 与错误卡的 inset 环）、**外扩光晕**（在缩到 50% 的画布上，环本身只有 1 物理像素，
+   光晕才是远处扫视时唯一还看得见的东西）、**卡面微染**（滚动到位之前，颜色块比边框先被余光抓到）。
+   进场 pulse 只跑一次，之后**留着不撤**——缩放 / 切折叠态 / LIVE 新节点都会重渲，
+   一闪而过的高亮在这些重渲之后就没了，而用户往往正是在重渲之后才回头找它。 */
+.dag-node.hit{background:var(--hit-bg);
+  box-shadow:var(--apple-shadow),0 0 0 2px var(--hit-ring),0 0 0 7px var(--hit-glow);}
+/* pulse 只在**这次定位**跑一次（dagApplyHit 消费一个一次性标记）：高亮本身要留着，
+   但每次重渲都重放一遍进场动画，LIVE 时就是一张卡在那里一直闪。 */
+.dag-node.hit.hit-pulse{animation:hitPulse .9s ease-out 1;}
+.dag-node.hit:hover{background:var(--hit-bg);
+  box-shadow:var(--apple-shadow),0 0 0 2px var(--hit-ring),0 0 0 9px var(--hit-glow);}
+@keyframes hitPulse{
+  0%{box-shadow:var(--apple-shadow),0 0 0 2px var(--hit-ring),0 0 0 3px var(--hit-glow);}
+  55%{box-shadow:var(--apple-shadow),0 0 0 2px var(--hit-ring),0 0 0 14px var(--hit-glow);}
+  100%{box-shadow:var(--apple-shadow),0 0 0 2px var(--hit-ring),0 0 0 7px var(--hit-glow);}
+}
 /* 视觉分层（260717）：中间步=工具循环回传（紧凑条，降透明度收视觉权重，骨架凸显）；
    纯对话轮=整轮没动手（回顾/追问/澄清），虚线左边+💬。错误节点永不降档。 */
 .dag-node.mid{padding:4px 10px;opacity:.68;}
@@ -1446,6 +1481,24 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
     <div class="crumb-bar">
       <div class="crumb-left">
         <button class="btn" onclick="showView(S.detailFrom || 'list')" data-i18n="detail.back">← 返回</button>
+        <!-- 泳道内前后导航 + 时序图定位（260907）。顺序是**这条请求所在泳道**内的时间先后，
+             与时序图那一列自上而下一致：上一条=更早，下一条=更晚。 -->
+        <div class="crumb-nav">
+          <button class="btn nav" id="dPrev" onclick="detailStep(-1)"
+            data-i18n="detail.prev" data-i18n-title="detail.prevTitle" disabled>↑ 上一条</button>
+          <span class="nav-pos" id="dNavPos"></span>
+          <button class="btn nav" id="dNext" onclick="detailStep(1)"
+            data-i18n="detail.next" data-i18n-title="detail.nextTitle" disabled>下一条 ↓</button>
+          <!-- 图标走内联 SVG 而不是 ⌖ 字形：那个码位不在打包字体里，落到系统字体上各平台长相不一，
+               macOS 上还可能直接是缺字框。文案挂在 .lbl 上——applyI18n 改的是 textContent，
+               挂在按钮上会把图标一起冲掉（.btn.tool 那族一直是这么分的）。 -->
+          <button class="btn nav loc" id="dLocate" onclick="dagLocate(S.captureId)"
+            data-i18n-title="detail.locateTitle" disabled><svg class="ico" viewBox="0 0 24 24" fill="none"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12"
+            cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line
+            x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg><span class="lbl"
+            data-i18n="detail.locate">时序图定位</span></button>
+        </div>
         <span class="crumb-id" id="dId"></span>
         <span class="chip outline mono" id="dPath"></span>
         <span class="chip" id="dStatus"></span>
@@ -1911,6 +1964,10 @@ const S = {
   dagTimer: null,
   msgShowAll: false,
   detailSeq: 0,           // openDetail 请求序号（重入守卫，丢弃过期 fetch 响应）
+  /* 详情页泳道导航（260907）：当前这条在它泳道里的前后两条 id，由 navPaint 写入、
+     detailStep 消费。dagHitId 是「⌖ 定位」高亮的那个节点——它要活过缩放、切折叠态与
+     LIVE 重渲，所以存状态而不是只往 DOM 上贴一次 class；dagHitPulse 是一次性的进场动画标记。 */
+  navPrev: null, navNext: null, dagHitId: null, dagHitPulse: false,
   toggling: false,        // toggleProxy 进行中（防 5s 定时器击穿按钮 disabled）
   diag: null,             // /api/diagnose/errors 结果（失败聚合折叠区）
   diagDate: null,         // 上面那份结果属于哪个日期（切日期后旧结论不许留在屏上）
@@ -2183,6 +2240,14 @@ zh: {
   "list.loadMore": "加载更多（还有 {n} 条）", "list.loadFailed": "列表加载失败：{msg}",
   "row.error": "请求异常", "chip.pending": "进行中",
   "detail.back": "← 返回", "detail.loading": "加载中…", "detail.loadFailed": "详情加载失败：{msg}",
+  "detail.prev": "↑ 上一条", "detail.next": "下一条 ↓",
+  "detail.prevTitle": "同一泳道内时间更早的那条（与时序图那一列自上而下一致）",
+  "detail.nextTitle": "同一泳道内时间更晚的那条（与时序图那一列自上而下一致）",
+  "detail.navPos": "{lane} · {i} / {n}", "detail.navLoading": "定位中…", "detail.navOff": "不在时序图中",
+  "detail.locate": "时序图定位", "detail.locateTitle": "跳到时序图，聚焦这条请求所在的泳道并高亮它",
+  "toast.locate": "已聚焦「{lane}」并高亮这条请求；用「泳道」下拉可以放回其它泳道",
+  "toast.locateReveal": "已聚焦「{lane}」，并展开折叠把这条请求露出来；用「泳道」下拉可以放回其它泳道",
+  "toast.locateMiss": "时序图里没有这条请求（可能属于别的日期，或录制已被清理）",
   "detail.request": "请求 Request", "detail.response": "响应 Response",
   "detail.bodyChars": "body {n} 字符",
   "detail.system": "System（{n} 块 · {chars} 字符）",
@@ -2599,6 +2664,14 @@ en: {
   "list.loadMore": "Load more ({n} left)", "list.loadFailed": "Failed to load list: {msg}",
   "row.error": "request error", "chip.pending": "pending",
   "detail.back": "← Back", "detail.loading": "Loading…", "detail.loadFailed": "Failed to load detail: {msg}",
+  "detail.prev": "↑ Prev", "detail.next": "Next ↓",
+  "detail.prevTitle": "Earlier request in the same lane (same order as that column in the timeline)",
+  "detail.nextTitle": "Later request in the same lane (same order as that column in the timeline)",
+  "detail.navPos": "{lane} · {i} / {n}", "detail.navLoading": "Locating…", "detail.navOff": "not in the timeline",
+  "detail.locate": "Show in timeline", "detail.locateTitle": "Jump to the timeline, focus this request's lane and highlight it",
+  "toast.locate": "Focused “{lane}” and highlighted this request; use the Lanes menu to bring other lanes back",
+  "toast.locateReveal": "Focused “{lane}” and expanded what was folded to reveal this request; use the Lanes menu to bring other lanes back",
+  "toast.locateMiss": "This request is not in the timeline (different date, or the recording was cleared)",
   "detail.request": "Request", "detail.response": "Response",
   "detail.bodyChars": "body {n} chars",
   "detail.system": "System ({n} blocks · {chars} chars)",
@@ -3014,6 +3087,14 @@ ja: {
   "list.loadMore": "さらに読み込む（残り {n} 件）", "list.loadFailed": "一覧の読み込みに失敗：{msg}",
   "row.error": "リクエスト異常", "chip.pending": "進行中",
   "detail.back": "← 戻る", "detail.loading": "読み込み中…", "detail.loadFailed": "詳細の読み込みに失敗：{msg}",
+  "detail.prev": "↑ 前へ", "detail.next": "次へ ↓",
+  "detail.prevTitle": "同じレーン内で時間的に前のリクエスト（タイムラインのその列と同じ並び）",
+  "detail.nextTitle": "同じレーン内で時間的に後のリクエスト（タイムラインのその列と同じ並び）",
+  "detail.navPos": "{lane} · {i} / {n}", "detail.navLoading": "位置を特定中…", "detail.navOff": "タイムラインにありません",
+  "detail.locate": "タイムラインで表示", "detail.locateTitle": "タイムラインへ移動し、このリクエストのレーンに絞って強調表示します",
+  "toast.locate": "「{lane}」に絞り、このリクエストを強調しました。他のレーンは「レーン」メニューから戻せます",
+  "toast.locateReveal": "「{lane}」に絞り、折りたたみを開いてこのリクエストを表示しました。他のレーンは「レーン」メニューから戻せます",
+  "toast.locateMiss": "このリクエストはタイムラインにありません（別の日付、または録画が削除済み）",
   "detail.request": "リクエスト", "detail.response": "レスポンス",
   "detail.bodyChars": "body {n} 文字",
   "detail.system": "System（{n} ブロック · {chars} 文字）",
@@ -3810,7 +3891,9 @@ function showView(v){
   $("tabSettings").setAttribute("aria-selected", settingsOn ? "true" : "false");
   $("tabAnalyze").setAttribute("aria-selected", analyzeOn ? "true" : "false");
   if(v === "settings"){ loadConfig(); refreshHealth(); loadInstances(); loadStorage(); }   /* 打开设置页：体检 + 扫实例 + 算体积 */
-  if(v === "dag") loadDag();
+  /* dagLocate 期间不自己加载：它要按自己的节奏"渲染一次 → 看一眼 → 解一层"，
+     这里再来一发只会多拉一份同样的 dag（序号守卫会把它的响应丢掉，白花一次带宽）。 */
+  if(v === "dag" && !S.dagLocating) loadDag();
   if(v === "analyze") anLoad();
 }
 
@@ -4410,6 +4493,7 @@ function flushSSE(){
     }
   }
   renderDates(); renderStatus();
+  NAV.dirty = true;   /* 泳道索引里没有这几条新录制；下次真要用时才重取（260907） */
   /* 失败聚合随 LIVE 更新，与 DAG 同一档防抖（800ms）：只在这批里真有失败时才重算，
      否则一天几千条成功流量会把一个纯归纳面板变成 800ms 一次的全量扫描 */
   if(buf.some(it => it.has_error || (it.status != null && (it.status < 200 || it.status >= 300)))){
@@ -4422,13 +4506,108 @@ function flushSSE(){
   }
 }
 
+/* ================= 泳道索引（260907）=================
+   详情页要回答两个问题——「这条请求属于哪条泳道」「在泳道里排第几」——而 `/api/captures`
+   的列表摘要**不带 lane**：lane 是 `classifier.build_dag` 现算的（`_lane_key` + 子代理后验
+   修正 + agent_id 改写），`_public_summary` 剥掉的正是它的判别原料。不为此新开一个后端接口，
+   直接复用 `/api/dag` —— 它的 `nodes` 本来就按 ts_start 排好序（build_dag 开头 sorted），
+   顺序入表即可，前端不重算任何判据（判据必须单份）。 */
+const NAV = {
+  date: null, source: null, ready: false, loading: null,
+  dirty: false,          /* LIVE 有新录制到达：下次要用索引时才重取，不为每条新录制重拉全天 */
+  laneOf: {},            /* 节点 id → 泳道 id */
+  laneSeq: {},           /* 泳道 id → 按时间排好的节点 id 列表 */
+  laneKind: {}, laneNum: {},
+};
+function navBuild(d){
+  NAV.laneOf = {}; NAV.laneSeq = {}; NAV.laneKind = {}; NAV.laneNum = {};
+  let mi = 0;
+  for(const l of (d.lanes || [])){
+    NAV.laneKind[l.lane_id] = l.kind;
+    /* 主线序号与 renderDagFull 用同一条规则（lanes 数组里 main 的首见顺序）：详情页写的
+       「主线 2」必须就是时序图列头上的那个 2，两处各编各的号，用户会当成两条不同泳道。 */
+    if(l.kind === "main") NAV.laneNum[l.lane_id] = ++mi;
+  }
+  for(const n of (d.nodes || [])){
+    NAV.laneOf[n.id] = n.lane;
+    (NAV.laneSeq[n.lane] = NAV.laneSeq[n.lane] || []).push(n.id);
+  }
+  NAV.date = S.date; NAV.source = S.source; NAV.ready = true; NAV.dirty = false;
+}
+/* 并发调用共用同一个 promise：详情页翻得快时会连着调，没必要并排拉几份同样的 dag。 */
+function navEnsure(){
+  if(NAV.loading) return NAV.loading;
+  NAV.loading = (async () => {
+    try{
+      const r = await fetch("/api/dag?date=" + encodeURIComponent(S.date || "") + srcQ());
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+      navBuild(d);
+      return true;
+    }catch(e){
+      NAV.ready = false;
+      return false;
+    }finally{ NAV.loading = null; }
+  })();
+  return NAV.loading;
+}
+/* 泳道短名：与时序图列头同源。aux 是「全天所有会话的辅助合成的一列」，没有序号也没有实例键，
+   直接给它的类别名（laneShortName 那份返回裸 lane_id "aux"，那是给 hover 标题用的）。 */
+function navLaneName(laneId){
+  const k = NAV.laneKind[laneId] || DG.laneKind[laneId];
+  if(k === "main") return laneLabel("main") + " " + (NAV.laneNum[laneId] || DG.laneNum[laneId] || "?");
+  if(k === "subagent") return laneLabel("subagent") + " " + String(laneId).replace(/^agent-/, "").slice(0, 8);
+  return laneLabel("aux");
+}
+/* 某条请求在它泳道里的位置：{lane, i, n, prev, next}；索引过期或这条不在图上返回 null。 */
+function navPosOf(id){
+  if(!id || !NAV.ready || NAV.date !== S.date || NAV.source !== S.source) return null;
+  const lane = NAV.laneOf[id];
+  if(!lane) return null;
+  const seq = NAV.laneSeq[lane] || [];
+  const i = seq.indexOf(id);
+  if(i < 0) return null;
+  return { lane, i, n: seq.length,
+           prev: i > 0 ? seq[i - 1] : null,
+           next: i < seq.length - 1 ? seq[i + 1] : null };
+}
+
 /* ================= View B 详情 ================= */
+/* 导航组（260907）：上一条 / 位置 / 下一条 / ⌖ 时序图定位。翻的顺序是**这条请求所在泳道**
+   内的时间先后，与时序图那一列自上而下完全一致（上一条=更早，下一条=更晚）。 */
+function navPaint(p, loading){
+  const prev = $("dPrev"), next = $("dNext"), loc = $("dLocate"), pos = $("dNavPos");
+  if(!prev || !next || !loc || !pos) return;
+  S.navPrev = p ? p.prev : null;
+  S.navNext = p ? p.next : null;
+  prev.disabled = !(p && p.prev);
+  next.disabled = !(p && p.next);
+  loc.disabled = !p;
+  pos.classList.toggle("off", !p);
+  pos.textContent = p
+    ? t18("detail.navPos", {lane: navLaneName(p.lane), i: p.i + 1, n: p.n})
+    : t18(loading ? "detail.navLoading" : "detail.navOff");
+}
+async function renderDetailNav(){
+  const id = S.captureId, seq = S.detailSeq;
+  const cached = navPosOf(id);
+  navPaint(cached, !cached);          /* 缓存命中先画出来，别让按钮空一拍 */
+  if(cached && !NAV.dirty) return;
+  const ok = await navEnsure();
+  if(seq !== S.detailSeq) return;     /* 期间已翻到别的 capture：旧回调不许改新那条的按钮 */
+  navPaint(ok ? navPosOf(id) : null, false);
+}
+function detailStep(dir){
+  const id = dir < 0 ? S.navPrev : S.navNext;
+  if(id) openDetail(id);   /* 不带 from：返回目标保持原样（从时序图进来的，翻几条后仍回时序图） */
+}
 async function openDetail(id, from){
   if(id !== S.captureId) S.msgShowAll = false;
   S.captureId = id;
   const seq = ++S.detailSeq;   /* 重入守卫：快速连点两条时丢弃过期 fetch 响应（260712） */
   if(from) S.detailFrom = from;   /* 不带 from（如「展开全部」重进）时保持原返回目标 */
   showView("detail");
+  renderDetailNav();              /* 与正文并行：索引要不要重取由它自己判（260907） */
   $("reqCol").innerHTML = '<div class="dcard">' + t18("detail.loading") + '</div>';
   $("respCol").innerHTML = "";
   try{
@@ -5216,14 +5395,16 @@ function dagToggleTurns(){
   loadDag();
 }
 /* 点轮卡上的子代理徽章：只留该子代理泳道 + 它的派生方，其余收起（快速定位用） */
-function dagFocusLane(laneId){
+/* 260907 把状态那一半单拆出来：⌖ 定位要"先设好聚焦，再和别的解隐藏动作一起只重渲一次"，
+   而原函数末尾自带 loadDag，连着调会重渲好几遍（每遍都是全量重排）。 */
+function dagFocusLaneState(laneId){
   DG.hiddenLanes = new Set(DG.lanes.map(l => l.lane_id).filter(id => id !== laneId && id !== "aux"));
   DG.shownLanes = new Set([laneId]);
   let p = DG.parentLane[laneId], seen = new Set();
   while(p && !seen.has(p)){ DG.hiddenLanes.delete(p); DG.shownLanes.add(p); seen.add(p); p = DG.parentLane[p]; }
   DG.rendered = false;
-  loadDag();
 }
+function dagFocusLane(laneId){ dagFocusLaneState(laneId); loadDag(); }
 /* 连续错误折叠卡：红底刺眼但只占一格；点击展开逐条（dagToggleRun → 全量重渲） */
 function dagRunCardHtml(run){
   const first = DG.nodeById[run.ids[0]] || {};
@@ -5605,6 +5786,7 @@ function renderDagFull(d){
   wrap.scrollTop = _st;
   DG.rendered = true;
   dagApplyZoom();
+  dagApplyHit();   /* 重渲会重建 DOM：⌖ 定位的高亮必须在这里重贴（260907） */
 }
 function renderDagIncremental(d){
   const nodes = d.nodes || [], edges = d.edges || [];
@@ -5657,9 +5839,14 @@ function renderDagIncremental(d){
     const el = inner.querySelector('.lane-head[data-lane="' + l.lane_id + '"] .lh-count');
     if(el) el.textContent = l.count;
   }
+  dagApplyHit();   /* 增量路径不重建已有节点，但定位那一条可能正是这批新到的（260907） */
 }
-function dagToggleMid(){
-  DG.hideMid = !DG.hideMid;
+/* 260907 拆成 set/toggle 两半：⌖ 定位要把某个过滤**设成关**（而不是"反转一下"），
+   反转在已经是关的时候会把它打开，正好帮倒忙。按钮文案与 on 态必须跟着状态走，
+   否则会出现"图上显示了中间步、按钮还写着隐藏中间步"。 */
+function dagSetMid(hide){
+  if(DG.hideMid === hide) return false;
+  DG.hideMid = hide;
   const b = $("dagMidBtn");
   b.classList.toggle("on", DG.hideMid);
   b.dataset.i18n = DG.hideMid ? "dag.showMid" : "dag.hideMid";
@@ -5667,10 +5854,12 @@ function dagToggleMid(){
   b.textContent = t18(b.dataset.i18n);
   b.title = t18(b.dataset.i18nTitle);
   DG.rendered = false;   /* 可见性变了：强制全量重排（mid 占位规则不同） */
-  loadDag();
+  return true;
 }
-function dagToggleAux(){
-  DG.hideAux = !DG.hideAux;
+function dagToggleMid(){ dagSetMid(!DG.hideMid); loadDag(); }
+function dagSetAux(hide){
+  if(DG.hideAux === hide) return false;
+  DG.hideAux = hide;
   const b = $("dagAuxBtn");
   b.classList.toggle("on", DG.hideAux);
   b.dataset.i18n = DG.hideAux ? "dag.showAux" : "dag.hideAux";
@@ -5678,8 +5867,9 @@ function dagToggleAux(){
   b.textContent = t18(b.dataset.i18n);
   b.title = t18(b.dataset.i18nTitle);
   DG.rendered = false;   /* 可见性变了：强制全量重排（aux lane 整列去留影响布局） */
-  loadDag();
+  return true;
 }
+function dagToggleAux(){ dagSetAux(!DG.hideAux); loadDag(); }
 /* ---- 泳道选择（260719）：藏掉不看的主线，剩余泳道适应宽度后自然变大 ---- */
 function laneBtnClick(ev){
   ev?.stopPropagation();
@@ -5736,6 +5926,105 @@ function dagZoomBy(delta){
   const zv = $("dagZoomVal"); if(zv) zv.textContent = Math.round(z * 100) + "%";
 }
 function dagZoomFit(){ S.dagZoom = null; DG.rendered = false; loadDag(); }
+
+/* ---- ⌖ 从详情页定位到时序图（260907）----
+   为什么是「聚焦泳道 + 展开折叠」而不是「滚过去就行」：时序图默认态是**按轮折叠**、一天几十列，
+   目标节点九成根本没画进 DOM；只滚不展开的结果是点了按钮什么都没发生，定位工作又推回给人。
+   代价是它**改了显示状态**（隐藏了其它泳道、展开了某一轮），所以必须 toast 说清楚改了什么，
+   并告诉用户从哪儿放回来——静默改状态正是本项目惯犯 bug ③ 的形状。 */
+function dagHitEl(id){
+  return document.querySelector('#dagWrap .dag-node[data-nid="' + id + '"]');
+}
+/* 把节点滚到可视区中央。**用 getBoundingClientRect 而不是 offsetLeft/offsetTop**：
+   画布套着 CSS zoom（内层 dagApplyZoom + 根元素的界面缩放，两层相乘），offset* 系列在
+   哪一层坐标里是浏览器实现细节，rect 则一律是视觉像素。再用 rect 宽 / clientWidth 求出
+   祖先缩放倍率换回 scrollLeft 的单位——scrollLeft 走的是容器自己的 CSS px。 */
+function dagScrollToEl(el){
+  const wrap = $("dagWrap");
+  if(!wrap || !el) return;
+  const w = wrap.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const ratio = w.width > 0 && wrap.clientWidth > 0 ? w.width / wrap.clientWidth : 1;
+  wrap.scrollLeft += ((r.left - w.left) - (w.width - r.width) / 2) / ratio;
+  wrap.scrollTop += ((r.top - w.top) - (w.height - r.height) / 2) / ratio;
+}
+/* 高亮当前定位到的节点。每次渲染尾部都调一次——缩放、切折叠态、LIVE 新节点都会重建 DOM，
+   只在定位那一刻贴一次 class 的话，用户回头再找就没有了。
+   节点不在图上（换了日期或来源）就让标记自己失效，不用在各处切换点各接一遍清理。 */
+function dagApplyHit(){
+  const id = S.dagHitId;
+  if(!id) return;
+  if(!DG.nodeById[id]){ S.dagHitId = null; S.dagHitPulse = false; return; }
+  const el = dagHitEl(id);
+  if(!el) return;
+  el.classList.add("hit");
+  if(S.dagHitPulse){ S.dagHitPulse = false; el.classList.add("hit-pulse"); }
+}
+/* 解除一层挡住目标的隐藏，改了返回 true。**只能一层一层来**：DG.tier / runOf / auxAggOf /
+   auxAssoc 这几张表都是渲染时才建的，提前推算不出来，所以是"渲染一次 → 看一眼 → 解一层"。 */
+function dagRevealOnce(id){
+  const n = DG.nodeById[id];
+  if(!n) return false;
+  if(laneHidden(n.lane)){ DG.shownLanes.add(n.lane); DG.rendered = false; return true; }
+  if(DG.hideAux && DG.laneKind[n.lane] === "aux") return dagSetAux(false);
+  if(DG.hideMid && DG.tier[id] === "mid") return dagSetMid(false);
+  /* 辅助节点：先看它是不是并进了本轮的辅助聚合卡 */
+  const agg = DG.auxAggOf[id];
+  if(agg && !DG.expandedAuxAgg.has(agg)){ DG.expandedAuxAgg.add(agg); DG.rendered = false; return true; }
+  const run = DG.runOf[id];
+  if(run && !DG.expandedRuns.has(run)){ DG.expandedRuns.add(run); DG.rendered = false; return true; }
+  if(n.turn && DG.foldTurns && DG.laneKind[n.lane] !== "aux" && !DG.expandedTurns.has(n.turn)){
+    DG.expandedTurns.add(n.turn); DG.rendered = false; return true;
+  }
+  /* dagPlace 末段那条：关联主线被隐藏时，挂在它上面的辅助也不画。把关联主线勾回来。 */
+  const assoc = DG.auxAssoc[id];
+  if(assoc && laneHidden(assoc)){ DG.shownLanes.add(assoc); DG.rendered = false; return true; }
+  return false;
+}
+async function dagLocate(id){
+  if(!id) return;
+  /* 泳道归属先问索引：这条可能属于别的日期，或者录制已被清理——那种情况下切过去只会
+     让人对着一张不相干的图找。 */
+  if(!navPosOf(id)){
+    await navEnsure();
+    if(!navPosOf(id)){ toast(t18("toast.locateMiss"), true); return; }
+  }
+  S.dagHitId = id; S.dagHitPulse = true;
+  S.dagLocating = true;
+  try{
+    await dagLocateRun(id);
+  }finally{ S.dagLocating = false; }
+}
+async function dagLocateRun(id){
+  showView("dag");
+  if(!DG.rendered || DG.date !== S.date) await loadDag();
+  const n = DG.nodeById[id];
+  if(!n){ toast(t18("toast.locateMiss"), true); return; }
+
+  /* ① 聚焦泳道。aux 节点聚焦它 near 边关联的**主线**，不是 aux 列本身——直接聚焦 aux
+     会把所有主线关掉，而 dagPlace 里「关联主线被隐藏的辅助不画」那条规则会连目标自己一起隐掉。
+     没有关联主线的孤儿辅助（near 边没挂上）不聚焦，照原样找。 */
+  const focus = DG.laneKind[n.lane] === "aux" ? DG.auxAssoc[id] : n.lane;
+  const laneName = navLaneName(focus || n.lane);
+  if(focus && (DG.lanes || []).some(l => l.lane_id !== focus && !laneHidden(l.lane_id))){
+    dagFocusLaneState(focus);
+    await loadDag();
+  }
+
+  /* ② 还没画出来就逐层解除。最坏情况要叠几层（泳道被关 + 隐藏辅助 + 轮折叠 + 错误折叠），
+     给 6 轮上限是防某天加了新的折叠维度时这里变成死循环——那种情况下宁可少露一次，
+     也不要卡住界面。每轮是一次全量重排（实测最大一天 2993 节点 0.1s）。 */
+  let revealed = false;
+  for(let k = 0; k < 6 && !dagHitEl(id); k++){
+    if(!dagRevealOnce(id)) break;
+    revealed = true;
+    await loadDag();
+  }
+  const el = dagHitEl(id);
+  if(!el){ toast(t18("toast.locateMiss"), true); return; }
+  dagScrollToEl(el);
+  dagApplyHit();
+  toast(t18(revealed ? "toast.locateReveal" : "toast.locate", {lane: laneName}));
+}
 
 /* 把「怎么驱动这个工具」一句话复制走，粘给任意 agent（260801） */
 function copyAiPrompt(btn){ return copyAndReport(S.aiPrompt || "", btn); }
