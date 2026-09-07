@@ -820,6 +820,46 @@ def iter_records(date: str | None = None, source: str = ""):
     yield from _Day(date, source).iter_records()
 
 
+def records_by_index(entries: list[dict], date: str, source: str = "") -> list[dict | None]:
+    """按索引条目批量取完整记录，**保持传入顺序**，取不到的位置留 None。
+
+    比逐条 `record_at` 少开 N-1 次文件：动作账本一次要 50～3000 条，而 `record_at`
+    每次自己 open/close，量一上来全是系统调用。这里按 seg 分组，每个锚点只开一次。
+
+    取不到（记录被清理、分片已不在、坏行）要**留 None 让调用方说缺**，不能悄悄少一条。
+    """
+    day = _Day(date, source)
+    out: list[dict | None] = [None] * len(entries)
+    by_seg: dict = {}
+    for i, e in enumerate(entries):
+        by_seg.setdefault(e.get("seg"), []).append((i, e))
+    for seg, group in by_seg.items():
+        pd = day._anchor_of(seg)
+        if pd is not None:
+            try:
+                with pack.PackReader(pd) as r:
+                    for i, e in group:
+                        out[i] = r.record_at(e["off"], e["len"])
+            except pack.PackError as ex:
+                log.error("pack 批量取记录失败 %s/%s: %s", date, seg, ex)
+            continue
+        if seg:
+            continue            # 索引说在第 N 个分片，而那个分片不在了
+        if not day.jsonl.exists():
+            continue
+        try:
+            with day.jsonl.open("rb") as fh:
+                for i, e in group:
+                    fh.seek(e["off"])
+                    try:
+                        out[i] = json.loads(fh.read(e["len"]))
+                    except json.JSONDecodeError:
+                        pass
+        except OSError as ex:
+            log.error("批量取记录失败 %s: %s", date, ex)
+    return out
+
+
 def list_full(date: str | None = None, limit: int = 100000, source: str = "") -> list[dict]:
     """读指定日期全量**完整** records（含 body，MB 级/条，大流量天 parse 要秒级）。
     仅供 tools/lane_probe.py 等需要 body 内部细节的 dev 工具；热路径一律走 list_index。"""

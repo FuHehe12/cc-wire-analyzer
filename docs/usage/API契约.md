@@ -291,6 +291,61 @@ data: {...}
 > **自检**：`_node_summary` 加字段必须同步这里 + 前端 `dagNodeHtml`。字段只对部分 kind 存在时，
 > 明写「哪些 kind 带」——消费方不能靠试。
 
+### `GET /api/actions?date=YYYY-MM-DD&lane=…&since=0&limit=200` — 动作账本（外环观测者用）
+
+把一条录制流压成「第 N 步做了什么」。给**外环观测者**读——另开一个 AI 跟踪被观测 agent
+做了什么 / 在做什么 / 接下来要做什么，它不该为了知道一行命令而拉整条记录。
+
+**为什么现有两个入口不够**（260908 实测，样本 `2026-09-06` 的 54 步主线）：`/api/dag` 的
+`summary` 只有 `🔧 Bash` —— 工具名，没有参数，说不出做了什么；`/api/captures/<id>` 给的是
+299 KB 全量，其中 `response.content_blocks` 只占 **0.6%**，`tools[]` 独占 57.6%（73 个工具
+定义每次原样重发）。同一条主线逐条拉全量 23.8 MB，本端点 81.6 KB。
+
+| 参数 | 说明 |
+|---|---|
+| `date` | 缺省=今天；经 `YYYY-MM-DD` 格式 + 语义校验（防路径穿越） |
+| `source` | 外来录制的命名空间，同其余读取端点 |
+| `lane` / `session` | 按泳道（`s-…` / `agent-…` / `aux`）或 session 前缀过滤 |
+| `since` | **当天索引的正序位置**（响应里的 `seq`），返回 `seq >= since` 的步 |
+| `limit` | 缺省 200，上限 2000 |
+| `trunc` | 单个字段的截断长度，缺省 400，夹在 40～4000 |
+
+```json
+{
+  "date": "2026-09-06", "source": "", "lane": "s-751cdf31", "session": "",
+  "total": 54, "returned": 54, "next": 153, "done": true,
+  "steps": [{
+    "seq": 57, "id": "req_…", "ts": "2026-09-06T13:19:34.267",
+    "turn": "s-751cdf31#5", "lane": "s-751cdf31", "kind": "main",
+    "model": "claude-opus-5", "status": 200, "ms": 8014, "usage": {…},
+    "turn_start": true, "origin": "user",
+    "user": {"text":"我想知道的是，网络录制的提示词都是怎么来的…不要回灌","clip":180},
+    "acts": [{"id":"toolu_…","name":"Bash","input":"{\"command\": \"wc -c …\"}","clip":1820}],
+    "says": [{"text":"…","clip":900}],
+    "prev": [{"tool_use_id":"toolu_…","err":false,"out":"inserted, new size 17021"}],
+    "thinking": false
+  }]
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `seq` | 当天索引的正序位置，**在 lane/session 过滤之前编号**——换条泳道接着读，游标语义不变 |
+| `user` / `turn_start` / `origin` | **仅轮首**：用户这轮说了什么（原话，剥掉 `<system-reminder>` 后按 `trunc` 截）、这一步是轮的开头、这轮由谁发起（`user` 真人 / `synthetic` CC 合成的伪 user 消息 / `command` 斜杠命令 / `sdk`）。**不能省**：260908 两个外环观测者独立报了同一条——没有用户原话，「它在做什么」和「它为什么这么做」之间永远隔一层猜，阶段边界只能靠时间差推断。这里不用索引的 `turn_user`（写时截到 160 字），手上是完整 body，重新剥一遍给足 |
+| `acts[]` | 这一步调用了什么：`name` 工具名 + `input` 参数原文 |
+| `says[]` | 这一步向用户说的话 |
+| `prev[]` | **上一步**工具的返回（`err` 是否报错）。只取最后一条 user 消息里的 `tool_result`——再往前是历史，重复计进来会把同一次行动数成多次 |
+| `clip` | 该字段原文的字符数，**有这个键就说明给你的是截断版**。要原文回 `/api/captures/<id>`。这条是硬的：消费方据此才分得清「给了全部」和「给了摘要」 |
+| `thinking` | 这一步的推理正文（`{text, clip?}`），没有则 `false`。实测样本 54 步里只有 2 步有，其余是空签名——**外环基本只能看行为**，这是 wire 层的边界不是本端点的取舍 |
+| `missing` | 索引有、原文取不到（记录被清理 / 分片已不在 / 坏行）。**显式报缺，不静默少一步** |
+| `next` / `done` | 下次的 `since`；`done` 表示已读到当前末尾 |
+
+**`since` 为什么不能用 `/api/captures` 的 `offset`**：那边是倒序分页（`entries[::-1][offset:]`），
+活跃录制时前面插入新记录会让 offset 错位，同一个 offset 两次读到不同的东西。索引本身只追加，
+正序位置写进去就不再变，所以续读只认 `seq`。
+
+`lane` / `turn` 是分类器现算的（索引里没有），本端点走 `/api/dag` 那份缓存取，同一天不重算。
+
 ### `POST /api/captures/clear` — 清除录制
 
 **请求**：`{ "date": "2026-07-12", "mode": "purge"|"archive", "source"?: "标签", "label"?: "机器名" }`。`date` 缺省=今天；`mode` 缺省=`purge`。`date` 经 `YYYY-MM-DD` 格式 + 语义校验（防路径穿越）。
@@ -401,7 +456,7 @@ data: {...}
 
 ### 读取端点的 `source` 参数
 
-`/api/captures`、`/api/captures/<id>`、`/api/dag`、`/api/grep`、`/api/stats`、`/api/unknowns`、
+`/api/captures`、`/api/captures/<id>`、`/api/dag`、`/api/actions`、`/api/grep`、`/api/stats`、`/api/unknowns`、
 `/api/diagnose/errors` 都接受 `source=<标签>`：空/不给 = 本机录制，给了 = 看那个导入来源。
 CLI 对应 `--source`。
 

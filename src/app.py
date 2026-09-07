@@ -217,6 +217,7 @@ _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/captures/<rid>":          ("captures", "captureDetail"),
     "/api/captures/stream":         ("captures", "capturesStream"),
     "/api/dag":                     ("captures", "dag"),
+    "/api/actions":                 ("captures", "actions"),
     "/api/grep":                    ("captures", "grep"),
     "/api/stats":                   ("captures", "stats"),
     "/api/sources":                 ("captures", "sources"),
@@ -790,6 +791,76 @@ def dag_view():
     if not (excl or sess):
         return jsonify(_dag_of(date, src))
     return jsonify(classifier.build_dag(capture_store.list_index(date, excl, sess, src)))
+
+
+@app.route("/api/actions")
+def actions_view():
+    """动作账本：把一条录制流压成「第 N 步做了什么」，给外环观测者读。
+
+    **为什么不能用现成的两个入口**（260908 实测，2026-09-06 的 54 步主线）：
+    `/api/dag` 的摘要只有 `🔧 Bash` —— 工具名，没有参数，说不出做了什么；
+    `/api/captures/<rid>` 给的是 299 KB 全量，其中有用的 `content_blocks` 只占 0.6%，
+    整条主线拉下来 23.8 MB。同样这条主线，账本 36.4 KB —— 639×。
+
+    参数：date / source / lane / session / since / limit / trunc。
+    - `since` 是**当天索引的正序位置**（响应里的 `seq`），不是 offset。
+      `/api/captures` 是倒序分页（`entries[::-1][offset:]`），活跃录制时前面插入新记录会让
+      offset 错位，**不能拿它当续读游标**；索引本身只追加，正序位置写进去就不再变。
+    - `seq` 在**过滤之前**编号，所以按 lane 过滤不改变游标语义，换条 lane 也能接着读。
+    """
+    import actions, classifier
+
+    def _to_int(v, default):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default          # 非数字入参回退默认，别 500（审计 260712 #10）
+
+    date = request.args.get("date") or time.strftime("%Y-%m-%d", time.localtime())
+    src = request.args.get("source", "")
+    lane = request.args.get("lane", "")
+    sess = request.args.get("session", "")
+    since = max(0, _to_int(request.args.get("since", 0), 0))
+    limit = max(1, min(_to_int(request.args.get("limit", 200), 200), 2000))
+    trunc = max(40, min(_to_int(request.args.get("trunc", actions.TRUNC), actions.TRUNC), 4000))
+    try:
+        capture_store._validate_date(date)      # 格式 + 语义，防路径穿越（不变量 5）
+    except capture_store.StoreError as e:
+        return jsonify({"error": e.code, "detail": str(e)}), 400
+
+    rows = list(enumerate(capture_store.list_index(date, "", "", src)))   # seq 在过滤前定
+    # lane / turn 是分类器现算的，索引里没有 —— 走 /api/dag 那份缓存（键是锚点文件大小，
+    # 同一天不重算）。外环靠 turn 找轮边界（可研第十一节的候选预测点），不能省。
+    dag = _dag_of(date, src)
+    node_of = {n["id"]: n for n in dag.get("nodes", [])}
+    # 轮的发起方式（user / synthetic / command / sdk / partial）只在 turns 里算，节点上没有。
+    # 外环靠它区分"用户新提的问题"和"CC 自己合成的伪 user 消息"——两者都会带出真工作。
+    origin_of = {t["turn_id"]: t.get("origin") for t in dag.get("turns", []) or []}
+    if lane:
+        rows = [(i, e) for i, e in rows if (node_of.get(e.get("id")) or {}).get("lane") == lane]
+    if sess:
+        rows = [(i, e) for i, e in rows if str(e.get("session_id") or "").startswith(sess)]
+    total = len(rows)
+    page = [(i, e) for i, e in rows if i >= since][:limit]
+
+    recs = capture_store.records_by_index([e for _, e in page], date, src)
+    steps = []
+    for (seq, e), rec in zip(page, recs):
+        n = node_of.get(e.get("id")) or {}
+        idx = dict(e, lane=n.get("lane"), turn=n.get("turn"),
+                   origin=origin_of.get(n.get("turn")))
+        try:
+            idx["kind"] = classifier.classify_idx(e)
+        except Exception:
+            idx["kind"] = "other"       # 分类原料变动时整天会静默变 other，capture_store 那边已记日志
+        steps.append(actions.step(idx, rec, seq, trunc))
+    return jsonify({
+        "date": date, "source": src, "lane": lane, "session": sess,
+        "total": total, "returned": len(steps),
+        "next": (steps[-1]["seq"] + 1) if steps else since,
+        "done": bool(page) and page[-1][0] == rows[-1][0] if rows else True,
+        "steps": steps,
+    })
 
 
 def _store_call(fn, *args, **kw):
