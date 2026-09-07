@@ -795,20 +795,26 @@ def dag_view():
 
 @app.route("/api/actions")
 def actions_view():
-    """动作账本：把一条录制流压成「第 N 步做了什么」，给外环观测者读。
+    """上下文账本：把一条录制流还原成外环观测者能直接读的对话全文。
 
-    **为什么不能用现成的两个入口**（260908 实测，2026-09-06 的 54 步主线）：
-    `/api/dag` 的摘要只有 `🔧 Bash` —— 工具名，没有参数，说不出做了什么；
-    `/api/captures/<rid>` 给的是 299 KB 全量，其中有用的 `content_blocks` 只占 0.6%，
-    整条主线拉下来 23.8 MB。同样这条主线，账本 36.4 KB —— 639×。
+    外环观测者 = 另开一个独立的 AI，跟踪被观测 agent 做了什么、在做什么、接下来要做什么。
 
-    参数：date / source / lane / session / since / limit / trunc。
-    - `since` 是**当天索引的正序位置**（响应里的 `seq`），不是 offset。
-      `/api/captures` 是倒序分页（`entries[::-1][offset:]`），活跃录制时前面插入新记录会让
-      offset 错位，**不能拿它当续读游标**；索引本身只追加，正序位置写进去就不再变。
-    - `seq` 在**过滤之前**编号，所以按 lane 过滤不改变游标语义，换条 lane 也能接着读。
+    **为什么另开一个端点**（260908 实测，`2026-09-06` 的 54 步主线）：`/api/dag` 的摘要只有
+    `🔧 Bash` —— 工具名没有参数，说不出做了什么；`/api/captures/<id>` 逐条拉是 19.8 MB
+    （约 5,255k token），而那里面 **6044 条消息是重复重发的，唯一的只有 292 条** —— CC 每次
+    请求把整段历史原样再发一遍。本端点按消息去重后 **197 KB / 约 55k token，零信息损失**。
+
+    参数只有一个增量标志 `since`：给了就是从那一步之后接着读，不给就是整段。
+    `since` 是**当天索引的正序位置**，不是 offset —— `/api/captures` 是倒序分页
+    （`entries[::-1][offset:]`），活跃录制时前面插入新记录会让同一个 offset 两次读到不同的
+    东西；索引只追加，正序位置写进去就不再变。`seq` 在 lane/session 过滤**之前**编号，
+    所以换条泳道也能接着用同一个游标。
+
+    其余参数：`date` / `source` / `lane` / `session` / `limit` / `tools`（`1` 时附完整工具
+    schema，默认只给工具名——那段 168 KB / 约 45k token 且整段会话一字不变，是上下文膨胀
+    最大的单一来源）。
     """
-    import actions, classifier
+    import actions
 
     def _to_int(v, default):
         try:
@@ -821,21 +827,16 @@ def actions_view():
     lane = request.args.get("lane", "")
     sess = request.args.get("session", "")
     since = max(0, _to_int(request.args.get("since", 0), 0))
-    limit = max(1, min(_to_int(request.args.get("limit", 200), 200), 2000))
-    trunc = max(40, min(_to_int(request.args.get("trunc", actions.TRUNC), actions.TRUNC), 4000))
+    limit = max(1, min(_to_int(request.args.get("limit", 500), 500), 5000))
+    want_tools = request.args.get("tools", "") in ("1", "true", "yes")
     try:
         capture_store._validate_date(date)      # 格式 + 语义，防路径穿越（不变量 5）
     except capture_store.StoreError as e:
         return jsonify({"error": e.code, "detail": str(e)}), 400
 
     rows = list(enumerate(capture_store.list_index(date, "", "", src)))   # seq 在过滤前定
-    # lane / turn 是分类器现算的，索引里没有 —— 走 /api/dag 那份缓存（键是锚点文件大小，
-    # 同一天不重算）。外环靠 turn 找轮边界（可研第十一节的候选预测点），不能省。
     dag = _dag_of(date, src)
     node_of = {n["id"]: n for n in dag.get("nodes", [])}
-    # 轮的发起方式（user / synthetic / command / sdk / partial）只在 turns 里算，节点上没有。
-    # 外环靠它区分"用户新提的问题"和"CC 自己合成的伪 user 消息"——两者都会带出真工作。
-    origin_of = {t["turn_id"]: t.get("origin") for t in dag.get("turns", []) or []}
     if lane:
         rows = [(i, e) for i, e in rows if (node_of.get(e.get("id")) or {}).get("lane") == lane]
     if sess:
@@ -843,24 +844,46 @@ def actions_view():
     total = len(rows)
     page = [(i, e) for i, e in rows if i >= since][:limit]
 
-    recs = capture_store.records_by_index([e for _, e in page], date, src)
-    steps = []
-    for (seq, e), rec in zip(page, recs):
-        n = node_of.get(e.get("id")) or {}
-        idx = dict(e, lane=n.get("lane"), turn=n.get("turn"),
-                   origin=origin_of.get(n.get("turn")))
-        try:
-            idx["kind"] = classifier.classify_idx(e)
-        except Exception:
-            idx["kind"] = "other"       # 分类原料变动时整天会静默变 other，capture_store 那边已记日志
-        steps.append(actions.step(idx, rec, seq, trunc))
-    return jsonify({
+    # 去重要从头看起：只输出**首次出现**的历史消息，而 since 之前那些已经给过了，
+    # 得把它们的哈希先喂进 seen，否则续读会把整段历史重新吐一遍。
+    warm = [(i, e) for i, e in rows if i < since]
+    recs = capture_store.records_by_index([e for _, e in warm + page], date, src)
+    seen: set = set()
+    for (_, e), rec in zip(warm, recs[:len(warm)]):
+        if not rec:
+            continue
+        body = (rec.get("request") or {}).get("body") or {}
+        for m in (body.get("messages") or []) if isinstance(body, dict) else []:
+            seen.add(actions._msg_key(m))
+
+    lines: list[str] = []
+    size = 0
+    last_seq = since - 1
+    stopped = False
+    for (seq, e), rec in zip(page, recs[len(warm):]):
+        n = node_of.get(e.get("id")) or dict(e)
+        chunk = actions.render_step(n, rec, seen)
+        add = sum(len(x.encode("utf-8")) + 1 for x in chunk)
+        if lines and size + add > actions.MAX_BYTES:
+            stopped = True          # 在步边界停，不切断某一步的正文
+            break
+        lines += chunk
+        size += add
+        last_seq = seq
+
+    head = (f"# 录制 {date} · 泳道 {lane or '全部'} · 第 {page[0][0] if page else since} 步起，"
+            f"本次 {len([1 for l in lines if l.startswith(chr(10) + '#')])} 步 / 共 {total} 步")
+    out = {
         "date": date, "source": src, "lane": lane, "session": sess,
-        "total": total, "returned": len(steps),
-        "next": (steps[-1]["seq"] + 1) if steps else since,
-        "done": bool(page) and page[-1][0] == rows[-1][0] if rows else True,
-        "steps": steps,
-    })
+        "total": total, "next": last_seq + 1,
+        "done": (not stopped) and bool(page) and page[-1][0] == rows[-1][0] if rows else True,
+        "guard": actions.GUARD,
+        "content": actions.wrap(head + "\n" + "\n".join(lines)),
+    }
+    first_rec = next((r for r in recs[len(warm):] if r), None)
+    tb = ((first_rec or {}).get("request", {}).get("body") or {}).get("tools") or []
+    out["tools"] = tb if want_tools else actions.tool_names(first_rec)
+    return jsonify(out)
 
 
 def _store_call(fn, *args, **kw):
