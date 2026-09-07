@@ -26,6 +26,7 @@ import re
 import threading
 import time
 import uuid
+from copy import deepcopy
 from pathlib import Path
 
 import config as CFG
@@ -40,10 +41,16 @@ _LOCK = threading.Lock()
 HISTORY_MAX = 20
 # 提交流水最多记几条。幂等只需要认得出「最近重试的那一批」，不是审计账本。
 SUBMITS_MAX = 200
-ITEM_KINDS = ("phase", "finding", "open", "prediction", "deviation")
+ITEM_KINDS = ("phase", "finding", "open", "prediction", "deviation", "goal", "artifact", "check")
 ITEM_STATUS = ("tentative", "supported", "unresolved", "retracted")
+ITEM_PROGRESS = ("planned", "active", "blocked", "done", "unknown")
+COVERS_MAX = 2000
+TITLE_MAX = 200
+FORECAST_HORIZON_MAX = 5000
+FORECAST_CRITERION_MAX = 2000
 LINK_TYPES = ("belongs_to", "depends_on", "produces", "supports", "contradicts")
 _ID_RE = re.compile(r"^obs_[0-9a-f]{7}$")
+_RID_RE = re.compile(r"req_[A-Za-z0-9_-]{1,124}\Z")
 
 
 class ObserveError(RuntimeError):
@@ -141,10 +148,64 @@ def delete(oid: str) -> dict:
     return {"id": oid, "deleted": True}
 
 
+def _semantic_fields(data: dict, kind: str) -> dict:
+    """Optional graph fields; missing keys preserve legacy records unchanged.
+
+    covers is explicit membership, not evidence or an inferred min/max interval.
+    Validate shape here; existence and scope membership require the recording read
+    layer. A forecast records the observer's declared boundary, not enforced blindness.
+    """
+    out = {}
+    if "title" in data:
+        title = data["title"]
+        if not isinstance(title, str) or len(title.strip()) > TITLE_MAX:
+            raise ObserveError("bad_title", f"title 必须为最多 {TITLE_MAX} 字符的字符串")
+        out["title"] = title.strip()  # empty string clears the optional short title
+    if "progress" in data:
+        progress = data["progress"]
+        if not isinstance(progress, str) or progress not in ITEM_PROGRESS:
+            raise ObserveError("bad_progress", f"progress 必须为 {ITEM_PROGRESS} 之一")
+        out["progress"] = progress
+    if "covers" in data:
+        covers = data["covers"]
+        if not isinstance(covers, list) or len(covers) > COVERS_MAX:
+            raise ObserveError("bad_covers", f"covers 必须为最多 {COVERS_MAX} 项的请求 ID 数组")
+        if any(not isinstance(rid, str) or not _RID_RE.fullmatch(rid) for rid in covers):
+            raise ObserveError("bad_covers", "covers 每项必须为 req_ 开头的有效请求 ID")
+        out["covers"] = list(dict.fromkeys(covers))  # preserve first-occurrence order
+    if "forecast" in data:
+        f = data["forecast"]
+        if kind != "prediction" or not isinstance(f, dict):
+            raise ObserveError("bad_forecast", "forecast 只允许用于 prediction，且必须为对象")
+        if set(f) != {"after_rid", "horizon_steps", "criterion"}:
+            raise ObserveError("bad_forecast", "forecast 必须且只能含 after_rid/horizon_steps/criterion")
+        if not isinstance(f["after_rid"], str) or not _RID_RE.fullmatch(f["after_rid"]):
+            raise ObserveError("bad_forecast", "after_rid 必须为有效请求 ID")
+        horizon = f["horizon_steps"]
+        if type(horizon) is not int or not 1 <= horizon <= FORECAST_HORIZON_MAX:
+            raise ObserveError("bad_forecast", f"horizon_steps 必须为 1..{FORECAST_HORIZON_MAX} 的整数")
+        criterion = f["criterion"]
+        if (not isinstance(criterion, str) or not criterion.strip()
+                or len(criterion.strip()) > FORECAST_CRITERION_MAX):
+            raise ObserveError("bad_forecast", f"criterion 必须为 1..{FORECAST_CRITERION_MAX} 字符的判断条件")
+        out["forecast"] = dict(f, criterion=criterion.strip())
+    return out
+
+
+def _remember(it: dict) -> None:
+    """Keep the complete previous item, without recursively copying its history."""
+    previous = deepcopy({k: v for k, v in it.items() if k != "history"})
+    previous["at"] = it.get("updated")  # retain the legacy history timestamp contract
+    it.setdefault("history", []).append(previous)
+    it["history"] = it["history"][-HISTORY_MAX:]
+
+
 def _new_item(op: dict, now: str) -> dict:
     kind = op.get("kind") or "finding"
     if kind not in ITEM_KINDS:
         raise ObserveError("bad_kind", f"kind 非法：{kind}")
+    if not isinstance(op.get("text", ""), str):
+        raise ObserveError("empty_text", "条目正文必须为非空字符串")
     text = (op.get("text") or "").strip()
     if not text:
         raise ObserveError("empty_text", "条目正文不能为空")
@@ -152,10 +213,14 @@ def _new_item(op: dict, now: str) -> dict:
     if st not in ITEM_STATUS:
         raise ObserveError("bad_status", f"status 非法：{st}")
     ev = [str(x) for x in (op.get("evidence") or []) if str(x).strip()][:50]
+    extra = _semantic_fields(op, kind)
+    if "forecast" in extra and len(text) > 4000:
+        raise ObserveError("bad_forecast", "带 forecast 的预测正文最多 4000 字符，不能截断原预测")
     return {
         "id": "i_" + uuid.uuid4().hex[:6], "kind": kind, "text": text[:4000],
         "status": st, "evidence": ev, "links": [], "history": [],
         "created": now, "updated": now, "rev": 1,
+        **extra,
     }
 
 
@@ -216,20 +281,30 @@ def apply(oid: str, submission_id: str, base_revision, ops: list) -> dict:
                 if it is None:
                     raise ObserveError("no_item", f"条目不存在：{op.get('id')}")
                 # 改判要留痕：把当前版压进 history 再改（可研第十节）
-                it.setdefault("history", []).append(
-                    {"rev": it.get("rev", 1), "text": it.get("text"),
-                     "status": it.get("status"), "at": it.get("updated")})
-                it["history"] = it["history"][-HISTORY_MAX:]
+                _remember(it)
                 if kind == "retract_item":
                     it["status"] = "retracted"
                     if (op.get("reason") or "").strip():
                         it["reason"] = op["reason"].strip()[:1000]
                 else:
                     patch = op.get("patch") or {}
+                    if not isinstance(patch, dict):
+                        raise ObserveError("bad_op", "patch 必须为对象")
+                    new_kind = patch.get("kind", it.get("kind"))
+                    extra = _semantic_fields(patch, new_kind)
+                    if "forecast" in it:
+                        if (new_kind != "prediction"
+                                or ("text" in patch and patch["text"] != it.get("text"))
+                                or ("forecast" in extra and extra["forecast"] != it["forecast"])):
+                            raise ObserveError("forecast_locked", "原预测正文和 forecast 不可改写；请撤回后新建预测")
                     if "text" in patch:
+                        if not isinstance(patch["text"], str):
+                            raise ObserveError("empty_text", "条目正文必须为非空字符串")
                         t = (patch.get("text") or "").strip()
                         if not t:
                             raise ObserveError("empty_text", "条目正文不能为空")
+                        if ("forecast" in it or "forecast" in extra) and len(t) > 4000:
+                            raise ObserveError("bad_forecast", "带 forecast 的预测正文最多 4000 字符")
                         it["text"] = t[:4000]
                     if "status" in patch:
                         if patch["status"] not in ITEM_STATUS:
@@ -242,6 +317,7 @@ def apply(oid: str, submission_id: str, base_revision, ops: list) -> dict:
                     if "evidence" in patch:
                         it["evidence"] = [str(x) for x in (patch["evidence"] or [])
                                           if str(x).strip()][:50]
+                    it.update(extra)
                 it["rev"] = it.get("rev", 1) + 1
                 it["updated"] = now
             elif kind == "link_items":
@@ -254,7 +330,9 @@ def apply(oid: str, submission_id: str, base_revision, ops: list) -> dict:
                     raise ObserveError("bad_link", f"关系类型非法：{rel}")
                 links = items[a].setdefault("links", [])
                 if not any(l.get("to") == b and l.get("type") == rel for l in links):
+                    _remember(items[a])
                     links.append({"type": rel, "to": b})
+                    items[a]["rev"] = items[a].get("rev", 1) + 1
                 items[a]["updated"] = now
             elif kind == "set_cursor":
                 try:

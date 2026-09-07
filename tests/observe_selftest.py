@@ -15,6 +15,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # Windows 控制台默认 GBK
 TMP = tempfile.mkdtemp(prefix="ccwa-obs-")
 os.environ["CCWA_HOME"] = TMP
+os.environ["CCWA_CLAUDE_SETTINGS"] = str(Path(TMP) / "claude-settings.json")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import observe_store as OB          # noqa: E402  —— 必须在设好 CCWA_HOME 之后导入
@@ -103,12 +104,12 @@ OB.apply(oid, "sub-7", None, [{"op": "update_item", "id": iid,
                                          "status": "supported"}}])
 it = [i for i in OB.read(oid)["items"] if i["id"] == iid][0]
 ok(it["text"].startswith("seq151 换到 glm-5.3"), "正文被改判（不是追加一条新的）")
-ok(it["status"] == "supported" and it["rev"] == 2, "状态与条目版本都前移")
+ok(it["status"] == "supported" and it["rev"] == 3, "关联与改判各推进条目版本")
 ok(it["history"] and it["history"][-1]["text"] == "seq151 换了模型", "旧版进了 history")
 OB.apply(oid, "sub-8", None, [{"op": "retract_item", "id": iid, "reason": "证据不足"}])
 it = [i for i in OB.read(oid)["items"] if i["id"] == iid][0]
 ok(it["status"] == "retracted" and it["reason"] == "证据不足", "撤回带原因")
-ok(len(it["history"]) == 2, "撤回同样留痕")
+ok(len(it["history"]) == 3, "关联、改判与撤回均留痕")
 ok(OB.listing()[0]["n_items"] == 1 and OB.listing()[0]["n_retracted"] == 1,
    "列表把撤回的与在册的分开数")
 
@@ -128,6 +129,96 @@ print("\n== 删除 ==")
 ok(OB.delete(oid)["deleted"] is True, "删得掉")
 ok(OB.read(oid) is None, "删完读不到")
 ok(raises("not_found", OB.delete, oid), "重复删明确报不存在")
+
+
+print("\n== 语义轨迹字段：兼容、覆盖集合和完整历史 ==")
+graph = OB.create({"date": "2026-09-08", "lane": "s-test"})
+gid = graph["id"]
+r = OB.apply(gid, "graph-1", 0, [
+    {"op": "add_item", "kind": "goal", "text": "完成用户目标", "client_ref": "goal"},
+    {"op": "add_item", "kind": "phase", "text": "验证代码", "title": " 验证 ",
+     "progress": "active", "covers": ["req_a", "req_b", "req_a"], "client_ref": "phase"},
+    {"op": "add_item", "kind": "artifact", "text": "补丁文件", "client_ref": "artifact"},
+    {"op": "add_item", "kind": "check", "text": "回归测试", "client_ref": "check"},
+])
+phase_id = r["refs"]["phase"]
+phase = next(x for x in r["state"]["items"] if x["id"] == phase_id)
+ok(phase["title"] == "验证" and phase["covers"] == ["req_a", "req_b"], "短标题归一、覆盖去重保序")
+legacy = r["state"]["items"][0]
+ok("covers" not in legacy and "progress" not in legacy, "旧条目形状不被强行填默认字段")
+OB.apply(gid, "graph-2", 1, [{"op": "update_item", "id": phase_id, "patch": {
+    "title": "", "progress": "done", "covers": [], "evidence": ["req_c"]}}])
+phase = next(x for x in OB.read(gid)["items"] if x["id"] == phase_id)
+old = phase["history"][-1]
+ok(phase["status"] == "tentative" and phase["progress"] == "done", "执行完成不自动改变判断可信状态")
+ok(old["title"] == "验证" and old["covers"] == ["req_a", "req_b"] and old["progress"] == "active",
+   "覆盖、进度、标题的旧版完整保留")
+ok(old["evidence"] == [] and "links" in old and "history" not in old, "旧证据与关系也保留，历史不递归膨胀")
+
+def reject_patch(code, patch, label):
+    before_bytes = OB._file(gid).read_bytes()
+    rejected = raises(code, OB.apply, gid, "reject-" + label, None, [
+        {"op": "set_cursor", "cursor": 888},
+        {"op": "update_item", "id": phase_id, "patch": patch},
+    ])
+    ok(rejected and OB._file(gid).read_bytes() == before_bytes, label + "拒绝且状态/水位/历史/流水均未变化")
+
+for value in [None, 12, [], "x" * 201]:
+    reject_patch("bad_title", {"title": value}, "非法标题 " + repr(value)[:30])
+for value in [None, True, "supported", "DONE", []]:
+    reject_patch("bad_progress", {"progress": value}, "非法执行进度 " + repr(value))
+for value in [None, "req_a", [4], [""], ["req_../x"], ["req_a\n"], ["req_a"] * 2001]:
+    reject_patch("bad_covers", {"covers": value}, "非法覆盖 " + repr(value)[:30])
+full_covers = [f"req_{i}" for i in range(2000)]
+rr = OB.apply(gid, "max-covers", None, [{"op": "update_item", "id": phase_id,
+                                         "patch": {"covers": full_covers}}])
+ok(next(x for x in rr["state"]["items"] if x["id"] == phase_id)["covers"] == full_covers,
+   "2000 个显式请求全部保存，不静默截断")
+
+print("\n== 预测：结构、原版冻结与撤回后仍不可改写 ==")
+forecast = {"after_rid": "req_b", "horizon_steps": 5, "criterion": "执行回归测试"}
+pr = OB.apply(gid, "forecast-1", None, [{"op": "add_item", "kind": "prediction",
+    "text": "下一步运行测试", "title": "测试候选", "forecast": forecast, "client_ref": "p"}])
+pid = pr["refs"]["p"]
+for patch in [{"text": "下一步提交"}, {"kind": "finding"},
+              {"forecast": dict(forecast, horizon_steps=10)}]:
+    before_bytes = OB._file(gid).read_bytes()
+    ok(raises("forecast_locked", OB.apply, gid, "locked", None, [
+        {"op": "set_cursor", "cursor": 999}, {"op": "update_item", "id": pid, "patch": patch}])
+       and OB._file(gid).read_bytes() == before_bytes, "不能覆盖预测正文/类型/窗口，整批回滚")
+for bad in [None, {}, dict(forecast, extra=True), dict(forecast, after_rid="../x"),
+            dict(forecast, horizon_steps=True), dict(forecast, horizon_steps="5"),
+            dict(forecast, horizon_steps=0), dict(forecast, horizon_steps=5001),
+            dict(forecast, criterion=" "), dict(forecast, criterion="x" * 2001)]:
+    before_bytes = OB._file(gid).read_bytes()
+    ok(raises("bad_forecast", OB.apply, gid, "bad-forecast", None, [
+        {"op": "add_item", "kind": "prediction", "text": "测试", "forecast": bad}])
+       and OB._file(gid).read_bytes() == before_bytes, "非法预测结构被拒: " + repr(bad)[:70])
+reject_patch("bad_forecast", {"forecast": forecast}, "非预测不能携带 forecast")
+OB.apply(gid, "forecast-review", None, [{"op": "update_item", "id": pid,
+    "patch": {"status": "supported", "evidence": ["req_c"], "forecast": forecast,
+              "text": "下一步运行测试"}}])
+p = next(x for x in OB.read(gid)["items"] if x["id"] == pid)
+ok(p["history"][-1]["forecast"] == forecast, "核对状态可更新，原预测结构进入完整历史")
+OB.apply(gid, "forecast-retract", None, [{"op": "retract_item", "id": pid, "reason": "新线索改变判断"}])
+ok(raises("forecast_locked", OB.apply, gid, "rewrite-withdrawn", None, [
+    {"op": "update_item", "id": pid, "patch": {"text": "改成已经发生的事"}}]), "撤回后仍不能改写原预测")
+replacement = OB.apply(gid, "forecast-replacement", None, [{"op": "add_item", "kind": "prediction",
+    "text": "先检查依赖", "forecast": dict(forecast, after_rid="req_c")}])
+ok(len([i for i in replacement["state"]["items"] if i["kind"] == "prediction"]) == 2,
+   "改判新建候选，旧预测与撤回理由仍在")
+
+print("\n== 原子替换实际失败：不前移水位或保存半份新字段 ==")
+from unittest.mock import patch as mock_patch
+before_bytes = OB._file(gid).read_bytes()
+with mock_patch.object(Path, "replace", side_effect=OSError("simulated replace failure")):
+    failed_write = raises("write_failed", OB.apply, gid, "disk-failure", None, [
+        {"op": "update_item", "id": phase_id, "patch": {"progress": "blocked", "covers": ["req_z"]}},
+        {"op": "set_cursor", "cursor": 9999},
+    ])
+ok(failed_write and OB._file(gid).read_bytes() == before_bytes, "替换失败后磁盘上的整个状态逐字节不变")
+retry = OB.apply(gid, "disk-failure", None, [{"op": "set_cursor", "cursor": 55}])
+ok(not retry["replayed"] and retry["state"]["cursor"] == 55, "失败提交未占用幂等键，恢复后可正常写入")
 
 print()
 if FAILED:

@@ -390,11 +390,11 @@ user 角色（内环把结果喂回去才有了下一条请求），但读的人
 | `submission_id` | **不能省**。外环是另一个进程，超时重试是常态；同一个 id 重放原样退回当前状态、不重复建条目（响应 `replayed:true`） |
 | `base_revision` | 对不上返回 **409**，body 里连当前 `state` 一起给——只回一句「版本不对」的话，调用方还得再拉一次才能合并。不给这个字段则跳过版本检查（首版单写者的便利口子） |
 | `client_ref` | 本批内给新条目起的临时名，`link_items` 可直接引用；响应 `refs` 给出临时名 → 真实 id 的对照表。**省一轮往返**：不必先提交一次拿 id 再提交第二次 |
-| `kind` | `phase` 阶段 / `finding` 发现 / `open` 未决 / `prediction` 预测 / `deviation` 偏差 |
+| `kind` | `goal` 目标 / `phase` 阶段 / `artifact` 产物 / `check` 核验 / `finding` 发现 / `open` 未决 / `prediction` 预测 / `deviation` 偏差 |
 | `status` | `tentative` 待证 / `supported` 有据 / `unresolved` 未解 / `retracted` 已撤回。**与被观测工作的进度分开**——不能用一个 done 同时表示「任务结束」和「结论正确」 |
 | `type`（关联） | `belongs_to` / `depends_on` / `produces` / `supports` / `contradicts` |
 | `evidence` | `req_` 开头的步号，界面上可点回那条请求 |
-| `cursor` | 外环自报读到第几步（对应 `/api/actions` 的 `seq`）。界面显示它，外环停了也显示停了多久——**观测者退出不能让界面假装还在跟** |
+| `cursor` | 外环自报读取水位；建议写入 `/api/actions` 响应的 `next`，续读时用作 `since`。它属于当日索引坐标，不是当前泳道已执行的步数。界面单独显示外环多久没有更新 |
 
 三条硬要求，都由 `tests/observe_selftest.py` 守着：
 
@@ -406,6 +406,35 @@ user 角色（内环把结果喂回去才有了下一条请求），但读的人
 
 存储是 `~/.cc-wire-analyzer/observations/<id>.json`，原子替换。与原始录制隔离：不覆盖
 `.analysis.json` / `.semantic.json`，也不塞进 snapshot note。
+
+#### 语义图条目与预测边界（兼容旧条目）
+
+以下字段可用于 `add_item`，也可放在 `update_item.patch` 中；省略保持旧值，旧记录无需迁移。
+
+| 字段 | 合同与阅读含义 |
+|---|---|
+| `title` | 可选短标题，字符串 trim 后最多 200 字符；空串清空。图上优先显示它，详情保留 `text` 全文 |
+| `progress` | `planned` / `active` / `blocked` / `done` / `unknown`；这是外环对执行进度的标记，与 `status` 结论可信状态不同。`done` 不证明验收通过 |
+| `covers` | 明确归属条目的请求 ID 数组，最多 2000 项，保序去重；空数组清空，超限拒绝而不截断。阶段成员用此字段；`evidence` 只表示论据，不从首末证据猜覆盖范围 |
+| `forecast` | 仅 prediction：`{after_rid,horizon_steps,criterion}`，必须且只能含三键。依据截止请求 ID、之后同泳道主请求数窗口（整数 1–5000）、可观察的判定条件（1–2000 字符） |
+
+HTTP 写入还支持 `cover_span:{first_rid,last_rid}`（放在 add_item 或 update_item.patch），与 `covers` 互斥。服务端按当前观测的来源/日期/session/lane和录制顺序展开，含两端且只取两端所在同一泳道的成员，保存为稳定 `covers` 数组；端点缺失、跨泳道、倒序、身份重复或超过2000项均拒绝，错误码 `bad_cover_span`。这让 Agent 为连续阶段只输出两个 ID，不必枚举数百成员，也无需调整图格式。它是调用方显式指定的范围，绝不从 evidence 猜区间；重试已生效批次时无需重新查录制，清理原录制后仍可幂等重放。
+
+`covers` 和 `after_rid` 校验请求 ID 格式，不替调用方证明请求存在或属于该观测范围；界面将找不到的引用显示为不可核对。图的布局由程序负责，Agent 不提供坐标或 Mermaid。推荐关系方向：阶段 `belongs_to` 目标；阶段 `depends_on` 前置阶段；阶段 `produces` 产物；核验项 `supports` / `contradicts` 产物或预测。每种关系只表达调用方写入的判断，不能从排列相邻自动推断因果。
+
+结构化预测一旦有 `forecast`，原 `text`、`forecast` 和 prediction 类型不可改写，撤回后仍冻结；相同值重传允许。展示标题可调整。修正预测需要撤回并新建；后续实际用独立 `check` / `finding` / `deviation` 条目以及支持/反证关系核对。旧预测可首次补结构，但这不证明当时没有看到未来。窗口只帮助判断是否具备核对条件，不自动判断预测命中，不从 `status=supported` 计算准确率。
+
+语义字段非法返回 400，错误码为 `bad_title` / `bad_progress` / `bad_covers` / `bad_forecast`；试图改变封存预测返回 `forecast_locked`。`history` 保留最近 20 个完整旧版（含关系、证据、覆盖与预测结构，不递归保存历史）；关系新增也留旧版。正文仍最多 4000 字符，带 forecast 的超限正文拒绝而非截断。幂等记录保留最近 200 次提交，超出保留窗口后不能依赖同 submission_id 永久去重。
+
+### `GET /api/observations/trace?date=YYYY-MM-DD&source=&lane=&session=` — 阅读投影
+
+只读录制事实，供实时分析的阶段下钻和预测窗口展示使用，不运行推理、不改变原始录制或代理配置。`date` 必须是有效日期，`source`、`lane`、`session` 与录制范围一致；session 和 lane 取交集。
+
+响应包含 `nodes`、`turns`、`lanes`、范围字段、`order:"recording"`、`truncated:false`、`missing` 数量与 `preview_limit`。节点按所选录制顺序返回，`seq` 是此投影从 0 开始的序号，不能传给 `/api/actions?since=`；稳定引用仍用 `id`。节点保留分类器元信息，并增加 `label`、`actions`、`text_preview`、`missing` 和 `has_tool_error`。标签是录制中的操作说明，不是已验证的语义归纳。
+
+每个 action 带 `tool_call_id`、`name`、`label` 和 `result_available`。只将同泳道先前调用与后续请求里的同 ID `tool_result` 配对；找到时含 `result_preview`、`result_truncated`、`result_error`、`result_record_id`。空返回仍是 available；重复调用 ID 显示 `result_ambiguous:true`，不猜归属。预览最多 320 字符，完整原文按需读 `/api/captures/<id>?date=…&source=…`。缺失记录明确报告，不能把工具返回成功当成用户目标实现。
+
+进程缓存只保留少量范围的精简投影，轮询读新追加的记录；覆盖、删除或压实导致索引前缀变化时重建。没有语义条目时仍能显示录制轮次，但不能把轮次称为任务阶段。
 
 ### `POST /api/captures/clear` — 清除录制
 

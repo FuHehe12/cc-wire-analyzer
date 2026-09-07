@@ -75,6 +75,9 @@ jobs:
           uv run python tests/llm_selftest.py
           uv run python tests/rolling_selftest.py
           uv run python tests/observe_selftest.py
+          uv run python tests/observe_trace_selftest.py
+          uv run python tests/observe_scope_selftest.py
+          node tests/observe_map_selftest.js
 
   build:
     name: Build (${{ matrix.os }})

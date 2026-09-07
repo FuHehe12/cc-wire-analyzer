@@ -219,6 +219,7 @@ _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/dag":                     ("captures", "dag"),
     "/api/actions":                 ("captures", "actions"),
     "/api/observations":            ("captures", "observations"),
+    "/api/observations/trace":      ("captures", "observationTrace"),
     "/api/grep":                    ("captures", "grep"),
     "/api/stats":                   ("captures", "stats"),
     "/api/sources":                 ("captures", "sources"),
@@ -287,7 +288,7 @@ def _view_default_query(rule: str) -> str:
 # 回答不了"我这台机器上有什么"——而后者才是这个工具的全部主张。在自己的浏览面上退回抽象
 # 占位符，是主张没贯彻到底。取不到才退回参考写法，并**如实标成占位符**（`example_real=False`）；
 # 不标就是在骗人照抄一个跑不通的地址。
-_VIEW_NEEDS_QUERY = {"/api/snapshots/diff"}      # 没有 `<>`，但不给参数必然报错
+_VIEW_NEEDS_QUERY = {"/api/snapshots/diff", "/api/observations/trace"}      # 没有 `<>`，但不给参数必然报错
 _VIEW_PLACEHOLDER_RID = "req_1a2b3c4"
 _VIEW_PLACEHOLDER_SID = "snap_1a2b3c4"
 _VIEW_PLACEHOLDER_SID2 = "snap_9f8e7d6"
@@ -335,6 +336,9 @@ def _view_example(rule: str, ids: dict) -> tuple[str, bool]:
     样例里该带的参数一个不少：`/api/captures/<rid>` 不带 `date=` 查历史日期查不到
     （审计 260712 #4），diff 不带 a/b 必然报错——少一个参数，样例就退化成了另一种占位符。
     """
+    if rule == "/api/observations/trace":
+        date = ids.get("date") or ""
+        return rule + "?date=" + (date or "YYYY-MM-DD"), bool(date)
     if rule in _VIEW_NEEDS_QUERY:
         a, b = ids.get("sid") or "", ids.get("sid2") or ""
         real = bool(a and b)
@@ -887,6 +891,24 @@ def actions_view():
     return jsonify(out)
 
 
+@app.route("/api/observations/trace")
+def observation_trace():
+    """Read-only scoped action previews for semantic observation drilldown."""
+    import observe_trace
+    date = request.args.get("date", "")
+    source = request.args.get("source", "")
+    try:
+        capture_store._validate_date(date)
+        return jsonify(observe_trace.project(date, source,
+                       request.args.get("lane", ""), request.args.get("session", ""),
+                       _dag_of(date, source)))
+    except (capture_store.StoreError, ValueError) as e:
+        return jsonify(error="bad_scope", detail=str(e)), 400
+    except Exception as e:
+        log.exception("Observation trace failed")
+        return jsonify(error="internal", detail=str(e)), 500
+
+
 @app.route("/api/observations", methods=["GET", "POST"])
 def observations():
     """外环观测状态：一个路径两个方法。
@@ -928,8 +950,36 @@ def observations():
             return jsonify(OB.create(body.get("scope") or {}, body.get("title") or ""))
         if body.get("delete"):
             return jsonify(OB.delete(oid))
+        ops = body.get("ops") or []
+        has_span = isinstance(ops, list) and any(isinstance(op, dict) and
+            ("cover_span" in op or isinstance(op.get("patch"), dict) and "cover_span" in op["patch"])
+            for op in ops)
+        if has_span:
+            current = OB.read(oid)
+            if current is None:
+                raise OB.ObserveError("not_found", "Observation not found")
+            # Retried batches must keep their original identities even if captures
+            # were later removed; the store resolves idempotency before applying ops.
+            replay = any(x.get("sid") == body.get("submission_id") for x in current.get("submits", []))
+            if not replay:
+                if body.get("base_revision") is not None:
+                    try:
+                        base_revision = int(body["base_revision"])
+                    except (TypeError, ValueError) as e:
+                        raise OB.ObserveError("bad_revision", "base_revision must be an integer") from e
+                    if base_revision != current.get("revision", 0):
+                        raise OB.ObserveError("conflict", "Observation revision changed; reread before merging")
+                import observe_scope
+                sc = current.get("scope") or {}
+                date, source = sc.get("date", ""), sc.get("source", "")
+                try:
+                    capture_store._validate_date(date)
+                    entries = capture_store.list_index(date, "", sc.get("session", ""), source)
+                    ops = observe_scope.expand_spans(current, ops, _dag_of(date, source), entries)
+                except (capture_store.StoreError, ValueError) as e:
+                    raise OB.ObserveError("bad_cover_span", str(e)) from e
         r = OB.apply(oid, body.get("submission_id") or "",
-                     body.get("base_revision"), body.get("ops") or [])
+                     body.get("base_revision"), ops)
         return jsonify({"ok": True, "replayed": r["replayed"], "refs": r["refs"],
                         "revision": r["state"]["revision"], "state": r["state"]})
     except OB.ObserveError as e:
