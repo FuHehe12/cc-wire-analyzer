@@ -1,11 +1,16 @@
-name: manual-verify-build
+name: build-release
 
-# 公开披露已冻结：仅显式手动验证与打包，不触发发布。
+# 触发：推 v* tag → 双平台打包 + 发 GitHub Release；workflow_dispatch 做测试构建（不出 release）。
+# 260906 曾因公开披露冻结改成只手动、只读权限并删掉 release job；260908 用户决定恢复发版，
+# **按当时的路径重组后的现状还原**——直接 git 还原冻结前那份会带回 tools/doc_audit.py、
+# src/proxy_selftest.py 这些已经不存在的老路径。
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # release job 发 release 需要
 
 jobs:
   # 260808 新增。此前这个 workflow 从 checkout 直接到 PyInstaller 再到发 release，
@@ -69,6 +74,7 @@ jobs:
           uv run python tests/view_selftest.py
           uv run python tests/llm_selftest.py
           uv run python tests/rolling_selftest.py
+          uv run python tests/observe_selftest.py
 
   build:
     name: Build (${{ matrix.os }})
@@ -148,3 +154,71 @@ jobs:
           name: ${{ matrix.os }}-build
           path: ${{ matrix.artifact }}
           if-no-files-found: error   # 产物缺失则构建失败，不静默放过
+
+  # 单独 release job：等两个平台都构建完，下载所有产物后一次性 attach。
+  # 为什么不放每个 build job 里：两个 build job 各自 attach 时会并发写同一 release，
+  # 后到的基于不完整状态更新、覆盖先到的 asset —— v0.1.0 首发就这样丢了 Windows exe。
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout（取 CHANGELOG.md 与 tag message 做 release notes）
+        uses: actions/checkout@v4
+        # 不加 fetch-tags: true —— tag 触发时 checkout 本身就把触发 commit 的 SHA fetch 到
+        # refs/tags/<tag>，与 fetch-tags 要拉的 annotated tag 对象同 ref 不同目标，git 直接
+        # fatal "Cannot fetch both ..."（v0.3.0 首次 tag 触发实测，重试三次后 job 失败）。
+
+      - name: Fetch annotated tag（tag message 做 fallback notes 用）
+        # checkout 把 refs/tags/<tag> 指到了触发 commit（lightweight 化），%(contents) 读不到
+        # annotated message —— 强制覆盖回真 tag 对象。失败不致命：还有占位 fallback 兜底。
+        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" || true
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true   # 各平台 artifact 的文件合并到同一目录
+
+      # release notes 取 CHANGELOG.md 当前 tag 段落（单一真源，已在维护、最详细）。
+      # 不用 generate_release_notes：它按 PR 分组列 "What's Changed"，本项目是单人直接
+      # push commit（无 PR），结果只剩一行 Full Changelog 链接，CHANGELOG 和 tag message
+      # 全被忽略——v0.1.0/v0.2.0 的 release 页面即如此（260714 修）。
+      # 校验和清单（260808）：软件内的「下载并安装」会取这个文件比对下载到的字节，
+      # 对不上就删文件并报错。**没有它时软件会明说"本次无校验和"**，而不是默默降级——
+      # 所以这一步不能悄悄失效。只 glob 产物名，不写 `*`：那会把清单自己也算进去。
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum cc-wire-analyzer-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Build release notes from CHANGELOG
+        run: |
+          TAG="${GITHUB_REF_NAME}"   # 例 v0.2.0
+          # 提取 "## <TAG>" 段落：跳过标题行本身，遇下一个 "## " 截止。
+          # 纯字符串前缀匹配（兼容 "## v0.2.0 - 日期" 与 "## v0.1.0" 两种），免正则转义坑。
+          awk -v tag="$TAG" '
+            /^## / {
+              if (found) exit                       # 已在记录，遇下一版本标题 → 停
+              rest = substr($0, 4)                  # 去掉 "## "
+              if (rest == tag || substr(rest, 1, length(tag)+1) == tag " ") found = 1
+              next                                  # 标题行不进 body
+            }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          # 三层兜底，绝不空白：
+          if [ ! -s release_notes.md ]; then
+            git tag -l --format='%(contents)' "$TAG" > release_notes.md   # fallback 1：tag message
+          fi
+          if [ ! -s release_notes.md ]; then
+            echo "Release ${TAG}. See CHANGELOG.md for details." > release_notes.md   # fallback 2：占位
+          fi
+          echo "--- release_notes.md 首部 ---"; head -5 release_notes.md
+
+      - name: Attach all assets to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          body_path: release_notes.md

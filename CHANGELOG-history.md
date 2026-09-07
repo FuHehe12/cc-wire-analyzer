@@ -1,6 +1,18 @@
 # 变更历史
 
-这里记录 v0.4.26 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读[整理前原文](issues/evidence/260906_变更记录简写/CHANGELOG-history-before.md)。历史路径与行为不代表当前状态。
+这里记录 v0.4.27 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读[整理前原文](issues/evidence/260906_变更记录简写/CHANGELOG-history-before.md)。历史路径与行为不代表当前状态。
+
+## v0.4.27 - 2026-09-06
+
+### 变更
+
+- 默认启用滚动压实，预填 DeepSeek 并提高分析上限；API 密钥保持为空。
+
+### 文档
+
+- 官网补充提示词、运行时序、快照、翻译和 AI 解读说明，提供在线文档与可放大的截图。
+- 文档维护规则并入产品说明书，研究结论与未决设计问题替代重复历史稿。
+- API 契约与开发约定曾迁入产品说明书，并保留兼容链接与文档检查；同日后续已改回 Markdown 正文作为维护源。
 
 ## v0.4.26 - 2026-09-05
 

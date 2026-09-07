@@ -76,10 +76,24 @@ def audit() -> dict:
     for p in readmes:
         if p.is_file():
             errors.extend(readme_errors(p))
+    # 260908：发版恢复启用，所以 `push: tags:` 与 `contents: write` 不再是错误——
+    # 它们正是发 Release 需要的。仍然禁止的三件事，各自防一个具体的坑：
+    #   · `pages: write` —— 部署 Pages 等于更新公开披露面，而 `public/` 是冻结快照
+    #   · `schedule:`    —— 无人值守的定时任务会在没人看的时候改动对外产物
+    #   · `push: branches:` —— 每次提交都发布，等于取消「验证通过再发」这道人工闸门
     for p in (ROOT / '.github/workflows').glob('*.yml'):
         text = p.read_text(encoding='utf-8')
-        if re.search(r'^\s*(push|schedule):', text, re.M) or 'contents: write' in text or 'pages: write' in text:
-            errors.append(f'Automatic publication capability remains: {p.name}')
+        if 'pages: write' in text:
+            errors.append(f'Pages deployment capability remains (public/ is frozen): {p.name}')
+        if re.search(r'^\s*schedule:', text, re.M):
+            errors.append(f'Unattended scheduled trigger remains: {p.name}')
+        rows = text.splitlines()
+        for n, row in enumerate(rows):
+            if not re.match(r'^\s*push:\s*$', row):
+                continue
+            # push: 下面紧跟的几行就是它的触发范围，看有没有 branches:
+            if any(re.match(r'^\s*branches:', x) for x in rows[n + 1:n + 6]):
+                errors.append(f'Publishes on every branch push (release should be tag-gated): {p.name}')
     return {'ok': not errors, 'errors': errors, 'readmes_checked': len(readmes),
             'scope': 'Current local layout and immutable disclosure; no runtime semantic claims.'}
 
