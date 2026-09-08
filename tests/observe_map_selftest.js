@@ -193,4 +193,54 @@ test('status and observer corrections stay attached to the same goal without new
   assert(!current.includes('Independent verification'),'old proof must not look like current verification');
   assert(goalDetail('g0').includes('Independent verification'),'old proof remains in event history');
 });
+test('the goal plane keeps every colour in the three-theme token system',()=>{
+  const css=fs.readFileSync(path.join(project,'src/static/observe-map.css'),'utf8');
+  const plane=css.slice(css.indexOf('/* A→G reading plane'));
+  assert(plane,'the A-to-G plane block must stay findable by its comment');
+  // Hex is only allowed where a token is given its value; a bare hex anywhere else
+  // is the 260908 regression: one hard-coded light palette in all three themes.
+  const stray=plane.split('\n').filter(l=>/#[0-9a-fA-F]{3,8}\b/.test(l) && !/^\s*(--[\w-]+:#|\[data-theme|\.om-shell\{)/.test(l));
+  assert.deepEqual(stray,[],'bare hex outside a token definition');
+  const keys=block=>new Set([...block.matchAll(/(--ag-[\w-]+)\s*:/g)].map(m=>m[1]));
+  // Scoped to the plane block: the file head defines --ag-user/--ag-ai per theme already.
+  const at=sel=>{const i=plane.indexOf(sel);assert(i>=0,'missing '+sel);return keys(plane.slice(i,plane.indexOf('}',i)));};
+  const base=at('.om-shell{display:block;');
+  for(const theme of ['classic','light']) {
+    const themed=at('[data-theme='+theme+'] .om-shell{');
+    assert.deepEqual([...base].filter(k=>!themed.has(k)),[],theme+' silently falls back to the dark values');
+  }
+});
+test('an open goal detail expands the findings lane instead of covering it',()=>{
+  reset();
+  const g={id:'goal',kind:'goal',goal_flow:{anchor:{user_text:'Replace the engine',understanding:'Check first',evidence:['req_a']},
+    iterations:[{id:'g0',actor:'user',before:'Check',after:'Replace and verify',trigger:'Start it',basis:'explicit',evidence:['req_a'],parent_ids:[],status:'active'}]}};
+  const finding={id:'i_f',kind:'finding',text:'Acceptance criterion changed',goal_iteration:'g0',evidence:['req_b']};
+  M.state.items=[g,finding];M.items=new Map([[g.id,g],[finding.id,finding]]);
+  M.panel='flow';M.detailOpen=false;M.selected={kind:'goal-event',id:'g0'};
+  const closed=flowDiagramHtml(g);
+  assert(!closed.includes('ag-inline-detail'),'closed detail must not reserve the lane');
+  assert(closed.includes('Acceptance criterion changed'),'the findings lane shows its entries when nothing is open');
+  M.detailOpen=true;
+  const open=flowDiagramHtml(g);
+  assert(open.includes('ag-inline-detail'),'the detail belongs inside the canvas, not in a floating layer');
+  const widthOf=html=>Number(html.match(/class="ag-canvas" style="width:(\d+)/)[1]);
+  assert(widthOf(open)>widthOf(closed),'the canvas must grow so the three lanes never overlap');
+  const detailLeft=Number(open.match(/ag-inline-detail[^>]*left:(\d+)px/)[1]);
+  const laneX=Number(open.match(/class="ag-lane-label" style="left:(\d+)px">[^<]*<\/div><svg/)[1]);
+  assert.equal(detailLeft,laneX,'the detail opens in the findings lane, at its own column');
+  assert(open.includes(words.en.closeDetail),'in-place detail keeps its own close control');
+});
+test('an unlinked finding opens its detail at the anchor row, not on a guessed goal',()=>{
+  reset();
+  const g={id:'goal',kind:'goal',goal_flow:{anchor:{user_text:'Replace the engine',understanding:'Check first',evidence:['req_a']},
+    iterations:[{id:'g0',actor:'user',before:'Check',after:'Replace and verify',trigger:'Start it',basis:'explicit',evidence:['req_a'],parent_ids:[],status:'active'}]}};
+  const loose={id:'i_x',kind:'finding',text:'Belongs to no goal',evidence:['req_b']};
+  M.state.items=[g,loose];M.items=new Map([[g.id,g],[loose.id,loose]]);
+  M.panel='flow';M.detailOpen=true;M.selected={kind:'item',id:'i_x'};
+  const top=Number(flowDiagramHtml(g).match(/ag-inline-detail[^>]*top:(\d+)px/)[1]);
+  assert.equal(top,48,'an unattributed item reads at the anchor row');
+  M.panel='work';
+  assert(!flowDiagramHtml(g).includes('ag-inline-detail'),'other tabs keep the floating panel');
+  M.panel='flow';M.detailOpen=false;M.selected=null;
+});
 console.log('\n'+passed+' observation reader checks passed.');

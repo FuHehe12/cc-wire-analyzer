@@ -175,48 +175,74 @@
 @media(max-width:680px){#view-observe .ob-pick{width:100%;}#view-observe .ob-pick select{flex-basis:100%;width:100%;}#view-observe .ob-acts{flex-wrap:wrap;}.om-stat-link{flex-basis:45%;}}
 @media(prefers-reduced-motion:reduce){.om-shell *{scroll-behavior:auto!important;transition:none!important;}}
 
-/* A→G reading plane: a compact diagram, independent of the surrounding app theme. */
-.om-shell{display:block;--ag-user:#935e17;--ag-ai:#275d99;}
+/* A→G reading plane: a diagram that follows the host's three themes.
+   Every color here goes through an --ag-* token or a host token; no bare hex
+   below this line. 260908: the earlier "independent of the surrounding theme"
+   version hard-coded one light palette, so the dark default rendered a white
+   board under a dark detail popup, and the three-theme contrast walkthrough
+   had nothing left to walk through. --ag-key is the text-weight accent:
+   --brand-ink is for borders and fills and only reaches 4.2:1 on the warm
+   theme's card, which is the same trap the /view surface split --link for. */
+.om-shell{display:block;
+  --ag-key:#E8B855;--ag-card:#232330;--ag-card-border:#3A3A48;--ag-hover:#2B2B3A;--ag-wire:#6E6878;
+  --ag-find:#4E7FA8;--ag-find-ink:#8FBEE6;--ag-check:#47826F;--ag-check-ink:#7FCFB2;
+  --ag-alert:#A85E6C;--ag-alert-ink:#F2939F;}
+[data-theme=classic] .om-shell{
+  --ag-key:#6B4A12;--ag-card:#FBF9F5;--ag-card-border:#DCD3C2;--ag-hover:#F2EADA;--ag-wire:#A99878;
+  --ag-find:#7EA6C8;--ag-find-ink:#1D5C90;--ag-check:#63A38C;--ag-check-ink:#1F6252;
+  --ag-alert:#C17382;--ag-alert-ink:#973B50;}
+[data-theme=light] .om-shell{
+  --ag-key:#185A62;--ag-card:#F7FAFB;--ag-card-border:#C7D4D9;--ag-hover:#E6EFF2;--ag-wire:#8FA6AE;
+  --ag-find:#7EA6C8;--ag-find-ink:#1D5C90;--ag-check:#63A38C;--ag-check-ink:#1F6252;
+  --ag-alert:#C17382;--ag-alert-ink:#973B50;}
 .om-main>.om-header{display:none;}
-.om-shell .ag-tabs{margin:0;border:0;padding:10px 16px 0;background:#f4f5f7;border-radius:10px 10px 0 0;}
-.om-shell .ag-tab{color:#586274;border-radius:0;padding:10px 12px;border:0;border-bottom:2px solid transparent;}
-.om-shell .ag-tab[aria-pressed=true]{background:transparent;color:#4338ca;border-bottom-color:#4f46e5;}
-.ag-flow{background:#f4f5f7;color:#1c2433;padding:0 18px 8px;border-radius:0 0 10px 10px;}
+.om-shell .ag-tabs{margin:0;border:0;padding:10px 16px 0;background:var(--bg-soft);border-radius:10px 10px 0 0;}
+.om-shell .ag-tab{color:var(--apple-text-secondary);border-radius:0;padding:10px 12px;border:0;border-bottom:2px solid transparent;}
+.om-shell .ag-tab[aria-pressed=true]{background:transparent;color:var(--ag-key);border-bottom-color:var(--brand-ink);}
+.ag-flow{background:var(--bg-soft);color:var(--apple-text);padding:0 18px 8px;border-radius:0 0 10px 10px;}
 .ag-flow .ag-heading{align-items:center;padding:14px 6px;gap:16px;}
-.ag-heading p{margin:0;color:#586274;font-size:12px;line-height:1.6;}
-.om-shell .ag-flow .om-action{color:#4338ca;border-color:#cdd1dc;background:#fff;}
-.ag-canvas-scroll{max-height:none;overflow:auto;border:1px solid #e4e7ec;border-radius:8px;background:#fff;}
-.ag-canvas{margin:0 auto;min-width:0;position:relative;padding:0;background:#fff;}
-.ag-lane-label{position:absolute;top:17px;color:#626d7d;font-size:11px;line-height:18px;}
-.ag-canvas .ag-anchor,.ag-canvas .ag-station{position:absolute;margin:0;min-width:0;max-width:none;border:1px solid #cfd0ef;border-radius:6px;background:#f8f8ff;box-shadow:none;}
-.ag-canvas .ag-anchor{border:1.5px solid #6760c8;background:#fff;}
-.ag-canvas .ag-station.is-selected{outline:2px solid #655ac4;outline-offset:3px;}
-.om-shell .ag-canvas .ag-goal-button{padding:9px 12px;line-height:1.5;color:#273045;}
-.ag-canvas .ag-goal-button:hover{background:#eeedfc;}
+.ag-heading p{margin:0;color:var(--apple-text-secondary);font-size:12px;line-height:1.6;}
+.om-shell .ag-flow .om-action{color:var(--ag-key);border-color:var(--border);background:var(--bg-card);}
+.ag-canvas-scroll{max-height:none;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);}
+.ag-canvas{margin:0 auto;min-width:0;position:relative;padding:0;background:var(--bg-card);}
+.ag-lane-label{position:absolute;top:17px;color:var(--text-tertiary);font-size:11px;line-height:18px;}
+.ag-canvas .ag-anchor,.ag-canvas .ag-station{position:absolute;margin:0;min-width:0;max-width:none;border:1px solid var(--ag-card-border);border-radius:6px;background:var(--ag-card);box-shadow:var(--apple-shadow-sm);}
+.ag-canvas .ag-anchor{border:1.5px solid var(--brand-ink);background:var(--bg-card);box-shadow:var(--apple-shadow);}
+.ag-canvas .ag-station.is-selected{outline:2px solid var(--brand-ink);outline-offset:3px;box-shadow:var(--apple-shadow-md);}
+.ag-canvas .ag-station:hover{box-shadow:var(--apple-shadow);}
+.om-shell .ag-canvas .ag-goal-button{padding:9px 12px;line-height:1.5;color:var(--apple-text);}
+.ag-canvas .ag-goal-button:hover{background:var(--ag-hover);}
 .ag-canvas .ag-goal-button strong{font-size:13px;font-weight:550;margin:4px 0;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-.ag-canvas .ag-goal-button .ag-label{display:flex;gap:10px;align-items:center;font-size:10px;color:#62667e;}
-.ag-canvas .ag-label b{color:#5146a6;font-size:12px;}
+.ag-canvas .ag-goal-button .ag-label{display:flex;gap:10px;align-items:center;font-size:10px;color:var(--text-tertiary);}
+.ag-canvas .ag-label b{color:var(--ag-key);font-size:12px;}
 .ag-canvas .ag-label span{margin-left:auto;}
-.ag-canvas .ag-goal-button .ag-count{font-size:10px;color:#62667e;}
-.om-shell .ag-change,.om-shell .ag-observation{position:absolute;text-align:left;border:0;background:none;padding:0 8px 0 10px;border-left:2px solid #d5ab61;line-height:1.6;font-size:11px;color:#515d6d;}
-.om-shell .ag-change.ag-ai{border-color:#6597cd;}
-.om-shell .ag-change .ag-who{display:block;font-size:10px;font-weight:600;color:#935e17;margin-bottom:3px;}
-.om-shell .ag-change.ag-ai .ag-who{color:#275d99;}
+.ag-canvas .ag-goal-button .ag-count{font-size:10px;color:var(--text-tertiary);}
+.om-shell .ag-change,.om-shell .ag-observation{position:absolute;text-align:left;border:0;background:none;padding:0 8px 0 10px;border-left:2px solid var(--ag-user);line-height:1.6;font-size:11px;color:var(--apple-text-secondary);}
+.om-shell .ag-change.ag-ai{border-color:var(--ag-ai);}
+.om-shell .ag-change .ag-who{display:block;font-size:10px;font-weight:600;color:var(--ag-user);margin-bottom:3px;}
+.om-shell .ag-change.ag-ai .ag-who{color:var(--ag-ai);}
 .om-shell .ag-change>span:last-child{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-.om-shell .ag-observation{border-left-color:#81a9cc;color:#245e91;}
-.om-shell .ag-observation.ag-check{border-left-color:#60a48d;color:#246955;}
+.om-shell .ag-observation{border-left-color:var(--ag-find);color:var(--ag-find-ink);}
+.om-shell .ag-observation.ag-check{border-left-color:var(--ag-check);color:var(--ag-check-ink);}
 .om-shell .ag-observation>span{font-size:10px;display:block;}
 .om-shell .ag-observation strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;}
-.om-shell .ag-change:hover,.om-shell .ag-observation:hover{background:#f2f5f9;}
-.ag-wires .ag-wire{stroke:#a4a0c5;stroke-width:1.3;}.ag-wires marker path{fill:#a4a0c5;}
-.ag-footnote{font-size:10px;color:#647084;margin:10px 6px;}
-.om-shell .om-detail{position:fixed;z-index:100;right:20px;top:90px;width:420px;max-width:calc(100vw - 32px);max-height:calc(100vh - 110px);box-sizing:border-box;overflow:auto;box-shadow:0 14px 55px #0005;background:var(--bg-card);}
+.om-shell .ag-change:hover,.om-shell .ag-observation:hover{background:var(--ag-hover);}
+.ag-wires .ag-wire{stroke:var(--ag-wire);stroke-width:1.3;}.ag-wires marker path{fill:var(--ag-wire);}
+.ag-canvas .ag-wire[data-ag-to]{stroke-width:1.6;}
+.ag-footnote{font-size:10px;color:var(--text-tertiary);margin:10px 6px;}
+/* The floating panel stays for the other three tabs; the flow tab expands the
+   third lane in place instead, so a goal never hides the findings it explains. */
+.om-shell .om-detail{position:fixed;z-index:100;right:20px;top:90px;width:420px;max-width:calc(100vw - 32px);max-height:calc(100vh - 110px);box-sizing:border-box;overflow:auto;box-shadow:var(--apple-shadow-lg);background:var(--bg-card);}
+.om-shell.ag-inline .om-detail{display:none!important;}
+.om-shell .ag-inline-detail{position:absolute;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;padding:12px 14px;background:var(--bg-card);border:1px solid var(--ag-card-border);border-radius:7px;box-shadow:var(--apple-shadow-md);}
+.om-shell .ag-inline-detail>h2{font-size:12px;margin:0 0 8px;color:var(--text-tertiary);font-weight:600;}
+.om-shell .ag-inline-detail .om-prose{font-size:12px;line-height:1.7;}
 .om-detail[hidden]{display:none!important;}
 .om-shell .ag-close{float:right;background:none;border:0;color:var(--apple-text-secondary);padding:4px;font-size:12px;}
 .om-shell .ag-panel:not(:has(.ag-flow)){padding-top:16px;}
-.om-shell button:focus-visible,.ag-canvas-scroll:focus-visible{outline:2px solid #7267c8;outline-offset:3px;}
+.om-shell button:focus-visible,.ag-canvas-scroll:focus-visible{outline:2px solid var(--brand-ink);outline-offset:3px;}
 @media(max-width:680px){.ag-flow{padding:0 6px 6px;}.ag-flow .ag-heading{display:block;padding:10px 4px;}.ag-flow .ag-heading .om-action{margin:8px 0 0;}.om-shell .ag-tabs{padding:6px 4px 0;}.om-shell .ag-tab{padding:9px 7px;font-size:12px;}.om-shell .om-detail{right:8px;max-width:calc(100vw - 16px);top:76px;max-height:calc(100vh - 92px);}}
-.om-shell .ag-observation.ag-open,.om-shell .ag-observation.ag-deviation{border-left-color:#c17382;color:#973b50;}
+.om-shell .ag-observation.ag-open,.om-shell .ag-observation.ag-deviation{border-left-color:var(--ag-alert);color:var(--ag-alert-ink);}
 .ag-lane-nav{display:none;gap:6px;padding:0 0 10px;flex-wrap:wrap;}
-@media(max-width:1000px){.ag-lane-nav{display:flex;}.om-shell .ag-lane-nav .om-action{background:#fff;color:#48546b;border-color:#d9dce6;padding:4px 7px;}}
-.ag-canvas .ag-goal-button .ag-anchor-reading{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#515d6d;}
+@media(max-width:1000px){.ag-lane-nav{display:flex;}.om-shell .ag-lane-nav .om-action{background:var(--bg-card);color:var(--apple-text-secondary);border-color:var(--border);padding:4px 7px;}}
+.ag-canvas .ag-goal-button .ag-anchor-reading{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--apple-text-secondary);}

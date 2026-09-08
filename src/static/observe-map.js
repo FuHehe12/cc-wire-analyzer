@@ -319,28 +319,50 @@
     }
     return rows;
   }
+  const AG_RIGHT=230, AG_RIGHT_OPEN=430, AG_DETAIL_H=360;
+  /** Which goal row shows the detail in place, or null when the floating panel is used.
+
+      Only the flow tab reads a third lane, so only it expands in place; the other
+      tabs keep the floating aside. 260908: the aside was fixed to the right edge,
+      which is exactly where the findings lane sits, so opening a goal hid the very
+      findings and checks that goal is judged by. */
+  function inlineTarget() {
+    if(M.panel!=='flow' || !M.detailOpen) return null;
+    const flow=flowItem()?.goal_flow, s=M.selected; if(!flow || !s) return null;
+    const ids=new Set(list(flow.iterations).map(e=>e.id));
+    if(s.kind==='goal-event' && ids.has(s.id)) return s.id;
+    if(s.kind==='item') {const g=M.items.get(s.id)?.goal_iteration; return g && ids.has(g)?g:'@anchor';}
+    return '@anchor';
+  }
   function flowDiagramHtml(it) {
     const f=it?.goal_flow;
     if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p>'+button('panel','work',escape(tr('workTab')),'om-action')+'</section>';
     const events=list(f.iterations),parents=new Set(events.flatMap(e=>list(e.parent_ids))),heads=events.filter(e=>!parents.has(e.id));
-    const rows=flowLayers(events), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20, width=580+centerWidth;
-    let y=172;
+    const rows=flowLayers(events), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20;
+    const inline=inlineTarget(), rightWidth=inline?AG_RIGHT_OPEN:AG_RIGHT, rightX=326+centerWidth, width=rightX+rightWidth+24;
+    const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;height:'+AG_DETAIL_H+'px">'+
+      button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2>'+detailHtml()+'</aside>';
+    let y=inline==='@anchor'?Math.max(172,48+AG_DETAIL_H+16):172, detailTop=inline==='@anchor'?48:null;
     const stations=rows.map(row=>{
-      const top=y;y+=Math.max(112,row.length*66+12);
+      const top=y, hasDetail=row.some(e=>e.id===inline);
+      if(hasDetail) detailTop=top;
+      y+=Math.max(hasDetail?AG_DETAIL_H+16:0,112,row.length*66+12);
       const columns=row.length===1?320:252;
       return row.map((e,i)=>{
         const x=290+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
         const work=associated(e.id), observations=work.filter(x=>['finding','check','deviation','open'].includes(x.kind));
         const content='<span class="ag-label"><b>'+escape(e.id)+'</b><span>'+escape(tr(goalStatus(e)))+'</span></span><strong>'+escape(short(e.after,100))+'</strong><span class="ag-count">'+escape(tr(e.basis))+(work.length?' · '+work.length+' '+escape(tr('workTab')):'')+'</span>';
         const change=button('goal-event',e.id,'<span class="ag-who">'+escape(tr(list(e.parent_ids).length?'actor_'+e.actor:'initialGoal'))+'</span><span>'+escape(short(e.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(e.actor),'style="left:24px;top:'+(top+i*66)+'px;width:230px"');
-        const finding=observations.slice(0,row.length>1?1:2).map((o,j)=>button('item',o.id,'<span>'+escape(tr(o.kind))+'</span><strong>'+escape(short(title(o),row.length>1?55:65))+'</strong>','ag-observation ag-'+escape(o.kind),'style="left:'+(width-254)+'px;top:'+(top+i*66+j*52)+'px;width:230px"')).join('');
+        // The open detail already lists this goal's work, so the lane is not doubled up.
+        const finding=hasDetail?'':observations.slice(0,row.length>1?1:2).map((o,j)=>button('item',o.id,'<span>'+escape(tr(o.kind))+'</span><strong>'+escape(short(title(o),row.length>1?55:65))+'</strong>','ag-observation ag-'+escape(o.kind),'style="left:'+rightX+'px;top:'+(top+i*66+j*52)+'px;width:230px"')).join('');
         return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'" style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button('goal-event',e.id,content,'ag-goal-button','aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>'+finding;
       }).join('');
     }).join('');
     return '<section class="ag-flow"><div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],['right','findingsLane']].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
       '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+(y+18)+'px">'+
-      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+(width-254)+'px">'+escape(tr('findingsLane'))+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
-      '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(290+(centerWidth-320)/2)+'px;top:48px;width:320px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+'</div></div><p class="ag-footnote">'+escape(tr('flowHint'))+'</p></section>';
+      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+escape(tr('findingsLane'))+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
+      '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(290+(centerWidth-320)/2)+'px;top:48px;width:320px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+
+      (detailTop==null?'':detailBox(detailTop))+'</div></div><p class="ag-footnote">'+escape(tr('flowHint'))+'</p></section>';
   }
   function goalJournal(id) {
     return goalEvents(id).map(e=>'<section class="om-review"><h4>'+escape(tr(e.kind==='correction'?'correctionEvent':'statusEvent'))+(e.status?' · '+escape(tr(e.status==='achieved'?'completedGoal':e.status)):'')+'</h4><p class="om-prose">'+escape(e.text)+'</p>'+refs(e.evidence)+(e.verification?'<p class="om-prose">'+escape(e.verification.text)+'</p>'+refs(e.verification.evidence):'')+'</section>').join('');
@@ -422,7 +444,7 @@
     const covered=new Set(phases.filter(live).flatMap(it=>list(it.covers)));
     const uncovered=[...M.nodes.values()].filter(n=>!covered.has(n.id));
     const other=items().filter(it=>!['goal','phase','artifact','check','prediction'].includes(it.kind));
-    r.innerHTML='<div class="om-shell"><main class="om-main"><header class="om-header"><div><h2>'+escape(tr('trajectory'))+'</h2><p class="om-muted">'+escape([sc.date,sc.source,sc.lane || sc.session].filter(Boolean).join(' · '))+'</p></div><span class="om-muted" data-om-clock>'+escape(tr('checkedAt')+' '+M.checked)+'</span></header>'+
+    r.innerHTML='<div class="om-shell'+(inlineTarget()?' ag-inline':'')+'"><main class="om-main"><header class="om-header"><div><h2>'+escape(tr('trajectory'))+'</h2><p class="om-muted">'+escape([sc.date,sc.source,sc.lane || sc.session].filter(Boolean).join(' · '))+'</p></div><span class="om-muted" data-om-clock>'+escape(tr('checkedAt')+' '+M.checked)+'</span></header>'+
       (M.error?'<div class="om-error" role="alert">'+escape(errorText(M.error))+' '+button('retry','',escape(tr('retry')),'om-action')+'</div>':'')+
       (!sc.lane && !sc.session?note(tr('allScope')):'')+'<nav class="ag-tabs" aria-label="'+escape(tr('navigation'))+'">'+[['flow','flowTab'],['work','workTab'],['records','recordsTab'],['forecast','forecastTab']].map(([id,key])=>button('panel',id,escape(tr(key)),'ag-tab','aria-pressed="'+(M.panel===id)+'"')).join('')+'</nav>'+
       '<div class="ag-panel"'+(M.panel!=='flow'?' hidden':'')+'>'+goalFlowHtml(flowItem())+'</div>'+
@@ -489,16 +511,21 @@
         (!live(r.it)?badge(tr('retracted')):'')+button('item',r.it.id,escape(title(r.it)),'om-review-link')+refs(r.it.evidence)+'</div>').join('') || note(tr('noReview'))):'')+
       list(it.history).map((h,i)=>fold(it.id+':history:'+i,tr('history')+' · '+(h.at || h.updated || ''),h)).join('');
   }
+  /** The same body serves the floating panel and the flow tab's in-place column. */
+  function detailHtml() {
+    const s=M.selected;
+    if(!s) return note(tr('select'))+'<dl class="om-meta">'+['revision','cursor','updated'].map(k=>'<dt>'+escape(tr(k))+'</dt><dd>'+escape(M.state[k])+'</dd>').join('')+'</dl>';
+    if(s.kind==='goal-event' || s.kind==='goal-anchor') return goalDetail(s.id);
+    if(s.kind==='item') return M.items.has(s.id)?itemDetail(M.items.get(s.id)):note(tr('missingItem'));
+    if(s.kind==='turn') {
+      const t=M.turns.find(x=>x.key===s.id);
+      return t?badge(tr('facts'))+'<h3>'+escape(t.user || t.lane || tr('unassigned'))+'</h3>'+badge(t.nodes.length+' '+tr('steps'))+(t.partial?badge(tr('partial')):'')+'<div class="om-detail-steps">'+t.nodes.map(stepHtml).join('')+'</div>':note(tr('unavailable'));
+    }
+    return stepDetail(s.id);
+  }
   function paintDetail() {
     const el=document.getElementById('om-detail-body'); if(!el) return;
-    const s=M.selected;
-    if(!s) el.innerHTML=note(tr('select'))+'<dl class="om-meta">'+['revision','cursor','updated'].map(k=>'<dt>'+escape(tr(k))+'</dt><dd>'+escape(M.state[k])+'</dd>').join('')+'</dl>';
-    else if(s.kind==='goal-event' || s.kind==='goal-anchor') el.innerHTML=goalDetail(s.id);
-    else if(s.kind==='item') el.innerHTML=M.items.has(s.id)?itemDetail(M.items.get(s.id)):note(tr('missingItem'));
-    else if(s.kind==='turn') {
-      const t=M.turns.find(x=>x.key===s.id);
-      el.innerHTML=t?badge(tr('facts'))+'<h3>'+escape(t.user || t.lane || tr('unassigned'))+'</h3>'+badge(t.nodes.length+' '+tr('steps'))+(t.partial?badge(tr('partial')):'')+'<div class="om-detail-steps">'+t.nodes.map(stepHtml).join('')+'</div>':note(tr('unavailable'));
-    } else el.innerHTML=stepDetail(s.id);
+    el.innerHTML=detailHtml();
     requestAnimationFrame(drawRelations);
   }
   function drawRelations() {
