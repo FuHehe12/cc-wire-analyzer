@@ -156,6 +156,7 @@ def delete(oid: str) -> dict:
 # Only fields actually consumed by the store are accepted. HTTP expands cover_span
 # into covers before entering here; misplaced or misspelled fields cannot succeed.
 ITEM_FIELDS = {"kind", "text", "status", "evidence", "title", "progress", "covers", "forecast", "goal_flow", "goal_iteration"}
+PATCH_FIELDS = ITEM_FIELDS | {"goal_flow_delta"}
 OP_FIELDS = {
     "add_item": ITEM_FIELDS | {"op", "client_ref"},
     "update_item": {"op", "id", "patch"},
@@ -183,7 +184,7 @@ def _check_op(op):
     data = op
     if kind == "update_item":
         data = op.get("patch")
-        check_fields(data, ITEM_FIELDS, "update_item.patch")
+        check_fields(data, PATCH_FIELDS, "update_item.patch")
         if not data:
             raise ObserveError("empty_patch", "update_item.patch 不能为空")
     for field in ({"id"} if kind in ("update_item", "retract_item") else
@@ -239,11 +240,15 @@ def _semantic_fields(data: dict, kind: str, previous: dict | None = None) -> dic
         if iteration and kind == "goal":
             raise ObserveError("bad_goal_iteration", "goal_iteration 只允许关联非 goal 条目")
         out["goal_iteration"] = iteration
-    if "goal_flow" in data:
+    if "goal_flow" in data and "goal_flow_delta" in data:
+        raise ObserveError("bad_goal_flow", "goal_flow 与 goal_flow_delta 不可同时提供")
+    if "goal_flow" in data or "goal_flow_delta" in data:
         if kind != "goal":
             raise ObserveError("bad_goal_flow", "goal_flow 只允许用于 goal 条目")
         import observe_goal
-        out["goal_flow"] = observe_goal.validate(data["goal_flow"], previous=previous)
+        out["goal_flow"] = (observe_goal.apply_delta(previous, data["goal_flow_delta"])
+                            if "goal_flow_delta" in data else
+                            observe_goal.validate(data["goal_flow"], previous=previous))
     if "title" in data:
         title = data["title"]
         if not isinstance(title, str) or len(title.strip()) > TITLE_MAX:

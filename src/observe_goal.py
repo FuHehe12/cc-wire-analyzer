@@ -1,8 +1,10 @@
 """Explicit, evidence-backed A→G records. This module never infers a goal.
 
-The anchor and recorded iterations are append-only. Status changes and observer
+The anchor, tasks and recorded iterations are append-only. Status changes and observer
 corrections are separate append-only events, never fabricated goal iterations. Evidence IDs
 are checked for shape here, not existence or semantic support in the recording.
+Current understanding and situation are explicit, replaceable observations, not
+inferences from goal status. Legacy flows never acquire inferred task boundaries.
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ EVIDENCE_MAX = 50
 CHOICES_MAX = 20
 CHOICE_MAX = 1000
 PARENTS_MAX = 20
+TASKS_MAX = 200
+TASK_TITLE_MAX = 200
 _RID = re.compile(r"req_[A-Za-z0-9_-]{1,124}\Z")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 
@@ -100,8 +104,77 @@ def _events(value, iteration_ids):
     return result
 
 
+def _tasks(value):
+    if not isinstance(value, list) or len(value) > TASKS_MAX:
+        _error(f"tasks 必须为最多 {TASKS_MAX} 项的数组")
+    result, seen = [], set()
+    for index, raw in enumerate(value):
+        path = f"tasks[{index}]"
+        raw = _object(raw, {"id", "title", "start_id"}, set(), path)
+        for key in ("id", "start_id"):
+            if not isinstance(raw[key], str) or not _ID.fullmatch(raw[key]):
+                _error(f"{path}.{key} 必须为1..64字符 ID，以字母或数字开头")
+        if raw["id"] in seen:
+            _error(f"{path}.id 必须在 tasks 内唯一")
+        result.append({"id": raw["id"], "title": _text(raw["title"], path + ".title", TASK_TITLE_MAX),
+                       "start_id": raw["start_id"]})
+        seen.add(raw["id"])
+    return result
+
+
+def _task_links(tasks, iterations):
+    """Validate only explicit task membership; unlabelled history stays unlabelled."""
+    by_task = {task["id"]: task for task in tasks}
+    by_goal, started = {}, set()
+    for item in iterations:
+        tid = item.get("task_id")
+        if tid is None:
+            if started:
+                _error("已启用任务归属后，后续 G 必须同时提供 task_id 与 change")
+        else:
+            task = by_task.get(tid)
+            if task is None:
+                _error(f"迭代 {item['id']} 的 task_id 未指向 tasks 中的任务")
+            first = tid not in started
+            if first and task["start_id"] != item["id"]:
+                _error(f"任务 {tid} 的 start_id 必须指向该任务的首个 G")
+            change, parents = item["change"], item["parent_ids"]
+            parent_tasks = [by_goal[p].get("task_id") for p in parents]
+            if change == "initial":
+                # A legacy prefix may precede the first explicitly named task.
+                # Keep its parent edges without assigning a task to old goals.
+                if not first or started or any(t is not None for t in parent_tasks):
+                    _error("initial 仅用于第一项显式任务的首个 G；旧无任务前缀无需补标")
+            elif change == "refine":
+                if first or not parents or any(t != tid for t in parent_tasks):
+                    _error("refine 必须修正已有同任务目标，所有父边须指向同任务 G")
+            elif not first or not any(t is not None and t != tid for t in parent_tasks):
+                _error("turn 必须是新任务的首个 G，并保留至少一条指向已知其他任务的父边")
+            started.add(tid)
+        by_goal[item["id"]] = item
+    if set(by_task) != started:
+        _error("每个 task 必须有 start_id 指向其首个显式归属 G，不允许悬挂任务")
+
+
+def _current(value, iteration_ids):
+    raw = _object(value, {"goal_ids", "understanding", "situation", "evidence"},
+                  {"carryover"}, "current")
+    ids = raw["goal_ids"]
+    if (not isinstance(ids, list) or not 1 <= len(ids) <= PARENTS_MAX
+            or any(not isinstance(gid, str) or gid not in iteration_ids for gid in ids)
+            or len(set(ids)) != len(ids)):
+        _error(f"current.goal_ids 必须含1..{PARENTS_MAX}个不重复的已有 G ID")
+    result = {"goal_ids": list(ids),
+              "understanding": _text(raw["understanding"], "current.understanding"),
+              "situation": _text(raw["situation"], "current.situation"),
+              "evidence": _evidence(raw["evidence"], "current.evidence")}
+    if "carryover" in raw:
+        result["carryover"] = _text(raw["carryover"], "current.carryover")
+    return result
+
+
 def _normalize(value) -> dict:
-    flow = _object(value, {"anchor", "iterations"}, {"events"}, "goal_flow")
+    flow = _object(value, {"anchor", "iterations"}, {"events", "tasks", "current"}, "goal_flow")
     raw = _object(flow["anchor"], {"user_text", "understanding", "evidence", "basis"},
                   {"choices"}, "anchor")
     choices = raw.get("choices", [])
@@ -121,7 +194,7 @@ def _normalize(value) -> dict:
     for index, raw in enumerate(iterations):
         path = f"iterations[{index}]"
         raw = _object(raw, {"id", "actor", "before", "after", "trigger", "evidence", "basis"},
-                      {"parent_ids", "status", "verification"}, path)
+                      {"parent_ids", "status", "verification", "task_id", "change"}, path)
         iid = raw["id"]
         if not isinstance(iid, str) or not _ID.fullmatch(iid) or iid in seen:
             _error(f"{path}.id 必须为唯一的 1..64 字符字母/数字/下划线/连字符 ID，以字母或数字开头")
@@ -141,6 +214,14 @@ def _normalize(value) -> dict:
             "status": _enum(raw.get("status", "active"),
                             ("active", "achieved", "unresolved"), path + ".status"),
         }
+        if ("task_id" in raw) != ("change" in raw):
+            _error(f"{path}.task_id 与 change 必须同时提供或同时省略")
+        if "task_id" in raw:
+            tid = raw["task_id"]
+            if not isinstance(tid, str) or not _ID.fullmatch(tid):
+                _error(f"{path}.task_id 必须为1..64字符 ID，以字母或数字开头")
+            item["task_id"] = tid
+            item["change"] = _enum(raw["change"], ("initial", "refine", "turn"), path + ".change")
         if "verification" in raw:
             item["verification"] = _verification(raw["verification"], path + ".verification")
         if item["status"] == "achieved" and "verification" not in item:
@@ -151,6 +232,11 @@ def _normalize(value) -> dict:
     # Absence stays absent for legacy records; [] is equivalent for history checks.
     if "events" in flow:
         result["events"] = _events(flow["events"], seen)
+    if "tasks" in flow:
+        result["tasks"] = _tasks(flow["tasks"])
+    _task_links(result.get("tasks", []), out)
+    if "current" in flow:
+        result["current"] = _current(flow["current"], seen)
     return result
 
 
@@ -169,9 +255,34 @@ def validate(value, previous=None) -> dict:
         count = len(old["iterations"])
         if (result["anchor"] != old["anchor"]
                 or result["iterations"][:count] != old["iterations"]
-                or result.get("events", [])[:len(old.get("events", []))] != old.get("events", [])):
-            _error("A 锚点、已有 G 及事件不可删改；目标变化追加 G，状态与外环订正追加 events", "goal_flow_frozen")
+                or result.get("events", [])[:len(old.get("events", []))] != old.get("events", [])
+                or result.get("tasks", [])[:len(old.get("tasks", []))] != old.get("tasks", [])):
+            _error("A 锚点、已有任务/G/事件不可删改；目标变化追加 G，状态与外环订正追加 events", "goal_flow_frozen")
+        if "current" not in result and "current" in old:
+            result["current"] = old["current"]
     return result
+
+
+def apply_delta(previous, delta) -> dict:
+    """Append explicit history and replace current; never modify the saved input.
+
+    Store revision, submission idempotency and atomic writes remain authoritative.
+    IDs are supplied by the caller; no new reference language or automatic labels.
+    """
+    if previous is None:
+        _error("goal_flow_delta 需要已有 goal_flow；首次请提交完整 goal_flow")
+    delta = _object(delta, set(), {"tasks", "iterations", "events", "current"}, "goal_flow_delta")
+    if not delta:
+        _error("goal_flow_delta 不可为空对象")
+    merged = validate(previous)
+    for key in ("tasks", "iterations", "events"):
+        if key in delta:
+            if not isinstance(delta[key], list):
+                _error(f"goal_flow_delta.{key} 必须为追加数组")
+            merged[key] = merged.get(key, []) + delta[key]
+    if "current" in delta:
+        merged["current"] = delta["current"]
+    return validate(merged, previous=previous)
 
 
 def project_statuses(value) -> dict:

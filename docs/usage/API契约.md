@@ -436,6 +436,8 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 操作字段为：add_item = op/client_ref 加条目字段；update_item = op/id/patch（非空对象）；retract_item = op/id/reason（可选字符串）；link_items = op/from/to/type/remove；set_cursor = op/cursor（必填非负整数）。条目字段为 kind/text/status/evidence/title/progress/covers/cover_span/forecast/goal_flow/goal_iteration，其中 cover_span 仅由 HTTP 展开。text 最多4000字符、evidence 最多50项、reason 最多1000字符、观测/条目 title 最多200字符；超限明确拒绝，不截断。旧状态读取与省略字段的更新不重验旧值。未知字段或非法类型一律400，detail 指明错误；无效整批不写状态、水位、history 或 submission。重复写相同值、添加已存在关系仍允许成功。新建与提交外壳也拒绝未知字段、非对象 JSON；base_revision 如提供须为非负整数。
 
+`update_item.patch` 另接受写入专用的 `goal_flow_delta`，不能用于 add_item，不保存为条目字段；与同一 patch 中的 goal_flow 互斥。合并规则见下方「A→G 小增量写入」。
+
 `link_items.remove:true` 按 from/to/type 精确删除关系，并将删除前源条目完整保存至 history；remove 仅接受布尔值，type 缺省 belongs_to，目标关系不存在返回400 no_link。`patch.links` 不支持且明确拒绝。
 
 `POST /api/observations?response=full|refs|changed` 的默认值为 full，兼容旧消费者：full 返回 `{ok,replayed,refs,revision,state}`；refs 返回 `{ok,replayed,refs,revision}`；changed 另加受影响条目的当前 `items`（含 history）与 `cursor`。重放按原批影响 ID 返回现态；旧流水没有影响 ID 时 changed 保守返回全部条目。409 仍附当前 state；新建/删除回执不受模式影响。模式无效返回400 bad_response。
@@ -446,11 +448,60 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 #### A→G 连续目标流
 
-仅 goal 条目可携带 `goal_flow={anchor,iterations,events?}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
+仅 goal 条目可携带 `goal_flow={anchor,iterations,events?,tasks?,current?}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
 
-iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,basis,parent_ids?,status?,verification?}`。id 在流内唯一，1–64字符字母/数字/下划线/连字符，首字符为字母或数字；actor 为 user / ai / user_ai，basis 同 anchor。before/after/trigger 为非空最多4000字符。parent_ids 最多20个唯一的此前迭代 ID，首条默认空数组，后续必须非空。status 默认 active，另有 achieved / unresolved；achieved 必须附 verification。verification 必填 method/text/evidence，method 为 user_acceptance / independent_check，text 非空最多4000字符。所有 evidence 必须含1–50个不重复的有效 req_ ID。
+iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,basis,parent_ids?,status?,verification?,task_id?,change?}`。id 在流内唯一，1–64字符字母/数字/下划线/连字符，首字符为字母或数字；actor 为 user / ai / user_ai，basis 同 anchor。before/after/trigger 为非空最多4000字符。parent_ids 最多20个唯一的此前迭代 ID，首条默认空数组，后续必须非空。status 默认 active，另有 achieved / unresolved；achieved 必须附 verification。verification 必填 method/text/evidence，method 为 user_acceptance / independent_check，text 非空最多4000字符。所有 evidence 必须含1–50个不重复的有效 req_ ID。
 
-更新必须保留原 anchor、已有迭代及 events 的完整前缀。实质目标变化追加迭代并关联前项；目标不变的达成、未决、重新激活或替代追加 status 事件；外环对自己解释的订正追加 correction 事件，不得伪装为被观察 AI 改目标，也不原位覆盖历史判断。缺省可选字段规范化后比较。非法结构返回 bad_goal_flow，覆盖既有结构返回 goal_flow_frozen，修改已承载目标流的 kind 返回 goal_flow_locked，多个未撤回目标流返回 multiple_goal_flows，均为400且整批不落盘。证据存在性及语义支持仍需外环/用户核对，结构校验不替代验收。
+更新必须保留原 anchor、已有 tasks、iterations 及 events 的完整前缀。实质目标变化追加迭代并关联前项；目标不变的达成、未决、重新激活或替代追加 status 事件；外环对自己解释的订正追加 correction 事件，不得伪装为被观察 AI 改目标，也不原位覆盖历史判断。缺省可选字段规范化后比较。非法结构返回 bad_goal_flow，覆盖既有结构返回 goal_flow_frozen，修改已承载目标流的 kind 返回 goal_flow_locked，多个未撤回目标流返回 multiple_goal_flows，均为400且整批不落盘。证据存在性及语义支持仍需外环/用户核对，结构校验不替代验收。
+
+`tasks` 是可选的显式任务数组，最多200项，每项只能含 `{id,title,start_id}`。id 在 tasks 内唯一，id/start_id 沿用 G 的 ID 字符规则；title 非空、最多200字符。start_id 必须指向该任务首个显式归属的 G，不能只声明任务而无对应 G。任务 ID、G ID 和事件 ID 各自独立命名，不自动生成或解析别名；调用方提供稳定 ID。
+
+迭代的 `task_id` 与 `change` 必须同时提供或同时省略，task_id 必须引用 tasks。程序检查显式关系，不从措辞、文件切换或状态机械划分任务：
+
+| change | 严格关系条件 | 阅读含义 |
+|---|---|---|
+| `initial` | 第一项显式任务的首个 G；父边可接旧无任务字段的 G | 从这里开始记录任务归属；不反向补写旧历史 |
+| `refine` | 已开始任务的后续 G；所有父边均指向同一 task_id 的此前 G，可同时引用多个分支 | 同一交付的结果、范围或验收条件发生修正 |
+| `turn` | 新任务的首个 G；至少一条父边指向已知其他任务的 G | 开始另一项可独立交付的任务，并保留跨任务来路 |
+
+旧 flow 可继续完全省略 tasks/task_id/change；tasks 与 current 也可分别启用。若在旧 flow 上开始任务归属，保留全部无任务字段的旧 G，追加第一项任务及 initial G；不能改写旧 G 来补标。首次显式归属之后新增的 G 均须提供 task_id/change。任务可并行，也可随后 refine 较早任务；不要求父边是数组中紧邻的 G。turn 不会将旧任务标为达成、替代或结束；这类状态若有证据，仍显式追加 events。
+
+`current` 是可更新的当前说明，只能含 `{goal_ids,understanding,situation,evidence,carryover?}`。goal_ids 必须是1–20个不重复的已有 G ID，可引用多个任务的 G；understanding（它对要求的理解）与 situation（它对现状的判断）均非空、最多4000字符；evidence 沿用1–50个有效请求 ID。可选 carryover 是非空、最多4000字符的持续要求与旧任务残件说明。当前说明不从最新 G、status 或完成声明自动生成，也不证明验收。原因假设或现状判断变了但期望结果未变时，可只更新 current，不新增 G。
+
+提供 current 会整体替换旧说明，须重新提交必填四字段；此次省略 carryover 会清除旧 carryover，因此仍适用的约束和残件须主动保留。完整 goal_flow 或 delta 都可省略整个 current，保留已保存值；不接受 null 清除。current 的旧版随条目更新进入 history，A、tasks、G、events 仍保持原前缀。
+
+#### A→G 小增量写入
+
+首次用 `add_item.goal_flow` 或 `update_item.patch.goal_flow` 提交完整结构；已有流优先用 `update_item.patch.goal_flow_delta`，它与同一 patch 中的 goal_flow 互斥。delta 只接受 tasks/iterations/events/current 四个可选键，不能是空对象，不能用于 add_item 或初始化，也不接受 anchor。前三项必须是追加数组（允许空数组）；current 是上述完整替换对象。delta 不作为条目字段保存，响应仍给出合并后的 goal_flow。
+
+例如已保存第一任务 t1 的 g1 后，结果和验收标准均未改变，只补现状说明：
+
+```json
+{"id":"OBSERVATION_ID","submission_id":"current-2","base_revision":1,
+ "ops":[{"op":"update_item","id":"goal","patch":{"goal_flow_delta":{
+   "current":{"goal_ids":["g1"],"understanding":"检查导出报告及图表是否准确",
+     "situation":"已发现数据源差异，报告与图表仍待核对","evidence":["req_b"]}
+ }}}]}
+```
+
+随后用户要求另一项交付时，同批追加新任务、新 G 及当前说明；示例中的 goal 为已保存的 client_ref，所有请求 ID 须换为实际证据：
+
+```json
+{"id":"OBSERVATION_ID","submission_id":"turn-3","base_revision":2,
+ "ops":[{"op":"update_item","id":"goal","patch":{"goal_flow_delta":{
+   "tasks":[{"id":"t2","title":"操作指南","start_id":"g2"}],
+   "iterations":[{"id":"g2","task_id":"t2","change":"turn","actor":"user",
+     "parent_ids":["g1"],"before":"核对导出报告与图表","after":"另交付一份可照做的操作指南",
+     "trigger":"用户明确提出另一项交付","evidence":["req_c"],"basis":"explicit"}],
+   "current":{"goal_ids":["g1","g2"],"understanding":"还需交付可照做的操作指南",
+     "situation":"指南尚未编写，报告核对也未验收","carryover":"报告与图表核对仍需继续；两项均用易懂语言说明",
+     "evidence":["req_b","req_c"]}
+ }}}]}
+```
+
+合并后统一校验总量、ID、任务关系和历史前缀；可在一个 delta 中追加 G 与指向它的 event/current，也可在同一批其他条目用 goal_iteration 引用新 G。整个提交复用 revision、submission_id 与原子校验：409 携当前 state，重读合并后再提交；结果不明时原样重放同一 submission_id。换新 submission_id 重复追加同一 G/task/event ID 会被拒绝；非法 delta 连同本批文字、关联、history、cursor 和提交流水全部不写。
+
+#### A→G 事件与工作关联
 
 `events` 为可选数组，最多2000条，只追加不覆盖、不删除。旧结构省略 events 时保持原形状，等价于尚无事件；已有非空 events 在后续完整 goal_flow 更新时不能省略。事件 id 与迭代 id 使用相同字符规则，在 events 内唯一（与迭代 ID 是独立命名空间）；target 必须指向同份 goal_flow 中已有的迭代 ID，仅 correction 另允许 `@anchor`。可同时追加新 G 和指向它的事件，事件数组顺序作为投影先后顺序。
 

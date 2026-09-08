@@ -158,13 +158,18 @@
     latestGoals:'現在の到達点',linkedWork:'この目標に関連する作業と発見',noLinked:'関連する作業・発見はまだありません。未分類項目は「作業と発見」で確認できます。',
     unlinked:'目標の段階に未関連',anchorOnly:'最初の理解のみ記録され、目標はまだ未記録です。',viewAnchor:'最初の理解を確認',goLatest:'現在の目標へ',
     initialGoal:'最初に形成した目標',priorGoal:'以前の目標・変更後',completedGoal:'観測者が達成と記録',moreLinked:'すべての関連項目を確認',flowMissing:'この会話の A→G はまだありません',flowSetup:'上の「接続説明をコピー」を使い、観測 AI に最初の入力と理解を記録させ、その後の目標変更を維持してください。既存項目は別タブから確認できます。'});
+  for(const [lang,values] of Object.entries({
+    zh:{trajectory:'A→G 目标流',requestReading:'它对你要求的理解',situationReading:'它对现状的判断',readingMissing:'这部分还没有记录，等待观察 AI 根据对话补充。',readingNote:'根据已录对话整理；点开可看依据。',carryover:'切换任务后仍要记住',change_initial:'起点',change_refine:'修正',change_turn:'转折',task:'任务',pastTask:'此前任务',currentTask:'当前任务',expandTask:'展开目标变化',collapseTask:'收起目标变化',goalVersions:'个目标版本',currentEvidence:'查看当前理解的依据',findingsLane:'原话与解释',flowHint:'点击 A、G 或变化原因，就地查看原话与依据。',flowIntro:'保留最初的理解，看清目标怎样修正、何时转到另一件事。',flowSetup:'点击上方“复制接入说明”，让观察 AI 从最初输入建立 A→G。旧观测记录保留，可通过 API 查阅。'},
+    en:{trajectory:'A→G goal flow',requestReading:'How it understands your request',situationReading:'How it sees the current situation',readingMissing:'Not recorded yet. The observer needs to read the conversation first.',readingNote:'Interpreted from recorded conversation. Open to inspect evidence.',carryover:'Still relevant after the task switch',change_initial:'Start',change_refine:'Revision',change_turn:'Task switch',task:'Task',pastTask:'Earlier task',currentTask:'Current task',expandTask:'Expand goal changes',collapseTask:'Collapse goal changes',goalVersions:'goal versions',currentEvidence:'Inspect current understanding',findingsLane:'Words & explanation',flowHint:'Select A, G or a change to inspect words and evidence in place.',flowIntro:'Keep the initial understanding and see how goals change or move to another task.',flowSetup:'Use Copy setup notes above to build A→G from the initial input. Older observation records remain accessible through the API.'},
+    ja:{trajectory:'A→G 目標の流れ',requestReading:'依頼をどう理解しているか',situationReading:'現状をどう捉えているか',readingMissing:'まだ記録されていません。観測 AI が会話から補足します。',readingNote:'記録された会話からの整理です。開くと根拠を確認できます。',carryover:'タスクを切り替えても引き継ぐこと',change_initial:'出発点',change_refine:'修正',change_turn:'タスクの転換',task:'タスク',pastTask:'以前のタスク',currentTask:'現在のタスク',expandTask:'目標の変化を展開',collapseTask:'目標の変化を折り畳む',goalVersions:'件の目標',currentEvidence:'現在の理解の根拠を確認',findingsLane:'原文と説明',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。',flowIntro:'最初の理解を保ち、目標の修正と別タスクへの転換を追います。',flowSetup:'上の「接続説明をコピー」から最初の入力をもとに A→G を作成します。従来の記録は API で閲覧できます。'}
+  })) Object.assign(words[lang],values);
   const tr = k => (words[typeof LANG === 'string' ? LANG : 'zh'] || words.zh)[k] || k;
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const short = (s, n=88) => {s=String(s || '').replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n)+'…' : s;};
   const list = x => Array.isArray(x) ? x : [];
   const M = {state:null, key:'', trace:null, nodes:new Map(), turns:[], items:new Map(), selected:null,
     open:new Set(), folds:new Set(), records:new Map(), rawOpen:new Set(), error:'', checked:'',
-    generation:0, controller:null, pending:null, signature:'', binding:null, resize:null, panel:'flow'};
+    generation:0, controller:null, pending:null, signature:'', binding:null, resize:null, panel:'flow', taskOpen:new Map()};
   const root = () => document.getElementById('obBody');
   const items = () => list(M.state?.items);
   const live = it => it.status !== 'retracted';
@@ -303,7 +308,7 @@
   }
   const flowItem = () => items().find(it=>live(it) && it.goal_flow);
   const associated = id => items().filter(it=>live(it) && it.goal_iteration===id);
-  for(const [lang,values] of Object.entries({zh:{closeDetail:'关闭详情',changesLane:'调整与原因',goalsLane:'目标如何演变',findingsLane:'发现与核验',statusEvent:'状态与核验记录',correctionEvent:'观察者订正',superseded:'已被后续目标替换',flowHint:'点击目标或发现查看证据；可横向滚动画布。'},en:{closeDetail:'Close details',changesLane:'Changes & reasons',goalsLane:'Evolution of goals',findingsLane:'Findings & checks',statusEvent:'Status & verification',correctionEvent:'Observer correction',superseded:'Superseded',flowHint:'Select a goal or finding for evidence. Scroll the canvas horizontally.'},ja:{closeDetail:'詳細を閉じる',changesLane:'変更と理由',goalsLane:'目標の変遷',findingsLane:'発見と検証',statusEvent:'状態と検証の記録',correctionEvent:'観測者の訂正',superseded:'後続目標に置換',flowHint:'目標や発見を選択して証拠を確認。図は横スクロールできます。'}})) Object.assign(words[lang],values);
+  for(const [lang,values] of Object.entries({zh:{closeDetail:'关闭详情',changesLane:'调整与原因',goalsLane:'目标如何演变',findingsLane:'发现与核验',statusEvent:'状态与核验记录',correctionEvent:'观察者订正',superseded:'已被后续目标替换',flowHint:'点击 A、G 或变化原因，就地查看原话与依据。'},en:{closeDetail:'Close details',changesLane:'Changes & reasons',goalsLane:'Evolution of goals',findingsLane:'Findings & checks',statusEvent:'Status & verification',correctionEvent:'Observer correction',superseded:'Superseded',flowHint:'Select A, G or a change to inspect words and evidence in place.'},ja:{closeDetail:'詳細を閉じる',changesLane:'変更と理由',goalsLane:'目標の変遷',findingsLane:'発見と検証',statusEvent:'状態と検証の記録',correctionEvent:'観測者の訂正',superseded:'後続目標に置換',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。'}})) Object.assign(words[lang],values);
   const goalEvents = id => list(flowItem()?.goal_flow?.events).filter(e=>e.target===id);
   function goalStatus(event) {
     const status=goalEvents(event.id).filter(e=>e.kind==='status').at(-1)?.status || event.status || 'active';
@@ -319,7 +324,41 @@
     }
     return rows;
   }
-  const AG_RIGHT=230, AG_RIGHT_OPEN=430, AG_DETAIL_H=360;
+  function currentGoals(f) {
+    if(f.current) return list(f.current.goal_ids);
+    const parents=new Set(list(f.iterations).flatMap(e=>list(e.parent_ids)));
+    return list(f.iterations).filter(e=>!parents.has(e.id)).map(e=>e.id);
+  }
+  function readingHtml(f, detailed=false) {
+    const c=f?.current;
+    return '<section class="ag-reading"><div class="ag-reading-pair">'+
+      [['requestReading',c?.understanding],['situationReading',c?.situation]].map(([key,text])=>
+        '<section><h3>'+escape(tr(key))+'</h3><p class="om-prose">'+escape(text || tr('readingMissing'))+'</p></section>').join('')+'</div>'+
+      (c?.carryover?'<p class="ag-carryover om-prose"><b>'+escape(tr('carryover'))+'：</b>'+escape(c.carryover)+'</p>':'')+
+      (c?(detailed?refs(c.evidence):'<div class="ag-reading-source"><span>'+escape(tr('readingNote'))+'</span>'+button('goal-current','',escape(tr('currentEvidence')),'om-action')+'</div>'):'')+'</section>';
+  }
+  function taskRows(f) {
+    const rows=flowLayers(list(f.iterations)), tasks=list(f.tasks);
+    if(tasks.length<2) return rows;
+    const active=new Set(list(f.iterations).filter(e=>currentGoals(f).includes(e.id)).map(e=>e.task_id));
+    const output=[];
+    // Only collapse a contiguous, exclusive task run. Cross-task branches stay
+    // visible: a compact summary must never invent a join between branches.
+    for(let i=0;i<rows.length;) {
+      const tid=rows[i][0]?.task_id, task=tasks.find(t=>t.id===tid);
+      let end=i;
+      while(task && end<rows.length && rows[end].every(e=>e.task_id===tid)) end++;
+      const exclusive=task && !rows.slice(0,i).concat(rows.slice(end)).some(r=>r.some(e=>e.task_id===tid));
+      const expanded=M.taskOpen.get(tid) ?? active.has(tid);
+      const members=rows.slice(i,end).flat();
+      const selected=members.some(e=>isSelected('goal-event',e.id)) && M.detailOpen;
+      if(exclusive && !expanded && !selected) {
+        output.push([{...members.at(-1),compactTask:task,members}]);i=end;
+      } else {output.push(rows[i]);i++;}
+    }
+    return output;
+  }
+  const AG_RIGHT=0, AG_RIGHT_OPEN=430, AG_DETAIL_H=360;
   /** Which goal row shows the detail in place, or null when the floating panel is used.
 
       Only the flow tab reads a third lane, so only it expands in place; the other
@@ -330,37 +369,42 @@
     if(M.panel!=='flow' || !M.detailOpen) return null;
     const flow=flowItem()?.goal_flow, s=M.selected; if(!flow || !s) return null;
     const ids=new Set(list(flow.iterations).map(e=>e.id));
+    if(s.kind==='goal-current') return list(flow.current?.goal_ids)[0] || '@anchor';
+    if(s.kind==='step') return ids.has(M.detailOrigin)?M.detailOrigin:'@anchor';
     if(s.kind==='goal-event' && ids.has(s.id)) return s.id;
     if(s.kind==='item') {const g=M.items.get(s.id)?.goal_iteration; return g && ids.has(g)?g:'@anchor';}
     return '@anchor';
   }
   function flowDiagramHtml(it) {
     const f=it?.goal_flow;
-    if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p>'+button('panel','work',escape(tr('workTab')),'om-action')+'</section>';
+    if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p></section>';
     const events=list(f.iterations),parents=new Set(events.flatMap(e=>list(e.parent_ids))),heads=events.filter(e=>!parents.has(e.id));
-    const rows=flowLayers(events), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20;
-    const inline=inlineTarget(), rightWidth=inline?AG_RIGHT_OPEN:AG_RIGHT, rightX=326+centerWidth, width=rightX+rightWidth+24;
+    const rows=taskRows(f), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20;
+    const inline=inlineTarget(), rightWidth=inline?Math.min(AG_RIGHT_OPEN,Math.max(280,(root()?.clientWidth || 478)-48)):AG_RIGHT, rightX=326+centerWidth, width=rightX+rightWidth+24;
     const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;height:'+AG_DETAIL_H+'px">'+
-      button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2>'+detailHtml()+'</aside>';
+      button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2><div class="ag-inline-body">'+detailHtml()+'</div></aside>';
     let y=inline==='@anchor'?Math.max(172,48+AG_DETAIL_H+16):172, detailTop=inline==='@anchor'?48:null;
+    const shownTasks=new Set(), currentIds=new Set(currentGoals(f));
     const stations=rows.map(row=>{
+      const task=list(f.tasks).find(t=>t.id===row[0]?.task_id), header=task && list(f.tasks).length>1 && !shownTasks.has(task.id);
+      const taskTop=y;if(header) {y+=44;shownTasks.add(task.id);}
       const top=y, hasDetail=row.some(e=>e.id===inline);
       if(hasDetail) detailTop=top;
       y+=Math.max(hasDetail?AG_DETAIL_H+16:0,112,row.length*66+12);
       const columns=row.length===1?320:252;
-      return row.map((e,i)=>{
+      const heading=header?'<div class="ag-task-heading" style="left:290px;top:'+taskTop+'px;width:'+centerWidth+'px"><strong>'+escape(task.title)+'</strong>'+(!row[0].compactTask?button('task-toggle',task.id,escape(tr('collapseTask')),'ag-task-toggle','aria-expanded="true"'):'')+'</div>':'';
+      return heading+row.map((e,i)=>{
         const x=290+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
-        const work=associated(e.id), observations=work.filter(x=>['finding','check','deviation','open'].includes(x.kind));
-        const content='<span class="ag-label"><b>'+escape(e.id)+'</b><span>'+escape(tr(goalStatus(e)))+'</span></span><strong>'+escape(short(e.after,100))+'</strong><span class="ag-count">'+escape(tr(e.basis))+(work.length?' · '+work.length+' '+escape(tr('workTab')):'')+'</span>';
-        const change=button('goal-event',e.id,'<span class="ag-who">'+escape(tr(list(e.parent_ids).length?'actor_'+e.actor:'initialGoal'))+'</span><span>'+escape(short(e.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(e.actor),'style="left:24px;top:'+(top+i*66)+'px;width:230px"');
-        // The open detail already lists this goal's work, so the lane is not doubled up.
-        const finding=hasDetail?'':observations.slice(0,row.length>1?1:2).map((o,j)=>button('item',o.id,'<span>'+escape(tr(o.kind))+'</span><strong>'+escape(short(title(o),row.length>1?55:65))+'</strong>','ag-observation ag-'+escape(o.kind),'style="left:'+rightX+'px;top:'+(top+i*66+j*52)+'px;width:230px"')).join('');
-        return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'" style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button('goal-event',e.id,content,'ag-goal-button','aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>'+finding;
+        const compact=e.compactTask, label=compact?tr('pastTask'):'G'+events.findIndex(g=>g.id===e.id);
+        const content='<span class="ag-label"><b>'+escape(label)+'</b><span>'+escape(compact?e.members.length+' '+tr('goalVersions'):goalStatus(e)==='completedGoal'?tr('completedGoal'):currentIds.has(e.id)?tr('goalNow'):tr(goalStatus(e)))+'</span></span><strong>'+escape(short(e.after,100))+'</strong>'+(compact?'<span class="ag-count">'+escape(tr('expandTask'))+' ↓</span>':'');
+        const cause=compact?e.members[0]:e;
+        const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'style="left:24px;top:'+(top+i*66)+'px;width:230px"');
+        return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?compact.id:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
       }).join('');
     }).join('');
-    return '<section class="ag-flow"><div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],['right','findingsLane']].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
+    return '<section class="ag-flow">'+readingHtml(f)+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
       '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+(y+18)+'px">'+
-      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+escape(tr('findingsLane'))+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
+      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
       '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(290+(centerWidth-320)/2)+'px;top:48px;width:320px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+
       (detailTop==null?'':detailBox(detailTop))+'</div></div><p class="ag-footnote">'+escape(tr('flowHint'))+'</p></section>';
   }
@@ -375,16 +419,19 @@
         '<h4>'+escape(tr('choices'))+'</h4>'+(list(a.choices).length?'<ul>'+a.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':note(tr('noKind')))+refs(a.evidence)+goalJournal(id);
     }
     const event=list(flow.iterations).find(e=>e.id===id);if(!event) return note(tr('missingItem'));
-    const work=associated(id);
-    return badge(tr('observer'))+goalEventHtml(event)+goalJournal(id)+'<h3>'+escape(tr('linkedWork'))+'</h3>'+
-      (work.length?work.map(x=>button('item',x.id,badge(tr(x.kind))+escape(title(x)),'om-finding')).join(''):note(tr('noLinked')));
+    const task=list(flow.tasks).find(t=>t.id===event.task_id);
+    return (task?'<h3>'+escape(task.title)+'</h3>':'')+(event.change?badge(tr('change_'+event.change)):'')+goalEventHtml(event)+goalJournal(id);
   }
   function drawGoalFlow() {
     const canvas=root()?.querySelector('.ag-canvas'),svg=canvas?.querySelector('.ag-wires');if(!svg || !canvas.offsetWidth) return;
     const box=canvas.getBoundingClientRect(),nodes=new Map([...canvas.querySelectorAll('[data-ag-node]')].map(n=>[n.dataset.agNode,n]));
+    for(const node of canvas.querySelectorAll('[data-ag-members]')) for(const id of node.dataset.agMembers.split(' ')) nodes.set(id,node);
     svg.setAttribute('viewBox','0 0 '+canvas.offsetWidth+' '+canvas.offsetHeight);
-    const paths=[];
+    const paths=[],drawn=new Set();
     for(const e of list(flowItem()?.goal_flow?.iterations)) for(const p of list(e.parent_ids).length?e.parent_ids:['@anchor']) {
+      if(!nodes.has(p) || !nodes.has(e.id) || nodes.get(p)===nodes.get(e.id)) continue;
+      const edge=nodes.get(p).dataset.agNode+'>'+nodes.get(e.id).dataset.agNode;
+      if(drawn.has(edge)) continue;drawn.add(edge);
       const a=nodes.get(p)?.getBoundingClientRect(),b=nodes.get(e.id)?.getBoundingClientRect();if(!a || !b) continue;
       const x1=a.left+a.width/2-box.left,y1=a.bottom-box.top,x2=b.left+b.width/2-box.left,y2=b.top-box.top,mid=(y1+y2)/2;
       paths.push('<path class="ag-wire" d="M '+x1+' '+y1+' C '+x1+' '+mid+' '+x2+' '+mid+' '+x2+' '+y2+'" marker-end="url(#ag-arrow)" data-ag-from="'+escape(p)+'" data-ag-to="'+escape(e.id)+'"/>');
@@ -428,41 +475,26 @@
   function paint() {
     const r=root(); if(!r || !M.state) return;
     const lang=typeof LANG==='string'?LANG:'zh';
-    const signature=JSON.stringify([M.state,M.trace,lang,M.error,[...M.open],M.selected,[...M.rawOpen],M.panel,M.detailOpen]);
+    const signature=JSON.stringify([M.state,M.trace,lang,M.error,[...M.open],M.selected,[...M.rawOpen],M.panel,M.detailOpen,[...M.taskOpen]]);
     const clock=r.querySelector('[data-om-clock]'); if(clock) clock.textContent=tr('checkedAt')+' '+M.checked;
     if(signature===M.signature) return;
     M.signature=signature;
     const active=r.contains(document.activeElement)?document.activeElement:null;
     const focus=active?.dataset.omAction ? {action:active.dataset.omAction,id:active.dataset.omId}:null;
-    const detailScroll=r.querySelector('.om-detail')?.scrollTop || 0;
+    const detailScroll=r.querySelector('.ag-inline-detail')?.scrollTop || r.querySelector('.om-detail')?.scrollTop || 0;
     const flowScroll=r.querySelector('.ag-canvas-scroll')?.scrollTop || 0;
     const priorFlow=r.querySelector('.ag-canvas-scroll');
     const flowLeft=priorFlow?.offsetWidth?priorFlow.scrollLeft:M.flowLeft;
     M.flowLeft=flowLeft;
-    const sc=M.state.scope || {}, phases=items().filter(it=>it.kind==='phase'), preds=items().filter(it=>it.kind==='prediction');
-    const hasCoverage=phases.some(it=>live(it) && list(it.covers).length);
-    const covered=new Set(phases.filter(live).flatMap(it=>list(it.covers)));
-    const uncovered=[...M.nodes.values()].filter(n=>!covered.has(n.id));
-    const other=items().filter(it=>!['goal','phase','artifact','check','prediction'].includes(it.kind));
+    const sc=M.state.scope || {};
     r.innerHTML='<div class="om-shell'+(inlineTarget()?' ag-inline':'')+'"><main class="om-main"><header class="om-header"><div><h2>'+escape(tr('trajectory'))+'</h2><p class="om-muted">'+escape([sc.date,sc.source,sc.lane || sc.session].filter(Boolean).join(' · '))+'</p></div><span class="om-muted" data-om-clock>'+escape(tr('checkedAt')+' '+M.checked)+'</span></header>'+
       (M.error?'<div class="om-error" role="alert">'+escape(errorText(M.error))+' '+button('retry','',escape(tr('retry')),'om-action')+'</div>':'')+
-      (!sc.lane && !sc.session?note(tr('allScope')):'')+'<nav class="ag-tabs" aria-label="'+escape(tr('navigation'))+'">'+[['flow','flowTab'],['work','workTab'],['records','recordsTab'],['forecast','forecastTab']].map(([id,key])=>button('panel',id,escape(tr(key)),'ag-tab','aria-pressed="'+(M.panel===id)+'"')).join('')+'</nav>'+
-      '<div class="ag-panel"'+(M.panel!=='flow'?' hidden':'')+'>'+goalFlowHtml(flowItem())+'</div>'+
-      '<div class="ag-panel"'+(M.panel!=='work'?' hidden':'')+'>'+reportHtml()+graphHtml()+'<h3>'+escape(tr('unlinked'))+'</h3>'+items().filter(x=>live(x) && x.kind!=='goal' && !x.goal_iteration).map(x=>button('item',x.id,badge(tr(x.kind))+escape(title(x)),'om-finding')).join('')+'</div>'+
-      '<div class="ag-panel"'+(M.panel!=='records'?' hidden':'')+'>'+
-      (M.trace?'<section id="om-compact" class="om-compact"><h3>'+escape(tr('compact'))+'</h3><div class="om-ribbon">'+M.turns.map((t,i)=>
-        button('turn',t.key,'<span>'+escape(i+1)+'</span><b>'+escape(t.nodes.length)+'</b>','om-bead','title="'+escape(short(t.user || t.lane,160))+'" aria-label="'+escape(tr('turns')+' '+(i+1)+', '+t.nodes.length+' '+tr('steps'))+'"')).join('')+'</div>'+note(tr('compactNote'))+'</section>':note(tr('loading')))+
-      (!hasCoverage?'<div class="om-notice">'+escape(tr('fallback'))+'</div><section class="om-turns">'+M.turns.map(turnHtml).join('')+'</section>':
-        '<details id="om-coverage" class="om-disclosure" data-om-fold="coverage"'+(M.folds.has('coverage')?' open':'')+'><summary>'+escape(tr('recordedCoverage'))+' <b>'+[...M.nodes.keys()].filter(id=>covered.has(id)).length+'</b></summary><div class="om-steps">'+[...M.nodes.values()].filter(n=>covered.has(n.id)).map(stepHtml).join('')+'</div></details>'+
-        '<details class="om-disclosure" data-om-fold="uncovered"'+(M.folds.has('uncovered')?' open':'')+'><summary>'+escape(tr('uncovered'))+' <b>'+uncovered.length+'</b></summary><div class="om-steps">'+uncovered.map(stepHtml).join('')+'</div></details>')+
-      (M.trace && !M.nodes.size?note(tr('empty')):'')+'</div><div class="ag-panel"'+(M.panel!=='work'?' hidden':'')+'>'+
-      (other.length?'<details id="om-findings" class="om-disclosure" data-om-fold="findings"'+(M.folds.has('findings')?' open':'')+'><summary>'+escape(tr('other'))+' <b>'+other.length+'</b></summary>'+other.map(it=>button('item',it.id,badge(tr(it.kind))+escape(short(title(it),180)),
-        'om-finding'+(!live(it)?' is-retracted':''))).join('')+'</details>':'')+
-      '</div><section id="om-future" class="ag-panel om-future"'+(M.panel!=='forecast'?' hidden':'')+'><h2>'+escape(tr('future'))+'</h2>'+note(tr('predictionNote'))+(preds.length?preds.map(predictionHtml).join(''):note(tr('noPrediction')))+'</section></main>'+
+      (!sc.lane && !sc.session?note(tr('allScope')):'')+goalFlowHtml(flowItem())+'</main>'+
       '<aside class="om-detail"'+(!M.detailOpen?' hidden':'')+' aria-label="'+escape(tr('detail'))+'">'+button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2><div id="om-detail-body"></div></aside></div>';
     paintDetail();
     r.querySelector('.om-detail').scrollTop=detailScroll;
-    const flowViewport=r.querySelector('.ag-canvas-scroll');if(flowViewport) {flowViewport.scrollTop=flowScroll;flowViewport.scrollLeft=flowLeft ?? Math.max(0,(flowViewport.scrollWidth-flowViewport.clientWidth)/2);}
+    const inlineDetail=r.querySelector('.ag-inline-detail');if(inlineDetail) inlineDetail.scrollTop=detailScroll;
+    const flowViewport=r.querySelector('.ag-canvas-scroll');if(flowViewport) {flowViewport.scrollTop=flowScroll;const anchor=flowViewport.querySelector('.ag-anchor');flowViewport.scrollLeft=flowLeft ?? Math.max(0,(anchor?.offsetLeft || 0)+(anchor?.offsetWidth || 0)/2-flowViewport.clientWidth/2);}
     if(focus) [...r.querySelectorAll('[data-om-action]')].find(e=>e.dataset.omAction===focus.action && e.dataset.omId===focus.id)?.focus({preventScroll:true});
     bind(); requestAnimationFrame(drawRelations);
   }
@@ -515,6 +547,7 @@
   function detailHtml() {
     const s=M.selected;
     if(!s) return note(tr('select'))+'<dl class="om-meta">'+['revision','cursor','updated'].map(k=>'<dt>'+escape(tr(k))+'</dt><dd>'+escape(M.state[k])+'</dd>').join('')+'</dl>';
+    if(s.kind==='goal-current') return readingHtml(flowItem()?.goal_flow,true);
     if(s.kind==='goal-event' || s.kind==='goal-anchor') return goalDetail(s.id);
     if(s.kind==='item') return M.items.has(s.id)?itemDetail(M.items.get(s.id)):note(tr('missingItem'));
     if(s.kind==='turn') {
@@ -524,8 +557,8 @@
     return stepDetail(s.id);
   }
   function paintDetail() {
-    const el=document.getElementById('om-detail-body'); if(!el) return;
-    el.innerHTML=detailHtml();
+    const el=document.getElementById('om-detail-body'), inline=root()?.querySelector('.ag-inline-body'); if(!el && !inline) return;
+    const body=detailHtml();if(el) el.innerHTML=body;if(inline) inline.innerHTML=body;
     requestAnimationFrame(drawRelations);
   }
   function drawRelations() {
@@ -565,9 +598,10 @@
   }
   function revealDetail() {
     const opening=!M.detailOpen;M.detailOpen=true;paint();
-    if(opening) root()?.querySelector('.ag-close')?.focus({preventScroll:true});
+    if(opening) {root()?.querySelector('.ag-close')?.focus({preventScroll:true});root()?.querySelector('.ag-inline-detail')?.scrollIntoView({block:'nearest',inline:'nearest'});}
   }
   function chooseStep(rid) {
+    M.detailOrigin=inlineTarget();
     M.selected={kind:'step',id:rid}; paint(); revealDetail();
     if(!M.nodes.has(rid)) loadRecord(rid);
   }
@@ -581,9 +615,18 @@
       const b=event.target.closest('[data-om-action]'); if(!b || !r.contains(b)) return;
       const id=b.dataset.omId,action=b.dataset.omAction;
       if(action==='close-detail') {M.detailOpen=false;paint();root()?.querySelector('[data-ag-node="'+CSS.escape(M.selected?.id || '@anchor')+'"] button')?.focus({preventScroll:true});return;}
-      if(action==='flow-lane') {const canvas=r.querySelector('.ag-canvas-scroll');if(canvas) canvas.scrollLeft=id==='left'?0:id==='right'?canvas.scrollWidth:(canvas.scrollWidth-canvas.clientWidth)/2;return;}
+      if(action==='flow-lane') {const canvas=r.querySelector('.ag-canvas-scroll'),anchor=canvas?.querySelector('.ag-anchor');if(canvas) canvas.scrollLeft=id==='left'?0:id==='right'?canvas.scrollWidth:(anchor?.offsetLeft || 0)+(anchor?.offsetWidth || 0)/2-canvas.clientWidth/2;return;}
       if(action==='panel') {M.panel=id;M.detailOpen=false;paint();return;}
+      if(action==='goal-current') {
+        const f=flowItem()?.goal_flow;for(const e of list(f?.iterations)) if(list(f?.current?.goal_ids).includes(e.id) && e.task_id) M.taskOpen.set(e.task_id,true);
+        M.selected={kind:'goal-current',id:'@current'};revealDetail();return;
+      }
+      if(action==='task-toggle') {
+        const expanded=b.getAttribute('aria-expanded')==='true';M.taskOpen.set(id,!expanded);
+        if(expanded) {M.detailOpen=false;M.selected=null;}paint();return;
+      }
       if(action==='goal-event' || action==='goal-anchor' || action==='goal-latest') {
+        const task=list(flowItem()?.goal_flow?.iterations).find(e=>e.id===id)?.task_id;if(task) M.taskOpen.set(task,true);
         M.selected={kind:action==='goal-anchor'?'goal-anchor':'goal-event',id:id || '@anchor'};paint();
         if(action==='goal-latest') root().querySelector('[data-ag-node="'+CSS.escape(id)+'"]')?.scrollIntoView({block:'nearest'});
         else revealDetail();return;
@@ -617,7 +660,7 @@
   }
   function clear(message='') {
     M.controller?.abort(); M.generation++;M.controller=null;M.pending=null;M.state=null;M.key='';M.trace=null;
-    M.nodes.clear();M.items.clear();M.turns=[];M.selected=null;M.open.clear();M.folds.clear();M.records.clear();M.rawOpen.clear();M.signature='';M.error='';M.panel='flow';M.detailOpen=false;M.flowLeft=undefined;
+    M.nodes.clear();M.items.clear();M.turns=[];M.selected=null;M.open.clear();M.folds.clear();M.records.clear();M.rawOpen.clear();M.taskOpen.clear();M.signature='';M.error='';M.panel='flow';M.detailOpen=false;M.detailOrigin=null;M.flowLeft=undefined;
     const r=root();if(r) r.innerHTML=message?'<p class="om-error" role="alert">'+escape(message)+'</p>':'';
   }
   function render(state) {

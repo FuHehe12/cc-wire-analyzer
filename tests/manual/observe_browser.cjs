@@ -1,3 +1,10 @@
+// Historical pre-260909 work/records/forecast UI probe only.
+// The current product intentionally removed those tabs. It cannot be accepted by
+// this historical probe; use observe_goal_browser.cjs for the current A→G UI.
+// Legacy semantic behavior remains covered by tests/observe_map_selftest.js.
+if(process.env.CCWA_LEGACY_OBSERVE_UI!=='1') {
+ throw Error('Historical UI probe: current UI uses observe_goal_browser.cjs. Set CCWA_LEGACY_OBSERVE_UI=1 only when testing an old build that still has the legacy tabs.');
+}
 const fs=require('fs'),path=require('path'),assert=require('assert');
 const {chromium}=require('playwright');
 const base=process.env.CCWA_TEST_URL || 'http://127.0.0.1:53908';

@@ -12,12 +12,12 @@ const source = fs.readFileSync(path.join(project, 'src/static/observe-map.js'), 
 // Test-only access to the actual pure reader functions, not a second algorithm.
 const seam = 'window.ObserveMap={render,refresh,clear};';
 assert.equal(source.split(seam).length, 2, 'reader API seam must be unique');
-const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,goalDetail};');
+const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,taskRows,readingHtml,goalDetail};');
 const context = {window:{}, document:{getElementById:()=>null}, URLSearchParams, AbortController, LANG:'en'};
 vm.createContext(context);
 vm.runInContext(code, context, {filename:'observe-map.js'});
 const {words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml} = context.window.audit;
-const {flowDiagramHtml,flowLayers,goalDetail}=context.window.audit;
+const {flowDiagramHtml,flowLayers,taskRows,readingHtml,goalDetail}=context.window.audit;
 let passed = 0;
 function test(name, fn) {fn(); passed++; console.log('PASS ' + name);}
 function pred(extra={}) {
@@ -27,7 +27,7 @@ function pred(extra={}) {
 function trace(nodes, extra={}) {
   adoptTrace({order:'recording',truncated:false,nodes:nodes.map((n,i)=>({seq:i,kind:'main',lane:'main-lane',...n})),...extra});
 }
-function reset(p=pred()) {M.state={items:[p]}; M.items=new Map([[p.id,p]]); M.records.clear();M.rawOpen.clear();return p;}
+function reset(p=pred()) {M.state={items:[p]}; M.items=new Map([[p.id,p]]); M.records.clear();M.rawOpen.clear();M.taskOpen.clear();M.detailOpen=false;M.selected=null;return p;}
 
 test('all UI keys are translated in three languages',()=>{
   assert.deepEqual(Object.keys(words.en).sort(), Object.keys(words.zh).sort());
@@ -159,8 +159,8 @@ test('goal flow lays out explicit forks and joins, with no automatic work attrib
   assert.deepEqual(JSON.parse(JSON.stringify(flowLayers(events))).map(row=>row.map(x=>x.id)),[['G0'],['G1'],['G2a','G2b'],['G3']]);
   const html=flowDiagramHtml(g);assert.equal((html.match(/data-ag-node="@anchor"/g)||[]).length,1);
   assert.equal((html.match(/data-ag-node="G/g)||[]).length,5);assert(!html.includes('<details'));
-  assert(html.includes('Original plan is outdated'));assert(!html.includes('Must not infer'));
-  assert(goalDetail('G2a').includes('Original plan is outdated'));assert(!goalDetail('G2b').includes('Original plan is outdated'));
+  assert(!html.includes('Original plan is outdated'));assert(!html.includes('Must not infer'));
+  assert(!goalDetail('G2a').includes('Original plan is outdated'));assert(!goalDetail('G2b').includes('Original plan is outdated'));
   assert(goalDetail('@anchor').includes('Full audit'));
   assert(goalDetail('G0').includes(words.en.priorGoal));
   assert(goalDetail('G0').includes(words.en.initialGoal));
@@ -210,7 +210,7 @@ test('the goal plane keeps every colour in the three-theme token system',()=>{
     assert.deepEqual([...base].filter(k=>!themed.has(k)),[],theme+' silently falls back to the dark values');
   }
 });
-test('an open goal detail expands the findings lane instead of covering it',()=>{
+test('an open goal detail expands its own lane without covering goals',()=>{
   reset();
   const g={id:'goal',kind:'goal',goal_flow:{anchor:{user_text:'Replace the engine',understanding:'Check first',evidence:['req_a']},
     iterations:[{id:'g0',actor:'user',before:'Check',after:'Replace and verify',trigger:'Start it',basis:'explicit',evidence:['req_a'],parent_ids:[],status:'active'}]}};
@@ -219,7 +219,7 @@ test('an open goal detail expands the findings lane instead of covering it',()=>
   M.panel='flow';M.detailOpen=false;M.selected={kind:'goal-event',id:'g0'};
   const closed=flowDiagramHtml(g);
   assert(!closed.includes('ag-inline-detail'),'closed detail must not reserve the lane');
-  assert(closed.includes('Acceptance criterion changed'),'the findings lane shows its entries when nothing is open');
+  assert(!closed.includes('Acceptance criterion changed'),'independent findings are no longer shown in the focused flow');
   M.detailOpen=true;
   const open=flowDiagramHtml(g);
   assert(open.includes('ag-inline-detail'),'the detail belongs inside the canvas, not in a floating layer');
@@ -242,5 +242,40 @@ test('an unlinked finding opens its detail at the anchor row, not on a guessed g
   M.panel='work';
   assert(!flowDiagramHtml(g).includes('ag-inline-detail'),'other tabs keep the floating panel');
   M.panel='flow';M.detailOpen=false;M.selected=null;
+});
+test('current understanding updates without fabricating a goal or replacing the fixed anchor',()=>{
+  reset();
+  const f={anchor:{user_text:'Inspect',understanding:'Read the source',evidence:['req_a']},iterations:[
+    {id:'g0',after:'Find the cause',actor:'user',trigger:'Inspect',evidence:['req_a'],parent_ids:[]}],
+    current:{goal_ids:['g0'],understanding:'Find the cause before changing code',situation:'The cause is still unknown',evidence:['req_a']}};
+  const g={id:'goal',kind:'goal',goal_flow:f};M.state.items=[g];
+  let html=flowDiagramHtml(g);assert(html.includes('The cause is still unknown'));
+  f.current.situation='<img src=x onerror=alert(1)> The input file is missing';f.current.evidence=['req_b'];
+  html=flowDiagramHtml(g);assert.equal((html.match(/data-ag-node="g0"/g)||[]).length,1);
+  assert(html.includes('Read the source'));assert(!html.includes('<img'));assert(!html.includes('The cause is still unknown'));
+  assert(readingHtml(f,true).includes('data-om-id="req_b"'));
+  assert(readingHtml({}).includes(words.en.readingMissing),'legacy data must not be promoted to a current interpretation');
+});
+test('earlier tasks collapse without losing IDs, and explicit expansion survives current-state updates',()=>{
+  reset();
+  const e=(id,task_id,parent_ids,change)=>({id,task_id,parent_ids,change,after:'Result '+id,trigger:'Request '+id,actor:'user',evidence:['req_'+id]});
+  const f={anchor:{user_text:'Review',understanding:'Review'},tasks:[{id:'t0',title:'Review',start_id:'g0'},{id:'t1',title:'Repair',start_id:'g2'}],
+    iterations:[e('g0','t0',[],'initial'),e('g1','t0',['g0'],'refine'),e('g2','t1',['g1'],'turn')],
+    current:{goal_ids:['g2'],understanding:'Repair both issues',situation:'Only one is fixed',carryover:'Review acceptance is still missing',evidence:['req_g2']}};
+  const g={id:'goal',kind:'goal',goal_flow:f};M.state.items=[g];
+  let rows=taskRows(f);assert.equal(rows.length,2);assert.equal(rows[0][0].members.length,2);
+  let html=flowDiagramHtml(g);assert(html.includes('data-ag-members="g0 g1"'));assert(html.includes('Review acceptance is still missing'));
+  assert(html.includes(words.en.change_turn));assert(!html.includes(words.en.completedGoal));
+  M.taskOpen.set('t0',true);rows=taskRows(f);assert.equal(rows.length,3);
+  f.current.situation='Both changes are awaiting review';assert.equal(taskRows(f).length,3);
+  assert(flowDiagramHtml(g).includes(words.en.change_refine));
+  M.taskOpen.clear();f.current.goal_ids=['g1','g2'];assert.equal(taskRows(f).length,3,'simultaneously current tasks stay expanded');
+});
+test('cross-task branches remain explicit instead of being collapsed into an invented join',()=>{
+  reset();
+  const f={tasks:[{id:'a'},{id:'b'}],iterations:[
+    {id:'g0',task_id:'a',parent_ids:[]},{id:'g1',task_id:'a',parent_ids:['g0']},
+    {id:'g2',task_id:'b',parent_ids:['g0']},{id:'g3',task_id:'a',parent_ids:['g1']}],current:{goal_ids:['g2']}};
+  assert(!taskRows(f).flat().some(e=>e.compactTask),'interleaved task branches cannot share a collapsed proxy');
 });
 console.log('\n'+passed+' observation reader checks passed.');

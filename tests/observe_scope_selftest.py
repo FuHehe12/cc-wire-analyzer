@@ -130,6 +130,119 @@ class SpanApiTests(unittest.TestCase):
             self.assertEqual(conflict.json["state"]["revision"], 1)
 
 
+class GoalDeltaApiTests(unittest.TestCase):
+    """Exercise the public write surface, including cover_span preprocessing."""
+
+    def setUp(self):
+        import app as web
+        self.web = web
+        self.client = web.app.test_client()
+        created = self.client.post("/api/observations", json={
+            "scope": {"date": "2026-09-09", "source": "", "lane": "main", "session": "s1"}})
+        self.assertEqual(created.status_code, 200, created.json)
+        self.oid = created.json["id"]
+        self.flow = {"anchor": {"user_text": "检查报告", "understanding": "核对报告",
+            "evidence": ["req_a"], "basis": "explicit"}, "tasks": [
+            {"id": "t1", "title": "报告检查", "start_id": "g1"}], "iterations": [
+            {"id": "g1", "actor": "ai", "before": "检查报告", "after": "核对报告及图表",
+             "trigger": "明确核对范围", "evidence": ["req_a"], "basis": "explicit",
+             "task_id": "t1", "change": "initial"}], "current": self.current()}
+        seeded = self.submit("seed", 0, [{"op": "add_item", "kind": "goal", "text": "目标",
+            "client_ref": "goal", "goal_flow": self.flow}])
+        self.assertEqual(seeded.status_code, 200, seeded.json)
+        self.saved = seeded.json["state"]
+
+    def current(self, **fields):
+        return {"goal_ids": ["g1"], "understanding": "核对报告和图表",
+                "situation": "仍待核对，尚无验收", "evidence": ["req_a"], **fields}
+
+    def submit(self, sid, revision, ops, mode="full"):
+        return self.client.post("/api/observations?response=" + mode, json={
+            "id": self.oid, "submission_id": sid, "base_revision": revision, "ops": ops})
+
+    def delta(self, value):
+        return {"op": "update_item", "id": "goal", "patch": {"goal_flow_delta": value}}
+
+    def test_current_only_http_changed_replay_and_conflict(self):
+        from unittest.mock import patch
+        new_current = self.current(situation="数据源差异已发现，目标与验收条件未变", evidence=["req_b"])
+        ops = [self.delta({"current": new_current}), {"op": "set_cursor", "cursor": 5}]
+        with patch.object(self.web.capture_store, "list_index", side_effect=AssertionError("must not read captures")):
+            response = self.submit("current", 1, ops, "changed")
+            self.assertEqual(response.status_code, 200, response.json)
+            self.assertEqual(response.json["revision"], 2)
+            self.assertEqual(response.json["cursor"], 5)
+            self.assertNotIn("state", response.json)
+            goal = response.json["items"][0]
+            self.assertEqual(goal["goal_flow"]["current"], new_current)
+            self.assertEqual(goal["goal_flow"]["iterations"], self.saved["items"][0]["goal_flow"]["iterations"])
+            self.assertEqual(goal["history"][-1]["goal_flow"], self.saved["items"][0]["goal_flow"])
+            self.assertNotIn("goal_flow_delta", goal)
+            before = OB._file(self.oid).read_bytes()
+            replay = self.submit("current", 1, ops, "changed")
+            self.assertEqual(replay.status_code, 200, replay.json)
+            self.assertTrue(replay.json["replayed"])
+            self.assertEqual(replay.json["items"], response.json["items"])
+            conflict = self.submit("new-stale", 1, ops)
+            self.assertEqual(conflict.status_code, 409, conflict.json)
+            self.assertEqual(conflict.json["state"]["revision"], 2)
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+            self.assertEqual(self.client.get("/api/observations/" + self.oid).json["items"][0], goal)
+
+    def test_delta_survives_span_preprocessing_and_combined_references(self):
+        from unittest.mock import patch
+        delta = {"tasks": [{"id": "t2", "title": "操作指南", "start_id": "g2"}],
+            "iterations": [{"id": "g2", "actor": "user", "before": "核对报告", "after": "另写操作指南",
+                "trigger": "用户提出另一交付", "evidence": ["req_b"], "basis": "explicit",
+                "parent_ids": ["g1"], "task_id": "t2", "change": "turn"}],
+            "events": [{"id": "e2", "kind": "status", "target": "g2", "status": "unresolved",
+                "text": "指南边界待澄清", "evidence": ["req_b"]}],
+            "current": self.current(goal_ids=["g1", "g2"], carryover="报告检查仍未验收")}
+        ops = [{"op": "add_item", "kind": "open", "text": "指南边界", "goal_iteration": "g2",
+                "cover_span": {"first_rid": "req_a", "last_rid": "req_b"}}, self.delta(delta)]
+        dag = {"nodes": [{"id": "req_a", "lane": "main"}, {"id": "req_b", "lane": "main"}]}
+        with patch.object(self.web, "_dag_of", return_value=dag), patch.object(
+                self.web.capture_store, "list_index", return_value=[{"id": "req_a"}, {"id": "req_b"}]) as index:
+            response = self.submit("span-and-turn", 1, ops)
+            self.assertEqual(response.status_code, 200, response.json)
+            index.assert_called_with("2026-09-09", "", "s1", "")
+        items = response.json["state"]["items"]
+        self.assertEqual(items[1]["covers"], ["req_a", "req_b"])
+        self.assertEqual(items[1]["goal_iteration"], "g2")
+        self.assertEqual(items[0]["goal_flow"]["iterations"][0]["status"], "active")
+        self.assertEqual(items[0]["goal_flow"]["iterations"][1]["parent_ids"], ["g1"])
+        self.assertEqual(items[0]["goal_flow"]["events"], delta["events"])
+        self.assertEqual(items[0]["goal_flow"]["current"], delta["current"])
+        # Replay bypasses preprocessing after recordings are gone.
+        with patch.object(self.web.capture_store, "list_index", side_effect=AssertionError("must not read")):
+            replay = self.submit("span-and-turn", 1, ops)
+            self.assertEqual(replay.status_code, 200, replay.json)
+            self.assertTrue(replay.json["replayed"])
+
+    def test_invalid_http_batch_rolls_back_span_cursor_history_and_submission(self):
+        from unittest.mock import patch
+        before = OB._file(self.oid).read_bytes()
+        dag = {"nodes": [{"id": "req_a", "lane": "main"}]}
+        invalid = [self.delta({"current": self.current(goal_ids=["missing"])}),
+            {"op": "update_item", "id": "goal", "patch": {
+                "goal_flow": self.flow, "goal_flow_delta": {"current": self.current()}}}]
+        with patch.object(self.web, "_dag_of", return_value=dag), patch.object(
+                self.web.capture_store, "list_index", return_value=[{"id": "req_a"}]):
+            for bad in invalid:
+                with self.subTest(bad=bad):
+                    response = self.submit("failed-retry", 1, [
+                        {"op": "set_cursor", "cursor": 99},
+                        {"op": "update_item", "id": "goal", "patch": {"text": "不应保存",
+                            "cover_span": {"first_rid": "req_a", "last_rid": "req_a"}}}, bad])
+                    self.assertEqual(response.status_code, 400, response.json)
+                    self.assertEqual(response.json["error"], "bad_goal_flow")
+                    self.assertEqual(OB._file(self.oid).read_bytes(), before)
+        retry = self.submit("failed-retry", 1, [self.delta({"current": self.current(situation="继续核对")})])
+        self.assertEqual(retry.status_code, 200, retry.json)
+        self.assertFalse(retry.json["replayed"])
+        self.assertEqual(retry.json["state"]["cursor"], 0)
+
+
 class FeedbackApiTests(unittest.TestCase):
     def setUp(self):
         import app as web
