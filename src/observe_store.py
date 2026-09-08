@@ -51,6 +51,7 @@ FORECAST_CRITERION_MAX = 2000
 LINK_TYPES = ("belongs_to", "depends_on", "produces", "supports", "contradicts")
 _ID_RE = re.compile(r"^obs_[0-9a-f]{7}$")
 _RID_RE = re.compile(r"req_[A-Za-z0-9_-]{1,124}\Z")
+_GOAL_ITERATION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 
 
 class ObserveError(RuntimeError):
@@ -154,7 +155,7 @@ def delete(oid: str) -> dict:
 
 # Only fields actually consumed by the store are accepted. HTTP expands cover_span
 # into covers before entering here; misplaced or misspelled fields cannot succeed.
-ITEM_FIELDS = {"kind", "text", "status", "evidence", "title", "progress", "covers", "forecast", "goal_flow"}
+ITEM_FIELDS = {"kind", "text", "status", "evidence", "title", "progress", "covers", "forecast", "goal_flow", "goal_iteration"}
 OP_FIELDS = {
     "add_item": ITEM_FIELDS | {"op", "client_ref"},
     "update_item": {"op", "id", "patch"},
@@ -231,6 +232,13 @@ def _semantic_fields(data: dict, kind: str, previous: dict | None = None) -> dic
     layer. A forecast records the observer's declared boundary, not enforced blindness.
     """
     out = {}
+    if "goal_iteration" in data:
+        iteration = data["goal_iteration"]
+        if not isinstance(iteration, str) or (iteration and not _GOAL_ITERATION_RE.fullmatch(iteration)):
+            raise ObserveError("bad_goal_iteration", "goal_iteration 必须为1..64字符的迭代 ID，或用空串清除关联")
+        if iteration and kind == "goal":
+            raise ObserveError("bad_goal_iteration", "goal_iteration 只允许关联非 goal 条目")
+        out["goal_iteration"] = iteration
     if "goal_flow" in data:
         if kind != "goal":
             raise ObserveError("bad_goal_flow", "goal_flow 只允许用于 goal 条目")
@@ -378,6 +386,8 @@ def apply(oid: str, submission_id: str, base_revision, ops: list) -> dict:
                     if not isinstance(patch, dict):
                         raise ObserveError("bad_op", "patch 必须为对象")
                     new_kind = patch.get("kind", it.get("kind"))
+                    if new_kind == "goal" and patch.get("goal_iteration", it.get("goal_iteration")):
+                        raise ObserveError("bad_goal_iteration", "改为 goal 前必须清除 goal_iteration，可在同一 patch 中写空串")
                     if "goal_flow" in it and new_kind != "goal":
                         raise ObserveError("goal_flow_locked", "已有 goal_flow 的条目不能修改 kind；请撤回后新建")
                     extra = _semantic_fields(patch, new_kind, previous=it.get("goal_flow"))
@@ -437,8 +447,19 @@ def apply(oid: str, submission_id: str, base_revision, ops: list) -> dict:
             else:
                 raise ObserveError("bad_op", f"未知操作：{kind}")
 
-        if sum(1 for it in items.values() if "goal_flow" in it and it.get("status") != "retracted") > 1:
+        active_flows = [it["goal_flow"] for it in items.values()
+                        if "goal_flow" in it and it.get("status") != "retracted"]
+        if len(active_flows) > 1:
             raise ObserveError("multiple_goal_flows", "一个观测最多保留一个未撤回的 goal_flow；演变请追加其 iterations")
+        # Validate the final batch, so an item may precede the flow/iteration it
+        # references. Retraction must not strand live work on an invisible goal.
+        iteration_ids = {entry["id"] for flow in active_flows for entry in flow["iterations"]}
+        for it in items.values():
+            iteration = it.get("goal_iteration")
+            if it.get("status") != "retracted" and iteration:
+                if it.get("kind") == "goal" or iteration not in iteration_ids:
+                    raise ObserveError("bad_goal_iteration",
+                        f"条目 {it['id']} 的 goal_iteration={iteration} 未指向当前活跃目标流；请清除、改关联或撤回条目")
         changed_ids = [i for i in order if items[i] != before_items.get(i)]
         s["refs"] = persistent_refs
         s["items"] = [items[i] for i in order]

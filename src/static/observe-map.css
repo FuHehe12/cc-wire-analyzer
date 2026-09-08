@@ -1,5 +1,44 @@
 /* Semantic reader: a dependency board over a compact, complete capture trace.
    All colors and fonts use the host's three-theme semantic tokens. */
+.om-shell{--ag-user:#e7b859;--ag-ai:#8bbfff;}
+[data-theme=classic] .om-shell{--ag-user:#805414;--ag-ai:#235fa2;}
+[data-theme=light] .om-shell{--ag-user:#87510b;--ag-ai:#205b9b;}
+.ag-panel[hidden]{display:none!important;}
+.ag-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px;padding-bottom:10px;}
+.om-shell .ag-tab{background:none;border:1px solid transparent;border-radius:5px;padding:8px 12px;font:inherit;font-size:13px;color:var(--apple-text-secondary);}
+.ag-tab[aria-pressed=true]{background:var(--bg-soft);border-color:var(--border-warm);color:var(--apple-text);font-weight:650;}
+.ag-heading{display:flex;gap:16px;justify-content:space-between;align-items:flex-start;}
+.ag-heading .om-action{flex-shrink:0;}
+.ag-legend{display:flex;flex-wrap:wrap;gap:16px;margin:16px 0;font-size:12px;color:var(--apple-text-secondary);}
+.ag-key-user{color:var(--ag-user);}.ag-key-ai{color:var(--ag-ai);}
+.ag-key-user::before,.ag-key-ai::before{content:'';display:inline-block;width:8px;height:8px;margin-right:6px;background:currentColor;border-radius:50%;}
+.ag-key-ai::before{border-radius:0;}
+.ag-canvas-scroll{max-height:650px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-soft);overscroll-behavior:contain;}
+.ag-canvas{position:relative;min-width:440px;padding:24px;}
+.ag-wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.ag-wire{fill:none;stroke:var(--apple-text-secondary);stroke-width:1.6;}
+.ag-wires marker path{fill:var(--apple-text-secondary);}
+.ag-anchor{position:relative;width:min(85%,460px);margin:0 auto;background:var(--bg-card);border:2px solid var(--brand-ink);border-radius:8px;}
+.ag-level{display:flex;justify-content:center;align-items:start;gap:24px;margin-top:46px;}
+.ag-station{position:relative;flex:1;min-width:0;max-width:460px;background:var(--bg-card);border:1px solid var(--border-warm);border-top:3px solid var(--ag-user);border-radius:7px;}
+.ag-station.ag-ai{border-top-color:var(--ag-ai);}
+.ag-station.ag-user_ai{border-top-color:var(--ag-user);border-left:3px solid var(--ag-ai);}
+.ag-station.is-selected{outline:2px solid var(--brand-ink);outline-offset:4px;}
+.om-shell .ag-goal-button{display:block;width:100%;text-align:left;background:none;border:0;padding:10px 14px;color:var(--apple-text);font:inherit;line-height:1.7;}
+.ag-goal-button:hover{background:var(--bg-soft);}
+.ag-goal-button strong{display:block;font-size:14px;font-weight:600;overflow-wrap:anywhere;margin:5px 0;}
+.ag-goal-button>span{display:block;font-size:12px;overflow-wrap:anywhere;}
+.ag-label,.ag-trigger{color:var(--apple-text-secondary);}
+.ag-who{color:var(--ag-user);}.ag-ai .ag-who{color:var(--ag-ai);}
+.ag-linked{padding:0 12px;}
+.om-shell .ag-work-link{display:block;width:100%;text-align:left;font:inherit;font-size:12px;line-height:1.7;background:none;border:0;border-top:1px solid var(--border);color:var(--apple-text);padding:6px 0;overflow-wrap:anywhere;}
+.ag-work-link span{color:var(--apple-text-secondary);}
+.ag-work-link:hover{text-decoration:underline;}
+.ag-current{border-top:1px solid var(--border);margin-top:16px;}
+.om-shell .ag-current-link{display:block;width:100%;background:none;border:0;text-align:left;font:inherit;font-size:13px;line-height:1.8;color:var(--apple-text);padding:6px 0;overflow-wrap:anywhere;}
+.ag-current-link b{color:var(--apple-text);font-size:inherit;margin-right:6px;}.ag-current-link small{color:var(--apple-text-secondary);font-size:11px;}
+.ag-empty{padding:26px 10px;}
+@media(max-width:680px){.ag-heading{display:block;}.ag-heading>.om-action{margin:8px 0;}.ag-canvas{padding:20px 14px;}.ag-level{gap:14px;}.ag-goal-button{padding:10px;}.ag-tab{padding:8px;}.ag-legend{gap:10px;}}
 .main-content.dag-wide.observe-wide{max-width:2560px;width:100%;box-sizing:border-box;}
 #view-observe .ob-pick{min-width:0;max-width:100%;flex-wrap:wrap;}
 #view-observe .ob-pick select{min-width:0;max-width:100%;width:min(514px,100%);flex:1 1 220px;}

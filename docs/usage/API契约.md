@@ -434,7 +434,7 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 #### 严格写入与紧凑响应
 
-操作字段为：add_item = op/client_ref 加条目字段；update_item = op/id/patch（非空对象）；retract_item = op/id/reason（可选字符串）；link_items = op/from/to/type/remove；set_cursor = op/cursor（必填非负整数）。条目字段为 kind/text/status/evidence/title/progress/covers/cover_span/forecast/goal_flow，其中 cover_span 仅由 HTTP 展开。text 最多4000字符、evidence 最多50项、reason 最多1000字符、观测/条目 title 最多200字符；超限明确拒绝，不截断。旧状态读取与省略字段的更新不重验旧值。未知字段或非法类型一律400，detail 指明错误；无效整批不写状态、水位、history 或 submission。重复写相同值、添加已存在关系仍允许成功。新建与提交外壳也拒绝未知字段、非对象 JSON；base_revision 如提供须为非负整数。
+操作字段为：add_item = op/client_ref 加条目字段；update_item = op/id/patch（非空对象）；retract_item = op/id/reason（可选字符串）；link_items = op/from/to/type/remove；set_cursor = op/cursor（必填非负整数）。条目字段为 kind/text/status/evidence/title/progress/covers/cover_span/forecast/goal_flow/goal_iteration，其中 cover_span 仅由 HTTP 展开。text 最多4000字符、evidence 最多50项、reason 最多1000字符、观测/条目 title 最多200字符；超限明确拒绝，不截断。旧状态读取与省略字段的更新不重验旧值。未知字段或非法类型一律400，detail 指明错误；无效整批不写状态、水位、history 或 submission。重复写相同值、添加已存在关系仍允许成功。新建与提交外壳也拒绝未知字段、非对象 JSON；base_revision 如提供须为非负整数。
 
 `link_items.remove:true` 按 from/to/type 精确删除关系，并将删除前源条目完整保存至 history；remove 仅接受布尔值，type 缺省 belongs_to，目标关系不存在返回400 no_link。`patch.links` 不支持且明确拒绝。
 
@@ -451,6 +451,10 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,basis,parent_ids?,status?,verification?}`。id 在流内唯一，1–64字符字母/数字/下划线/连字符，首字符为字母或数字；actor 为 user / ai / user_ai，basis 同 anchor。before/after/trigger 为非空最多4000字符。parent_ids 最多20个唯一的此前迭代 ID，首条默认空数组，后续必须非空。status 默认 active，另有 achieved / unresolved；achieved 必须附 verification。verification 必填 method/text/evidence，method 为 user_acceptance / independent_check，text 非空最多4000字符。所有 evidence 必须含1–50个不重复的有效 req_ ID。
 
 更新必须保留原 anchor 与已有迭代的完整前缀，修正、后续目标、达成与未决都追加迭代并关联前项，不得原位覆盖历史判断。缺省可选字段规范化后比较。非法结构返回 bad_goal_flow，覆盖既有结构返回 goal_flow_frozen，修改已承载目标流的 kind 返回 goal_flow_locked，多个未撤回目标流返回 multiple_goal_flows，均为400且整批不落盘。证据存在性及语义支持仍需外环/用户核对，结构校验不替代验收。
+
+`goal_iteration` 是非 goal 条目可选的显式 G 站点关联；用于 add_item 或 update_item.patch，字符串格式与迭代 id 相同（1–64字符、字母或数字开头，其后可含字母/数字/下划线/连字符）。空串清除关联，省略保留；旧无字段条目不自动归组。所有未撤回条目的非空关联，必须指向本观测唯一未撤回 goal_flow 中已有的 iteration.id；服务端验证整批最终状态，因此可在同批先写工作条目、后新增目标流或迭代。找不到目标、错误类型/格式、goal 条目带非空关联均返回400 bad_goal_iteration，整批不落盘。
+
+撤回目标流时，必须在该批结束前清除、改关联或撤回相关工作项，不能留下活跃悬挂引用。撤回工作项可保留原关联作为历史；重新激活时再次校验。非 goal 条目改 kind 为 goal 时必须清空关联，可在同一 patch 中同时写 kind 与 goal_iteration 空串；原关联和每次变更保留于 history。此关联只表示观察者明确归属，不按时间、标题或数组顺序猜测。
 
 #### 语义图条目与预测边界（兼容旧条目）
 

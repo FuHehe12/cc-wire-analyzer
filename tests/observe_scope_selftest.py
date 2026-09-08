@@ -234,6 +234,61 @@ class FeedbackApiTests(unittest.TestCase):
         self.assertEqual(r.json["state"]["items"][0]["text"], state["items"][0]["text"])
         self.assertEqual(self.client.post("/api/observations", json={"title": "x" * 201}).status_code, 400)
 
+    def test_goal_iteration_final_batch_reference_and_history(self):
+        flow = {"anchor": {"user_text": "Inspect", "understanding": "Understand then fix",
+            "evidence": ["req_a"], "basis": "explicit"}, "iterations": [
+            {"id": "g1", "actor": "ai", "before": "inspect", "after": "fix",
+             "trigger": "observed failure", "evidence": ["req_b"], "basis": "explicit"}]}
+        # Deliberately put the dependent item before its target flow.
+        r = self.submit("iteration-seed", [
+            {"op": "add_item", "kind": "phase", "client_ref": "work", "text": "Fix errors", "goal_iteration": "g1"},
+            {"op": "add_item", "kind": "goal", "client_ref": "goal", "text": "goal", "goal_flow": flow}])
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertNotIn("goal_iteration", r.json["state"]["items"][0])
+        evolved = deepcopy(flow)
+        evolved["iterations"].append({"id": "g2", "actor": "user", "before": "fix", "after": "verify",
+            "trigger": "check result", "evidence": ["req_c"], "basis": "explicit", "parent_ids": ["g1"]})
+        r = self.submit("iteration-append", [
+            {"op": "update_item", "id": "work", "patch": {"goal_iteration": "g2"}},
+            {"op": "update_item", "id": "goal", "patch": {"goal_flow": evolved}}])
+        self.assertEqual(r.status_code, 200, r.json)
+        work = next(x for x in r.json["state"]["items"] if x.get("goal_iteration"))
+        self.assertEqual(work["goal_iteration"], "g2")
+        self.assertEqual(work["history"][-1]["goal_iteration"], "g1")
+        for ops in [
+            [{"op": "retract_item", "id": "goal"}],
+            [{"op": "update_item", "id": "work", "patch": {"goal_iteration": "missing"}}],
+            [{"op": "update_item", "id": "work", "patch": {"kind": "goal"}}],
+        ]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("dangling", [{"op": "set_cursor", "cursor": 100}, *ops])
+            self.assertEqual(r.status_code, 400, r.json)
+            self.assertEqual(r.json["error"], "bad_goal_iteration")
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+        # Final-state validation also allows retracting the flow before clearing work.
+        r = self.submit("clear-before-retract", [{"op": "retract_item", "id": "goal"},
+            {"op": "update_item", "id": "work", "patch": {"goal_iteration": "", "kind": "goal"}}])
+        self.assertEqual(r.status_code, 200, r.json)
+        work = next(x for x in r.json["state"]["items"] if x["id"] == work["id"])
+        self.assertEqual(work["goal_iteration"], "")
+        self.assertEqual(work["history"][-1]["goal_iteration"], "g2")
+
+    def test_goal_iteration_invalid_shape_missing_flow_and_retracted_items(self):
+        for value in [None, 1, [], {}, True, "x" * 65, "_g1", "g 1", "g1\n"]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("invalid-iteration", [{"op": "add_item", "text": "work", "goal_iteration": value}])
+            self.assertEqual(r.status_code, 400, (value, r.json))
+            self.assertEqual(r.json["error"], "bad_goal_iteration")
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+        for op in [{"op": "add_item", "text": "no flow", "goal_iteration": "g1"},
+                   {"op": "add_item", "kind": "goal", "text": "bad kind", "goal_iteration": "g1"}]:
+            self.assertEqual(self.submit("no-target", [op]).status_code, 400)
+        r = self.submit("retracted-reference", [
+            {"op": "add_item", "text": "historical", "status": "retracted", "goal_iteration": "g1", "client_ref": "old"}])
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(self.submit("reactivate", [{"op": "update_item", "id": "old", "patch": {"status": "supported"}}]).status_code, 400)
+        self.assertEqual(self.submit("reactivate-cleared", [{"op": "update_item", "id": "old", "patch": {"status": "supported", "goal_iteration": ""}}]).status_code, 200)
+
     def test_goal_flow_store_constraints_and_atomic_append(self):
         flow = {"anchor": {"user_text": "Fix live analysis", "understanding": "Inspect then improve",
                 "evidence": ["req_a"], "basis": "explicit"}, "iterations": []}

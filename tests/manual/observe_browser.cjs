@@ -13,6 +13,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
  assert(phases.length>0,'Use a semantic sample with explicit coverage');
  await page.goto(base);await page.getByRole('tab',{name:'实时分析',exact:true}).click();
  await page.getByLabel('观测',{exact:true}).selectOption(oid);
+ await page.locator('.ag-tabs [data-om-action="panel"][data-om-id="work"]').click();
  await page.locator('#om-semantic > summary').click();
  await page.waitForFunction(()=>document.querySelectorAll('.om-wire').length>0);
  await page.screenshot({path:path.join(out,'01-semantic-overview.png'),fullPage:true});
@@ -34,7 +35,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
  assert((await page.locator('#om-detail-body').innerText()).includes(phases[0].covers[0]),'new revision retains selection');
  await page.unroute('**/api/observations?id='+oid);
  const forecasts=state.items.filter(i=>i.kind==='prediction');
- if(forecasts.length){await page.locator('#om-future > summary').click();await page.locator('.om-prediction-title').first().click();await page.screenshot({path:path.join(out,'03-forecast-review.png'),fullPage:true});}
+ if(forecasts.length){await page.locator('.ag-tabs [data-om-action="panel"][data-om-id="forecast"]').click();await page.locator('.om-prediction-title').first().click();await page.screenshot({path:path.join(out,'03-forecast-review.png'),fullPage:true});}
  await page.addScriptTag({path:'tools/checks/contrast_probe.js'});
  const contrast={};
  for(const theme of ['dark','classic','light']){
@@ -50,6 +51,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
    console.log('language',lang,text);
  }
  for(const width of [1280,768,390]){
+   await page.locator('.ag-tabs [data-om-action="panel"][data-om-id="work"]').click();
    await page.setViewportSize({width,height:844});
    const dims=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth}));
    await page.screenshot({path:path.join(out,'width-'+width+'.png'),fullPage:true});
@@ -66,6 +68,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
    const longState=await (await page.request.get(base+'/api/observations?id='+longId)).json();
    const trace=await (await page.request.get(base+'/api/observations/trace?'+new URLSearchParams(longState.scope))).json();
    await page.getByLabel('观测',{exact:true}).selectOption(longId);
+   await page.locator('.ag-tabs [data-om-action="panel"][data-om-id="records"]').click();
    await page.waitForFunction(count=>document.querySelectorAll('.om-turn').length===count,trace.turns.length);
    assert.equal(await page.locator('.om-turn .om-step').count(),0,'long trace starts folded');
    const height=await page.evaluate(()=>document.body.scrollHeight);assert(height<5000,'long legacy view must stay compressed');

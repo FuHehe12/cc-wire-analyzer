@@ -12,11 +12,12 @@ const source = fs.readFileSync(path.join(project, 'src/static/observe-map.js'), 
 // Test-only access to the actual pure reader functions, not a second algorithm.
 const seam = 'window.ObserveMap={render,refresh,clear};';
 assert.equal(source.split(seam).length, 2, 'reader API seam must be unique');
-const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml};');
+const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,goalDetail};');
 const context = {window:{}, document:{getElementById:()=>null}, URLSearchParams, AbortController, LANG:'en'};
 vm.createContext(context);
 vm.runInContext(code, context, {filename:'observe-map.js'});
 const {words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml} = context.window.audit;
+const {flowDiagramHtml,flowLayers,goalDetail}=context.window.audit;
 let passed = 0;
 function test(name, fn) {fn(); passed++; console.log('PASS ' + name);}
 function pred(extra={}) {
@@ -148,11 +149,30 @@ test('errors retain specific transport and API explanations',()=>{
   assert.equal(errorText({key:'failed',detail:'capture missing'}),words.en.failed+': capture missing');
   assert.equal(errorText({key:'noScope'}),words.en.noScope);
 });
-test('component color tokens exist in the host theme system',()=>{
+test('goal flow lays out explicit forks and joins, with no automatic work attribution',()=>{
+  reset();
+  const e=(id,parents)=>({id,parent_ids:parents,actor:'ai',before:'Inspect',after:'Goal '+id,trigger:'Discovery '+id,evidence:['req_'+id],basis:'inferred'});
+  const events=[e('G0',[]),e('G1',['G0']),e('G2a',['G1']),e('G2b',['G1']),e('G3',['G2a','G2b'])];
+  const g={id:'goal',kind:'goal',goal_flow:{anchor:{user_text:'Check project',understanding:'Full audit',choices:[],basis:'inferred',evidence:['req_start']},iterations:events}};
+  M.state.items=[g,{id:'related',kind:'finding',text:'Original plan is outdated',goal_iteration:'G2a'},
+    {id:'unrelated',kind:'phase',text:'Must not infer from evidence',evidence:['req_G2a']}];
+  assert.deepEqual(JSON.parse(JSON.stringify(flowLayers(events))).map(row=>row.map(x=>x.id)),[['G0'],['G1'],['G2a','G2b'],['G3']]);
+  const html=flowDiagramHtml(g);assert.equal((html.match(/data-ag-node="@anchor"/g)||[]).length,1);
+  assert.equal((html.match(/data-ag-node="G/g)||[]).length,5);assert(!html.includes('<details'));
+  assert(html.includes('Original plan is outdated'));assert(!html.includes('Must not infer'));
+  assert(goalDetail('G2a').includes('Original plan is outdated'));assert(!goalDetail('G2b').includes('Original plan is outdated'));
+  assert(goalDetail('@anchor').includes('Full audit'));
+  assert(goalDetail('G0').includes(words.en.priorGoal));
+  assert(goalDetail('G0').includes(words.en.initialGoal));
+  assert(!goalDetail('G3').includes(words.en.priorGoal));
+});
+
+test('component color tokens exist in the host or component theme system',()=>{
   const css=fs.readFileSync(path.join(project,'src/static/observe-map.css'),'utf8');
   const host=fs.readFileSync(path.join(project,'src/templates/index.html'),'utf8');
-  const defined=new Set([...host.matchAll(/(--[\w-]+)\s*:/g)].map(m=>m[1]));
+  const defined=new Set([...(host+css).matchAll(/(--[\w-]+)\s*:/g)].map(m=>m[1]));
   const missing=[...css.matchAll(/var\((--[\w-]+)/g)].map(m=>m[1]).filter(t=>!defined.has(t));
   assert.deepEqual(missing,[]);
+  for(const theme of ['classic','light']) assert(css.includes('[data-theme='+theme+'] .om-shell{--ag-user:'));
 });
 console.log('\n'+passed+' observation reader checks passed.');
