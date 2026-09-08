@@ -12,7 +12,8 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  const goal=state.items.find(i=>i.goal_flow && i.status!=='retracted');assert(goal);
  await page.goto(base);await page.getByRole('tab',{name:'实时分析',exact:true}).click();
  await page.getByLabel('观测',{exact:true}).selectOption(oid);
- await page.locator('.ag-current').waitFor();
+ await page.locator('.ag-canvas').waitFor();
+ assert.equal(await page.locator('.om-detail').isVisible(),false,'details do not occupy the overview');
  assert.equal(await page.locator('.om-report').isVisible(),false,'flow replaces the report as the main view');
  assert.equal(await page.locator('.ag-station').count(),goal.goal_flow.iterations.length);
  await page.waitForFunction(()=>document.querySelectorAll('.ag-wire').length>0);
@@ -23,6 +24,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  assert.equal(await page.locator('.ag-anchor').count(),1,'one initial understanding');
  await page.locator('[data-om-action="goal-anchor"]').click();
  assert((await page.locator('#om-detail-body').innerText()).includes(goal.goal_flow.anchor.user_text));
+ await page.locator('[data-om-action="close-detail"]').click();
  const last=goal.goal_flow.iterations.at(-1),rid=last.evidence[0];
  await page.locator('.ag-station [data-om-id="'+last.id+'"]').first().click();
  assert((await page.locator('#om-detail-body').innerText()).includes(last.before));
@@ -36,7 +38,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.qaPrompt=text;};});
  await page.getByRole('button',{name:'复制接入说明',exact:true}).click();
  const prompt=await page.evaluate(()=>window.qaPrompt);
- assert(prompt.includes('goal_iteration') && prompt.includes(oid) && prompt.includes(base),'copied observer prompt has model and concrete connection');
+ assert(prompt.includes('goal_iteration') && prompt.includes('events') && prompt.includes(oid) && prompt.includes(base),'copied observer prompt has model and concrete connection');
  assert(!/\{base\}|\{q\}|\{id\}|\{scope\}/.test(prompt),'no unresolved placeholders');
  await page.addScriptTag({path:'tools/checks/contrast_probe.js'});
  const contrasts={};
@@ -49,11 +51,12 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  }
  for(const [lang,label] of [['en','A→G goal flow'],['ja','A→G 目標の流れ'],['zh','A→G 目标流']]){
    await page.evaluate(l=>{LANG=l;obRender();},lang);
-   assert.equal(await page.locator('.ag-heading h2').innerText(),label);
+   assert.equal(await page.locator('.ag-tab[data-om-id="flow"]').innerText(),label);
  }
  for(const width of [768,390]){
    await page.setViewportSize({width,height:844});
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'no overflow '+width);
+   if(await page.locator('.om-detail').isVisible()) await page.locator('[data-om-action="close-detail"]').click();
    await page.locator('.ag-station [data-om-id="'+last.id+'"]').first().click();
    await page.locator('#om-detail-body [data-om-id="'+rid+'"]').first().click();
    const top=await page.locator('.om-detail').evaluate(e=>e.getBoundingClientRect().top);

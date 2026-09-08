@@ -175,4 +175,22 @@ test('component color tokens exist in the host or component theme system',()=>{
   assert.deepEqual(missing,[]);
   for(const theme of ['classic','light']) assert(css.includes('[data-theme='+theme+'] .om-shell{--ag-user:'));
 });
+test('status and observer corrections stay attached to the same goal without new stations',()=>{
+  reset();
+  const g={id:'goal',kind:'goal',goal_flow:{anchor:{user_text:'Inspect',understanding:'Inspect',evidence:['req_a']},
+    iterations:[{id:'g0',actor:'ai',before:'Inspect',after:'Check output',trigger:'Request',basis:'inferred',evidence:['req_a'],parent_ids:[],status:'active'}],
+    events:[{id:'s1',kind:'status',target:'g0',status:'achieved',text:'Checked',evidence:['req_b'],verification:{text:'Independent verification',evidence:['req_b']}},
+      {id:'c1',kind:'correction',target:'@anchor',text:'<script>Not a new goal</script>',basis:'inferred',evidence:['req_c']}]}};
+  M.state.items=[g];
+  assert.equal((flowDiagramHtml(g).match(/data-ag-node="g0"/g)||[]).length,1);
+  assert(flowDiagramHtml(g).includes(words.en.completedGoal));
+  assert(goalDetail('g0').includes('Independent verification'));
+  assert(goalDetail('@anchor').includes(words.en.correctionEvent));
+  assert(!goalDetail('@anchor').includes('<script>'));
+  g.goal_flow.events.push({id:'s2',kind:'status',target:'g0',status:'unresolved',text:'New contrary evidence',evidence:['req_c']});
+  assert(!flowDiagramHtml(g).includes(words.en.completedGoal));
+  const current=goalDetail('g0').split('class="om-review"')[0];
+  assert(!current.includes('Independent verification'),'old proof must not look like current verification');
+  assert(goalDetail('g0').includes('Independent verification'),'old proof remains in event history');
+});
 console.log('\n'+passed+' observation reader checks passed.');

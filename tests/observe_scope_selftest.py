@@ -289,6 +289,32 @@ class FeedbackApiTests(unittest.TestCase):
         self.assertEqual(self.submit("reactivate", [{"op": "update_item", "id": "old", "patch": {"status": "supported"}}]).status_code, 400)
         self.assertEqual(self.submit("reactivate-cleared", [{"op": "update_item", "id": "old", "patch": {"status": "supported", "goal_iteration": ""}}]).status_code, 200)
 
+    def test_goal_events_append_is_atomic_and_keeps_work_on_same_goal(self):
+        flow = {"anchor": {"user_text": "Inspect", "understanding": "Fix",
+            "evidence": ["req_a"], "basis": "explicit"}, "iterations": [
+            {"id": "g1", "actor": "ai", "before": "inspect", "after": "fix",
+             "trigger": "failure", "evidence": ["req_b"], "basis": "explicit"}]}
+        r = self.submit("event-goal", [{"op": "add_item", "kind": "goal", "client_ref": "goal", "text": "goal", "goal_flow": flow},
+            {"op": "add_item", "text": "work", "goal_iteration": "g1"}])
+        self.assertEqual(r.status_code, 200, r.json)
+        saved = next(x for x in r.json["state"]["items"] if "goal_flow" in x)["goal_flow"]
+        updated = deepcopy(saved)
+        updated["events"] = [{"id": "e1", "kind": "status", "target": "g1", "status": "achieved", "text": "verified",
+            "evidence": ["req_c"], "verification": {"method": "independent_check", "text": "assertions pass", "evidence": ["req_c"]}}]
+        r = self.submit("event-append", [{"op": "update_item", "id": "goal", "patch": {"goal_flow": updated}}])
+        self.assertEqual(r.status_code, 200, r.json)
+        goal = next(x for x in r.json["state"]["items"] if "goal_flow" in x)
+        self.assertEqual(goal["goal_flow"]["iterations"], saved["iterations"])
+        self.assertEqual(goal["history"][-1]["goal_flow"], saved)
+        self.assertEqual(r.json["state"]["items"][-1]["goal_iteration"], "g1")
+        before = OB._file(self.oid).read_bytes()
+        updated["events"][0]["text"] = "rewrite"
+        r = self.submit("event-rewrite", [{"op": "set_cursor", "cursor": 777},
+            {"op": "update_item", "id": "goal", "patch": {"goal_flow": updated}}])
+        self.assertEqual(r.status_code, 400, r.json)
+        self.assertEqual(r.json["error"], "goal_flow_frozen")
+        self.assertEqual(OB._file(self.oid).read_bytes(), before)
+
     def test_goal_flow_store_constraints_and_atomic_append(self):
         flow = {"anchor": {"user_text": "Fix live analysis", "understanding": "Inspect then improve",
                 "evidence": ["req_a"], "basis": "explicit"}, "iterations": []}

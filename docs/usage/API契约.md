@@ -446,11 +446,24 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 #### A→G 连续目标流
 
-仅 goal 条目可携带 `goal_flow={anchor,iterations}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
+仅 goal 条目可携带 `goal_flow={anchor,iterations,events?}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
 
 iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,basis,parent_ids?,status?,verification?}`。id 在流内唯一，1–64字符字母/数字/下划线/连字符，首字符为字母或数字；actor 为 user / ai / user_ai，basis 同 anchor。before/after/trigger 为非空最多4000字符。parent_ids 最多20个唯一的此前迭代 ID，首条默认空数组，后续必须非空。status 默认 active，另有 achieved / unresolved；achieved 必须附 verification。verification 必填 method/text/evidence，method 为 user_acceptance / independent_check，text 非空最多4000字符。所有 evidence 必须含1–50个不重复的有效 req_ ID。
 
-更新必须保留原 anchor 与已有迭代的完整前缀，修正、后续目标、达成与未决都追加迭代并关联前项，不得原位覆盖历史判断。缺省可选字段规范化后比较。非法结构返回 bad_goal_flow，覆盖既有结构返回 goal_flow_frozen，修改已承载目标流的 kind 返回 goal_flow_locked，多个未撤回目标流返回 multiple_goal_flows，均为400且整批不落盘。证据存在性及语义支持仍需外环/用户核对，结构校验不替代验收。
+更新必须保留原 anchor、已有迭代及 events 的完整前缀。实质目标变化追加迭代并关联前项；目标不变的达成、未决、重新激活或替代追加 status 事件；外环对自己解释的订正追加 correction 事件，不得伪装为被观察 AI 改目标，也不原位覆盖历史判断。缺省可选字段规范化后比较。非法结构返回 bad_goal_flow，覆盖既有结构返回 goal_flow_frozen，修改已承载目标流的 kind 返回 goal_flow_locked，多个未撤回目标流返回 multiple_goal_flows，均为400且整批不落盘。证据存在性及语义支持仍需外环/用户核对，结构校验不替代验收。
+
+`events` 为可选数组，最多2000条，只追加不覆盖、不删除。旧结构省略 events 时保持原形状，等价于尚无事件；已有非空 events 在后续完整 goal_flow 更新时不能省略。事件 id 与迭代 id 使用相同字符规则，在 events 内唯一（与迭代 ID 是独立命名空间）；target 必须指向同份 goal_flow 中已有的迭代 ID，仅 correction 另允许 `@anchor`。可同时追加新 G 和指向它的事件，事件数组顺序作为投影先后顺序。
+
+| 事件 | 必填字段与语义 | 最小示例 |
+|---|---|---|
+| status | id/kind/target/status/text/evidence；status 为 active / achieved / unresolved / superseded，achieved 必须另附 verification | `{"id":"e1","kind":"status","target":"g1","status":"unresolved","text":"核验发现仍有遗漏","evidence":["req_a"]}` |
+| correction | id/kind/target/text/evidence/basis；basis 为 inferred / explicit，表示外环订正的依据，不改变原 A/G，也不冒充 user/ai 的目标操作 | `{"id":"c1","kind":"correction","target":"@anchor","text":"此前把试用理解成验收，现订正","evidence":["req_b"],"basis":"explicit"}` |
+
+事件 text 为非空最多4000字符；evidence 为1–50个不重复的有效请求 ID；verification 沿用 method/text/evidence 对象及 user_acceptance / independent_check 方法。status 事件可附 verification，achieved 必须有；correction 不接受 status、actor 或 verification。错误结构、未知 target 或重复事件 ID 返回 bad_goal_flow；改写、删除已有事件返回 goal_flow_frozen，均400且整批不落盘。
+
+当前状态按原迭代 status/verification 起步，再依数组顺序应用 target 匹配的 status 事件，最新状态覆盖旧状态及旧核验，后续 unresolved/active 没有 verification 时不沿用旧达成证据。correction 是可追溯的外环说明，不参与目标状态投影。后续同目标核验不新增 G，已有 goal_iteration 工作归属仍指向同一 G。Python 只读辅助 `observe_goal.project_statuses(flow)` 返回 `{G_ID:{status,verification?,event_id?}}`；事件不会改写持久保存的原 iteration。
+
+当前证据门槛仅验证引用格式及非空数量，不能证明请求存在、属于 scope 或真正支持文字结论。观测状态与原始捕获隔离，历史导出或清理后可能缺原始 HTTP，因此本接口不把缺捕获当作状态写入失败，也不声称 independent_check 枚举等于已核验独立性。消费者应显示引用可核对性，外环应查实引文与结果；仅看到 exit 0 或自报完成不足以填 achieved。
 
 `goal_iteration` 是非 goal 条目可选的显式 G 站点关联；用于 add_item 或 update_item.patch，字符串格式与迭代 id 相同（1–64字符、字母或数字开头，其后可含字母/数字/下划线/连字符）。空串清除关联，省略保留；旧无字段条目不自动归组。所有未撤回条目的非空关联，必须指向本观测唯一未撤回 goal_flow 中已有的 iteration.id；服务端验证整批最终状态，因此可在同批先写工作条目、后新增目标流或迭代。找不到目标、错误类型/格式、goal 条目带非空关联均返回400 bad_goal_iteration，整批不落盘。
 

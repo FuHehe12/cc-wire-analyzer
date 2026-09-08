@@ -116,7 +116,7 @@
     goalNow:'当前目标', goalChanges:'展开目标变化过程', actor_user:'用户调整', actor_ai:'AI 自行调整', actor_user_ai:'用户提出、AI 决定具体做法',
     inferred:'观察者推断', explicit:'录制中有明确表述', beforeGoal:'原目标', afterGoal:'改为', trigger:'为什么改变',
     parents:'由这些目标演变', achieved:'已核验达成', verification:'达成依据', goalEvidence:'查看这次变化的依据',
-    relationView:'展开目标、工作与结果的关系图', workBlock:'工作块', goalCorrection:'历史记录固定保留；后续纠正另记一次变化。'
+    relationView:'展开目标、工作与结果的关系图', workBlock:'工作块', goalCorrection:'目标历史保留；状态核验与观察者订正单独记录。'
   });
   Object.assign(words.en, {
     trajectory:'Work & goal changes',
@@ -127,7 +127,7 @@
     goalNow:'Current goal', goalChanges:'Expand goal changes', actor_user:'Changed by user', actor_ai:'Changed by AI', actor_user_ai:'User initiated, AI shaped',
     inferred:'Observer inference', explicit:'Explicit in recording', beforeGoal:'Previous goal', afterGoal:'Changed to', trigger:'Why it changed',
     parents:'Evolved from these goals', achieved:'Verified achievement', verification:'Achievement evidence', goalEvidence:'Inspect evidence for this change',
-    relationView:'Expand relationships between goals, work and results', workBlock:'Work block', goalCorrection:'History is preserved. Record later corrections as another change.'
+    relationView:'Expand relationships between goals, work and results', workBlock:'Work block', goalCorrection:'Goal history is preserved. Status, verification and observer corrections are recorded separately.'
   });
   Object.assign(words.ja, {
     trajectory:'作業と目標の変化',
@@ -138,7 +138,7 @@
     goalNow:'現在の目標', goalChanges:'目標の変化を展開', actor_user:'ユーザーが変更', actor_ai:'AI が自ら変更', actor_user_ai:'ユーザーが提案・AI が具体化',
     inferred:'観測者の推論', explicit:'記録に明示', beforeGoal:'元の目標', afterGoal:'変更後', trigger:'変更の理由',
     parents:'これらの目標から派生', achieved:'達成を検証済み', verification:'達成の根拠', goalEvidence:'この変更の証拠を確認',
-    relationView:'目標・作業・結果の関係図を展開', workBlock:'作業のまとまり', goalCorrection:'履歴は固定して保持します。後続の訂正は新たな変更として記録します。'
+    relationView:'目標・作業・結果の関係図を展開', workBlock:'作業のまとまり', goalCorrection:'目標履歴を保持し、状態・検証・観測者の訂正を別に記録します。'
   });
   Object.assign(words.zh,{flowTab:'A→G 目标流',workTab:'工作与发现',recordsTab:'原始步骤',forecastTab:'预测核对',
     flowIntro:'从最初的理解，走到现在的目标。每次转向都说明是谁改变了方向，以及为什么。',
@@ -279,12 +279,13 @@
       (entries.length>3?'<details class="om-disclosure" data-om-fold="report-'+label+'"'+(M.folds.has('report-'+label)?' open':'')+'><summary>'+escape(tr('allEntries'))+' '+(entries.length-3)+'</summary>'+entries.slice(3).map(row).join('')+'</details>':'')+'</section>').join('')+'</div></section>';
   }
   function goalEventHtml(event) {
+    const current=goalEvents(event.id).filter(e=>e.kind==='status').at(-1), proof=current?current.verification:event.verification;
     return '<article class="om-goal-event om-goal-'+escape(event.actor)+'"><header>'+badge(escape(event.id))+' '+badge(tr(list(event.parent_ids).length?'actor_'+event.actor:'initialGoal'))+' '+badge(tr(event.basis))+'</header>'+
       '<dl class="om-goal-diff"><dt>'+escape(tr('beforeGoal'))+'</dt><dd><del>'+escape(event.before)+'</del></dd><dt>'+escape(tr('afterGoal'))+'</dt><dd><ins>'+escape(event.after)+'</ins></dd></dl>'+
       '<h4>'+escape(tr('trigger'))+'</h4><p class="om-prose">'+escape(event.trigger)+'</p>'+
       (list(event.parent_ids).length?note(tr('parents')+': '+event.parent_ids.join(', ')):'')+
       '<p>'+badge(tr(goalStatus(event)))+'</p>'+
-      (event.verification?'<h4>'+escape(tr('verification'))+'</h4><p class="om-prose">'+escape(event.verification.text)+'</p>'+refs(event.verification.evidence):'')+
+      (proof?'<h4>'+escape(tr('verification'))+'</h4><p class="om-prose">'+escape(proof.text)+'</p>'+refs(proof.evidence):'')+
       '<h4>'+escape(tr('goalEvidence'))+'</h4>'+refs(event.evidence)+'</article>';
   }
   function goalFlowHtml(it, detailed=false) {
@@ -302,10 +303,13 @@
   }
   const flowItem = () => items().find(it=>live(it) && it.goal_flow);
   const associated = id => items().filter(it=>live(it) && it.goal_iteration===id);
+  for(const [lang,values] of Object.entries({zh:{closeDetail:'关闭详情',changesLane:'调整与原因',goalsLane:'目标如何演变',findingsLane:'发现与核验',statusEvent:'状态与核验记录',correctionEvent:'观察者订正',superseded:'已被后续目标替换',flowHint:'点击目标或发现查看证据；可横向滚动画布。'},en:{closeDetail:'Close details',changesLane:'Changes & reasons',goalsLane:'Evolution of goals',findingsLane:'Findings & checks',statusEvent:'Status & verification',correctionEvent:'Observer correction',superseded:'Superseded',flowHint:'Select a goal or finding for evidence. Scroll the canvas horizontally.'},ja:{closeDetail:'詳細を閉じる',changesLane:'変更と理由',goalsLane:'目標の変遷',findingsLane:'発見と検証',statusEvent:'状態と検証の記録',correctionEvent:'観測者の訂正',superseded:'後続目標に置換',flowHint:'目標や発見を選択して証拠を確認。図は横スクロールできます。'}})) Object.assign(words[lang],values);
+  const goalEvents = id => list(flowItem()?.goal_flow?.events).filter(e=>e.target===id);
   function goalStatus(event) {
-    if(event.status==='achieved') return 'completedGoal';
-    if((event.status || 'active')==='active' && list(flowItem()?.goal_flow?.iterations).some(e=>list(e.parent_ids).includes(event.id))) return 'priorGoal';
-    return event.status || 'active';
+    const status=goalEvents(event.id).filter(e=>e.kind==='status').at(-1)?.status || event.status || 'active';
+    if(status==='achieved') return 'completedGoal';
+    if(status==='active' && list(flowItem()?.goal_flow?.iterations).some(e=>list(e.parent_ids).includes(event.id))) return 'priorGoal';
+    return status;
   }
   function flowLayers(events) {
     const depth=new Map(), rows=[];
@@ -319,27 +323,38 @@
     const f=it?.goal_flow;
     if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p>'+button('panel','work',escape(tr('workTab')),'om-action')+'</section>';
     const events=list(f.iterations),parents=new Set(events.flatMap(e=>list(e.parent_ids))),heads=events.filter(e=>!parents.has(e.id));
-    const eventHtml=e=>'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'">'+
-      button('goal-event',e.id,'<span class="ag-who">'+escape(tr(list(e.parent_ids).length?'actor_'+e.actor:'initialGoal'))+'</span><span class="ag-label">'+escape(e.id)+' · '+escape(tr(goalStatus(e)))+'</span><strong>'+escape(short(e.after,115))+'</strong><span class="ag-trigger">'+escape(short(e.trigger,90))+'</span>','ag-goal-button','aria-pressed="'+isSelected('goal-event',e.id)+'"')+
-      '<div class="ag-linked">'+associated(e.id).filter(x=>['finding','check'].includes(x.kind)).slice(0,1).map(x=>button('item',x.id,'<span>'+escape(tr(x.kind))+'</span> '+escape(short(title(x),65)),'ag-work-link')).join('')+
-      (associated(e.id).length?button('goal-event',e.id,escape(tr('linkedWork')+' '+associated(e.id).length),'ag-work-link'):'')+'</div></article>';
-    return '<section class="ag-flow"><div class="ag-heading"><div><h2>'+escape(tr('flowTab'))+'</h2>'+note(tr('flowIntro'))+'</div>'+button('goal-latest',heads[0]?.id || '',escape(tr('goLatest')),'om-action')+'</div>'+
-      '<div class="ag-legend"><span class="ag-key-user">'+escape(tr('actor_user'))+'</span><span class="ag-key-ai">'+escape(tr('actor_ai'))+'</span><span>'+escape(tr('actor_user_ai'))+'</span></div>'+
-      '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas"><svg class="ag-wires" aria-hidden="true"></svg>'+
-      '<article class="ag-anchor" data-ag-node="@anchor">'+button('goal-anchor','@anchor','<span class="ag-label">'+escape(tr('initial'))+'</span><strong>'+escape(short(f.anchor.user_text,120))+'</strong><span>'+escape(short(f.anchor.understanding,150))+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+
-      flowLayers(events).map(row=>'<div class="ag-level">'+row.map(eventHtml).join('')+'</div>').join('')+'</div></div>'+note(tr('flowLegend'))+
-      '<section class="ag-current"><h3>'+escape(tr('latestGoals'))+'</h3>'+(heads.length?heads.map(e=>button('goal-event',e.id,'<b>'+escape(e.id)+'</b> '+escape(e.after)+' <small>'+escape(tr(e.status==='achieved'?'completedGoal':e.status || 'active'))+'</small>','ag-current-link')).join(''):note(tr('anchorOnly')))+'</section></section>';
+    const rows=flowLayers(events), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20, width=580+centerWidth;
+    let y=172;
+    const stations=rows.map(row=>{
+      const top=y;y+=Math.max(112,row.length*66+12);
+      const columns=row.length===1?320:252;
+      return row.map((e,i)=>{
+        const x=290+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
+        const work=associated(e.id), observations=work.filter(x=>['finding','check','deviation','open'].includes(x.kind));
+        const content='<span class="ag-label"><b>'+escape(e.id)+'</b><span>'+escape(tr(goalStatus(e)))+'</span></span><strong>'+escape(short(e.after,100))+'</strong><span class="ag-count">'+escape(tr(e.basis))+(work.length?' · '+work.length+' '+escape(tr('workTab')):'')+'</span>';
+        const change=button('goal-event',e.id,'<span class="ag-who">'+escape(tr(list(e.parent_ids).length?'actor_'+e.actor:'initialGoal'))+'</span><span>'+escape(short(e.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(e.actor),'style="left:24px;top:'+(top+i*66)+'px;width:230px"');
+        const finding=observations.slice(0,row.length>1?1:2).map((o,j)=>button('item',o.id,'<span>'+escape(tr(o.kind))+'</span><strong>'+escape(short(title(o),row.length>1?55:65))+'</strong>','ag-observation ag-'+escape(o.kind),'style="left:'+(width-254)+'px;top:'+(top+i*66+j*52)+'px;width:230px"')).join('');
+        return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'" style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button('goal-event',e.id,content,'ag-goal-button','aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>'+finding;
+      }).join('');
+    }).join('');
+    return '<section class="ag-flow"><div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],['right','findingsLane']].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
+      '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+(y+18)+'px">'+
+      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+(width-254)+'px">'+escape(tr('findingsLane'))+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
+      '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(290+(centerWidth-320)/2)+'px;top:48px;width:320px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+'</div></div><p class="ag-footnote">'+escape(tr('flowHint'))+'</p></section>';
+  }
+  function goalJournal(id) {
+    return goalEvents(id).map(e=>'<section class="om-review"><h4>'+escape(tr(e.kind==='correction'?'correctionEvent':'statusEvent'))+(e.status?' · '+escape(tr(e.status==='achieved'?'completedGoal':e.status)):'')+'</h4><p class="om-prose">'+escape(e.text)+'</p>'+refs(e.evidence)+(e.verification?'<p class="om-prose">'+escape(e.verification.text)+'</p>'+refs(e.verification.evidence):'')+'</section>').join('');
   }
   function goalDetail(id) {
     const flow=flowItem()?.goal_flow;if(!flow) return note(tr('noGoalFlow'));
     if(id==='@anchor') {
       const a=flow.anchor;
       return badge(tr('observer'))+'<h3>'+escape(tr('initial'))+'</h3>'+badge(tr(a.basis))+'<h4>'+escape(tr('userWords'))+'</h4><p class="om-prose">'+escape(a.user_text)+'</p><h4>'+escape(tr('understanding'))+'</h4><p class="om-prose">'+escape(a.understanding)+'</p>'+
-        '<h4>'+escape(tr('choices'))+'</h4>'+(list(a.choices).length?'<ul>'+a.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':note(tr('noKind')))+refs(a.evidence);
+        '<h4>'+escape(tr('choices'))+'</h4>'+(list(a.choices).length?'<ul>'+a.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':note(tr('noKind')))+refs(a.evidence)+goalJournal(id);
     }
     const event=list(flow.iterations).find(e=>e.id===id);if(!event) return note(tr('missingItem'));
     const work=associated(id);
-    return badge(tr('observer'))+goalEventHtml(event)+'<h3>'+escape(tr('linkedWork'))+'</h3>'+
+    return badge(tr('observer'))+goalEventHtml(event)+goalJournal(id)+'<h3>'+escape(tr('linkedWork'))+'</h3>'+
       (work.length?work.map(x=>button('item',x.id,badge(tr(x.kind))+escape(title(x)),'om-finding')).join(''):note(tr('noLinked')));
   }
   function drawGoalFlow() {
@@ -391,7 +406,7 @@
   function paint() {
     const r=root(); if(!r || !M.state) return;
     const lang=typeof LANG==='string'?LANG:'zh';
-    const signature=JSON.stringify([M.state,M.trace,lang,M.error,[...M.open],M.selected,[...M.rawOpen],M.panel]);
+    const signature=JSON.stringify([M.state,M.trace,lang,M.error,[...M.open],M.selected,[...M.rawOpen],M.panel,M.detailOpen]);
     const clock=r.querySelector('[data-om-clock]'); if(clock) clock.textContent=tr('checkedAt')+' '+M.checked;
     if(signature===M.signature) return;
     M.signature=signature;
@@ -399,7 +414,9 @@
     const focus=active?.dataset.omAction ? {action:active.dataset.omAction,id:active.dataset.omId}:null;
     const detailScroll=r.querySelector('.om-detail')?.scrollTop || 0;
     const flowScroll=r.querySelector('.ag-canvas-scroll')?.scrollTop || 0;
-    const flowLeft=r.querySelector('.ag-canvas-scroll')?.scrollLeft || 0;
+    const priorFlow=r.querySelector('.ag-canvas-scroll');
+    const flowLeft=priorFlow?.offsetWidth?priorFlow.scrollLeft:M.flowLeft;
+    M.flowLeft=flowLeft;
     const sc=M.state.scope || {}, phases=items().filter(it=>it.kind==='phase'), preds=items().filter(it=>it.kind==='prediction');
     const hasCoverage=phases.some(it=>live(it) && list(it.covers).length);
     const covered=new Set(phases.filter(live).flatMap(it=>list(it.covers)));
@@ -420,10 +437,10 @@
       (other.length?'<details id="om-findings" class="om-disclosure" data-om-fold="findings"'+(M.folds.has('findings')?' open':'')+'><summary>'+escape(tr('other'))+' <b>'+other.length+'</b></summary>'+other.map(it=>button('item',it.id,badge(tr(it.kind))+escape(short(title(it),180)),
         'om-finding'+(!live(it)?' is-retracted':''))).join('')+'</details>':'')+
       '</div><section id="om-future" class="ag-panel om-future"'+(M.panel!=='forecast'?' hidden':'')+'><h2>'+escape(tr('future'))+'</h2>'+note(tr('predictionNote'))+(preds.length?preds.map(predictionHtml).join(''):note(tr('noPrediction')))+'</section></main>'+
-      '<aside class="om-detail" aria-label="'+escape(tr('detail'))+'"><h2>'+escape(tr('detail'))+'</h2><div id="om-detail-body"></div></aside></div>';
+      '<aside class="om-detail"'+(!M.detailOpen?' hidden':'')+' aria-label="'+escape(tr('detail'))+'">'+button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2><div id="om-detail-body"></div></aside></div>';
     paintDetail();
     r.querySelector('.om-detail').scrollTop=detailScroll;
-    const flowViewport=r.querySelector('.ag-canvas-scroll');if(flowViewport) {flowViewport.scrollTop=flowScroll;flowViewport.scrollLeft=flowLeft;}
+    const flowViewport=r.querySelector('.ag-canvas-scroll');if(flowViewport) {flowViewport.scrollTop=flowScroll;flowViewport.scrollLeft=flowLeft ?? Math.max(0,(flowViewport.scrollWidth-flowViewport.clientWidth)/2);}
     if(focus) [...r.querySelectorAll('[data-om-action]')].find(e=>e.dataset.omAction===focus.action && e.dataset.omId===focus.id)?.focus({preventScroll:true});
     bind(); requestAnimationFrame(drawRelations);
   }
@@ -520,7 +537,8 @@
     if(isSelected('step',rid)) paintDetail();
   }
   function revealDetail() {
-    if(window.matchMedia("(max-width:1100px)").matches) root()?.querySelector(".om-detail")?.scrollIntoView({block:"start"});
+    const opening=!M.detailOpen;M.detailOpen=true;paint();
+    if(opening) root()?.querySelector('.ag-close')?.focus({preventScroll:true});
   }
   function chooseStep(rid) {
     M.selected={kind:'step',id:rid}; paint(); revealDetail();
@@ -529,10 +547,15 @@
   function bind() {
     const r=root(); if(!r || M.binding===r) return;
     M.binding=r;
+    r.addEventListener('keydown',event=>{
+      if(event.key==='Escape' && M.detailOpen) {event.preventDefault();r.querySelector('.ag-close')?.click();}
+    });
     r.addEventListener('click',event=>{
       const b=event.target.closest('[data-om-action]'); if(!b || !r.contains(b)) return;
       const id=b.dataset.omId,action=b.dataset.omAction;
-      if(action==='panel') {M.panel=id;paint();return;}
+      if(action==='close-detail') {M.detailOpen=false;paint();root()?.querySelector('[data-ag-node="'+CSS.escape(M.selected?.id || '@anchor')+'"] button')?.focus({preventScroll:true});return;}
+      if(action==='flow-lane') {const canvas=r.querySelector('.ag-canvas-scroll');if(canvas) canvas.scrollLeft=id==='left'?0:id==='right'?canvas.scrollWidth:(canvas.scrollWidth-canvas.clientWidth)/2;return;}
+      if(action==='panel') {M.panel=id;M.detailOpen=false;paint();return;}
       if(action==='goal-event' || action==='goal-anchor' || action==='goal-latest') {
         M.selected={kind:action==='goal-anchor'?'goal-anchor':'goal-event',id:id || '@anchor'};paint();
         if(action==='goal-latest') root().querySelector('[data-ag-node="'+CSS.escape(id)+'"]')?.scrollIntoView({block:'nearest'});
@@ -567,7 +590,7 @@
   }
   function clear(message='') {
     M.controller?.abort(); M.generation++;M.controller=null;M.pending=null;M.state=null;M.key='';M.trace=null;
-    M.nodes.clear();M.items.clear();M.turns=[];M.selected=null;M.open.clear();M.folds.clear();M.records.clear();M.rawOpen.clear();M.signature='';M.error='';M.panel='flow';
+    M.nodes.clear();M.items.clear();M.turns=[];M.selected=null;M.open.clear();M.folds.clear();M.records.clear();M.rawOpen.clear();M.signature='';M.error='';M.panel='flow';M.detailOpen=false;M.flowLeft=undefined;
     const r=root();if(r) r.innerHTML=message?'<p class="om-error" role="alert">'+escape(message)+'</p>':'';
   }
   function render(state) {

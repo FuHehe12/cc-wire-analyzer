@@ -1,7 +1,7 @@
 """Explicit, evidence-backed A→G records. This module never infers a goal.
 
-The anchor and recorded iterations are append-only. Corrections, closure and
-unresolved work are new iterations referencing the earlier ones. Evidence IDs
+The anchor and recorded iterations are append-only. Status changes and observer
+corrections are separate append-only events, never fabricated goal iterations. Evidence IDs
 are checked for shape here, not existence or semantic support in the recording.
 """
 
@@ -11,6 +11,7 @@ import re
 
 TEXT_MAX = 4000
 ITERATIONS_MAX = 200
+EVENTS_MAX = 2000
 EVIDENCE_MAX = 50
 CHOICES_MAX = 20
 CHOICE_MAX = 1000
@@ -56,8 +57,51 @@ def _evidence(value, path: str) -> list:
     return list(value)
 
 
+def _verification(value, path):
+    proof = _object(value, {"method", "text", "evidence"}, set(), path)
+    return {
+        "method": _enum(proof["method"], ("user_acceptance", "independent_check"), path + ".method"),
+        "text": _text(proof["text"], path + ".text"),
+        "evidence": _evidence(proof["evidence"], path + ".evidence"),
+    }
+
+
+def _events(value, iteration_ids):
+    if not isinstance(value, list) or len(value) > EVENTS_MAX:
+        _error(f"events 必须为最多 {EVENTS_MAX} 项的数组")
+    result, seen = [], set()
+    common = {"id", "kind", "target", "text", "evidence"}
+    for index, raw in enumerate(value):
+        path = f"events[{index}]"
+        if not isinstance(raw, dict):
+            _error(f"{path} 必须为对象")
+        kind = _enum(raw.get("kind"), ("status", "correction"), path + ".kind")
+        required = common | ({"status"} if kind == "status" else {"basis"})
+        raw = _object(raw, required, {"verification"} if kind == "status" else set(), path)
+        eid = raw["id"]
+        if not isinstance(eid, str) or not _ID.fullmatch(eid) or eid in seen:
+            _error(f"{path}.id 必须为事件内唯一的1..64字符 ID，以字母或数字开头")
+        target = raw["target"]
+        if not isinstance(target, str) or not (target in iteration_ids or kind == "correction" and target == "@anchor"):
+            _error(f"{path}.target 必须指向已有 G；只有 correction 可指向 @anchor")
+        event = {"id": eid, "kind": kind, "target": target,
+                 "text": _text(raw["text"], path + ".text"),
+                 "evidence": _evidence(raw["evidence"], path + ".evidence")}
+        if kind == "status":
+            event["status"] = _enum(raw["status"], ("active", "achieved", "unresolved", "superseded"), path + ".status")
+            if "verification" in raw:
+                event["verification"] = _verification(raw["verification"], path + ".verification")
+            if event["status"] == "achieved" and "verification" not in event:
+                _error(f"{path} 判定达成必须提供用户验收或独立核验 verification")
+        else:
+            event["basis"] = _enum(raw["basis"], ("inferred", "explicit"), path + ".basis")
+        result.append(event)
+        seen.add(eid)
+    return result
+
+
 def _normalize(value) -> dict:
-    flow = _object(value, {"anchor", "iterations"}, set(), "goal_flow")
+    flow = _object(value, {"anchor", "iterations"}, {"events"}, "goal_flow")
     raw = _object(flow["anchor"], {"user_text", "understanding", "evidence", "basis"},
                   {"choices"}, "anchor")
     choices = raw.get("choices", [])
@@ -98,19 +142,16 @@ def _normalize(value) -> dict:
                             ("active", "achieved", "unresolved"), path + ".status"),
         }
         if "verification" in raw:
-            proof = _object(raw["verification"], {"method", "text", "evidence"}, set(),
-                            path + ".verification")
-            item["verification"] = {
-                "method": _enum(proof["method"], ("user_acceptance", "independent_check"),
-                                path + ".verification.method"),
-                "text": _text(proof["text"], path + ".verification.text"),
-                "evidence": _evidence(proof["evidence"], path + ".verification.evidence"),
-            }
+            item["verification"] = _verification(raw["verification"], path + ".verification")
         if item["status"] == "achieved" and "verification" not in item:
             _error(f"{path} 判定达成必须提供用户验收或独立核验 verification")
         out.append(item)
         seen.add(iid)
-    return {"anchor": anchor, "iterations": out}
+    result = {"anchor": anchor, "iterations": out}
+    # Absence stays absent for legacy records; [] is equivalent for history checks.
+    if "events" in flow:
+        result["events"] = _events(flow["events"], seen)
+    return result
 
 
 def validate(value, previous=None) -> dict:
@@ -121,12 +162,31 @@ def validate(value, previous=None) -> dict:
     Optional choices/parent_ids/status receive defaults, nothing is truncated.
     """
     if value is None and previous is not None:
-        _error("已有 goal_flow 不可清除，请追加迭代保留历史", "goal_flow_frozen")
+        _error("已有 goal_flow 不可清除，请追加迭代或事件保留历史", "goal_flow_frozen")
     result = _normalize(value)
     if previous is not None:
         old = _normalize(previous)
         count = len(old["iterations"])
         if (result["anchor"] != old["anchor"]
-                or result["iterations"][:count] != old["iterations"]):
-            _error("A 锚点及已有 G 迭代不可删改；修正与达成请追加新迭代", "goal_flow_frozen")
+                or result["iterations"][:count] != old["iterations"]
+                or result.get("events", [])[:len(old.get("events", []))] != old.get("events", [])):
+            _error("A 锚点、已有 G 及事件不可删改；目标变化追加 G，状态与外环订正追加 events", "goal_flow_frozen")
     return result
+
+
+def project_statuses(value) -> dict:
+    """Project each G's latest status, without mutating its original record.
+
+    Returns {iteration_id: {status, verification?, event_id?}}. Array order is
+    authoritative; a later status replaces the earlier status and its proof.
+    Correction events are annotations, never changes to the observed AI's goal.
+    This is a read projection, not a evidence-support or acceptance verdict.
+    """
+    flow = validate(value)
+    current = {it["id"]: {key: it[key] for key in ("status", "verification") if key in it}
+               for it in flow["iterations"]}
+    for event in flow.get("events", []):
+        if event["kind"] == "status":
+            current[event["target"]] = {"status": event["status"], "event_id": event["id"],
+                **({"verification": event["verification"]} if "verification" in event else {})}
+    return current
