@@ -158,7 +158,7 @@ test('goal flow lays out explicit forks and joins, with no automatic work attrib
     {id:'unrelated',kind:'phase',text:'Must not infer from evidence',evidence:['req_G2a']}];
   assert.deepEqual(JSON.parse(JSON.stringify(flowLayers(events))).map(row=>row.map(x=>x.id)),[['G0'],['G1'],['G2a','G2b'],['G3']]);
   const html=flowDiagramHtml(g);assert.equal((html.match(/data-ag-node="@anchor"/g)||[]).length,1);
-  assert.equal((html.match(/data-ag-node="G/g)||[]).length,5);assert(!html.includes('<details'));
+  assert.equal((html.match(/data-ag-node="G/g)||[]).length,5);assert.equal((html.match(/<details/g)||[]).length,1);assert(html.includes('class="ag-help"'));
   assert(!html.includes('Original plan is outdated'));assert(!html.includes('Must not infer'));
   assert(!goalDetail('G2a').includes('Original plan is outdated'));assert(!goalDetail('G2b').includes('Original plan is outdated'));
   assert(goalDetail('@anchor').includes('Full audit'));

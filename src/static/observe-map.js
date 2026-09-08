@@ -163,6 +163,11 @@
     en:{trajectory:'A→G goal flow',requestReading:'How it understands your request',situationReading:'How it sees the current situation',readingMissing:'Not recorded yet. The observer needs to read the conversation first.',readingNote:'Interpreted from recorded conversation. Open to inspect evidence.',carryover:'Still relevant after the task switch',change_initial:'Start',change_refine:'Revision',change_turn:'Task switch',task:'Task',pastTask:'Earlier task',currentTask:'Current task',expandTask:'Expand goal changes',collapseTask:'Collapse goal changes',goalVersions:'goal versions',currentEvidence:'Inspect current understanding',findingsLane:'Words & explanation',flowHint:'Select A, G or a change to inspect words and evidence in place.',flowIntro:'Keep the initial understanding and see how goals change or move to another task.',flowSetup:'Use Copy setup notes above to build A→G from the initial input. Older observation records remain accessible through the API.'},
     ja:{trajectory:'A→G 目標の流れ',requestReading:'依頼をどう理解しているか',situationReading:'現状をどう捉えているか',readingMissing:'まだ記録されていません。観測 AI が会話から補足します。',readingNote:'記録された会話からの整理です。開くと根拠を確認できます。',carryover:'タスクを切り替えても引き継ぐこと',change_initial:'出発点',change_refine:'修正',change_turn:'タスクの転換',task:'タスク',pastTask:'以前のタスク',currentTask:'現在のタスク',expandTask:'目標の変化を展開',collapseTask:'目標の変化を折り畳む',goalVersions:'件の目標',currentEvidence:'現在の理解の根拠を確認',findingsLane:'原文と説明',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。',flowIntro:'最初の理解を保ち、目標の修正と別タスクへの転換を追います。',flowSetup:'上の「接続説明をコピー」から最初の入力をもとに A→G を作成します。従来の記録は API で閲覧できます。'}
   })) Object.assign(words[lang],values);
+  for(const [lang,values] of Object.entries({
+    zh:{flowHelp:'为什么这样设计，怎么看这张图',helpWhy:'先看 AI 是否理解了你的要求、怎样判断现状，更容易发现沟通偏差。过程细节按需展开，避免大量日志盖住重点。',helpRead:'A 是最初的理解，G 是想达到的结果。同一任务改要求叫“修正”，转到另一项交付叫“转折”；只是现状变化时，不增加 G。',helpSource:'内容由独立的观察 AI 根据录制整理，解释可能有偏差，可以点击证据核对。刷新只读取已保存的分析，不会启动 AI。',helpUpgrade:'升级后可复制新的接入说明，交给观察 AI 继续分析。旧录制与观测记录会保留；缺少 A→G 的旧观测，需要观察 AI 根据原始记录补充。'},
+    en:{flowHelp:'Why this view, and how to read it',helpWhy:'Start with how the AI understands your request and sees the situation, so misunderstandings are easier to spot. Open details when needed, without a long log obscuring the main point.',helpRead:'A is the initial understanding; G is the intended result. A changed requirement within one task is a revision; another deliverable is a task switch. A change in the situation alone does not add a G.',helpSource:'An independent observer AI interprets the recordings. Its interpretation can be wrong; select evidence to check it. Refresh only reads saved analysis and does not start an AI.',helpUpgrade:'After upgrading, copy the new setup notes to your observer AI. Existing recordings and observations are preserved. The observer needs to build A→G from the original records when an older observation lacks it.'},
+    ja:{flowHelp:'この表示の目的と図の読み方',helpWhy:'AI が依頼をどう理解し、現状をどう捉えているかを先に見ると、認識のずれに気づきやすくなります。詳しい経緯は必要なときに開き、大量のログに要点が埋もれないようにしています。',helpRead:'A は最初の理解、G は目指す結果です。同じタスクの要件変更は「修正」、別の成果物への移行は「転換」です。現状だけが変わった場合、G は追加しません。',helpSource:'内容は独立した観測 AI が記録から整理します。解釈が誤る場合もあるため、根拠を選んで確認できます。更新は保存済みの分析を読み込むだけで、AI を起動しません。',helpUpgrade:'更新後は新しい接続手順をコピーして観測 AI に渡してください。既存の記録と観測は保持されます。A→G がない従来の観測は、元の記録から観測 AI が補足する必要があります。'}
+  })) Object.assign(words[lang],values);
   const tr = k => (words[typeof LANG === 'string' ? LANG : 'zh'] || words.zh)[k] || k;
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const short = (s, n=88) => {s=String(s || '').replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n)+'…' : s;};
@@ -337,6 +342,9 @@
       (c?.carryover?'<p class="ag-carryover om-prose"><b>'+escape(tr('carryover'))+'：</b>'+escape(c.carryover)+'</p>':'')+
       (c?(detailed?refs(c.evidence):'<div class="ag-reading-source"><span>'+escape(tr('readingNote'))+'</span>'+button('goal-current','',escape(tr('currentEvidence')),'om-action')+'</div>'):'')+'</section>';
   }
+  function flowHelpHtml() {
+    return '<details class="ag-help" data-om-fold="flow-help"'+(M.folds.has('flow-help')?' open':'')+'><summary>'+escape(tr('flowHelp'))+'</summary>'+['helpWhy','helpRead','helpSource','helpUpgrade'].map(k=>'<p class="om-prose">'+escape(tr(k))+'</p>').join('')+'</details>';
+  }
   function taskRows(f) {
     const rows=flowLayers(list(f.iterations)), tasks=list(f.tasks);
     if(tasks.length<2) return rows;
@@ -377,7 +385,7 @@
   }
   function flowDiagramHtml(it) {
     const f=it?.goal_flow;
-    if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p></section>';
+    if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p>'+flowHelpHtml()+'</section>';
     const events=list(f.iterations),parents=new Set(events.flatMap(e=>list(e.parent_ids))),heads=events.filter(e=>!parents.has(e.id));
     const rows=taskRows(f), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20;
     const inline=inlineTarget(), rightWidth=inline?Math.min(AG_RIGHT_OPEN,Math.max(280,(root()?.clientWidth || 478)-48)):AG_RIGHT, rightX=326+centerWidth, width=rightX+rightWidth+24;
@@ -402,7 +410,7 @@
         return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?compact.id:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
       }).join('');
     }).join('');
-    return '<section class="ag-flow">'+readingHtml(f)+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
+    return '<section class="ag-flow">'+readingHtml(f)+flowHelpHtml()+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
       '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+(y+18)+'px">'+
       '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
       '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(290+(centerWidth-320)/2)+'px;top:48px;width:320px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+

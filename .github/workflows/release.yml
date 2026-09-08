@@ -80,6 +80,7 @@ jobs:
           uv run python tests/observe_goal_selftest.py
           uv run python tests/actions_selftest.py
           node tests/observe_map_selftest.js
+          node tests/observe_guide_selftest.js
 
   build:
     name: Build (${{ matrix.os }})

@@ -259,4 +259,8 @@
 .om-shell .ag-task-toggle{margin-left:auto;flex-shrink:0;border:0;background:transparent;color:var(--ag-key);font-size:10px;padding:4px;}
 .ag-inline-body .ag-reading{border:0;padding:8px 0;}
 .ag-inline-body .ag-reading-pair{grid-template-columns:1fr;gap:18px;}
+.ag-help{padding:12px 6px 0;font-size:12px;color:var(--apple-text-secondary);}
+.ag-help summary{cursor:pointer;width:fit-content;color:var(--ag-key);}
+.ag-help .om-prose{font-size:12px;line-height:1.8;max-width:78ch;margin:10px 0;}
+.ag-help summary:focus-visible{outline:2px solid var(--brand-ink);outline-offset:3px;}
 @media(max-width:680px){.ag-reading{padding:18px 10px;}.ag-reading-pair{grid-template-columns:1fr;gap:20px;}.ag-reading .om-prose{font-size:13px;}.ag-reading-source{align-items:flex-start;flex-direction:column;}}
