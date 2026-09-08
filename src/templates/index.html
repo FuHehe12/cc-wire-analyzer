@@ -2078,7 +2078,8 @@ zh: {
   "ob.empty.title": "还没有任何观测",
   "ob.empty.body": "这一页显示的是外环观测者维护的清单——外环是你另开的一个 AI，它读本机的录制、判断这条 agent 在干什么，再把结论写回来。它不在这里跑：CCWA 只负责给它事实、替它存结论、把结论显示出来。点「复制接入说明」，把那段话交给外部宿主里的 agent 即可开始。",
   "ob.noItems": "这个观测还没有条目。外环连上并提交第一批更新后会出现在这里。",
-  "ob.rev": "修订 {n}", "ob.cursor": "外环读取水位 {n}",
+  "ob.rev": "修订 {n}", "ob.cursor": "观察者保存的阅读位置 {n}",
+  "ob.goalGuide": "先 GET {base}/api/ai-guide 读取当前完整字段契约与最小操作示例，不能猜字段名。优先 view=dialog&include_aux=false 阅读，再按证据请求查完整内容。用完整句写清做了什么、结果如何，避免项目自造术语。一场对话维护一个 goal_flow：最初输入与理解只记一次，后续逐次追加谁改目标、前后差异、为什么改与证据；反推的理解标 inferred。phase 按工作意图持续归组，不按每次工具调用建条目；保留改动、决定、失败和未决，不能因压缩而删掉。页面不替你运行模型，语义归组仍由你负责。",
   "ob.fresh": "{n} 分钟前更新", "ob.stale": "已 {n} 分钟没有更新",
   "ob.revised": "改判过 {n} 次", "ob.reason": "撤回原因：{s}",
   "ob.evTitle": "跳到这条请求",
@@ -2513,6 +2514,7 @@ en: {
   "tab.captures": "Captures", "tab.dag": "Timeline", "tab.settings": "Settings",
   "tab.analyze": "Analyse",
   "tab.observe": "Live analysis",
+  "ob.goalGuide": "First GET {base}/api/ai-guide for the current field contract and minimal examples; do not guess field names. Prefer view=dialog&include_aux=false, then inspect full evidence by request. Write complete sentences explaining the work and its results. Maintain one goal_flow per conversation: record the initial input and understanding once, then append who changed the goal, before/after, why and evidence. Mark inferred understanding as inferred. Group phase entries by work intent, not individual tool calls; preserve changes, decisions, failures and unresolved work. The observer performs semantic grouping; the page does not run a model.",
   "ob.pick": "Observation", "ob.refresh": "Refresh", "ob.copyGuide": "Copy setup notes",
   "ob.untitled": "Untitled observation",
   "ob.empty.title": "No observations yet",
@@ -2954,6 +2956,7 @@ ja: {
   "aria.mainViews": "メインビュー", "aria.toggleSecret": "API キーの表示・非表示",
   "tab.captures": "キャプチャ", "tab.dag": "タイムライン", "tab.settings": "設定",
   "tab.observe": "リアルタイム分析",
+  "ob.goalGuide": "最初に GET {base}/api/ai-guide で最新のフィールド契約と最小例を確認し、名前を推測しないでください。view=dialog&include_aux=false で読み、必要な証拠をリクエスト単位で確認します。作業と結果を完全な文で説明します。会話ごとに一つの goal_flow を維持し、最初の入力と理解は一度だけ記録、変更者・前後・理由・証拠を追記します。推論は inferred と明示します。phase はツール呼出しごとでなく作業意図でまとめ、変更・決定・失敗・未解決を保持します。意味の整理は観測者が行い、画面はモデルを実行しません。",
   "ob.pick": "観測", "ob.refresh": "更新", "ob.copyGuide": "接続手順をコピー",
   "ob.untitled": "名称未設定の観測",
   "ob.empty.title": "観測がまだありません",
@@ -6269,7 +6272,7 @@ function obCopyGuide(){
   const sc = (OB.state && OB.state.scope) || {date:S.date, source:S.source};
   const q = new URLSearchParams(Object.fromEntries(["date", "source", "lane", "session"]
     .filter(k => sc[k]).map(k => [k, sc[k]]))).toString();
-  const txt = (!OB.state ? t18("ob.createGuide", {base, q: q || "date=YYYY-MM-DD"}) + "\n\n" : "") +
+  const txt = t18("ob.goalGuide", {base}) + "\n\n" + (!OB.state ? t18("ob.createGuide", {base, q: q || "date=YYYY-MM-DD"}) + "\n\n" : "") +
     t18("ob.guide", {base: base, q: q || "date=YYYY-MM-DD",
                      id: (OB.state && OB.state.id) || "OBSERVATION_ID"});
   navigator.clipboard.writeText(txt).then(

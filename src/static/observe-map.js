@@ -107,6 +107,39 @@
       attention:'確認が必要', recordedCoverage:'対象の記録済みリクエスト', navigation:'閲覧ナビゲーション', legacyPhases:'従来の段階判断と証拠の参照点'
     }
   };
+  Object.assign(words.zh, {
+    trajectory:'工作与目标变化', observer:'观察者判断', cursor:'保存的阅读位置',
+    report:'工作概况', workDone:'做了什么', workResults:'产生什么结果', workLeft:'还剩什么',
+    reportNote:'以下是观察者根据录制整理的判断。展开一件事可以查看解释与证据；未记录不代表没有发生。',
+    allEntries:'查看其余条目', goalFlow:'目标如何变化', noGoalFlow:'尚未记录最初理解与目标变化。现有目标条目仍可查看，不能据此补猜历史。',
+    initial:'A · 最初的理解', userWords:'用户原话', understanding:'AI 当时的理解', choices:'AI 自己作出的取舍，值得复核',
+    goalNow:'当前目标', goalChanges:'展开目标变化过程', actor_user:'用户调整', actor_ai:'AI 自行调整', actor_user_ai:'用户提出、AI 决定具体做法',
+    inferred:'观察者推断', explicit:'录制中有明确表述', beforeGoal:'原目标', afterGoal:'改为', trigger:'为什么改变',
+    parents:'由这些目标演变', achieved:'已核验达成', verification:'达成依据', goalEvidence:'查看这次变化的依据',
+    relationView:'展开目标、工作与结果的关系图', workBlock:'工作块', goalCorrection:'历史记录固定保留；后续纠正另记一次变化。'
+  });
+  Object.assign(words.en, {
+    trajectory:'Work & goal changes',
+    report:'Understand this work', workDone:'What was done', workResults:'What came out of it', workLeft:'What remains',
+    reportNote:'These are observer interpretations of the recording. Open an entry for its explanation and evidence. Unrecorded does not mean it never happened.',
+    allEntries:'Show remaining entries', goalFlow:'How the goal changed', noGoalFlow:'The initial understanding and goal changes have not been recorded. Existing goals remain readable; their history cannot be inferred here.',
+    initial:'A · Initial understanding', userWords:'User’s words', understanding:'AI’s initial understanding', choices:'AI’s own choices — worth checking',
+    goalNow:'Current goal', goalChanges:'Expand goal changes', actor_user:'Changed by user', actor_ai:'Changed by AI', actor_user_ai:'User initiated, AI shaped',
+    inferred:'Observer inference', explicit:'Explicit in recording', beforeGoal:'Previous goal', afterGoal:'Changed to', trigger:'Why it changed',
+    parents:'Evolved from these goals', achieved:'Verified achievement', verification:'Achievement evidence', goalEvidence:'Inspect evidence for this change',
+    relationView:'Expand relationships between goals, work and results', workBlock:'Work block', goalCorrection:'History is preserved. Record later corrections as another change.'
+  });
+  Object.assign(words.ja, {
+    trajectory:'作業と目標の変化',
+    report:'この作業を理解する', workDone:'何をしたか', workResults:'どんな結果が出たか', workLeft:'何が残っているか',
+    reportNote:'記録をもとにした観測者の判断です。項目を開くと説明と証拠を確認できます。未記録は未発生を意味しません。',
+    allEntries:'残りの項目を表示', goalFlow:'目標はどう変わったか', noGoalFlow:'最初の理解と目標の変化は未記録です。既存の目標は閲覧できますが、履歴をここで推測しません。',
+    initial:'A · 最初の理解', userWords:'ユーザーの原文', understanding:'AI の最初の理解', choices:'AI 自身の選択・要確認',
+    goalNow:'現在の目標', goalChanges:'目標の変化を展開', actor_user:'ユーザーが変更', actor_ai:'AI が自ら変更', actor_user_ai:'ユーザーが提案・AI が具体化',
+    inferred:'観測者の推論', explicit:'記録に明示', beforeGoal:'元の目標', afterGoal:'変更後', trigger:'変更の理由',
+    parents:'これらの目標から派生', achieved:'達成を検証済み', verification:'達成の根拠', goalEvidence:'この変更の証拠を確認',
+    relationView:'目標・作業・結果の関係図を展開', workBlock:'作業のまとまり', goalCorrection:'履歴は固定して保持します。後続の訂正は新たな変更として記録します。'
+  });
   const tr = k => (words[typeof LANG === 'string' ? LANG : 'zh'] || words.zh)[k] || k;
   const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const short = (s, n=88) => {s=String(s || '').replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n)+'…' : s;};
@@ -213,8 +246,40 @@
     const graph='<section class="om-semantic"><h2>'+escape(tr('graph'))+'</h2>'+note(tr('graphNote'))+
       '<div class="om-graph-scroll"><div class="om-graph"><svg class="om-wires" aria-hidden="true"></svg>'+columns.map(([label,kinds])=>
         '<section class="om-column"><h3>'+escape(tr(label))+'</h3>'+ (semantic.filter(it=>kinds.includes(it.kind)).map(nodeHtml).join('') || '<p class="om-empty-column">'+escape(tr('noKind'))+'</p>')+'</section>').join('')+'</div></div></section>';
-    return legacy?'<details id="om-semantic" class="om-disclosure om-legacy" data-om-fold="legacy-phases"'+(M.folds.has('legacy-phases')?' open':'')+'><summary>'+escape(tr('legacyPhases'))+' <b>'+semantic.length+'</b></summary>'+graph+'</details>':
-      '<div id="om-semantic">'+graph+'</div>';
+    const key=legacy?'legacy-phases':'relations';
+    return '<details id="om-semantic" class="om-disclosure om-legacy" data-om-fold="'+key+'"'+(M.folds.has(key)?' open':'')+'><summary>'+escape(tr(legacy?'legacyPhases':'relationView'))+' <b>'+semantic.length+'</b></summary>'+graph+'</details>';
+  }
+  function reportHtml() {
+    const current=items().filter(live);
+    const groups=[['workDone',current.filter(it=>it.kind==='phase')],
+      ['workResults',current.filter(it=>['artifact','check'].includes(it.kind))],
+      ['workLeft',current.filter(it=>it.kind==='open' || it.kind==='deviation' || it.progress==='blocked')]];
+    const row=it=>button('item',it.id,'<strong>'+escape(title(it))+'</strong><span>'+escape(tr(it.progress || it.status || 'unknown'))+'</span>', 'om-report-row');
+    return '<section class="om-report"><h2>'+escape(tr('report'))+'</h2>'+note(tr('reportNote'))+'<div class="om-report-columns">'+groups.map(([label,entries])=>
+      '<section class="om-report-group"><h3>'+escape(tr(label))+' <small>'+entries.length+'</small></h3>'+
+      (entries.length?entries.slice(0,3).map(row).join(''):note(tr('noKind')))+
+      (entries.length>3?'<details class="om-disclosure" data-om-fold="report-'+label+'"'+(M.folds.has('report-'+label)?' open':'')+'><summary>'+escape(tr('allEntries'))+' '+(entries.length-3)+'</summary>'+entries.slice(3).map(row).join('')+'</details>':'')+'</section>').join('')+'</div></section>';
+  }
+  function goalEventHtml(event) {
+    return '<article class="om-goal-event om-goal-'+escape(event.actor)+'"><header>'+badge(escape(event.id))+' '+badge(tr('actor_'+event.actor))+' '+badge(tr(event.basis))+'</header>'+
+      '<dl class="om-goal-diff"><dt>'+escape(tr('beforeGoal'))+'</dt><dd><del>'+escape(event.before)+'</del></dd><dt>'+escape(tr('afterGoal'))+'</dt><dd><ins>'+escape(event.after)+'</ins></dd></dl>'+
+      '<h4>'+escape(tr('trigger'))+'</h4><p class="om-prose">'+escape(event.trigger)+'</p>'+
+      (list(event.parent_ids).length?note(tr('parents')+': '+event.parent_ids.join(', ')):'')+
+      '<p>'+badge(tr(event.status || 'active'))+'</p>'+
+      (event.verification?'<h4>'+escape(tr('verification'))+'</h4><p class="om-prose">'+escape(event.verification.text)+'</p>'+refs(event.verification.evidence):'')+
+      '<h4>'+escape(tr('goalEvidence'))+'</h4>'+refs(event.evidence)+'</article>';
+  }
+  function goalFlowHtml(it, detailed=false) {
+    const flow=it?.goal_flow;
+    if(!flow) return detailed?'': '<section class="om-goal-flow"><h2>'+escape(tr('goalFlow'))+'</h2>'+note(tr('noGoalFlow'))+'</section>';
+    const events=list(flow.iterations), used=new Set(events.flatMap(e=>list(e.parent_ids))), heads=events.filter(e=>!used.has(e.id));
+    const anchor=flow.anchor || {}, key='goal-flow:'+it.id;
+    const anchorHtml='<article class="om-goal-anchor"><h3>'+escape(tr('initial'))+'</h3>'+badge(tr(anchor.basis))+
+      '<div class="om-goal-pair"><section><h4>'+escape(tr('userWords'))+'</h4><blockquote>'+escape(anchor.user_text)+'</blockquote></section><section><h4>'+escape(tr('understanding'))+'</h4><p class="om-prose">'+escape(anchor.understanding)+'</p></section></div>'+
+      (list(anchor.choices).length?'<h4>'+escape(tr('choices'))+'</h4><ul>'+anchor.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':'')+refs(anchor.evidence)+'</article>';
+    return '<section class="om-goal-flow"><h2>'+escape(tr('goalFlow'))+'</h2>'+note(tr('goalCorrection'))+
+      '<div class="om-goal-current"><h3>'+escape(tr('goalNow'))+'</h3>'+(heads.length?heads.map(e=>'<p>'+badge(e.id)+' '+badge(tr(e.status || 'active'))+' '+badge(tr(e.basis))+'</p><p class="om-prose">'+escape(e.after)+'</p>').join(''):note(tr('noKind')))+'</div>'+
+      '<details class="om-disclosure" data-om-fold="'+escape(key)+'"'+(detailed || M.folds.has(key)?' open':'')+'><summary>'+escape(tr('goalChanges'))+' <b>'+events.length+'</b></summary><div class="om-goal-track">'+anchorHtml+events.map(goalEventHtml).join('')+'</div></details></section>';
   }
   function overviewHtml() {
     const current=items().filter(live), phases=current.filter(it=>it.kind==='phase');
@@ -223,9 +288,7 @@
     const stats=[['phase',phases.length,'om-semantic'],['recordedCoverage',covered.size,covered.size?'om-coverage':'om-compact'],
       ['open',opens.length,opens.length?'om-findings':'om-future'],['prediction',current.filter(it=>it.kind==='prediction').length,'om-future']];
     return '<nav class="om-stat-nav" aria-label="'+escape(tr('navigation'))+'">'+stats.map(([key,count,id])=>
-      button('section',id,'<strong>'+count+'</strong><span>'+escape(tr(key))+'</span>','om-stat-link')).join('')+'</nav>'+
-      (opens.length?'<section class="om-attention"><h3>'+escape(tr('attention'))+'</h3>'+opens.slice(0,3).map(it=>
-        button('item',it.id,escape(short(title(it),150)),'om-attention-link')).join('')+'</section>':'');
+      button('section',id,'<strong>'+count+'</strong><span>'+escape(tr(key))+'</span>','om-stat-link')).join('')+'</nav>';
   }
   function turnHtml(t,i) {
     const open=M.open.has('turn:'+t.key);
@@ -269,7 +332,7 @@
     const other=items().filter(it=>!['goal','phase','artifact','check','prediction'].includes(it.kind));
     r.innerHTML='<div class="om-shell"><main class="om-main"><header class="om-header"><div><h2>'+escape(tr('trajectory'))+'</h2><p class="om-muted">'+escape([sc.date,sc.source,sc.lane || sc.session].filter(Boolean).join(' · '))+'</p></div><span class="om-muted" data-om-clock>'+escape(tr('checkedAt')+' '+M.checked)+'</span></header>'+
       (M.error?'<div class="om-error" role="alert">'+escape(errorText(M.error))+' '+button('retry','',escape(tr('retry')),'om-action')+'</div>':'')+
-      (!sc.lane && !sc.session?note(tr('allScope')):'')+overviewHtml()+graphHtml()+
+      (!sc.lane && !sc.session?note(tr('allScope')):'')+reportHtml()+goalFlowHtml(items().find(it=>live(it) && it.goal_flow))+overviewHtml()+graphHtml()+
       (M.trace?'<section id="om-compact" class="om-compact"><h3>'+escape(tr('compact'))+'</h3><div class="om-ribbon">'+M.turns.map((t,i)=>
         button('turn',t.key,'<span>'+escape(i+1)+'</span><b>'+escape(t.nodes.length)+'</b>','om-bead','title="'+escape(short(t.user || t.lane,160))+'" aria-label="'+escape(tr('turns')+' '+(i+1)+', '+t.nodes.length+' '+tr('steps'))+'"')).join('')+'</div>'+note(tr('compactNote'))+'</section>':note(tr('loading')))+
       (!hasCoverage?'<div class="om-notice">'+escape(tr('fallback'))+'</div><section class="om-turns">'+M.turns.map(turnHtml).join('')+'</section>':
@@ -278,7 +341,7 @@
       (M.trace && !M.nodes.size?note(tr('empty')):'')+
       (other.length?'<details id="om-findings" class="om-disclosure" data-om-fold="findings"'+(M.folds.has('findings')?' open':'')+'><summary>'+escape(tr('other'))+' <b>'+other.length+'</b></summary>'+other.map(it=>button('item',it.id,badge(tr(it.kind))+escape(short(title(it),180)),
         'om-finding'+(!live(it)?' is-retracted':''))).join('')+'</details>':'')+
-      '<section id="om-future" class="om-future"><h2>'+escape(tr('future'))+'</h2>'+note(tr('predictionNote'))+(preds.length?preds.map(predictionHtml).join(''):note(tr('noPrediction')))+'</section></main>'+
+      '<details id="om-future" class="om-disclosure om-future" data-om-fold="future"'+(M.folds.has('future')?' open':'')+'><summary>'+escape(tr('future'))+' <b>'+preds.length+'</b></summary>'+note(tr('predictionNote'))+(preds.length?preds.map(predictionHtml).join(''):note(tr('noPrediction')))+'</details></main>'+
       '<aside class="om-detail" aria-label="'+escape(tr('detail'))+'"><h2>'+escape(tr('detail'))+'</h2><div id="om-detail-body"></div></aside></div>';
     paintDetail();
     r.querySelector('.om-detail').scrollTop=detailScroll;
@@ -322,6 +385,7 @@
       (it.progress==='done'?'<div class="om-notice">'+escape(tr('doneNote'))+'</div>':'')+
       (it.reason?'<p class="om-prose">'+escape(it.reason)+'</p>':'')+
       (isPred?windowHtml(it,true)+note(tr('originalNote')):'')+
+      (it.goal_flow?goalFlowHtml(it,true):'')+
       '<h4>'+escape(tr('anchors'))+'</h4>'+refs(it.evidence)+
       (it.kind==='phase' || list(it.covers).length?'<h4>'+escape(tr('coverage'))+'</h4>'+coveredSteps(it):'')+
       '<h4>'+escape(tr('relations'))+'</h4>'+relationHtml(it)+
@@ -410,6 +474,7 @@
     r.addEventListener('toggle',event=>{
       const el=event.target;if(!el.dataset?.omFold) return;
       if(el.open) M.folds.add(el.dataset.omFold); else M.folds.delete(el.dataset.omFold);
+      if(el.open) requestAnimationFrame(drawRelations);
     },true);
     if(typeof ResizeObserver!=='undefined') {M.resize=new ResizeObserver(()=>requestAnimationFrame(drawRelations));M.resize.observe(r);}
   }

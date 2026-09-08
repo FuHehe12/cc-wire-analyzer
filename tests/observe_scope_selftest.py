@@ -130,5 +130,164 @@ class SpanApiTests(unittest.TestCase):
             self.assertEqual(conflict.json["state"]["revision"], 1)
 
 
+class FeedbackApiTests(unittest.TestCase):
+    def setUp(self):
+        import app as web
+        self.client = web.app.test_client()
+        self.state = OB.create({"date": "2026-09-08"})
+        self.oid = self.state["id"]
+        r = self.submit("seed", [{"op": "add_item", "client_ref": "ph1", "text": "first"},
+                                 {"op": "add_item", "client_ref": "ph2", "text": "second"}])
+        self.assertEqual(r.status_code, 200)
+        self.refs = r.json["refs"]
+
+    def submit(self, sid, ops, mode="full"):
+        return self.client.post("/api/observations?response=" + mode,
+            json={"id": self.oid, "submission_id": sid, "ops": ops})
+
+    def test_reported_silent_payloads_rejected_atomically(self):
+        for op, field in [
+            ({"op": "link_items", "from": "ph2", "to": "ph1", "rel": "depends_on"}, "rel"),
+            ({"op": "set_cursor", "next": 16}, "next"),
+            ({"op": "update_item", "id": "ph1", "title": "new"}, "title"),
+            ({"op": "update_item", "id": "ph1", "patch": {"links": []}}, "links"),
+        ]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("invalid", [{"op": "set_cursor", "cursor": 99}, op])
+            self.assertEqual(r.status_code, 400, r.json)
+            self.assertEqual(r.json["error"], "unknown_field")
+            self.assertIn(field, r.json["detail"])
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+
+    def test_malformed_json_types_return_400_without_write(self):
+        for body in [[], None, 4, "body", {"scope": []}, {"scope": {"lane": []}},
+                     {"title": []}, {"id": []}, {"ops": []}, {"extra": 1}]:
+            before = list(OB.OBS_DIR.glob("obs_*.json"))
+            r = self.client.post("/api/observations", json=body)
+            self.assertEqual(r.status_code, 400, (body, r.json))
+            self.assertEqual(list(OB.OBS_DIR.glob("obs_*.json")), before)
+        for op in [
+            {"op": []}, {"op": "update_item", "id": "ph1"},
+            {"op": "update_item", "id": "ph1", "patch": {}},
+            {"op": "update_item", "id": "ph1", "patch": []},
+            {"op": "set_cursor"}, {"op": "set_cursor", "cursor": True},
+            {"op": "set_cursor", "cursor": 1.5},
+            {"op": "add_item", "text": "x", "kind": []},
+            {"op": "add_item", "text": "x", "evidence": 7},
+            {"op": "add_item", "text": "x", "client_ref": []},
+            {"op": "retract_item", "id": "ph1", "reason": []},
+            {"op": "link_items", "from": "ph1", "to": "ph2", "remove": "true"},
+        ]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("invalid", [op])
+            self.assertEqual(r.status_code, 400, (op, r.json))
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+
+    def test_remove_cross_batch_refs_and_compact_responses(self):
+        r = self.submit("link", [{"op": "link_items", "from": "ph2", "to": "ph1", "type": "depends_on"}], "refs")
+        self.assertEqual(set(r.json), {"ok", "replayed", "revision", "refs"})
+        r = self.submit("unlink", [{"op": "link_items", "from": "ph2", "to": "ph1", "type": "depends_on", "remove": True}], "changed")
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertNotIn("state", r.json)
+        self.assertEqual(len(r.json["items"]), 1)
+        item = r.json["items"][0]
+        self.assertEqual(item["id"], self.refs["ph2"])
+        self.assertEqual(item["links"], [])
+        self.assertEqual(item["history"][-1]["links"], [{"type": "depends_on", "to": self.refs["ph1"]}])
+        replay = self.submit("unlink", [{"op": "set_cursor", "cursor": 999}], "changed")
+        self.assertTrue(replay.json["replayed"])
+        self.assertEqual(replay.json["items"], r.json["items"])
+        missing = self.submit("unlink-again", [{"op": "link_items", "from": "ph2", "to": "ph1", "type": "depends_on", "remove": True}])
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.json["error"], "no_link")
+        self.assertEqual(self.client.get("/api/observations/" + self.oid).json, self.client.get("/api/observations?id=" + self.oid).json)
+        self.assertEqual(self.client.get("/api/observations/obs_0000000").status_code, 404)
+        before = OB._file(self.oid).read_bytes()
+        self.assertEqual(self.submit("bad-mode", [{"op": "set_cursor", "cursor": 1}], "typo").status_code, 400)
+        self.assertEqual(OB._file(self.oid).read_bytes(), before)
+
+    def test_text_evidence_reason_limits_without_legacy_read_regression(self):
+        for op in [
+            {"op": "add_item", "text": "x" * 4001},
+            {"op": "add_item", "text": "x", "evidence": ["req_a"] * 51},
+            {"op": "update_item", "id": "ph1", "patch": {"text": "x" * 4001}},
+            {"op": "update_item", "id": "ph1", "patch": {"evidence": ["req_a"] * 51}},
+            {"op": "retract_item", "id": "ph1", "reason": "x" * 1001},
+        ]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("over-limit", [{"op": "set_cursor", "cursor": 99}, op])
+            self.assertEqual(r.status_code, 400, r.json)
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+        r = self.submit("at-limit", [{"op": "update_item", "id": "ph1",
+            "patch": {"text": "x" * 4000, "evidence": ["req_a"] * 50}},
+            {"op": "retract_item", "id": "ph2", "reason": "x" * 1000}])
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(len(r.json["state"]["items"][0]["text"]), 4000)
+        self.assertEqual(len(r.json["state"]["items"][0]["evidence"]), 50)
+        state = OB.read(self.oid)
+        state["items"][0]["text"] = "legacy" * 1000
+        state["items"][0]["evidence"] = ["legacy reference"] * 51
+        OB._write(state)
+        self.assertEqual(self.client.get("/api/observations/" + self.oid).json, state)
+        r = self.submit("legacy-title", [{"op": "update_item", "id": "ph1", "patch": {"title": "readable legacy"}}])
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(r.json["state"]["items"][0]["text"], state["items"][0]["text"])
+        self.assertEqual(self.client.post("/api/observations", json={"title": "x" * 201}).status_code, 400)
+
+    def test_goal_flow_store_constraints_and_atomic_append(self):
+        flow = {"anchor": {"user_text": "Fix live analysis", "understanding": "Inspect then improve",
+                "evidence": ["req_a"], "basis": "explicit"}, "iterations": []}
+        r = self.submit("goal", [{"op": "add_item", "kind": "goal", "text": "goal", "client_ref": "goal", "goal_flow": flow}])
+        self.assertEqual(r.status_code, 200, r.json)
+        saved = r.json["state"]["items"][-1]["goal_flow"]
+        for patch in [{"kind": "phase"}, {"goal_flow": None},
+                      {"goal_flow": dict(saved, anchor=dict(saved["anchor"], user_text="rewrite"))}]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("bad-goal", [{"op": "set_cursor", "cursor": 99},
+                {"op": "update_item", "id": "goal", "patch": patch}])
+            self.assertEqual(r.status_code, 400, r.json)
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+        for kind in ("goal", "phase"):
+            r = self.submit("second-goal", [{"op": "add_item", "kind": kind, "text": "another", "goal_flow": flow}])
+            self.assertEqual(r.status_code, 400, r.json)
+        evolved = deepcopy(saved)
+        evolved["iterations"].append({"id": "g1", "actor": "ai", "before": "analysis", "after": "strict validation",
+            "trigger": "silent writes", "evidence": ["req_b"], "basis": "explicit"})
+        r = self.submit("append", [{"op": "update_item", "id": "goal", "patch": {"goal_flow": evolved}}])
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(r.json["state"]["items"][-1]["history"][-1]["goal_flow"], saved)
+        r = self.submit("replace", [{"op": "retract_item", "id": "goal"},
+            {"op": "add_item", "kind": "goal", "text": "replacement", "goal_flow": flow}])
+        self.assertEqual(r.status_code, 200, r.json)
+
+    def test_refs_survive_bounded_submit_log_and_legacy_ambiguity(self):
+        state = OB.read(self.oid)
+        # Simulate bounded-log eviction after a successful write.
+        state["submits"] = []
+        OB._write(state)
+        r = self.submit("after-eviction", [{"op": "update_item", "id": "ph1", "patch": {"title": "persistent"}}])
+        self.assertEqual(r.status_code, 200, r.json)
+        for ops in [
+            [{"op": "add_item", "client_ref": "ph1", "text": "duplicate"}],
+            [{"op": "add_item", "client_ref": "new", "text": "a"}, {"op": "add_item", "client_ref": "new", "text": "b"}],
+        ]:
+            before = OB._file(self.oid).read_bytes()
+            r = self.submit("duplicate", ops)
+            self.assertEqual(r.json["error"], "duplicate_ref")
+            self.assertEqual(OB._file(self.oid).read_bytes(), before)
+        state = OB.read(self.oid)
+        state.pop("refs")
+        state["submits"] = [{"sid": "old-a", "refs": {"legacy": self.refs["ph1"]}},
+                            {"sid": "old-b", "refs": {"legacy": self.refs["ph2"]}}]
+        OB._write(state)
+        r = self.submit("ambiguous", [{"op": "update_item", "id": "legacy", "patch": {"title": "wrong"}}])
+        self.assertEqual(r.json["error"], "ambiguous_ref")
+        replay = self.submit("old-a", [{"op": "add_item", "text": "ignored", "client_ref": "legacy"}])
+        self.assertTrue(replay.json["replayed"])
+        self.assertEqual(replay.json["refs"], {"legacy": self.refs["ph1"]})
+        r = self.submit("by-id", [{"op": "update_item", "id": self.refs["ph1"], "patch": {"title": "explicit"}}])
+        self.assertEqual(r.status_code, 200, r.json)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

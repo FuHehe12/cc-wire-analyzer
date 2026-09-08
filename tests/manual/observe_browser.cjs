@@ -13,6 +13,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
  assert(phases.length>0,'Use a semantic sample with explicit coverage');
  await page.goto(base);await page.getByRole('tab',{name:'实时分析',exact:true}).click();
  await page.getByLabel('观测',{exact:true}).selectOption(oid);
+ await page.locator('#om-semantic > summary').click();
  await page.waitForFunction(()=>document.querySelectorAll('.om-wire').length>0);
  await page.screenshot({path:path.join(out,'01-semantic-overview.png'),fullPage:true});
  assert.equal(await page.locator('.om-node-phase').count(),phases.length);
@@ -33,7 +34,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
  assert((await page.locator('#om-detail-body').innerText()).includes(phases[0].covers[0]),'new revision retains selection');
  await page.unroute('**/api/observations?id='+oid);
  const forecasts=state.items.filter(i=>i.kind==='prediction');
- if(forecasts.length){await page.locator('.om-prediction-title').first().click();await page.screenshot({path:path.join(out,'03-forecast-review.png'),fullPage:true});}
+ if(forecasts.length){await page.locator('#om-future > summary').click();await page.locator('.om-prediction-title').first().click();await page.screenshot({path:path.join(out,'03-forecast-review.png'),fullPage:true});}
  await page.addScriptTag({path:'tools/checks/contrast_probe.js'});
  const contrast={};
  for(const theme of ['dark','classic','light']){
@@ -43,7 +44,7 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-review/browser-
    await page.screenshot({path:path.join(out,'theme-'+theme+'.png'),fullPage:true});
  }
  fs.writeFileSync(path.join(out,'contrast.json'),JSON.stringify(contrast,null,2));
- for(const [lang,title] of [['en','Semantic trace'],['ja','意味ベースの軌跡'],['zh','语义轨迹']]){
+ for(const [lang,title] of [['en','Work & goal changes'],['ja','作業と目標の変化'],['zh','工作与目标变化']]){
    await page.evaluate(l=>{LANG=l;obRender();},lang);
    const text=await page.locator('.om-header h2').innerText();assert.equal(text,title);
    console.log('language',lang,text);

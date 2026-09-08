@@ -219,6 +219,7 @@ _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/dag":                     ("captures", "dag"),
     "/api/actions":                 ("captures", "actions"),
     "/api/observations":            ("captures", "observations"),
+    "/api/observations/<oid>":      ("captures", "observations"),
     "/api/observations/trace":      ("captures", "observationTrace"),
     "/api/grep":                    ("captures", "grep"),
     "/api/stats":                   ("captures", "stats"),
@@ -296,7 +297,7 @@ _VIEW_PLACEHOLDER_SID2 = "snap_9f8e7d6"
 
 def _view_sample_ids() -> dict:
     """从本机数据里挑一条 rid、两个 sid。挑不到就留空（调用方退回占位符）。"""
-    out = {"rid": "", "date": "", "sid": "", "sid2": ""}
+    out = {"rid": "", "date": "", "sid": "", "sid2": "", "oid": ""}
     try:
         # 找「最新有数据的那天」而不是 today——理由同 `_view_default_query`：
         # 点开一片空白会被读成"这个端点坏了"，而它只是今天还没录到东西。
@@ -327,6 +328,13 @@ def _view_sample_ids() -> dict:
             out["sid2"] = ranked[1]["sid"]
     except Exception as e:
         log.warning("view: 取样例 sid 失败：%s", e)
+    try:
+        import observe_store
+        observations = observe_store.listing()
+        if observations:
+            out["oid"] = observations[0]["id"]
+    except Exception as e:
+        log.warning("view: 取样例 oid 失败：%s", e)
     return out
 
 
@@ -348,6 +356,9 @@ def _view_example(rule: str, ids: dict) -> tuple[str, bool]:
         rid, date = ids.get("rid") or "", ids.get("date") or ""
         url = rule.replace("<rid>", rid or _VIEW_PLACEHOLDER_RID)
         return (url + ("?date=" + date if date else "")), bool(rid)
+    if "<oid>" in rule:
+        oid = ids.get("oid") or ""
+        return rule.replace("<oid>", oid or "obs_1a2b3c4"), bool(oid)
     if "<sid>" in rule:
         sid = ids.get("sid") or ""
         return rule.replace("<sid>", sid or _VIEW_PLACEHOLDER_SID), bool(sid)
@@ -819,7 +830,8 @@ def actions_view():
     schema，默认只给工具名——那段 168 KB / 约 45k token 且整段会话一字不变，是上下文膨胀
     最大的单一来源）/ `view`（`full` 缺省=对话全文；`dialog`=纯对话流——只有用户/AI 输出
     与思考，工具明细压成每步一行摘要，给"读懂会话讲了什么"的外环分析用，形状见
-    `actions.py` 模块说明）。
+    `actions.py` 模块说明）。`include_aux=false` 排除辅助泳道，保留主线和子代理；
+    只接受 true/false，默认 true。过滤不改变原始索引游标，空增量返回 done=true。
     """
     import actions
 
@@ -834,6 +846,10 @@ def actions_view():
     lane = request.args.get("lane", "")
     sess = request.args.get("session", "")
     since = max(0, _to_int(request.args.get("since", 0), 0))
+    aux_arg = request.args.get("include_aux", "true")
+    if aux_arg not in ("true", "false"):
+        return jsonify(error="bad_include_aux", detail="include_aux 必须为 true 或 false"), 400
+    include_aux = aux_arg == "true"
     limit = max(1, min(_to_int(request.args.get("limit", 500), 500), 5000))
     want_tools = request.args.get("tools", "") in ("1", "true", "yes")
     view = request.args.get("view", "full")
@@ -851,14 +867,17 @@ def actions_view():
         rows = [(i, e) for i, e in rows if (node_of.get(e.get("id")) or {}).get("lane") == lane]
     if sess:
         rows = [(i, e) for i, e in rows if str(e.get("session_id") or "").startswith(sess)]
+    if not include_aux:
+        rows = [(i, e) for i, e in rows if (node_of.get(e.get("id")) or {}).get("lane") != "aux"]
     total = len(rows)
     page = [(i, e) for i, e in rows if i >= since][:limit]
 
     # 去重要从头看起：只输出**首次出现**的历史消息，而 since 之前那些已经给过了，
     # 得把它们的哈希先喂进 seen，否则续读会把整段历史重新吐一遍。块级 bseen 同理
     # （warm 请求的响应块 + 历史 assistant 正文），否则续读会把已出过的 [说] 重出成 [助手]。
-    warm = [(i, e) for i, e in rows if i < since]
-    recs = capture_store.records_by_index([e for _, e in warm + page], date, src)
+    # An idle poll has no content to deduplicate; do not reread the entire history.
+    warm = [(i, e) for i, e in rows if i < since] if page else []
+    recs = capture_store.records_by_index([e for _, e in warm + page], date, src) if page else []
     seen: set = set()
     bseen: set = set()
     for (_, e), rec in zip(warm, recs[:len(warm)]):
@@ -896,9 +915,9 @@ def actions_view():
     head = (f"# 录制 {date} · 泳道 {lane or '全部'} · 第 {page[0][0] if page else since} 步起，"
             f"本次 {len([1 for l in lines if l.startswith(chr(10) + '#')])} 步 / 共 {total} 步")
     out = {
-        "date": date, "source": src, "lane": lane, "session": sess,
+        "date": date, "source": src, "lane": lane, "session": sess, "include_aux": include_aux,
         "total": total, "next": last_seq + 1,
-        "done": (not stopped) and bool(page) and page[-1][0] == rows[-1][0] if rows else True,
+        "done": (not stopped) and (not page or page[-1][0] == rows[-1][0]),
         "guard": actions.GUARD,
         "content": actions.wrap(head + "\n" + "\n".join(lines)),
     }
@@ -926,8 +945,9 @@ def observation_trace():
         return jsonify(error="internal", detail=str(e)), 500
 
 
+@app.route("/api/observations/<oid>", methods=["GET"])
 @app.route("/api/observations", methods=["GET", "POST"])
-def observations():
+def observations(oid=None):
     """外环观测状态：一个路径两个方法。
 
     **内外环**：内环是被观测的 agent 自己那圈；外环是另开的一个 AI，读 `/api/actions`
@@ -953,7 +973,7 @@ def observations():
     import observe_store as OB
     try:
         if request.method == "GET":
-            oid = request.args.get("id", "")
+            oid = oid or request.args.get("id", "")
             if not oid:
                 return jsonify({"items": OB.listing()})
             st = OB.read(oid)
@@ -961,12 +981,24 @@ def observations():
                 return jsonify({"error": "not_found", "id": oid}), 404
             return jsonify(st)
 
-        body = request.get_json(silent=True) or {}
-        oid = body.get("id") or ""
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            raise OB.ObserveError("bad_payload", "请求 body 必须为 JSON 对象")
+        response_mode = request.args.get("response", "full")
+        if response_mode not in ("refs", "changed", "full"):
+            raise OB.ObserveError("bad_response", "response 必须为 refs / changed / full")
+        oid = body.get("id", "")
+        if not isinstance(oid, str):
+            raise OB.ObserveError("bad_id", "id 必须为字符串")
         if not oid:
-            return jsonify(OB.create(body.get("scope") or {}, body.get("title") or ""))
-        if body.get("delete"):
+            OB.check_fields(body, {"scope", "title"}, "新建观测")
+            return jsonify(OB.create(body.get("scope", {}), body.get("title", "")))
+        if "delete" in body:
+            OB.check_fields(body, {"id", "delete"}, "删除观测")
+            if body["delete"] is not True:
+                raise OB.ObserveError("bad_payload", "delete 必须为 true")
             return jsonify(OB.delete(oid))
+        OB.check_fields(body, {"id", "submission_id", "base_revision", "ops"}, "提交")
         ops = body.get("ops") or []
         has_span = isinstance(ops, list) and any(isinstance(op, dict) and
             ("cover_span" in op or isinstance(op.get("patch"), dict) and "cover_span" in op["patch"])
@@ -980,10 +1012,9 @@ def observations():
             replay = any(x.get("sid") == body.get("submission_id") for x in current.get("submits", []))
             if not replay:
                 if body.get("base_revision") is not None:
-                    try:
-                        base_revision = int(body["base_revision"])
-                    except (TypeError, ValueError) as e:
-                        raise OB.ObserveError("bad_revision", "base_revision must be an integer") from e
+                    base_revision = body["base_revision"]
+                    if type(base_revision) is not int or base_revision < 0:
+                        raise OB.ObserveError("bad_revision", "base_revision 必须为非负整数")
                     if base_revision != current.get("revision", 0):
                         raise OB.ObserveError("conflict", "Observation revision changed; reread before merging")
                 import observe_scope
@@ -997,11 +1028,18 @@ def observations():
                     raise OB.ObserveError("bad_cover_span", str(e)) from e
         r = OB.apply(oid, body.get("submission_id") or "",
                      body.get("base_revision"), ops)
-        return jsonify({"ok": True, "replayed": r["replayed"], "refs": r["refs"],
-                        "revision": r["state"]["revision"], "state": r["state"]})
+        out = {"ok": True, "replayed": r["replayed"], "refs": r["refs"],
+               "revision": r["state"]["revision"]}
+        if response_mode == "full":
+            out["state"] = r["state"]
+        elif response_mode == "changed":
+            changed = set(r["changed_ids"])
+            out["items"] = [i for i in r["state"]["items"] if i["id"] in changed]
+            out["cursor"] = r["state"]["cursor"]
+        return jsonify(out)
     except OB.ObserveError as e:
         # 冲突要把**当前状态**一并退回：只给一句"版本不对"，调用方还得再拉一次才能合并。
-        code = 409 if e.code == "conflict" else 400
+        code = 409 if e.code == "conflict" else 404 if e.code == "not_found" else 400
         out = {"ok": False, "error": e.code, "detail": str(e)}
         if e.code == "conflict":
             try:

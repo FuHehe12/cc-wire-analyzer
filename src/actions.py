@@ -170,6 +170,7 @@ def render_step(node: dict, rec: dict | None, seen: set, bseen: set, view: str =
     「返回是什么 → 它接着做了什么」。
     """
     L = [f"\n#{node['id']} {node.get('ts_start', '')[11:19]} "
+         f"泳道={node.get('lane') or 'unknown'} "
          f"{node.get('turn') or ''} {node.get('model') or ''} "
          f"{(node.get('total_ms') or 0) / 1000:.1f}s"
          + (" 【失败】" if node.get("has_error") else "")]

@@ -12,11 +12,11 @@ const source = fs.readFileSync(path.join(project, 'src/static/observe-map.js'), 
 // Test-only access to the actual pure reader functions, not a second algorithm.
 const seam = 'window.ObserveMap={render,refresh,clear};';
 assert.equal(source.split(seam).length, 2, 'reader API seam must be unique');
-const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText};');
+const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml};');
 const context = {window:{}, document:{getElementById:()=>null}, URLSearchParams, AbortController, LANG:'en'};
 vm.createContext(context);
 vm.runInContext(code, context, {filename:'observe-map.js'});
-const {words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText} = context.window.audit;
+const {words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml} = context.window.audit;
 let passed = 0;
 function test(name, fn) {fn(); passed++; console.log('PASS ' + name);}
 function pred(extra={}) {
@@ -95,25 +95,51 @@ test('recorded markup stays escaped rather than becoming executable UI',()=>{
   const p=reset(pred({text:'<img src=x onerror=alert(1)>'}));
   const html=itemDetail(p);assert(!html.includes('<img'));assert(html.includes('&lt;img'));
 });
-test('legacy phase anchors stay collapsed until semantic coverage is available',()=>{
+test('relationships start folded and retain explicit expansion for legacy and semantic records',()=>{
   reset();M.folds.clear();
   M.state.items=[{id:'legacy',kind:'phase',text:'Old phase',evidence:['frontier']}];
   let html=graphHtml();
   assert(html.startsWith('<details '));assert(!html.split('>')[0].includes(' open'));
   M.folds.add('legacy-phases');assert(graphHtml().split('>')[0].includes(' open'));
-  M.state.items[0].covers=['frontier'];assert(!graphHtml().startsWith('<details '));
+  M.state.items[0].covers=['frontier'];assert(graphHtml().startsWith('<details '));
+  assert(!graphHtml().split('>')[0].includes(' open'));
+  M.folds.add('relations');assert(graphHtml().split('>')[0].includes(' open'));
   M.state.items[0].covers=[];M.state.items.push({id:'goal',kind:'goal',text:'Goal'});
-  assert(!graphHtml().startsWith('<details '));
+  assert(graphHtml().startsWith('<details '));
 });
-test('overview counts unique recorded coverage and surfaces at most three live open claims',()=>{
+
+test('report preserves overflow entries and excludes retracted claims',()=>{
+  reset();M.state.items=[...[1,2,3,4].map(i=>({id:'p'+i,kind:'phase',title:'Work '+i})),
+    {id:'bad',kind:'phase',text:'Withdrawn claim',status:'retracted'},
+    {id:'blocked',kind:'goal',text:'Waiting for input',progress:'blocked'}];
+  const html=reportHtml();
+  assert(html.includes('Work 4'));assert(html.includes('data-om-fold="report-workDone"'));
+  assert(!html.includes('Withdrawn claim'));assert(html.includes('Waiting for input'));
+});
+
+test('goal flow preserves one anchor, explicit branches, inference and original evidence',()=>{
+  reset();M.folds.clear();
+  const event=(id,after,parent_ids)=>({id,after,parent_ids,before:'Inspect only',actor:'ai',trigger:'A check failed',basis:'inferred',status:'active',evidence:['req_change']});
+  const it={id:'g',kind:'goal',goal_flow:{anchor:{user_text:'<script>user</script>',understanding:'Inspect project',choices:['Scope chosen by AI'],basis:'inferred',evidence:['req_start']},
+    iterations:[event('G0','Inspect',[]),event('G1a','Repair',['G0']),event('G1b','Explain',['G0'])]}};
+  const html=goalFlowHtml(it,true);
+  assert.equal((html.match(/class="om-goal-anchor"/g)||[]).length,1);
+  const current=html.split('class="om-goal-current"')[1].split('<details')[0];
+  assert(current.includes('Repair'));assert(current.includes('Explain'));assert(!current.includes('Inspect'));
+  assert(html.includes(words.en.inferred));assert(!html.includes('<script>'));assert(html.includes('&lt;script&gt;'));
+  assert(html.includes('data-om-id="req_start"'));assert(html.includes('data-om-id="req_change"'));
+  assert(html.includes('<del>Inspect only</del>'));assert(html.includes('<ins>Repair</ins>'));
+  assert(goalFlowHtml(null).includes(words.en.noGoalFlow));
+});
+test('overview counts unique recorded coverage without duplicating report entries',()=>{
   reset();trace([{id:'frontier'},{id:'main-1'}]);
   M.state.items=[{id:'phase-1',kind:'phase',covers:['frontier','not-in-scope']},
     {id:'phase-2',kind:'phase',covers:['frontier','main-1']},
     ...[1,2,3,4].map(i=>({id:'open-'+i,kind:'open',title:'Issue '+i,text:'Details '+i})),
     {id:'retracted',kind:'open',title:'Hidden issue',status:'retracted'}];
   const html=overviewHtml();
-  assert.equal((html.match(/class="om-attention-link"/g)||[]).length,3);
-  assert(html.includes('Issue 1'));assert(!html.includes('Issue 4'));assert(!html.includes('Hidden issue'));
+  assert.equal((html.match(/class="om-attention-link"/g)||[]).length,0);
+  assert(!html.includes('Hidden issue'));
   assert(html.includes('<strong>2</strong><span>'+words.en.recordedCoverage));
   assert(html.includes('<strong>4</strong><span>'+words.en.open));
 });

@@ -163,7 +163,7 @@ class RouteTests(unittest.TestCase):
         return [self.records.get(e["id"]) for e in entries]
 
     def add(self, rid, sec, r, lane="s-main"):
-        self.rows.append({"id": rid, "off": len(self.rows) * 100, "len": 100, "session": "s-1"})
+        self.rows.append({"id": rid, "off": len(self.rows) * 100, "len": 100, "session_id": "s-1"})
         self.records[rid] = r
         self.dag["nodes"].append(node(rid, sec, lane=lane))
 
@@ -191,6 +191,56 @@ class RouteTests(unittest.TestCase):
         self.assertNotIn("答一", page2)                  # warm 块级预热挡住重出
         whole = self.get()["content"]
         self.assertEqual(whole.count("答一"), 1)          # 全量读同样只出一次
+
+    def test_idle_poll_is_done_without_reading_history(self):
+        self.add("req_a", 1, rec([{"role": "user", "content": "问题"}], [say("答案")]))
+        for since in (1, 9):
+            with self.subTest(since=since), patch.object(store, "records_by_index") as read:
+                result = self.get(since=since)
+                self.assertTrue(result["done"])
+                self.assertEqual(result["next"], since)
+                self.assertNotIn("#req_", result["content"])
+                read.assert_not_called()
+
+    def test_aux_filter_preserves_global_cursor_and_subagents_across_pages(self):
+        lanes = ["s-main", "aux", "agent-child", "s-main", "aux"]
+        for i, lane in enumerate(lanes):
+            self.add(f"req_{i}", i, rec([], [say(f"响应{i}")]), lane)
+        default = self.get(view="dialog")
+        self.assertTrue(default["include_aux"])
+        self.assertEqual((default["total"], default["next"]), (5, 5))
+        pages, cursor = [], 0
+        for expected_next in (1, 3, 4):
+            result = self.get(view="dialog", include_aux="false", since=cursor, limit=1)
+            self.assertEqual(result["next"], expected_next)
+            self.assertEqual(result["total"], 3)
+            self.assertFalse(result["include_aux"])
+            pages.append(result["content"])
+            cursor = result["next"]
+        self.assertTrue(result["done"])
+        combined = "\n".join(pages)
+        self.assertIn("泳道=agent-child", combined)
+        self.assertIn("泳道=s-main", combined)
+        for i in (0, 2, 3):
+            self.assertEqual(combined.count(f"#req_{i}"), 1)
+        for i in (1, 4):
+            self.assertNotIn(f"#req_{i}", combined)
+        with patch.object(store, "records_by_index") as read:
+            idle = self.get(include_aux="false", since=cursor)
+            self.assertTrue(idle["done"])
+            read.assert_not_called()
+        self.add("req_5", 5, rec([], [say("新增回复")]), "agent-child")
+        fresh = self.get(include_aux="false", since=cursor)
+        self.assertEqual(fresh["next"], 6)
+        self.assertIn("#req_5", fresh["content"])
+        self.assertNotIn("#req_4", fresh["content"])
+
+    def test_include_aux_rejects_invalid_values(self):
+        for value in ("", "0", "False", "yes", "nonsense"):
+            with self.subTest(value=value):
+                response = self.client.get("/api/actions", query_string={"date": DATE, "include_aux": value})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.get_json()["error"], "bad_include_aux")
 
 
 if __name__ == "__main__":

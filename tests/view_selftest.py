@@ -266,6 +266,8 @@ def main() -> None:
     # 这一节守的不是"页面上有个输入框"，而是**预填进去的那个地址真能跑**。
     # 样例的全部价值在于照抄就能用；一个跑不通的样例比不给样例更糟——它把人引向一次失败。
     import snapshot_store as SS
+    import observe_store as OB
+    OB.create({"date": DATE}, "浏览面观测样例")
     _rec0 = json.loads((CS.CAPTURES_DIR / f"{DATE}.jsonl").read_text(
         encoding="utf-8").splitlines()[0])
     _s1 = SS.create_capture(_rec0, label="样例一")

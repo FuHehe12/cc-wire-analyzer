@@ -387,13 +387,15 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 `lane` 是分类器现算的（索引里没有），本端点走 `/api/dag` 那份缓存取，同一天不重算。
 
+`include_aux=true|false` 默认 true；false 过滤辅助安全检查，保留子代理。非法值返回400 bad_include_aux，响应回显布尔值。`next` 统一使用 date/source 原始索引位置（筛选及去重前），不是 total 或去重计数；空增量 done:true 保持 next，不重新读历史。每步标题标注真实“泳道=ID”。session 范围推荐 view=dialog&include_aux=false，日期/来源/筛选范围变化须分别维护水位。
+
 ### `GET|POST /api/observations` — 外环观测状态（一个路径两个方法）
 
 外环观测者维护的清单存在这里。**内环**是被观测的 agent 自己那圈；**外环**是另开的一个 AI，
 读 `/api/actions` 拿会话全文，判断完把结论小批量写回来。CCWA 负责事实、持久化与显示，
 **不跑模型**——事实由程序产出，AI 只解释意义。界面上是「实时分析」标签页。
 
-**`GET`**：不带 `id` 列全部（摘要，不含条目正文）；带 `id` 取一份完整状态。
+**`GET`**：不带 `id` 列全部（摘要，不含条目正文）；带 `id` 取一份完整状态；`GET /api/observations/<id>` 是同义单观测入口，不落入上游代理。
 
 **`POST`**：body 不带 `id` = 新建（`{scope:{date,source,lane,session}, title}`，返回含 `id`）；
 带 `id` = 提交一批操作；带 `delete:true` = 删除。
@@ -412,7 +414,7 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 |---|---|
 | `submission_id` | **不能省**。外环是另一个进程，超时重试是常态；同一个 id 重放原样退回当前状态、不重复建条目（响应 `replayed:true`） |
 | `base_revision` | 对不上返回 **409**，body 里连当前 `state` 一起给——只回一句「版本不对」的话，调用方还得再拉一次才能合并。不给这个字段则跳过版本检查（首版单写者的便利口子） |
-| `client_ref` | 本批内给新条目起的临时名，`link_items` 可直接引用；响应 `refs` 给出临时名 → 真实 id 的对照表。**省一轮往返**：不必先提交一次拿 id 再提交第二次 |
+| `client_ref` | 观测内持久唯一名称，当前批后续操作及后续批次可直接引用；不允许 i_ 前缀或首尾空格。响应 `refs` 仅列本批创建的名称，完整映射在 `state.refs`。重复新建返回 duplicate_ref；历史重名返回 ambiguous_ref，需改用真实 ID；流水截断不删除已持久名称 |
 | `kind` | `goal` 目标 / `phase` 阶段 / `artifact` 产物 / `check` 核验 / `finding` 发现 / `open` 未决 / `prediction` 预测 / `deviation` 偏差 |
 | `status` | `tentative` 待证 / `supported` 有据 / `unresolved` 未解 / `retracted` 已撤回。**与被观测工作的进度分开**——不能用一个 done 同时表示「任务结束」和「结论正确」 |
 | `type`（关联） | `belongs_to` / `depends_on` / `produces` / `supports` / `contradicts` |
@@ -429,6 +431,26 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 存储是 `~/.cc-wire-analyzer/observations/<id>.json`，原子替换。与原始录制隔离：不覆盖
 `.analysis.json` / `.semantic.json`，也不塞进 snapshot note。
+
+#### 严格写入与紧凑响应
+
+操作字段为：add_item = op/client_ref 加条目字段；update_item = op/id/patch（非空对象）；retract_item = op/id/reason（可选字符串）；link_items = op/from/to/type/remove；set_cursor = op/cursor（必填非负整数）。条目字段为 kind/text/status/evidence/title/progress/covers/cover_span/forecast/goal_flow，其中 cover_span 仅由 HTTP 展开。text 最多4000字符、evidence 最多50项、reason 最多1000字符、观测/条目 title 最多200字符；超限明确拒绝，不截断。旧状态读取与省略字段的更新不重验旧值。未知字段或非法类型一律400，detail 指明错误；无效整批不写状态、水位、history 或 submission。重复写相同值、添加已存在关系仍允许成功。新建与提交外壳也拒绝未知字段、非对象 JSON；base_revision 如提供须为非负整数。
+
+`link_items.remove:true` 按 from/to/type 精确删除关系，并将删除前源条目完整保存至 history；remove 仅接受布尔值，type 缺省 belongs_to，目标关系不存在返回400 no_link。`patch.links` 不支持且明确拒绝。
+
+`POST /api/observations?response=full|refs|changed` 的默认值为 full，兼容旧消费者：full 返回 `{ok,replayed,refs,revision,state}`；refs 返回 `{ok,replayed,refs,revision}`；changed 另加受影响条目的当前 `items`（含 history）与 `cursor`。重放按原批影响 ID 返回现态；旧流水没有影响 ID 时 changed 保守返回全部条目。409 仍附当前 state；新建/删除回执不受模式影响。模式无效返回400 bad_response。
+
+旧观测的 client_ref 从仍保留的 submits 合并，首次成功写入时持久化为 state.refs；重名多义保存为 null，禁止自动选一个。早已从旧流水淘汰的名称无法恢复，须用真实 ID。已成功 submission 仍优先幂等重放，不重新验证、执行旧操作；不得因新增唯一性规则而打破旧批次重试。
+
+`GET /api/ai-guide` 随打包产物提供 [AI_USAGE](AI_USAGE.md) 中每种操作的完整最小 JSON、全部字段取值和目标流示例，离线调用方不必寻找源码契约文件。
+
+#### A→G 连续目标流
+
+仅 goal 条目可携带 `goal_flow={anchor,iterations}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
+
+iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,basis,parent_ids?,status?,verification?}`。id 在流内唯一，1–64字符字母/数字/下划线/连字符，首字符为字母或数字；actor 为 user / ai / user_ai，basis 同 anchor。before/after/trigger 为非空最多4000字符。parent_ids 最多20个唯一的此前迭代 ID，首条默认空数组，后续必须非空。status 默认 active，另有 achieved / unresolved；achieved 必须附 verification。verification 必填 method/text/evidence，method 为 user_acceptance / independent_check，text 非空最多4000字符。所有 evidence 必须含1–50个不重复的有效 req_ ID。
+
+更新必须保留原 anchor 与已有迭代的完整前缀，修正、后续目标、达成与未决都追加迭代并关联前项，不得原位覆盖历史判断。缺省可选字段规范化后比较。非法结构返回 bad_goal_flow，覆盖既有结构返回 goal_flow_frozen，修改已承载目标流的 kind 返回 goal_flow_locked，多个未撤回目标流返回 multiple_goal_flows，均为400且整批不落盘。证据存在性及语义支持仍需外环/用户核对，结构校验不替代验收。
 
 #### 语义图条目与预测边界（兼容旧条目）
 
