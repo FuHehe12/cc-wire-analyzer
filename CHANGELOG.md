@@ -1,6 +1,6 @@
 # 变更记录
 
-这里记录项目速览、未发布改动和当前版本。更早版本见[变更历史](CHANGELOG-history.md)；变更按新增、修复、变更或文档分类，说明问题、改动与必要影响，详细调查过程查 commit 与本地 issue。
+这里记录项目速览、未发布改动和当前版本。未发布改动与最近版本在这里，更早版本见[变更历史](CHANGELOG-history.md)；变更按新增、修复、变更或文档分类，说明问题、改动与必要影响，详细调查过程查 commit 与本地 issue。
 
 ## 项目速览
 
@@ -11,6 +11,10 @@
 - **下一步**：本地语义轨迹与预测核对已集成，等待负责人检查真实演示；继续由外部宿主运行观察 Agent，验证长时增量维护的判断质量。运行界面不代替宿主启动模型，也不自动判断目标达成。
 - **保留的产品问题**：把反复出现的故障转为检查规则，目前 `/api/diagnose/trends` 只能辅助判断是否复发；是否利用 Claude Code 本地日志修正轮次来源，尚未采用；存储方面仍有骨架指针增量编码和“先压实再清理”的后续方案。指针列表从约 477 MB 降到约 10 MB 是历史估算，尚非本轮实测结果。
 - **macOS 升级提示**：自 v0.4.2 起，应用名由 `CCWireAnalyzer.app` 改为 `cc-wire-analyzer.app`，不会覆盖 `/Applications` 中的旧名称，旧应用需要自行移除。
+
+## 未发布
+
+（暂无。下一条改动记在这里，发版时定稿为版本段。）
 
 ## v0.4.29 - 2026-09-08
 
@@ -87,81 +91,6 @@ The live-analysis view becomes a semantic observation graph (goals, phases, arti
 - 状態プロトコル・範囲展開・増分読み取り・フロントエンド回帰を CI に接続。ブラウザ手動回帰はグラフ・根拠ドリルダウン・予測・改訂リフレッシュ・三言語三テーマ・390/768/1280 幅をカバー。
 - ローカル複製の 54 リクエスト セッションで 5 つのセマンティック フェーズと予測リプレイを、247 リクエスト / 18 ターンで旧観測の圧縮を検証。デモは開発中の回顧と明記し、実録とスクリーンショットはローカル無視ディレクトリにのみ保持。
 
-## v0.4.28 - 2026-09-08
-
-### 中文
-
-给「外环观测者」开通读写：外环是另开的一个 AI，跟踪被观测 agent 做了什么、在做什么、接下来要做什么。
-
-#### 新增
-
-- `GET /api/actions`：把一条录制流还原成去重后的会话全文，一条 54 步主线由 19.8 MB 降到 241 KB，正文不截断；增量只有一个 `since`。
-- `GET|POST /api/observations`：外环观测状态读写，幂等重放、整批生效、改判留痕。
-- 「实时分析」标签页：观测清单按类分组，证据可点回具体请求。
-- 详情页加泳道内前后导航与时序图定位。
-- 本地说明书加入「三类文档与协作」章节。
-
-#### 变更
-
-- 恢复发版流程；`public/` 仍冻结，发版不更新它。
-- 产品源可独立生成 HTML 说明书；测试与工具按职责分目录。
-
-#### 修复
-
-- 文档审计增加具名参考文档的正文检查。
-
-#### 文档
-
-- API 契约补两个新端点；开发约定恢复发版章节，自测清单增至十三条。
-- 界面导览补详情页泳道导航；报文解读新增「拿网上流传的提示词对照录制」一节。
-- README 改为人读入口；变更记录统一以中文为准，本版段另附英文、日文译文供发版说明用。
-
----
-
-### English
-
-Read and write paths for an **external observer** — a separate AI that tracks what the observed agent did, is doing and will likely do next.
-
-#### Added
-
-- `GET /api/actions`: a recording stream rendered as a deduplicated transcript; one 54-step lane drops from 19.8 MB to 241 KB with nothing truncated. `since` is the only incremental flag.
-- `GET|POST /api/observations`: observation state, with idempotent retries, all-or-nothing batches and revisions kept on change.
-- "Live analysis" tab: the observer's list grouped by kind, evidence links back to the exact request.
-- Detail view: previous/next within a lane, plus jump-to-timeline.
-- Local manual: new chapter on the three document roles.
-
-#### Changed
-
-- Releases resume; `public/` stays frozen and is not updated by a release.
-- The manual builds from product sources; tests and tools split by role.
-
-#### Fixed
-
-- Doc audit now checks the body of named reference documents.
-
----
-
-### 日本語
-
-**外部オブザーバー**（対象エージェントの行動・現状・次の一手を追う別の AI）向けに読み書きの経路を追加。
-
-#### 追加
-
-- `GET /api/actions`：記録ストリームを重複除去済みの会話全文として返す。54 ステップのレーンが 19.8 MB から 241 KB に、本文の切り詰めなし。増分指定は `since` のみ。
-- `GET|POST /api/observations`：観測状態の読み書き。再送は冪等、バッチは全件成立か不成立、改訂は履歴に残る。
-- 「リアルタイム分析」タブ：観測一覧を種別ごとに表示、根拠から該当リクエストへ移動可能。
-- 詳細画面：レーン内の前後移動とタイムラインへのジャンプ。
-- ローカル説明書：「三種類のドキュメントと協働」の章を追加。
-
-#### 変更
-
-- リリースを再開。`public/` は凍結のままで、リリースでも更新しない。
-- 説明書は製品ソースから生成。テストとツールを役割別に整理。
-
-#### 修正
-
-- ドキュメント監査が参照文書の本文も検査するようになった。
-
 ## 更早版本
 
-v0.4.27 及以前的说明见 [CHANGELOG-history.md](CHANGELOG-history.md)。
+v0.4.28 及以前的说明见 [CHANGELOG-history.md](CHANGELOG-history.md)。
