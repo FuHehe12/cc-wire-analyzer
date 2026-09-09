@@ -158,7 +158,10 @@ test('goal flow lays out explicit forks and joins, with no automatic work attrib
     {id:'unrelated',kind:'phase',text:'Must not infer from evidence',evidence:['req_G2a']}];
   assert.deepEqual(JSON.parse(JSON.stringify(flowLayers(events))).map(row=>row.map(x=>x.id)),[['G0'],['G1'],['G2a','G2b'],['G3']]);
   const html=flowDiagramHtml(g);assert.equal((html.match(/data-ag-node="@anchor"/g)||[]).length,1);
-  assert.equal((html.match(/data-ag-node="G/g)||[]).length,5);assert.equal((html.match(/<details/g)||[]).length,1);assert(html.includes('class="ag-help"'));
+  assert.equal((html.match(/data-ag-node="G/g)||[]).length,5);
+  // 图上只该有两个折叠块：顶部的当前理解与现状，和「怎么看这张图」。目标本身不藏在折叠里。
+  assert.equal((html.match(/<details/g)||[]).length,2);assert(html.includes('class="ag-help"'));
+  assert(html.includes('data-om-shut="reading"'));
   assert(!html.includes('Original plan is outdated'));assert(!html.includes('Must not infer'));
   assert(!goalDetail('G2a').includes('Original plan is outdated'));assert(!goalDetail('G2b').includes('Original plan is outdated'));
   assert(goalDetail('@anchor').includes('Full audit'));
@@ -369,5 +372,33 @@ test('the overall goal is the outer plane and tasks are its inner loop',()=>{
   assert(!/<b>G[0-9]+<[/]b>/.test(html),'iterations are no longer numbered as goals');
   assert(html.includes(words.en.change_goal),'the change that raised a new overall goal is named as such');
   M.taskOpen.clear();
+});
+test('the two current summaries fold away but never disappear without a trace',()=>{
+  reset();
+  const f={anchor:{user_text:'Inspect',understanding:'Read the source'},iterations:[
+    {id:'g0',after:'Find the cause',actor:'user',trigger:'Inspect',evidence:['req_a'],parent_ids:[]}],
+    current:{goal_ids:['g0'],understanding:'Find the cause before changing code',situation:'The cause is still unknown',evidence:['req_a']}};
+  const open=readingHtml(f);
+  assert(/<details class="ag-reading" data-om-shut="reading" open>/.test(open),'it starts expanded: this is the first thing a reader needs');
+  assert(open.includes(words.en.readingFold));
+  assert(open.includes('Find the cause before changing code'));
+  assert(open.includes('Find the cause before changing code · The cause is still unknown'),'the collapsed line keeps a real gist, not just a label');
+  M.shut.add('reading');
+  const shut=readingHtml(f);
+  assert(!/ open>/.test(shut.slice(0,shut.indexOf('</summary>'))),'a reader who folded it keeps it folded');
+  assert(shut.includes('The cause is still unknown'),'folding hides it visually, it is still in the page and in the text');
+  assert(readingHtml(f,true).startsWith('<section class="ag-reading">'),'the detail column shows it plainly, without a second fold');
+  M.shut.clear();
+  // 一句话汇报：有就顶在最上面，也是折起来后留在页面上的那一行。
+  const brief={...f,current:{...f.current,headline:'The export is verified; the guide is next'}};
+  const withHeadline=readingHtml(brief);
+  assert(withHeadline.includes('<p class="ag-headline">The export is verified; the guide is next</p>'));
+  assert(withHeadline.indexOf('ag-headline')<withHeadline.indexOf('ag-reading-pair'),'the one-line report comes first');
+  M.shut.add('reading');
+  assert(readingHtml(brief).includes('<span class="ag-reading-peek">The export is verified; the guide is next</span>'),
+    'folded, the page keeps the spoken line rather than the first 120 characters of a bulletin');
+  M.shut.clear();
+  assert(!readingHtml(f).includes('ag-headline'),'no headline is invented for records that have none');
+  assert(readingHtml({}).includes(words.en.readingMissing),'an empty reading still says it is missing rather than showing a blank fold');
 });
 console.log('\n'+passed+' observation reader checks passed.');

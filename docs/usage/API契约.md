@@ -506,9 +506,11 @@ iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,bas
 
 旧 flow 可继续完全省略 tasks/task_id/change；tasks 与 current 也可分别启用。若在旧 flow 上开始任务归属，保留全部无任务字段的旧 G，追加第一项任务及 initial G；不能改写旧 G 来补标。首次显式归属之后新增的 G 均须提供 task_id/change。任务可并行，也可随后 refine 较早任务；不要求父边是数组中紧邻的 G。turn 不会将旧任务标为达成、替代或结束；这类状态若有证据，仍显式追加 events。
 
-`current` 是可更新的当前说明，只能含 `{goal_ids,understanding,situation,evidence,carryover?}`。goal_ids 必须是1–20个不重复的已有 G ID，可引用多个任务的 G；understanding（它对要求的理解）与 situation（它对现状的判断）均非空、最多4000字符；evidence 沿用1–50个有效请求 ID。可选 carryover 是非空、最多4000字符的持续要求与旧任务残件说明。当前说明不从最新 G、status 或完成声明自动生成，也不证明验收。原因假设或现状判断变了但期望结果未变时，可只更新 current，不新增 G。
+`current` 是可更新的当前说明，只能含 `{goal_ids,understanding,situation,evidence,carryover?,headline?}`。可选 `headline` 是一句口头汇报，非空、**最多120字符**——上限是硬的：程序管不住措辞，但管得住长度，一句话装不下七件事的清单，写的人只能挑最重要的说。省略即没有，页面不会替它从长文里截一句。goal_ids 必须是1–20个不重复的已有 G ID，可引用多个任务的 G；understanding（它对要求的理解）与 situation（它对现状的判断）均非空、最多4000字符；evidence 沿用1–50个有效请求 ID。可选 carryover 是非空、最多4000字符的持续要求与旧任务残件说明。当前说明不从最新 G、status 或完成声明自动生成，也不证明验收。原因假设或现状判断变了但期望结果未变时，可只更新 current，不新增 G。
 
-这两段是**概览，不是工作日志**（260909 实测口径）：每件事一句话讲结果、最多带一个有说服力的数字；「未验收／未确认／未完成／搁置」这类判断必须保留；验证过程与逐项数字写进对应 G 的 trigger、verification 与事件里——分层的位置本来就在那儿，不另开字段。粒度判据一句话：同事口头汇报会提这个吗。
+这两段是**概览，不是工作日志**（260909 实测口径）：每件事一句话讲结果、最多带一个有说服力的数字；「未验收／未确认／未完成／搁置」这类判断必须保留；验证过程与逐项数字写进对应 G 的 trigger、verification 与事件里。粒度判据一句话：同事口头汇报会提这个吗。
+
+`headline` 是这条纪律的落点。反例（260909 实测被判不可读）：「当天依次推进七件事：①切割链默认引擎由 Word COM 换成 Aspose 并用33本文档实测内容等价与速度差；②修复附录显示异常……」——读的人要读完七条才知道现在是什么状况。正例：「切割引擎换成 Aspose 已经跑通，现在在做图片转换失败的可见化；报告核对还没经用户验收。」直接陈述有什么、做到哪、什么没落地，不写实测了什么、设置了什么。
 
 提供 current 会整体替换旧说明，须重新提交必填四字段；此次省略 carryover 会清除旧 carryover，因此仍适用的约束和残件须主动保留。完整 goal_flow 或 delta 都可省略整个 current，保留已保存值；不接受 null 清除。current 的旧版随条目更新进入 history，A、tasks、G、events 仍保持原前缀。
 

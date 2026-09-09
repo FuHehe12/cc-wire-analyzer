@@ -459,6 +459,26 @@ class GoalMistakenAndMode(unittest.TestCase):
         self.assertEqual(projected["g0"]["status"], "mistaken", "后来的判定替换先前的判定")
         self.assertEqual(projected["g1"]["status"], "active", "对一个 G 的再判定不外溢到别的 G")
 
+    def test_headline_is_capped_so_a_bulletin_cannot_fit(self):
+        """260909 用户口径：这里要像口头汇报，30 秒说清是什么事，不是罗列七件事。"""
+        value = tasked()
+        value["current"] = current(headline="报告核对已收尾，正在写操作指南")
+        self.assertEqual(validate(value)["current"]["headline"], "报告核对已收尾，正在写操作指南")
+        self.assertNotIn("headline", validate(dict(tasked(), current=current()))["current"],
+                         "旧观测没有就保持没有，不从长文里替它编一句")
+        for bad in ["", " ", "汇" * 121, None, 12, ["x"]]:
+            value = tasked()
+            value["current"] = current(headline=bad)
+            self.reject(value)
+        # 上限是硬的，正好 120 可以，121 就不行——一句话装不下清单，写的人只能挑重点。
+        value = tasked()
+        value["current"] = current(headline="汇" * 120)
+        self.assertEqual(len(validate(value)["current"]["headline"]), 120)
+        # current 整体替换：省略 headline 就是清除它，和 carryover 一样。
+        previous = validate(dict(tasked(), current=current(headline="先收尾报告")))
+        later = validate(dict(tasked(), current=current()), previous)
+        self.assertNotIn("headline", later["current"])
+
     def test_overall_goal_change_is_marked_apart_from_a_task_switch(self):
         """260909 用户口径：T 是 G 的内环；换一件交付是 turn，整体结果诉求变了才是 goal。"""
         good = tasked()

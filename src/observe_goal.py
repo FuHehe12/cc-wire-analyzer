@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 
 TEXT_MAX = 4000
+HEADLINE_MAX = 120
 ITERATIONS_MAX = 200
 EVENTS_MAX = 2000
 EVIDENCE_MAX = 50
@@ -165,7 +166,7 @@ def _task_links(tasks, iterations):
 
 def _current(value, iteration_ids):
     raw = _object(value, {"goal_ids", "understanding", "situation", "evidence"},
-                  {"carryover"}, "current")
+                  {"carryover", "headline"}, "current")
     ids = raw["goal_ids"]
     if (not isinstance(ids, list) or not 1 <= len(ids) <= PARENTS_MAX
             or any(not isinstance(gid, str) or gid not in iteration_ids for gid in ids)
@@ -177,6 +178,10 @@ def _current(value, iteration_ids):
               "evidence": _evidence(raw["evidence"], "current.evidence")}
     if "carryover" in raw:
         result["carryover"] = _text(raw["carryover"], "current.carryover")
+    # 口头汇报那一句。上限是硬的：程序管不住措辞，但管得住长度——一句话装不下
+    # 七件事的清单，写的人只能去挑最重要的说。
+    if "headline" in raw:
+        result["headline"] = _text(raw["headline"], "current.headline", HEADLINE_MAX)
     return result
 
 

@@ -593,6 +593,7 @@ headers 存的时候 `Authorization` 已脱敏，但 body 原样存——假设 
 | `cover_span` | `{"first_rid":"req_a","last_rid":"req_b"}`；HTTP 按当前 scope 展开同泳道闭区间为 covers，与 covers 互斥 |
 | `forecast` | 仅 prediction；`{"after_rid":"req_a","horizon_steps":5,"criterion":"执行回归测试"}`，窗口1–5000整数、条件非空最多2000字符；保存后原正文与 forecast 不可改写 |
 | `goal_flow` | 仅 goal；`{anchor,iterations,events?,tasks?,current?,mode?}`：A/G 目标内容冻结，events 追加状态或外环订正；完整结构见 API 契约，一个观测最多一个未撤回目标流 |
+| `goal_flow.current.headline` | 可选，一句口头汇报，非空且**最多120字符**；说清现在要什么结果、做到哪一步、什么还没落地，不列举、不写实测数字与配置项。页面把它放在最上面，也是折起说明后留在页面上的那一行 |
 | `goal_flow.mode` | 可选，`incremental`（现场逐轮跟随）或 `retrospective`（事后一次性复盘）；声明这份记录怎么建的，不描述被观察会话，可随时改、可在 delta 里替换；缺省表示未声明 |
 | `goal_flow.events` | 可选最多2000条；status事件 `{id,kind:"status",target:G_ID,status:active/achieved/unresolved/superseded/mistaken,text,evidence,verification?}`（achieved必须核验；mistaken=曾相信、后来判定方向本身错了，与被接替的superseded不同义）；correction事件 `{id,kind:"correction",target:G_ID或"@anchor",text,evidence,basis:inferred/explicit}`；事件ID为1–64字符、字母/数字开头，数组内唯一；text非空最多4000字符、evidence为1–50个不重复有效请求ID，已有事件不可删改；最新status事件投影现态，不新增G |
 | `goal_iteration` | 非 goal 条目关联现有 iteration.id，1–64字符、字母/数字开头，其后允许字母/数字/下划线/连字符；空串清除，省略保留。整批完成后必须指向本观测唯一活跃 goal_flow 的站点；可同批先条目后目标流，撤回目标流须同时清除或撤回关联项；旧条目不自动关联 |
