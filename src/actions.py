@@ -66,6 +66,60 @@ _TOOL_OBJ_FIELDS = ("file_path", "path", "command", "pattern", "url", "query",
 _NOISE_RE = (re.compile(r"<system-reminder>[\s\S]*?</system-reminder>\s*"),
              re.compile(r"<local-command-stdout>[\s\S]*?</local-command-stdout>\s*"))
 
+# 会问人的工具（260909）：它们的返回**是用户的原话答复**，不是普通工具输出。dialog 视图
+# 剥掉所有 tool_result 时把用户的拍板一起剥掉了——实测观察者只看得到「用了选项提问」，
+# 四处拍板全要下钻单条原始记录才核实得到，而问答正是目标演变的关键证据（谁改的 G、
+# 怎么改的）。这两个名字与 `snapshot_extract.py` 归为 "ask" 类的是同一份口径。
+ASK_TOOLS = ("AskUserQuestion", "ExitPlanMode")
+
+
+def _user_label(text: str, kind: str) -> str:
+    """`[用户]` 这一行**到底是谁说的**（260909）。
+
+    子代理泳道里上级 AI 的派生指令、CC 自己合成的伪轮，在 wire 上全是 user 角色，
+    账本里一律写 `[用户]`，观察者只能逐条甄别哪些是真人说的话。
+
+    判据不新造：措辞白名单直接用 `classifier` 里那两族常量（单份权威，那边改这边跟着改）。
+    **按消息判而不是按轮判**——一步的历史里可能含录制开始前的旧消息，套用当前轮的
+    origin 会张冠李戴；轮级 origin（含只在会话级成立的 `sdk`）由 `/api/actions` 的轮清单给。
+    反馈里提到的「队友消息」不在这四类里：现有录制找不到可区分队友的 wire 信号，
+    没有样本就不造判据。
+    """
+    t = (text or "").lstrip()
+    if t.startswith(classifier.TURN_ORIGIN_SYNTHETIC):
+        return "系统合成"
+    if t.startswith(classifier.TURN_ORIGIN_COMMAND):
+        return "用户·命令"
+    if kind == "subagent":
+        return "派生指令"
+    if kind == "aux":
+        return "辅助调用"
+    return "用户"
+
+
+def _ask_lines(name: str, inp) -> list[str]:
+    """选项提问的**问题与选项本身**。
+
+    `AskUserQuestion` 的入参是 `questions` 数组，`_TOOL_OBJ_FIELDS` 一个都取不到、
+    字符串兜底也取不到（值是 list），所以原来渲染成光秃秃一句「用了 AskUserQuestion」。
+    问题没了，下一步的答复就无从对照。
+    """
+    if not isinstance(inp, dict):
+        return [f"[提问] {name}"]
+    out = []
+    for q in inp.get("questions") or []:
+        if not isinstance(q, dict):
+            continue
+        opts = [str(o.get("label") or "") for o in (q.get("options") or [])
+                if isinstance(o, dict) and o.get("label")]
+        line = f"[提问] {str(q.get('question') or '').strip()}"
+        if opts:
+            line += " 选项：" + " / ".join(opts)
+        out.append(line)
+    if not out and isinstance(inp.get("plan"), str) and inp["plan"].strip():
+        out.append("[提问] 请用户确认方案：" + inp["plan"].strip().splitlines()[0][:200])
+    return out or [f"[提问] {name}"]
+
 
 def _msg_key(m) -> bytes:
     return hashlib.blake2b(
@@ -110,7 +164,8 @@ def _tool_line(name: str, inp) -> str:
     return f"[用了 {name}] {obj}".rstrip()
 
 
-def _split(role: str, c, view: str = "full", bseen: set | None = None) -> list[str]:
+def _split(role: str, c, view: str = "full", bseen: set | None = None,
+           asks: set | None = None, kind: str = "") -> list[str]:
     """一条历史消息 → 若干带前缀的行。
 
     几条核对时撞出来的规矩：
@@ -124,6 +179,9 @@ def _split(role: str, c, view: str = "full", bseen: set | None = None) -> list[s
        这里按块级 key 查 `bseen` 挡掉重出的 `[助手]`；从未被录到响应的（录制开始前的
        历史）`bseen` 里没有，照常输出。
     4. **dialog 视图**：tool_result 整个剥掉，用户正文先过 `_strip_noise`。
+    5. **例外：问人的工具，它的返回是用户原话**（260909）。`asks` 里是本流已出现过的
+       `AskUserQuestion` / `ExitPlanMode` 调用 id；命中的返回标 `[答复]`，dialog 视图也留。
+    6. **`[用户]` 按消息分来源**（260909）：见 `_user_label`。
     """
     who = {"user": "用户", "assistant": "助手"}.get(role, "系统")
     dialog = view == "dialog"
@@ -136,7 +194,8 @@ def _split(role: str, c, view: str = "full", bseen: set | None = None) -> list[s
                 return []
             bseen.add(k)
         t = _strip_noise(c) if dialog else c
-        return [f"[{who}] {t.strip()}"] if t.strip() else []
+        label = _user_label(c, kind) if who == "用户" else who
+        return [f"[{label}] {t.strip()}"] if t.strip() else []
     if not isinstance(c, list):
         return []
     out = []
@@ -152,23 +211,32 @@ def _split(role: str, c, view: str = "full", bseen: set | None = None) -> list[s
                 bseen.add(k)
             txt = _strip_noise(b["text"]) if dialog else b["text"].strip()
             if txt:
-                out.append(f"[{who}] {txt}")
+                label = _user_label(b["text"], kind) if who == "用户" else who
+                out.append(f"[{label}] {txt}")
         elif t == "tool_result":
-            if dialog:
+            answer = bool(asks) and b.get("tool_use_id") in asks
+            if dialog and not answer:
                 continue
             v = b.get("content")
             body = (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)).strip()
             if body:
-                out.append(("[工具返回·报错] " if b.get("is_error") else "[工具返回] ") + body)
+                head = "[答复] " if answer else (
+                    "[工具返回·报错] " if b.get("is_error") else "[工具返回] ")
+                out.append(head + body)
     return out
 
 
-def render_step(node: dict, rec: dict | None, seen: set, bseen: set, view: str = "full") -> list[str]:
-    """一步 → 若干行。`seen`（消息级）与 `bseen`（块级）跨步累积，见模块 docstring。
+def render_step(node: dict, rec: dict | None, seen: set, bseen: set, view: str = "full",
+                asks: set | None = None) -> list[str]:
+    """一步 → 若干行。`seen`（消息级）、`bseen`（块级）与 `asks`（问人的工具调用 id）
+    跨步累积，见模块 docstring。
 
     历史消息排在响应之前：这条请求带的是上一步的工具返回，读起来正好是
-    「返回是什么 → 它接着做了什么」。
+    「返回是什么 → 它接着做了什么」。所以**问在这一步、答在下一步**：中间只隔一个步头，
+    这是 wire 上的真实次序，不为了好看把答复挪到问题旁边。
     """
+    asks = asks if asks is not None else set()
+    kind = node.get("kind") or ""
     L = [f"\n#{node['id']} {node.get('ts_start', '')[11:19]} "
          f"泳道={node.get('lane') or 'unknown'} "
          f"{node.get('turn') or ''} {node.get('model') or ''} "
@@ -184,16 +252,20 @@ def render_step(node: dict, rec: dict | None, seen: set, bseen: set, view: str =
         if k in seen:
             continue
         seen.add(k)
-        L += _split(m.get("role") or "", m.get("content"), view, bseen)
+        L += _split(m.get("role") or "", m.get("content"), view, bseen, asks, kind)
     for b in ((rec.get("response") or {}).get("content_blocks") or []):
         if not isinstance(b, dict):
             continue
         t = b.get("type")
         if t == "tool_use":
+            name = b.get("name") or "?"
+            if name in ASK_TOOLS and isinstance(b.get("id"), str):
+                asks.add(b["id"])          # 下一步历史里那条返回，是用户的原话答复
             if view == "dialog":
-                L.append(_tool_line(b.get("name") or "?", b.get("input")))
+                L += (_ask_lines(name, b.get("input")) if name in ASK_TOOLS
+                      else [_tool_line(name, b.get("input"))])
             else:
-                L.append(f"[{b.get('name')}] {json.dumps(b.get('input'), ensure_ascii=False)}")
+                L.append(f"[{name}] {json.dumps(b.get('input'), ensure_ascii=False)}")
         elif t == "text" and (b.get("text") or "").strip():
             bseen.add(_blk_key(b))
             L.append(f"[说] {b['text'].strip()}")

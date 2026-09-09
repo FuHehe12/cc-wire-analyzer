@@ -19,8 +19,8 @@ import capture_store as store
 DATE = "2026-09-08"
 
 
-def node(rid, sec, lane="s-main", turn="t1"):
-    return {"id": rid, "lane": lane, "turn": turn, "model": "opus-5",
+def node(rid, sec, lane="s-main", turn="t1", kind="main"):
+    return {"id": rid, "lane": lane, "turn": turn, "kind": kind, "model": "opus-5",
             "ts_start": f"{DATE}T12:00:{sec:02}", "total_ms": 1000}
 
 
@@ -162,10 +162,16 @@ class RouteTests(unittest.TestCase):
     def read_batch(self, entries, date, source):
         return [self.records.get(e["id"]) for e in entries]
 
-    def add(self, rid, sec, r, lane="s-main"):
+    def add(self, rid, sec, r, lane="s-main", turn="t1", kind="main"):
         self.rows.append({"id": rid, "off": len(self.rows) * 100, "len": 100, "session_id": "s-1"})
         self.records[rid] = r
-        self.dag["nodes"].append(node(rid, sec, lane=lane))
+        self.dag["nodes"].append(node(rid, sec, lane=lane, turn=turn, kind=kind))
+
+    def add_turn(self, turn, index, **extra):
+        meta = {"turn_id": turn, "lane": "s-main", "index": index, "origin": "user",
+                "partial": False, "user_text": f"用户第 {index} 轮说的话"}
+        meta.update(extra)
+        self.dag["turns"].append(meta)
 
     def get(self, **qs):
         qs.setdefault("date", DATE)
@@ -241,6 +247,140 @@ class RouteTests(unittest.TestCase):
                 response = self.client.get("/api/actions", query_string={"date": DATE, "include_aux": value})
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.get_json()["error"], "bad_include_aux")
+
+
+class TurnPagingTests(RouteTests):
+    """按轮读取（260909）：轮是分页单位，末轮完整与否必须显式说出来。"""
+
+    def build(self):
+        """三轮：t1 两步、t2 三步（中间夹一条辅助调用）、t3 一步。"""
+        n = 0
+        for turn, steps in (("t1", 2), ("t2", 3), ("t3", 1)):
+            self.add_turn(turn, int(turn[1]))
+            for _ in range(steps):
+                self.add(f"req_{n}", n, rec([], [say(f"响应{n}")]), turn=turn)
+                n += 1
+                if turn == "t2" and n == 4:      # 辅助泳道不参与轮聚合，turn 为空
+                    self.add(f"req_aux{n}", n, rec([], [say("辅助")]), lane="aux",
+                             turn="", kind="aux")
+                    n += 1
+
+    def test_one_turn_at_a_time_never_cuts_mid_turn(self):
+        self.build()
+        first = self.get(view="dialog", turns=1)
+        self.assertEqual([t["turn_id"] for t in first["turns"]], ["t1"])
+        self.assertEqual(first["turns"][0]["steps_returned"], 2)
+        self.assertTrue(first["turns"][0]["complete"])   # 后面还有别的轮来终结它
+        self.assertIn("#req_0", first["content"])
+        self.assertIn("#req_1", first["content"])
+        self.assertNotIn("#req_2", first["content"])
+        self.assertEqual(first["next"], 2)
+        self.assertFalse(first["done"])
+
+    def test_aux_step_rides_along_without_spending_quota(self):
+        self.build()
+        second = self.get(view="dialog", turns=1, since=2)
+        self.assertEqual([t["turn_id"] for t in second["turns"]], ["t2"])
+        self.assertEqual(second["turns"][0]["steps_returned"], 3)
+        self.assertIn("泳道=aux", second["content"])     # 辅助步跟着当前轮走
+        self.assertNotIn("#req_6", second["content"])    # 但不把 t3 也带出来
+
+    def test_last_turn_is_never_claimed_complete(self):
+        self.build()
+        tail = self.get(view="dialog", turns=5)
+        self.assertEqual([t["turn_id"] for t in tail["turns"]], ["t1", "t2", "t3"])
+        self.assertEqual([t["complete"] for t in tail["turns"]], [True, True, False])
+        self.assertTrue(tail["done"])                    # 读完了，但末轮仍不敢称完整
+        self.assertIn("未完整的轮：t3", tail["content"])
+
+    def test_turn_list_carries_origin_and_partial(self):
+        self.add_turn("t1", 1, origin="synthetic", partial=True, user_text="[SUGGESTION MODE] x")
+        self.add("req_0", 0, rec([], [say("响应")]), turn="t1")
+        self.add_turn("t2", 2)
+        self.add("req_1", 1, rec([], [say("响应")]), turn="t2")
+        got = self.get(view="dialog", turns=1)["turns"][0]
+        self.assertEqual((got["origin"], got["partial"], got["index"]), ("synthetic", True, 1))
+        self.assertEqual(got["user_text"], "[SUGGESTION MODE] x")
+
+    def test_step_mode_still_reports_which_turns_it_touched(self):
+        self.build()
+        stepwise = self.get(view="dialog", limit=3)
+        self.assertEqual([t["turn_id"] for t in stepwise["turns"]], ["t1", "t2"])
+        # 步分页把 t2 拦腰截断：取到 1 步、范围内共 3 步 → 不完整
+        self.assertEqual([t["complete"] for t in stepwise["turns"]], [True, False])
+        self.assertEqual(stepwise["turns"][1]["steps_returned"], 1)
+        self.assertEqual(stepwise["turns"][1]["steps_in_scope"], 3)
+
+    def test_json_response_declares_utf8(self):
+        # charset 补了，但**它不是 Windows 乱码的解药**：jsonify 默认 ensure_ascii，
+        # 响应体是纯 ASCII 的 \uXXXX 转义，按 GBK 还是 UTF-8 解出来完全一样。乱码出在
+        # 调用侧把解析后的中文打到本地码页的控制台——这一条把这个事实钉住，别再改错方向。
+        self.add("req_0", 0, rec([{"role": "user", "content": "中文"}], []))
+        resp = self.client.get("/api/actions", query_string={"date": DATE})
+        self.assertEqual(resp.content_type, "application/json; charset=utf-8")
+        self.assertEqual([b for b in resp.get_data() if b > 127], [])
+        self.assertIn("中文", resp.get_json()["content"])
+
+
+class AskPairingTests(RouteTests):
+    """问人的工具：问题与答复都要留在 dialog 里（260909）。"""
+
+    QUESTION = {"questions": [{"question": "先动哪一批？",
+                               "options": [{"label": "读取侧"}, {"label": "展示层"}]}]}
+    ANSWER = "Your questions have been answered: 先动哪一批？=读取侧"
+
+    def build(self):
+        self.add("req_0", 0, rec([{"role": "user", "content": "怎么改"}],
+                                 [tool_use("AskUserQuestion", self.QUESTION, "q1")]))
+        self.add("req_1", 1, rec([{"role": "user", "content": [
+            tool_result("q1", self.ANSWER), tool_result("t9", "普通工具输出")]}], [say("照办")]))
+
+    def test_question_and_answer_both_survive_dialog(self):
+        self.build()
+        content = self.get(view="dialog")["content"]
+        self.assertIn("[提问] 先动哪一批？ 选项：读取侧 / 展示层", content)
+        self.assertIn("[答复] " + self.ANSWER, content)
+        self.assertNotIn("普通工具输出", content)        # 别的工具返回照旧剥掉
+
+    def test_answer_survives_incremental_read_after_the_question(self):
+        self.build()
+        content = self.get(view="dialog", since=1)["content"]
+        self.assertNotIn("[提问]", content)               # 问题在上一页，不重出
+        self.assertIn("[答复] " + self.ANSWER, content)   # 但答复认得出来
+
+    def test_full_view_marks_the_answer_too(self):
+        self.build()
+        content = self.get(view="full")["content"]
+        self.assertIn("[答复] " + self.ANSWER, content)
+        self.assertIn("[工具返回] 普通工具输出", content)
+
+
+class SourceLabelTests(unittest.TestCase):
+    """`[用户]` 分来源（260909）：判据来自 classifier 的白名单与泳道 kind。"""
+
+    def label_of(self, text, kind="main"):
+        lines = actions.render_step(node("req_a", 1, kind=kind),
+                                    rec([{"role": "user", "content": text}], []),
+                                    set(), set(), "dialog")
+        return lines[-1].split("]")[0] + "]"
+
+    def test_four_sources(self):
+        self.assertEqual(self.label_of("真人说的话"), "[用户]")
+        self.assertEqual(self.label_of("[SUGGESTION MODE] 补全建议"), "[系统合成]")
+        self.assertEqual(self.label_of("<command-name>/compact</command-name> 压缩"), "[用户·命令]")
+        self.assertEqual(self.label_of("去查一下 src/", kind="subagent"), "[派生指令]")
+
+    def test_subagent_lane_still_defers_to_wording(self):
+        # 措辞白名单优先于泳道：子代理泳道里的合成轮仍标合成，不含糊成"派生指令"
+        self.assertEqual(self.label_of("[SYSTEM NOTIFICATION] 后台完成", kind="subagent"),
+                         "[系统合成]")
+
+    def test_assistant_and_system_untouched(self):
+        lines = actions.render_step(node("req_a", 1), rec(
+            [{"role": "assistant", "content": "录制前的结论"},
+             {"role": "system", "content": "系统消息"}], []), set(), set(), "dialog")
+        self.assertIn("[助手] 录制前的结论", lines)
+        self.assertIn("[系统] 系统消息", lines)
 
 
 if __name__ == "__main__":

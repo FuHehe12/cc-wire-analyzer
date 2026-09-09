@@ -510,6 +510,28 @@ def _view_html(resp: Response) -> Response:
                     content_type="text/html; charset=utf-8")
 
 
+@app.after_request
+def _json_charset(resp: Response) -> Response:
+    """`/api/*` 的 JSON 显式声明 `charset=utf-8`。
+
+    Flask 按 RFC 8259 有意不带 charset —— JSON 规范上永远是 UTF-8，声明是多余的。
+    但这个软件的读取方是**跑在 Windows 上的 agent**：不带 charset 时客户端按本地码页
+    （GBK）解码，中文全量乱码（260909 实测 `/api/dag`；`/api/ai-guide` 因为带了
+    charset 反而没事）。让每个调用方各自去绕（`python -X utf8` / 改 stdout 编码）
+    不合理，服务端一次说清楚。
+
+    两条不许碰：**只认 `/api/` 前缀**（同端口跑着 MITM 代理，上游响应的头逐字节透明，
+    不变量②）；**只认 content-type 恰好是 `application/json`**（SSE 的
+    `text/event-stream`、markdown、HTML 各有各的头，不在这里改）。改的是头不是 body，
+    AI 通道逐字节不变（不变量①）仍成立。
+    """
+    if not request.path.startswith("/api/"):
+        return resp
+    if (resp.content_type or "").strip().lower() == "application/json":
+        resp.headers["Content-Type"] = "application/json; charset=utf-8"
+    return resp
+
+
 # ===== 代理控制 =====
 def _proxy_state() -> dict:
     return {
@@ -826,6 +848,13 @@ def actions_view():
     东西；索引只追加，正序位置写进去就不再变。`seq` 在 lane/session 过滤**之前**编号，
     所以换条泳道也能接着用同一个游标。
 
+    `turns=N` 把分页单位从**步**换成**对话轮**（260909）：一次取 N 轮，一轮＝一次用户消息
+    加它引发的全部工具循环步。给了 `turns` 就不再按 `limit` 截步（字节上限仍在步边界兜底）。
+    轮不是这里新造的模型——`build_dag` 早已把 `turns` 升为一等公民，这里只是把它通到读取面。
+    出参 `turns` 是本次返回覆盖的轮清单，每轮带 `complete`：**该轮的步没取全（字节上限截断），
+    或它是当前范围里的最后一轮（录制可能仍在进行）时为 false** —— 读的人据此知道这是半轮、
+    后续拉齐了可以补建，不会把半轮当整轮建模。`partial` 是另一件事：轮首没录到的残轮。
+
     其余参数：`date` / `source` / `lane` / `session` / `limit` / `tools`（`1` 时附完整工具
     schema，默认只给工具名——那段 168 KB / 约 45k token 且整段会话一字不变，是上下文膨胀
     最大的单一来源）/ `view`（`full` 缺省=对话全文；`dialog`=纯对话流——只有用户/AI 输出
@@ -851,6 +880,7 @@ def actions_view():
         return jsonify(error="bad_include_aux", detail="include_aux 必须为 true 或 false"), 400
     include_aux = aux_arg == "true"
     limit = max(1, min(_to_int(request.args.get("limit", 500), 500), 5000))
+    want_turns = max(0, min(_to_int(request.args.get("turns", 0), 0), 200))
     want_tools = request.args.get("tools", "") in ("1", "true", "yes")
     view = request.args.get("view", "full")
     if view not in ("full", "dialog"):
@@ -870,7 +900,21 @@ def actions_view():
     if not include_aux:
         rows = [(i, e) for i, e in rows if (node_of.get(e.get("id")) or {}).get("lane") != "aux"]
     total = len(rows)
-    page = [(i, e) for i, e in rows if i >= since][:limit]
+    turn_of = {n["id"]: (n.get("turn") or "") for n in dag.get("nodes", [])}
+    rest = [(i, e) for i, e in rows if i >= since]
+    if want_turns:
+        # 轮边界优先于步数：取满 N 轮就停，绝不在轮中间按步截断。没有 turn 的步（辅助泳道
+        # 不参与轮聚合）跟着当前轮走、不占名额——否则一条辅助调用就吃掉一轮配额。
+        page, seen_turns = [], []
+        for row in rest:
+            tid = turn_of.get(row[1].get("id"), "")
+            if tid and tid not in seen_turns:
+                if len(seen_turns) >= want_turns:
+                    break
+                seen_turns.append(tid)
+            page.append(row)
+    else:
+        page = rest[:limit]
 
     # 去重要从头看起：只输出**首次出现**的历史消息，而 since 之前那些已经给过了，
     # 得把它们的哈希先喂进 seen，否则续读会把整段历史重新吐一遍。块级 bseen 同理
@@ -880,6 +924,7 @@ def actions_view():
     recs = capture_store.records_by_index([e for _, e in warm + page], date, src) if page else []
     seen: set = set()
     bseen: set = set()
+    asks: set = set()          # 问人的工具调用 id：答复在下一步的历史里，续读时得先认得
     for (_, e), rec in zip(warm, recs[:len(warm)]):
         if not rec:
             continue
@@ -894,8 +939,15 @@ def actions_view():
                     if isinstance(b, dict) and b.get("type") in ("text", "thinking"):
                         bseen.add(actions._blk_key(b))
         for b in ((rec.get("response") or {}).get("content_blocks") or []):
-            if isinstance(b, dict) and b.get("type") in ("text", "thinking"):
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") in ("text", "thinking"):
                 bseen.add(actions._blk_key(b))
+            # 问在 since 之前、答在 since 之后是常态（问答本就跨步）。不在预热里认下这些
+            # 调用 id，续读就把用户的拍板当普通工具返回剥掉了。
+            elif (b.get("type") == "tool_use" and b.get("name") in actions.ASK_TOOLS
+                  and isinstance(b.get("id"), str)):
+                asks.add(b["id"])
 
     lines: list[str] = []
     size = 0
@@ -903,7 +955,7 @@ def actions_view():
     stopped = False
     for (seq, e), rec in zip(page, recs[len(warm):]):
         n = node_of.get(e.get("id")) or dict(e)
-        chunk = actions.render_step(n, rec, seen, bseen, view)
+        chunk = actions.render_step(n, rec, seen, bseen, view, asks)
         add = sum(len(x.encode("utf-8")) + 1 for x in chunk)
         if lines and size + add > actions.MAX_BYTES:
             stopped = True          # 在步边界停，不切断某一步的正文
@@ -912,12 +964,44 @@ def actions_view():
         size += add
         last_seq = seq
 
+    # 本次覆盖了哪些轮、各自完整吗。**步模式也给**——知道自己读到的是半轮，比知道读了几步
+    # 更要紧：半轮当整轮建模，建出来的目标就是假的。
+    turn_meta = {t["turn_id"]: t for t in dag.get("turns", [])}
+    rows_of_turn: dict[str, list[int]] = {}
+    for i, e in rows:
+        tid = turn_of.get(e.get("id"), "")
+        if tid:
+            rows_of_turn.setdefault(tid, []).append(i)
+    last_row = rows[-1][0] if rows else -1
+    got: dict[str, int] = {}
+    for i, e in page:
+        if i > last_seq:
+            break                      # 字节上限没输出的步不算"取到了"
+        tid = turn_of.get(e.get("id"), "")
+        if tid:
+            got[tid] = got.get(tid, 0) + 1
+    turns_out = []
+    for tid, n in got.items():
+        meta, seqs = turn_meta.get(tid) or {}, rows_of_turn.get(tid, [])
+        # 完整＝这一轮在当前范围内的步全取到了，**而且**它后面还有别的步。后面没有别的步，
+        # 就说明没有下一轮来终结它——可能录制还在进行，只能说不知道，不能当整轮建模。
+        complete = bool(seqs) and n == len(seqs) and max(seqs) < last_row
+        turns_out.append({
+            "turn_id": tid, "index": meta.get("index"), "lane": meta.get("lane"),
+            "origin": meta.get("origin"), "partial": bool(meta.get("partial")),
+            "steps_returned": n, "steps_in_scope": len(seqs), "complete": complete,
+            "user_text": (meta.get("user_text") or "")[:160],
+        })
+    open_tail = [t["turn_id"] for t in turns_out if not t["complete"]]
     head = (f"# 录制 {date} · 泳道 {lane or '全部'} · 第 {page[0][0] if page else since} 步起，"
-            f"本次 {len([1 for l in lines if l.startswith(chr(10) + '#')])} 步 / 共 {total} 步")
+            f"本次 {len([1 for l in lines if l.startswith(chr(10) + '#')])} 步 / 共 {total} 步"
+            + (f" · 覆盖 {len(turns_out)} 轮" if turns_out else "")
+            + (f" · 未完整的轮：{'、'.join(open_tail)}（拉齐后可补建）" if open_tail else ""))
     out = {
         "date": date, "source": src, "lane": lane, "session": sess, "include_aux": include_aux,
         "total": total, "next": last_seq + 1,
         "done": (not stopped) and (not page or page[-1][0] == rows[-1][0]),
+        "turns": turns_out,
         "guard": actions.GUARD,
         "content": actions.wrap(head + "\n" + "\n".join(lines)),
     }
