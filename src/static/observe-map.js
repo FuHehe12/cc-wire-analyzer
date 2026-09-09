@@ -159,9 +159,9 @@
     unlinked:'目標の段階に未関連',anchorOnly:'最初の理解のみ記録され、目標はまだ未記録です。',viewAnchor:'最初の理解を確認',goLatest:'現在の目標へ',
     initialGoal:'最初に形成した目標',priorGoal:'以前の目標・変更後',completedGoal:'観測者が達成と記録',moreLinked:'すべての関連項目を確認',flowMissing:'この会話の A→G はまだありません',flowSetup:'上の「接続説明をコピー」を使い、観測 AI に最初の入力と理解を記録させ、その後の目標変更を維持してください。既存項目は別タブから確認できます。'});
   for(const [lang,values] of Object.entries({
-    zh:{trajectory:'A→G 目标流',requestReading:'它对你要求的理解',situationReading:'它对现状的判断',readingMissing:'这部分还没有记录，等待观察 AI 根据对话补充。',readingNote:'根据已录对话整理；点开可看依据。',carryover:'切换任务后仍要记住',change_initial:'起点',change_refine:'修正',change_turn:'转折',task:'任务',pastTask:'此前任务',currentTask:'当前任务',expandTask:'展开目标变化',collapseTask:'收起目标变化',goalVersions:'个目标版本',currentEvidence:'查看当前理解的依据',findingsLane:'原话与解释',flowHint:'点击 A、G 或变化原因，就地查看原话与依据。',flowIntro:'保留最初的理解，看清目标怎样修正、何时转到另一件事。',flowSetup:'点击上方“复制接入说明”，让观察 AI 从最初输入建立 A→G。旧观测记录保留，可通过 API 查阅。'},
-    en:{trajectory:'A→G goal flow',requestReading:'How it understands your request',situationReading:'How it sees the current situation',readingMissing:'Not recorded yet. The observer needs to read the conversation first.',readingNote:'Interpreted from recorded conversation. Open to inspect evidence.',carryover:'Still relevant after the task switch',change_initial:'Start',change_refine:'Revision',change_turn:'Task switch',task:'Task',pastTask:'Earlier task',currentTask:'Current task',expandTask:'Expand goal changes',collapseTask:'Collapse goal changes',goalVersions:'goal versions',currentEvidence:'Inspect current understanding',findingsLane:'Words & explanation',flowHint:'Select A, G or a change to inspect words and evidence in place.',flowIntro:'Keep the initial understanding and see how goals change or move to another task.',flowSetup:'Use Copy setup notes above to build A→G from the initial input. Older observation records remain accessible through the API.'},
-    ja:{trajectory:'A→G 目標の流れ',requestReading:'依頼をどう理解しているか',situationReading:'現状をどう捉えているか',readingMissing:'まだ記録されていません。観測 AI が会話から補足します。',readingNote:'記録された会話からの整理です。開くと根拠を確認できます。',carryover:'タスクを切り替えても引き継ぐこと',change_initial:'出発点',change_refine:'修正',change_turn:'タスクの転換',task:'タスク',pastTask:'以前のタスク',currentTask:'現在のタスク',expandTask:'目標の変化を展開',collapseTask:'目標の変化を折り畳む',goalVersions:'件の目標',currentEvidence:'現在の理解の根拠を確認',findingsLane:'原文と説明',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。',flowIntro:'最初の理解を保ち、目標の修正と別タスクへの転換を追います。',flowSetup:'上の「接続説明をコピー」から最初の入力をもとに A→G を作成します。従来の記録は API で閲覧できます。'}
+    zh:{untasked:'未标注任务的旧目标',overallGoal:'整体目标',change_goal:'整体目标变化',mistaken:'误目标（后来判定方向错了）',glossaryA:'A｜锚点',glossaryANote:'会话的起点：用户最初的原话，和执行 AI 当时对它的理解。一场会话只有一个。',glossaryG:'G｜目标',glossaryGNote:'对话中的最高目标：用户总体上要达到的结果。只有出现新的结果诉求，才会有 G2、G3；换一件事做不算。',glossaryT:'T｜任务',glossaryTNote:'G 的内环：为达成 G 拆出的交付单元。T1、T2 是先后开的任务；T3·2 表示第 3 个任务上的第 2 版口径。',mode_incremental:'现场逐轮建模',mode_incremental_note:'跟着录制一轮一轮记的，中途的目标改动应当都在。',mode_retrospective:'事后一次性复盘',mode_retrospective_note:'回头一次建的模型：中途被推翻的目标可能没有留痕，除非另有标注。',trajectory:'A→G 目标流',requestReading:'它对你要求的理解',situationReading:'它对现状的判断',readingMissing:'这部分还没有记录，等待观察 AI 根据对话补充。',readingNote:'根据已录对话整理；点开可看依据。',carryover:'切换任务后仍要记住',change_initial:'起点',change_refine:'修正',change_turn:'转折',task:'任务',pastTask:'此前任务',currentTask:'当前任务',expandTask:'展开目标变化',collapseTask:'收起目标变化',goalVersions:'个目标版本',currentEvidence:'查看当前理解的依据',findingsLane:'原话与解释',flowHint:'点击 A、G 或变化原因，就地查看原话与依据。',flowIntro:'保留最初的理解，看清目标怎样修正、何时转到另一件事。',flowSetup:'点击上方“复制接入说明”，让观察 AI 从最初输入建立 A→G。旧观测记录保留，可通过 API 查阅。'},
+    en:{untasked:'Goals recorded before tasks were named',overallGoal:'Overall goal',change_goal:'New overall goal',mistaken:'Mistaken goal',glossaryA:'A | Anchor',glossaryANote:'Where the conversation starts: the first user words and how the working AI understood them. One per conversation.',glossaryG:'G | Goal',glossaryGNote:'The highest goal of the conversation: the outcome the user wants overall. G2 or G3 appears only when a new outcome is asked for; switching to another task does not create one.',glossaryT:'T | Task',glossaryTNote:'The inner loop of G: a deliverable split out of it. T1, T2 are tasks in the order they started; T3-2 is the second wording of the third task.',mode_incremental:'Built turn by turn',mode_incremental_note:'Recorded live, one turn at a time, so goal changes along the way should all be here.',mode_retrospective:'Built in one retrospective pass',mode_retrospective_note:'Modelled after the fact: goals believed and later dropped may leave no trace unless marked.',trajectory:'A→G goal flow',requestReading:'How it understands your request',situationReading:'How it sees the current situation',readingMissing:'Not recorded yet. The observer needs to read the conversation first.',readingNote:'Interpreted from recorded conversation. Open to inspect evidence.',carryover:'Still relevant after the task switch',change_initial:'Start',change_refine:'Revision',change_turn:'Task switch',task:'Task',pastTask:'Earlier task',currentTask:'Current task',expandTask:'Expand goal changes',collapseTask:'Collapse goal changes',goalVersions:'goal versions',currentEvidence:'Inspect current understanding',findingsLane:'Words & explanation',flowHint:'Select A, G or a change to inspect words and evidence in place.',flowIntro:'Keep the initial understanding and see how goals change or move to another task.',flowSetup:'Use Copy setup notes above to build A→G from the initial input. Older observation records remain accessible through the API.'},
+    ja:{untasked:'タスク未指定の旧目標',overallGoal:'全体目標',change_goal:'全体目標の変更',mistaken:'誤りと判明した目標',glossaryA:'A｜起点',glossaryANote:'会話の起点：利用者の最初の言葉と、作業 AI の当時の理解。会話ごとに一つだけです。',glossaryG:'G｜目標',glossaryGNote:'会話の最上位の目標：利用者が全体として求める結果。新しい結果を求められたときだけ G2・G3 が増え、別の作業に移るだけでは増えません。',glossaryT:'T｜タスク',glossaryTNote:'G の内側のループ：G を達成するための納品単位。T1・T2 は開始順のタスク、T3·2 は 3 番目のタスクの 2 版目の言い方です。',mode_incremental:'その場で一ターンずつ作成',mode_incremental_note:'録画に沿って逐次記録：途中の目標変更も残っているはずです。',mode_retrospective:'事後の一括再構成',mode_retrospective_note:'後からまとめて作成：一度信じて取り下げた目標は、明示がない限り残っていません。',trajectory:'A→G 目標の流れ',requestReading:'依頼をどう理解しているか',situationReading:'現状をどう捉えているか',readingMissing:'まだ記録されていません。観測 AI が会話から補足します。',readingNote:'記録された会話からの整理です。開くと根拠を確認できます。',carryover:'タスクを切り替えても引き継ぐこと',change_initial:'出発点',change_refine:'修正',change_turn:'タスクの転換',task:'タスク',pastTask:'以前のタスク',currentTask:'現在のタスク',expandTask:'目標の変化を展開',collapseTask:'目標の変化を折り畳む',goalVersions:'件の目標',currentEvidence:'現在の理解の根拠を確認',findingsLane:'原文と説明',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。',flowIntro:'最初の理解を保ち、目標の修正と別タスクへの転換を追います。',flowSetup:'上の「接続説明をコピー」から最初の入力をもとに A→G を作成します。従来の記録は API で閲覧できます。'}
   })) Object.assign(words[lang],values);
   for(const [lang,values] of Object.entries({
     zh:{openCapture:'在捕获中打开',rebuilt:'已重建',rebuildLog:'重建记录',rebuildNote:'这份 A→G 曾被观察 AI 整体重建，上一版保留在条目历史里。'},
@@ -326,13 +326,24 @@
     if(status==='active' && list(flowItem()?.goal_flow?.iterations).some(e=>list(e.parent_ids).includes(event.id))) return 'priorGoal';
     return status;
   }
+  /** 按父深度分层，再按父节点在上一行的位置做一趟重心排序。行内只按插入序排时，
+      父边一交叉就画成 260909 截图里那种 X 形走线（G5→G8 与 G7→G6 互相穿过）。
+      没有已定位父节点的节点保持原序，稳定排序不打乱同源分支的先后。 */
   function flowLayers(events) {
     const depth=new Map(), rows=[];
     for(const event of events) {
       const level=Math.max(0,...list(event.parent_ids).map(id=>(depth.get(id) ?? -1)+1));
       depth.set(event.id,level);(rows[level] ||= []).push(event);
     }
-    return rows;
+    const seat=new Map();
+    return rows.map(row=>{
+      const ordered=row.map((e,i)=>{
+        const seats=list(e.parent_ids).map(id=>seat.get(id)).filter(n=>n!=null);
+        return {e,i,key:seats.length?seats.reduce((a,b)=>a+b,0)/seats.length:i};
+      }).sort((a,b)=>a.key-b.key || a.i-b.i).map(x=>x.e);
+      ordered.forEach((e,i)=>seat.set(e.id,i));
+      return ordered;
+    });
   }
   function currentGoals(f) {
     if(f.current) return list(f.current.goal_ids);
@@ -352,26 +363,50 @@
   function flowHelpHtml() {
     return '<details class="ag-help" data-om-fold="flow-help"'+(M.folds.has('flow-help')?' open':'')+'><summary>'+escape(tr('flowHelp'))+'</summary>'+['helpWhy','helpRead','helpSource','helpUpgrade'].map(k=>'<p class="om-prose">'+escape(tr(k))+'</p>').join('')+'</details>';
   }
-  function taskRows(f) {
-    const rows=flowLayers(list(f.iterations)), tasks=list(f.tasks);
-    if(tasks.length<2) return rows;
-    const active=new Set(list(f.iterations).filter(e=>currentGoals(f).includes(e.id)).map(e=>e.task_id));
-    const output=[];
-    // Only collapse a contiguous, exclusive task run. Cross-task branches stay
-    // visible: a compact summary must never invent a join between branches.
-    for(let i=0;i<rows.length;) {
-      const tid=rows[i][0]?.task_id, task=tasks.find(t=>t.id===tid);
-      let end=i;
-      while(task && end<rows.length && rows[end].every(e=>e.task_id===tid)) end++;
-      const exclusive=task && !rows.slice(0,i).concat(rows.slice(end)).some(r=>r.some(e=>e.task_id===tid));
-      const expanded=M.taskOpen.get(tid) ?? active.has(tid);
-      const members=rows.slice(i,end).flat();
-      const selected=members.some(e=>isSelected('goal-event',e.id)) && M.detailOpen;
-      if(exclusive && !expanded && !selected) {
-        output.push([{...members.at(-1),compactTask:task,members}]);i=end;
-      } else {output.push(rows[i]);i++;}
+  /** 两级结构：先按任务（T）切区，再在区内按父深度分层。260909 反馈第 1 条——
+      T 此前只是折叠的借口，读者不知道自己在看哪件交付。没有任务标记的旧前缀
+      单独成一个区，不给它编造任务；跨区的父边一条不动，仍由 drawGoalFlow
+      按实测位置画，这里不合并任何分支。 */
+  function taskSections(f) {
+    const events=list(f.iterations), tasks=list(f.tasks), order=[], groups=new Map();
+    for(const e of events) {
+      const key=e.task_id || '';
+      if(!groups.has(key)) {groups.set(key,[]);order.push(key);}
+      groups.get(key).push(e);
     }
-    return output;
+    const current=new Set(currentGoals(f));
+    return order.map(key=>{
+      const members=groups.get(key), task=tasks.find(t=>t.id===key) || null, last=members.at(-1);
+      const inside=new Set(members.map(e=>e.id));
+      // 折叠让全区共用一个代理节点。别的任务若从区内中间某个 G 长出来，那条边就会
+      // 从代理节点发出，读起来像“整个任务汇合成了那个 G”——这种区一律不折叠。
+      const foldable=members.length>1 && !events.some(e=>(e.task_id || '')!==key
+        && list(e.parent_ids).some(pid=>pid!==last.id && inside.has(pid)));
+      const live=members.some(e=>current.has(e.id)), wrong=members.some(e=>goalStatus(e)==='mistaken');
+      const held=M.detailOpen && members.some(e=>isSelected('goal-event',e.id));
+      const collapsed=foldable && !held && !(M.taskOpen.get(key) ?? live);
+      return {key,task,members,foldable,live,collapsed,wrong,
+        state:live?'goalNow':goalStatus(last),
+        rows:collapsed?[[{...last,taskKey:key,compactTask:task,members,wrong}]]:flowLayers(members)};
+    });
+  }
+  const taskRows = f => taskSections(f).flatMap(sec=>sec.rows);
+  /** 再往上一层：G 是整体目标，T 是 G 的内环。任务切换（turn）不产生新的 G，
+      只有 change==='goal'（用户提出了新的结果诉求）才另起一个 G 段。260909 用户口径：
+      「G 整体变化的时候才有 G1、G2」——此前每条迭代都编号成 G，两级被压成了一级。 */
+  function goalBands(f) {
+    const bands=[];
+    for(const sec of taskSections(f)) {
+      const opener=sec.members[0]?.change==='goal'?sec.members[0]:null;
+      if(!bands.length || opener) bands.push({goal:opener,sections:[]});
+      bands.at(-1).sections.push(sec);
+    }
+    if(!bands.length) bands.push({goal:null,sections:[]});
+    const first=list(f.iterations)[0];
+    // 首个 G 段没有显式的目标变化可指：整体目标的出处就是 A（最初原话＋当时的理解），
+    // 不拿第一个任务的口径冒充整体目标。
+    for(const band of bands) band.text=band.goal?band.goal.after:(f.anchor?.understanding || first?.after || '');
+    return bands;
   }
   const AG_RIGHT=0, AG_RIGHT_OPEN=430;
   /** 就地详情的高度：固定 360px 在大屏上白白浪费，在小屏上又要在很小的窗口里翻长证据。 */
@@ -405,11 +440,36 @@
     if(s.kind==='item') {const g=M.items.get(s.id)?.goal_iteration; return g && ids.has(g)?g:'@anchor';}
     return '@anchor';
   }
+  const AG_CARD_H=118, AG_ROW_PITCH=66, AG_ROW_GAP=24, AG_HEAD_H=46, AG_SECTION_GAP=18, AG_GOAL_H=64;
+  /** G 段头：整体目标本身。点它看这次目标变化的原话与依据；只有一个 G 时它指向 A。 */
+  function goalHeadHtml(band,index,top,left,width) {
+    const label='G'+index+' · '+tr('overallGoal');
+    return '<div class="ag-goal-heading" style="left:'+left+'px;top:'+top+'px;width:'+width+'px">'+
+      button(band.goal?'goal-event':'goal-anchor',band.goal?band.goal.id:'@anchor',
+        '<b>'+escape(label)+'</b><span>'+escape(short(band.text,110))+'</span>','ag-goal-band')+'</div>';
+  }
+  /** 任务分区头：标题、这件事上有几版目标、现在是什么状态，折起来就剩这一行。 */
+  function taskHeadHtml(sec,top,left,width,index) {
+    return '<div class="ag-task-heading" style="left:'+left+'px;top:'+top+'px;width:'+width+'px"><b>T'+index+'</b>'+
+      '<strong>'+escape(sec.task?sec.task.title:tr('untasked'))+'</strong>'+
+      '<span class="ag-task-state">'+escape(tr(sec.state)+' · '+sec.members.length+' '+tr('goalVersions'))+
+      (sec.wrong?'<b class="ag-wrong">· '+escape(tr('mistaken'))+'</b>':'')+'</span>'+
+      (sec.foldable?button('task-toggle',sec.key,escape(tr(sec.collapsed?'expandTask':'collapseTask')),'ag-task-toggle','aria-expanded="'+(!sec.collapsed)+'"'):'')+'</div>';
+  }
+  /** 常驻的 A/G/T 释义与建模模式：读者不必事先知道模型，也不该把事后复盘
+      当成现场留痕。260909 反馈第 1 条要求页面自带说明，折叠等于没有。 */
+  function primerHtml(f) {
+    const mode=f.mode==='incremental' || f.mode==='retrospective'?f.mode:'';
+    return '<div class="ag-primer">'+(mode?'<p class="ag-mode ag-mode-'+escape(mode)+'">'+badge(tr('mode_'+mode))+
+      '<span>'+escape(tr('mode_'+mode+'_note'))+'</span></p>':'')+
+      '<dl class="ag-glossary">'+['A','G','T'].map(k=>'<div><dt>'+escape(tr('glossary'+k))+'</dt><dd>'+escape(tr('glossary'+k+'Note'))+'</dd></div>').join('')+'</dl></div>';
+  }
   function flowDiagramHtml(it) {
     const f=it?.goal_flow;
     if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p>'+flowHelpHtml()+'</section>';
     const events=list(f.iterations),parents=new Set(events.flatMap(e=>list(e.parent_ids))),heads=events.filter(e=>!parents.has(e.id));
-    const rows=taskRows(f), lanes=Math.max(1,...rows.map(r=>r.length));
+    const bands=goalBands(f), sections=bands.flatMap(b=>b.sections);
+    const lanes=Math.max(1,...sections.flatMap(sec=>sec.rows).map(r=>r.length));
     const inline=inlineTarget(), DH=detailHeight();
     const {leftW,centerWidth,rightWidth,centerX,rightX}=flowMetrics(lanes,inline), width=rightX+rightWidth+24;
     const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;max-height:'+DH+'px">'+
@@ -417,26 +477,40 @@
     // 详情在右列，与目标列不重叠，所以不必把整条流往下推（那会在 A 下面留一大片空白）；
     // 只要画布本身高到装得下它即可。
     let y=172, detailTop=inline==='@anchor'?48:null;
-    const shownTasks=new Set(), currentIds=new Set(currentGoals(f));
-    const stations=rows.map(row=>{
-      const task=list(f.tasks).find(t=>t.id===row[0]?.task_id), header=task && list(f.tasks).length>1 && !shownTasks.has(task.id);
-      const taskTop=y;if(header) {y+=44;shownTasks.add(task.id);}
-      const top=y, hasDetail=row.some(e=>e.id===inline);
-      if(hasDetail) detailTop=top;
-      y+=Math.max(112,row.length*66+12);
-      const columns=row.length===1?(lanes===1?centerWidth:320):252;
-      const heading=header?'<div class="ag-task-heading" style="left:'+centerX+'px;top:'+taskTop+'px;width:'+centerWidth+'px"><strong>'+escape(task.title)+'</strong>'+(!row[0].compactTask?button('task-toggle',task.id,escape(tr('collapseTask')),'ag-task-toggle','aria-expanded="true"'):'')+'</div>':'';
-      return heading+row.map((e,i)=>{
-        const x=centerX+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
-        const compact=e.compactTask, label=compact?tr('pastTask'):'G'+events.findIndex(g=>g.id===e.id);
-        const content='<span class="ag-label"><b>'+escape(label)+'</b><span>'+escape(compact?e.members.length+' '+tr('goalVersions'):goalStatus(e)==='completedGoal'?tr('completedGoal'):currentIds.has(e.id)?tr('goalNow'):tr(goalStatus(e)))+'</span></span><strong>'+escape(short(e.after,100))+'</strong>'+(compact?'<span class="ag-count">'+escape(tr('expandTask'))+' ↓</span>':'');
-        const cause=compact?e.members[0]:e;
-        const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'style="left:24px;top:'+(top+i*66)+'px;width:'+leftW+'px"');
-        return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?compact.id:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
+    const banded=sections.length>1, currentIds=new Set(currentGoals(f));
+    const layered=banded || bands.length>1;
+    let taskNo=0;
+    const stations=bands.map((band,bi)=>layered?goalBandHtml(band,bi):band.sections.map(sec=>sectionHtml(sec)).join('')).join('');
+    function goalBandHtml(band,bi) {
+      const head=goalHeadHtml(band,bi+1,y,centerX,centerWidth);
+      y+=AG_GOAL_H;
+      return head+band.sections.map(sec=>sectionHtml(sec)).join('');
+    }
+    function sectionHtml(sec) {
+      const si=taskNo++;
+      const heading=banded?taskHeadHtml(sec,y,centerX,centerWidth,si+1):'';
+      if(banded) y+=AG_HEAD_H;
+      const body=sec.rows.map(row=>{
+        const top=y, columns=row.length===1?(lanes===1?centerWidth:320):252;
+        if(row.some(e=>e.id===inline)) detailTop=top;
+        // 行距按固定节拍算，卡片高度由 CSS 钉死：算出来的位置和画出来的框对得上，
+        // 卡片就不会压住下一行（260909 反馈第 4 条「被挡住一部分」）。
+        y+=Math.max(AG_CARD_H,row.length*AG_ROW_PITCH)+AG_ROW_GAP;
+        return row.map((e,i)=>{
+          const x=centerX+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
+          const compact=list(e.members).length>0, state=goalStatus(e);
+          const label=compact?tr('pastTask'):'T'+(si+1)+'·'+(sec.members.findIndex(m=>m.id===e.id)+1);
+          const content='<span class="ag-label"><b>'+escape(label)+'</b><span'+(compact && e.wrong?' class="ag-wrong"':'')+'>'+escape(compact?e.members.length+' '+tr('goalVersions')+(e.wrong?' · '+tr('mistaken'):''):state==='completedGoal'?tr('completedGoal'):currentIds.has(e.id)?tr('goalNow'):tr(state))+'</span></span><strong>'+escape(short(e.after,100))+'</strong>'+(compact?'<span class="ag-count">'+escape(tr('expandTask'))+' ↓</span>':'');
+          const cause=compact?e.members[0]:e;
+          const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'style="left:24px;top:'+(top+i*AG_ROW_PITCH)+'px;width:'+leftW+'px"');
+          return change+'<article class="ag-station ag-'+escape(e.actor)+(compact?(e.wrong?' ag-has-mistaken':''):state==='mistaken'?' ag-mistaken':'')+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?e.taskKey:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
+        }).join('');
       }).join('');
-    }).join('');
+      y+=AG_SECTION_GAP;
+      return heading+body;
+    }
     const anchorW=Math.min(centerWidth,520), height=Math.max(y+18,detailTop==null?0:detailTop+DH+18);
-    return '<section class="ag-flow">'+readingHtml(f)+flowHelpHtml()+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
+    return '<section class="ag-flow">'+readingHtml(f)+primerHtml(f)+flowHelpHtml()+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
       '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+height+'px">'+
       '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:'+centerX+'px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
       '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(centerX+(centerWidth-anchorW)/2)+'px;top:48px;width:'+anchorW+'px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+

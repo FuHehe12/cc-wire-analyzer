@@ -5,6 +5,11 @@ corrections are separate append-only events, never fabricated goal iterations. E
 are checked for shape here, not existence or semantic support in the recording.
 Current understanding and situation are explicit, replaceable observations, not
 inferences from goal status. Legacy flows never acquire inferred task boundaries.
+A goal believed and later found wrong is marked by a mistaken status event, so the
+wrong goal keeps its place in the sequence; iterations still carry no hindsight.
+change tells the two planes apart: turn starts another deliverable under the same
+overall goal, goal records that the overall goal itself changed. Both open a task;
+neither is inferred from wording, tool switches or elapsed time.
 """
 
 from __future__ import annotations
@@ -92,7 +97,9 @@ def _events(value, iteration_ids):
                  "text": _text(raw["text"], path + ".text"),
                  "evidence": _evidence(raw["evidence"], path + ".evidence")}
         if kind == "status":
-            event["status"] = _enum(raw["status"], ("active", "achieved", "unresolved", "superseded"), path + ".status")
+            event["status"] = _enum(raw["status"],
+                                    ("active", "achieved", "unresolved", "superseded", "mistaken"),
+                                    path + ".status")
             if "verification" in raw:
                 event["verification"] = _verification(raw["verification"], path + ".verification")
             if event["status"] == "achieved" and "verification" not in event:
@@ -149,7 +156,7 @@ def _task_links(tasks, iterations):
                 if first or not parents or any(t != tid for t in parent_tasks):
                     _error("refine 必须修正已有同任务目标，所有父边须指向同任务 G")
             elif not first or not any(t is not None and t != tid for t in parent_tasks):
-                _error("turn 必须是新任务的首个 G，并保留至少一条指向已知其他任务的父边")
+                _error("turn / goal 必须是新任务的首个 G，并保留至少一条指向已知其他任务的父边")
             started.add(tid)
         by_goal[item["id"]] = item
     if set(by_task) != started:
@@ -174,7 +181,7 @@ def _current(value, iteration_ids):
 
 
 def _normalize(value) -> dict:
-    flow = _object(value, {"anchor", "iterations"}, {"events", "tasks", "current"}, "goal_flow")
+    flow = _object(value, {"anchor", "iterations"}, {"events", "tasks", "current", "mode"}, "goal_flow")
     raw = _object(flow["anchor"], {"user_text", "understanding", "evidence", "basis"},
                   {"choices"}, "anchor")
     choices = raw.get("choices", [])
@@ -221,7 +228,8 @@ def _normalize(value) -> dict:
             if not isinstance(tid, str) or not _ID.fullmatch(tid):
                 _error(f"{path}.task_id 必须为1..64字符 ID，以字母或数字开头")
             item["task_id"] = tid
-            item["change"] = _enum(raw["change"], ("initial", "refine", "turn"), path + ".change")
+            item["change"] = _enum(raw["change"], ("initial", "refine", "turn", "goal"),
+                                   path + ".change")
         if "verification" in raw:
             item["verification"] = _verification(raw["verification"], path + ".verification")
         if item["status"] == "achieved" and "verification" not in item:
@@ -229,6 +237,11 @@ def _normalize(value) -> dict:
         out.append(item)
         seen.add(iid)
     result = {"anchor": anchor, "iterations": out}
+    # How this record was built, not what was observed: live turn-by-turn or one
+    # retrospective pass. Absent stays absent; a retrospective pass may have
+    # absorbed goals that were believed and later dropped.
+    if "mode" in flow:
+        result["mode"] = _enum(flow["mode"], ("incremental", "retrospective"), "goal_flow.mode")
     # Absence stays absent for legacy records; [] is equivalent for history checks.
     if "events" in flow:
         result["events"] = _events(flow["events"], seen)
@@ -258,8 +271,9 @@ def validate(value, previous=None) -> dict:
                 or result.get("events", [])[:len(old.get("events", []))] != old.get("events", [])
                 or result.get("tasks", [])[:len(old.get("tasks", []))] != old.get("tasks", [])):
             _error("A 锚点、已有任务/G/事件不可删改；目标变化追加 G，状态与外环订正追加 events", "goal_flow_frozen")
-        if "current" not in result and "current" in old:
-            result["current"] = old["current"]
+        for key in ("current", "mode"):
+            if key not in result and key in old:
+                result[key] = old[key]
     return result
 
 
@@ -271,7 +285,7 @@ def apply_delta(previous, delta) -> dict:
     """
     if previous is None:
         _error("goal_flow_delta 需要已有 goal_flow；首次请提交完整 goal_flow")
-    delta = _object(delta, set(), {"tasks", "iterations", "events", "current"}, "goal_flow_delta")
+    delta = _object(delta, set(), {"tasks", "iterations", "events", "current", "mode"}, "goal_flow_delta")
     if not delta:
         _error("goal_flow_delta 不可为空对象")
     merged = validate(previous)
@@ -280,8 +294,9 @@ def apply_delta(previous, delta) -> dict:
             if not isinstance(delta[key], list):
                 _error(f"goal_flow_delta.{key} 必须为追加数组")
             merged[key] = merged.get(key, []) + delta[key]
-    if "current" in delta:
-        merged["current"] = delta["current"]
+    for key in ("current", "mode"):
+        if key in delta:
+            merged[key] = delta[key]
     return validate(merged, previous=previous)
 
 

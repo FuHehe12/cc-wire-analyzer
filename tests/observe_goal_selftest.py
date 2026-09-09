@@ -422,6 +422,89 @@ class GoalTasksAndCurrent(unittest.TestCase):
             apply_delta(None, {"current": current()})
 
 
+class GoalMistakenAndMode(unittest.TestCase):
+    """260909 反馈第 9 条与方法结论：误目标要留痕，建模模式要能分辨。"""
+
+    reject = GoalContract.reject
+
+    def wrong(self, **fields):
+        return {"id": "e1", "kind": "status", "target": "g0", "status": "mistaken",
+                "text": "该目标做完并自检通过后被用户打断纠正：方向本身就错了",
+                "evidence": ["req_wrong"], **fields}
+
+    def test_mistaken_is_a_later_judgement_not_a_new_goal(self):
+        value = sample()
+        value["events"] = [self.wrong()]
+        result = validate(value)
+        self.assertEqual(len(result["iterations"]), 1, "留痕不得凭空补一个当时没发生的 G")
+        self.assertEqual(project_statuses(value)["g0"], {"status": "mistaken", "event_id": "e1"})
+        # 事后判定只走事件；当时的记录里不写后见之明。
+        wrong_iteration = sample()
+        wrong_iteration["iterations"][0]["status"] = "mistaken"
+        self.reject(wrong_iteration)
+        # 误目标仍要求写清怎么发现的与证据，和别的状态事件一样。
+        for missing in [{"text": ""}, {"evidence": []}, {"evidence": ["g0"]}]:
+            value = sample()
+            value["events"] = [self.wrong(**missing)]
+            self.reject(value)
+
+    def test_mistaken_and_superseded_are_not_the_same_judgement(self):
+        value = sample()
+        value["iterations"].append(iteration("g1", ["g0"]))
+        value["events"] = [{"id": "e1", "kind": "status", "target": "g0", "status": "superseded",
+                            "text": "被后续目标接替", "evidence": ["req_next"]}]
+        self.assertEqual(project_statuses(value)["g0"]["status"], "superseded")
+        value["events"].append(self.wrong(id="e2"))
+        projected = project_statuses(value)
+        self.assertEqual(projected["g0"]["status"], "mistaken", "后来的判定替换先前的判定")
+        self.assertEqual(projected["g1"]["status"], "active", "对一个 G 的再判定不外溢到别的 G")
+
+    def test_overall_goal_change_is_marked_apart_from_a_task_switch(self):
+        """260909 用户口径：T 是 G 的内环；换一件交付是 turn，整体结果诉求变了才是 goal。"""
+        good = tasked()
+        good["tasks"].append({"id": "t1", "title": "另一件交付", "start_id": "g1"})
+        good["iterations"].append(iteration("g1", ["g0"], task_id="t1", change="goal"))
+        result = validate(good)
+        self.assertEqual(result["iterations"][1]["change"], "goal")
+        self.assertEqual(len(result["tasks"]), 2, "整体目标变化同时开一个新任务，不另建一层结构")
+        # 结构条件与 turn 相同：必须是新任务的首个 G，且保留跨任务来路。
+        for tid, parents in [("t0", ["g0"]), ("t1", [])]:
+            bad = tasked()
+            bad["tasks"].append({"id": "t1", "title": "另一件交付", "start_id": "g1"})
+            bad["iterations"].append(iteration("g1", parents, task_id=tid, change="goal"))
+            self.reject(bad)
+        bad = tasked()
+        bad["iterations"][0]["change"] = "goal"
+        self.reject(bad, )
+        for unknown in ["Goal", "regoal", "switch"]:
+            bad = tasked()
+            bad["tasks"].append({"id": "t1", "title": "另一件交付", "start_id": "g1"})
+            bad["iterations"].append(iteration("g1", ["g0"], task_id="t1", change=unknown))
+            self.reject(bad)
+
+    def test_mode_declares_how_the_record_was_built(self):
+        value = sample()
+        value["mode"] = "retrospective"
+        self.assertEqual(validate(value)["mode"], "retrospective")
+        self.assertNotIn("mode", validate(sample()), "旧观测没有声明就保持没有")
+        for bad in ["live", "", None, True, "Retrospective"]:
+            value = sample()
+            value["mode"] = bad
+            self.reject(value)
+
+    def test_mode_survives_updates_and_can_be_corrected(self):
+        previous = validate(dict(sample(), mode="retrospective"))
+        kept = validate(sample(), previous)
+        self.assertEqual(kept["mode"], "retrospective", "省略不等于清除")
+        turned = validate(dict(sample(), mode="incremental"), previous)
+        self.assertEqual(turned["mode"], "incremental", "复盘建完再转现场跟随是常态")
+        merged = apply_delta(previous, {"mode": "incremental", "current": current()})
+        self.assertEqual(merged["mode"], "incremental")
+        self.assertEqual(merged["iterations"], previous["iterations"])
+        with self.assertRaises(ObserveError):
+            apply_delta(previous, {"mode": "guess"})
+
+
 class GoalDeltaStore(unittest.TestCase):
     def setUp(self):
         self.oid = OB.create({"date": "2026-09-09", "lane": "sample"}, "增量契约测试")["id"]

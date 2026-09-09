@@ -12,12 +12,12 @@ const source = fs.readFileSync(path.join(project, 'src/static/observe-map.js'), 
 // Test-only access to the actual pure reader functions, not a second algorithm.
 const seam = 'window.ObserveMap={render,refresh,clear};';
 assert.equal(source.split(seam).length, 2, 'reader API seam must be unique');
-const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,taskRows,readingHtml,goalDetail};');
+const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,taskRows,taskSections,goalBands,primerHtml,readingHtml,goalDetail};');
 const context = {window:{}, document:{getElementById:()=>null}, URLSearchParams, AbortController, LANG:'en'};
 vm.createContext(context);
 vm.runInContext(code, context, {filename:'observe-map.js'});
 const {words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml} = context.window.audit;
-const {flowDiagramHtml,flowLayers,taskRows,readingHtml,goalDetail}=context.window.audit;
+const {flowDiagramHtml,flowLayers,taskRows,taskSections,goalBands,primerHtml,readingHtml,goalDetail}=context.window.audit;
 let passed = 0;
 function test(name, fn) {fn(); passed++; console.log('PASS ' + name);}
 function pred(extra={}) {
@@ -271,11 +271,103 @@ test('earlier tasks collapse without losing IDs, and explicit expansion survives
   assert(flowDiagramHtml(g).includes(words.en.change_refine));
   M.taskOpen.clear();f.current.goal_ids=['g1','g2'];assert.equal(taskRows(f).length,3,'simultaneously current tasks stay expanded');
 });
-test('cross-task branches remain explicit instead of being collapsed into an invented join',()=>{
+test('a task other tasks branch out of mid-way is never collapsed into an invented join',()=>{
   reset();
   const f={tasks:[{id:'a'},{id:'b'}],iterations:[
     {id:'g0',task_id:'a',parent_ids:[]},{id:'g1',task_id:'a',parent_ids:['g0']},
     {id:'g2',task_id:'b',parent_ids:['g0']},{id:'g3',task_id:'a',parent_ids:['g1']}],current:{goal_ids:['g2']}};
-  assert(!taskRows(f).flat().some(e=>e.compactTask),'interleaved task branches cannot share a collapsed proxy');
+  // g2 leaves task a from g0, not from its last goal: a collapsed proxy would draw
+  // that edge as "the whole task joined into g2", which never happened.
+  const [a,b]=taskSections(f);
+  assert.equal(a.foldable,false,'a branched-out-of task offers no collapse');
+  assert.equal(a.collapsed,false);
+  assert(!taskRows(f).flat().some(e=>e.members),'no collapsed proxy stands for the branch');
+  assert.deepEqual([...a.rows].map(r=>[...r].map(e=>e.id)),[['g0'],['g1'],['g3']]);
+  assert.deepEqual([...b.rows].map(r=>[...r].map(e=>e.id)),[['g2']]);
+});
+test('goals are grouped by task first, and history without tasks keeps its own band',()=>{
+  reset();
+  const e=(id,task_id,parent_ids)=>({id,task_id,parent_ids,after:'Result '+id,trigger:'Because '+id,actor:'ai',evidence:['req_'+id]});
+  const f={anchor:{user_text:'Look',understanding:'Look'},tasks:[{id:'t1',title:'Split the engine'},{id:'t2',title:'Repair the export'}],
+    iterations:[e('g0',null,[]),e('g1','t1',['g0']),e('g2','t1',['g1']),e('g3','t2',['g2'])],current:{goal_ids:['g3']}};
+  const secs=taskSections(f);
+  assert.deepEqual([...secs].map(s=>s.key),['','t1','t2'],'first appearance order, one band per task');
+  assert.deepEqual([...secs].map(s=>[...s.members].map(m=>m.id)),[['g0'],['g1','g2'],['g3']]);
+  assert.equal(secs[0].task,null,'unlabelled history is never given an invented task');
+  const g={id:'goal',kind:'goal',goal_flow:f};M.state.items=[g];
+  const html=flowDiagramHtml(g);
+  assert(html.includes(words.en.untasked),'the unlabelled band says so instead of borrowing a title');
+  assert(html.includes('Split the engine') && html.includes('Repair the export'));
+  assert.equal((html.match(/ag-task-heading/g)||[]).length,3,'every band carries its own heading');
+  assert(html.includes('data-ag-members="g1 g2"'),'a finished task folds to one proxy that keeps its member IDs');
+  const tops=[...html.matchAll(/class="ag-station[^"]*"[^>]*top:(\d+)px/g)].map(m=>Number(m[1]));
+  assert.deepEqual(tops,[...tops].sort((a,b)=>a-b),'bands stack downwards without reordering');
+  assert(tops.every((t,i)=>i===0 || t-tops[i-1]>=118),'rows keep a full card of pitch, so no card can cover the next');
+});
+test('rows are ordered by their parents so goal wires do not cross',()=>{
+  reset();
+  const e=(id,parent_ids)=>({id,parent_ids,after:'Result '+id,trigger:'Because '+id,actor:'ai',evidence:['req_'+id]});
+  // Insertion order alone puts g3 under g1 and g4 under g2: the 260909 screenshot X.
+  const rows=flowLayers([e('g1',[]),e('g2',[]),e('g3',['g2']),e('g4',['g1'])]);
+  assert.deepEqual([...rows].map(r=>[...r].map(x=>x.id)),[['g1','g2'],['g4','g3']],'each row follows its parents');
+  const same=flowLayers([e('g0',[]),e('a',['g0']),e('b',['g0'])]);
+  assert.deepEqual([...same].map(r=>[...r].map(x=>x.id)),[['g0'],['a','b']],'siblings of one parent keep recorded order');
+});
+test('the page explains A, G and T in place and never hides the modelling mode',()=>{
+  reset();
+  const f={anchor:{user_text:'Look',understanding:'Look'},iterations:[{id:'g0',parent_ids:[],after:'Result',trigger:'Because',actor:'ai'}]};
+  for(const lang of ['zh','en','ja']) {
+    context.LANG=lang;
+    const primer=primerHtml(f);
+    for(const key of ['glossaryA','glossaryANote','glossaryG','glossaryGNote','glossaryT','glossaryTNote'])
+      assert(primer.includes(words[lang][key].replace(/&/g,'&amp;')),lang+': '+key);
+    assert(!primer.includes('<details'),'the reading key must not be foldable away');
+    assert(!primer.includes(words[lang].mode_retrospective),'an undeclared mode is not guessed');
+    assert(primerHtml({...f,mode:'retrospective'}).includes(words[lang].mode_retrospective_note));
+    assert(primerHtml({...f,mode:'incremental'}).includes(words[lang].mode_incremental_note));
+    assert(!primerHtml({...f,mode:'<img src=x>'}).includes('<img'),'an unknown mode is neither shown nor trusted');
+  }
+  context.LANG='en';
+});
+test('a goal found to be mistaken keeps its place in the sequence and says so',()=>{
+  reset();
+  const g={id:'goal',kind:'goal',goal_flow:{anchor:{user_text:'Build the check page',understanding:'Build it'},
+    iterations:[{id:'g0',actor:'ai',parent_ids:[],after:'Build a compare archive page',trigger:'Read the request',evidence:['req_a']},
+      {id:'g1',actor:'user',parent_ids:['g0'],after:'Put the viewer on the split path',trigger:'The user interrupted',evidence:['req_b']}],
+    events:[{id:'e1',kind:'status',target:'g0',status:'mistaken',text:'Verified, then the user said the direction itself was wrong',evidence:['req_b']}]}};
+  M.state.items=[g];
+  const html=flowDiagramHtml(g);
+  assert.equal((html.match(/data-ag-node="g0"/g)||[]).length,1,'the wrong goal is not absorbed into the next one');
+  assert(html.includes('Build a compare archive page'),'its own words stay on the card');
+  assert(html.includes('ag-mistaken'),'and it is marked, not silently left as active');
+  assert(html.includes(words.en.mistaken));
+  assert(!html.includes(words.en.superseded),'superseded is a different judgement and is not substituted');
+  assert(goalDetail('g0').includes('the direction itself was wrong'),'how it was found stays with its evidence');
+});
+test('the overall goal is the outer plane and tasks are its inner loop',()=>{
+  reset();
+  const e=(id,task_id,parent_ids,change,after)=>({id,task_id,parent_ids,change,after,trigger:'Because '+id,actor:'user',evidence:['req_'+id]});
+  const f={anchor:{user_text:'Check the export',understanding:'Check the export'},
+    tasks:[{id:'t1',title:'Check the report',start_id:'g0'},{id:'t2',title:'Check the charts',start_id:'g2'},{id:'t3',title:'Write the guide',start_id:'g3'}],
+    iterations:[e('g0','t1',[],'initial','Report checked against the source'),
+      e('g1','t1',['g0'],'refine','Report checked, wording included'),
+      e('g2','t2',['g1'],'turn','Charts checked as well'),
+      e('g3','t3',['g2'],'goal','A written operating guide is delivered')],
+    current:{goal_ids:['g3']}};
+  const bands=[...goalBands(f)];
+  assert.equal(bands.length,2,'switching to another task does not start a new overall goal');
+  assert.deepEqual(bands.map(b=>[...b.sections].map(s=>s.key)),[['t1','t2'],['t3']]);
+  assert.equal(bands[0].goal,null,'the first band is the goal the conversation started with');
+  assert.equal(bands[1].text,'A written operating guide is delivered');
+  const g={id:'goal',kind:'goal',goal_flow:f};M.state.items=[g];
+  M.taskOpen.set('t1',true);
+  const html=flowDiagramHtml(g);
+  assert.equal((html.match(/ag-goal-heading/g)||[]).length,2,'one band per overall goal, not per iteration');
+  assert(html.includes('G1 · '+words.en.overallGoal) && html.includes('G2 · '+words.en.overallGoal));
+  assert(!/>G3\b/.test(html),'a task switch never earns a G number');
+  assert(html.includes('>T1·1<') && html.includes('>T1·2<'),'cards are numbered inside their own task');
+  assert(!/<b>G[0-9]+<[/]b>/.test(html),'iterations are no longer numbered as goals');
+  assert(html.includes(words.en.change_goal),'the change that raised a new overall goal is named as such');
+  M.taskOpen.clear();
 });
 console.log('\n'+passed+' observation reader checks passed.');

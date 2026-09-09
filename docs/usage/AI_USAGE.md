@@ -550,10 +550,14 @@ headers 存的时候 `Authorization` 已脱敏，但 body 原样存——假设 
 5. before/after 各写一句结果导向短句，中文建议40–80字，不静默截断原话；必要持续约束可在 trigger 补充。原话、AI 转述、观察者推断分开，证据保留可查。用户答复也可能在工具返回中，需核对出处；AI 转述不等于用户授权。若 schema 要求 basis，仅区分明示/推断，不用于评分。验收标准改变显眼写清前后条件、修改者和用户是否确认。
 6. 首次使用完整 goal_flow，后续优先用 update_item.patch.goal_flow_delta 追加新任务、G 与事件，并按需替换 current。读取最新 revision 后小批提交。原始 actions.next 原样用于 since，处理完后以 set_cursor.cursor 保存，不换算显示步数。409 重读并合并，再生成新提交；网络结果不明则原 submission_id 与原批内容重放。空轮询退避，无变化不刷屏；暂停前保存阅读位置与未决，重连同观测继续。
 7. 目标内容不变时用 status 事件记录状态/核验，不造新 G。工具成功、AI 自称完成和用户另开话题都不等于验收，achieved 仍需用户验收或独立核验证据。现场增量与事后复盘如实区分。
+8. **建模模式要声明，误目标要留痕**（260909 实测结论）。实时跟随一律逐轮增量提交，`goal_flow.mode` 写 `incremental`：每批先更新 current，目标实质变化才动 G。事后复盘允许一次性建模，但 `mode` 必须写 `retrospective`——一次性复盘会把「错目标 → 改目标」压成 refine 的一句 trigger，那个曾经被相信、做完、甚至自检通过的目标，在 G 序列里就从未存在过。已知被推翻的中间目标，用 `status:"mistaken"` 事件挂在那个 G 上，写清怎么发现的并附证据；`superseded` 说的是被后来的目标接替，不是这个意思。
 
 ### 当前任务与增量写入
 
-`tasks:[{id,title,start_id}]` 显式声明任务，start_id 指向该任务首个 G。迭代的 `task_id` 与 `change` 成对使用：initial 是首个显式任务的首 G；refine 是已有同任务的修正，所有父边指向同任务；turn 是新任务首 G，至少一条父边指向已知不同任务。旧无任务标记的历史可以保留，不自动迁移、补标或推断 IDs。新任务不追加旧任务“完成”事件，除非另有验收依据。
+`tasks:[{id,title,start_id}]` 显式声明任务，start_id 指向该任务首个 G。迭代的 `task_id` 与 `change` 成对使用：initial 是首个显式任务的首 G；refine 是已有同任务的修正，所有父边指向同任务；turn 是新任务首 G，至少一条父边指向已知不同任务；goal 的结构条件与 turn 相同，语义是**整体目标本身变了**。
+
+**G 与 T 是两个平面**（260909 用户口径）：G 是对话中的最高目标，T 是 G 的内环——为达成 G 拆出的交付单元。换一件交付用 `turn`，整体目标不变、不产生新的 G；只有用户提出新的结果诉求时才用 `goal` 另起一个 G。同任务口径调整用 `refine`。别把「又开了一件事」当成「目标变了」，那会让一场会话里凭空多出十来个 G。
+旧无任务标记的历史可以保留，不自动迁移、补标或推断 IDs。新任务不追加旧任务“完成”事件，除非另有验收依据。
 
 例如“检查报告”→“报告还需核对图表”是任务 report 的 refine；“再写操作指南”是新任务 guide 的 turn。若只是把缺图原因从模板改判为数据缺失，目标不变，只更新 current.situation。current 的 goal_ids 显式引用当前关注的 G，understanding/situation/evidence 必填；carryover 可记录“报告核对尚未完成，指南已开始；后续仍用日常语言说明”。不要从目标状态自动猜当前关注点。
 
@@ -588,8 +592,9 @@ headers 存的时候 `Authorization` 已脱敏，但 body 原样存——假设 
 | `covers` | 最多2000个请求 ID 的数组，显式归属、保序去重；不等于证据 |
 | `cover_span` | `{"first_rid":"req_a","last_rid":"req_b"}`；HTTP 按当前 scope 展开同泳道闭区间为 covers，与 covers 互斥 |
 | `forecast` | 仅 prediction；`{"after_rid":"req_a","horizon_steps":5,"criterion":"执行回归测试"}`，窗口1–5000整数、条件非空最多2000字符；保存后原正文与 forecast 不可改写 |
-| `goal_flow` | 仅 goal；`{anchor,iterations,events?}`：A/G 目标内容冻结，events 追加状态或外环订正；完整结构见 API 契约，一个观测最多一个未撤回目标流 |
-| `goal_flow.events` | 可选最多2000条；status事件 `{id,kind:"status",target:G_ID,status:active/achieved/unresolved/superseded,text,evidence,verification?}`（achieved必须核验）；correction事件 `{id,kind:"correction",target:G_ID或"@anchor",text,evidence,basis:inferred/explicit}`；事件ID为1–64字符、字母/数字开头，数组内唯一；text非空最多4000字符、evidence为1–50个不重复有效请求ID，已有事件不可删改；最新status事件投影现态，不新增G |
+| `goal_flow` | 仅 goal；`{anchor,iterations,events?,tasks?,current?,mode?}`：A/G 目标内容冻结，events 追加状态或外环订正；完整结构见 API 契约，一个观测最多一个未撤回目标流 |
+| `goal_flow.mode` | 可选，`incremental`（现场逐轮跟随）或 `retrospective`（事后一次性复盘）；声明这份记录怎么建的，不描述被观察会话，可随时改、可在 delta 里替换；缺省表示未声明 |
+| `goal_flow.events` | 可选最多2000条；status事件 `{id,kind:"status",target:G_ID,status:active/achieved/unresolved/superseded/mistaken,text,evidence,verification?}`（achieved必须核验；mistaken=曾相信、后来判定方向本身错了，与被接替的superseded不同义）；correction事件 `{id,kind:"correction",target:G_ID或"@anchor",text,evidence,basis:inferred/explicit}`；事件ID为1–64字符、字母/数字开头，数组内唯一；text非空最多4000字符、evidence为1–50个不重复有效请求ID，已有事件不可删改；最新status事件投影现态，不新增G |
 | `goal_iteration` | 非 goal 条目关联现有 iteration.id，1–64字符、字母/数字开头，其后允许字母/数字/下划线/连字符；空串清除，省略保留。整批完成后必须指向本观测唯一活跃 goal_flow 的站点；可同批先条目后目标流，撤回目标流须同时清除或撤回关联项；旧条目不自动关联 |
 
 关系 `type` 只接受 belongs_to / depends_on / produces / supports / contradicts。新建名称需先在该批前面的 add_item 中声明，或者已在此前批次创建；重复名称返回 `duplicate_ref`。旧数据的同名多义引用返回 `ambiguous_ref`，请按真实 ID 操作，不猜哪一个。已有名称在提交流水达到200条而截断后仍保留。
@@ -611,7 +616,7 @@ anchor 必填 user_text、understanding、evidence、basis；choices 可选，�
 achieved 必须附 `verification:{"method":"independent_check","text":"具体核验过程与结果","evidence":["req_c"]}`，method 另可 user_acceptance。仅 Agent 自称完成应保留 active 或 unresolved。更新用 `{"op":"update_item","id":"main-goal","patch":{"goal_flow":完整旧结构加新增迭代或events}}`，旧 anchor、迭代与事件不得覆盖或删除；只有实质目标变化新增迭代，同目标的核验和状态变化追加 status 事件，外环解释订正追加 correction 事件；条目的短标题、说明与一般可信状态仍可更新。服务端只验证结构及引用格式，不能证明引文真实性、核验独立性或语义成立，用户应能点回证据复核。
 
 
-events 可选，最多2000条；status 最小示例为 `{"id":"e1","kind":"status","target":"g1","status":"unresolved","text":"核验仍有遗漏","evidence":["req_c"]}`，状态可选 active / achieved / unresolved / superseded，achieved 必须附上述 verification。correction 最小示例为 `{"id":"c1","kind":"correction","target":"@anchor","text":"此前对初始理解的解释需要订正","evidence":["req_c"],"basis":"inferred"}`；target 可为已有 G 的 ID 或 @anchor，basis 为 inferred / explicit。事件 id 采用迭代 ID 的字符规则且 events 内唯一，text 非空最多4000字符、evidence 为1–50个不重复的有效请求 ID；status 不接受 basis，correction 不接受 actor/status/verification。最新 status 事件投影现态，未提供 verification 的后续事件不继承旧核验；correction 只添加外环说明，既不改变原 G，也不产生被观察 AI 的目标变化。不存在或语义无支持的证据仍须另行核对。
+events 可选，最多2000条；status 最小示例为 `{"id":"e1","kind":"status","target":"g1","status":"unresolved","text":"核验仍有遗漏","evidence":["req_c"]}`，状态可选 active / achieved / unresolved / superseded / mistaken，achieved 必须附上述 verification。`mistaken` 用于事后判定某个 G 方向本身就错了（不是被后来的目标接替），text 写清怎么发现的、evidence 挂证据；该 G 继续留在 iterations 里，不要删除它，也不要只把它压进后一个 G 的 trigger。迭代自身的 status 仍只有 active / achieved / unresolved——事后判定只走事件，不写回当时的记录。correction 最小示例为 `{"id":"c1","kind":"correction","target":"@anchor","text":"此前对初始理解的解释需要订正","evidence":["req_c"],"basis":"inferred"}`；target 可为已有 G 的 ID 或 @anchor，basis 为 inferred / explicit。事件 id 采用迭代 ID 的字符规则且 events 内唯一，text 非空最多4000字符、evidence 为1–50个不重复的有效请求 ID；status 不接受 basis，correction 不接受 actor/status/verification。最新 status 事件投影现态，未提供 verification 的后续事件不继承旧核验；correction 只添加外环说明，既不改变原 G，也不产生被观察 AI 的目标变化。不存在或语义无支持的证据仍须另行核对。
 
 ### 读取口径与界面阅读
 
@@ -620,6 +625,8 @@ events 可选，最多2000条；status 最小示例为 `{"id":"e1","kind":"statu
 `actions.include_aux` 只接受 true/false，默认 true；false 排除辅助安全检查，保留子代理泳道。非法值返回400 bad_include_aux，响应回显布尔值。推荐会话范围配合 `view=dialog&include_aux=false`，要核对辅助安全检查时另读 include_aux=true。每步标题中的“泳道=”给出真实来源 ID，跨泳道叙事引用需保留来源；cover_span 仍限同泳道，分别选段或显式 covers。
 
 `next` 是当前 date/source 原始索引中过滤前的位置，既不是去重后的步数，也不是当前泳道累计步骤；不能与 `total` 直接比较。无新记录的增量返回 done:true，next 保持不变且不重读历史。续读必须保持同一 date/source 和筛选口径；切换 session 等范围不要复用旧范围进度，另存 cursor。不要把旧客户端保存的去重计数当成新原始索引水位，无法确认时从 since=0 重读并合并。
+
+**导出页按任务（T）分区**（260909）：一个任务一区，区内是这件事上目标口径的演进；区头给任务名、这件事有几版目标、现在什么状态，不在跟进中的任务默认折起来，点区头或代理卡片展开。页面常驻 A/G/T 的一句话释义，读者不必事先知道模型。声明了 `mode` 的观测在顶部显示模式，复盘模式会明说「中间被推翻的目标可能没有留痕」。标了 `mistaken` 的 G 单独染色并划掉标题，它仍留在序列里，不会被后一个目标吸收。
 
 当前界面聚焦顶部理解与现状、连续 A→G 的任务修正与转折，原话和证据按需展开；阶段、发现及预测等旧 API 保留兼容，不是当前主视图的独立模块。原始对话显示录制原文，不自动翻译；外环说明用阅读者语言撰写，引文保持原貌。CCWA 负责读取、存储与显示，持续分析仍由外部宿主运行。
 

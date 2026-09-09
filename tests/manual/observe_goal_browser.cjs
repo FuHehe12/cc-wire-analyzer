@@ -30,6 +30,11 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  }
  assert.equal(await page.locator('.ag-station').count(),flow.iterations.length);
  for(const task of flow.tasks) assert((await page.locator('.ag-task-heading').allTextContents()).some(t=>t.includes(task.title)));
+ // 260909 用户口径：G 是整体目标，T 是 G 的内环。换一件交付（turn）不产生新的 G。
+ const declared=flow.iterations.filter(i=>i.change==='goal').length;
+ assert.equal(await page.locator('.ag-goal-heading').count(),declared+1,'one band per overall goal: the initial one plus each declared change');
+ assert((await page.locator('.ag-station .ag-label b').allTextContents()).every(l=>/^T\d+·\d+$/.test(l)),'expanded cards are numbered inside their own task, not as goals');
+ for(const key of ['A','G','T']) assert((await page.locator('.ag-glossary').innerText()).includes(key),'the page explains '+key+' in place');
  await page.waitForFunction(()=>document.querySelectorAll('.ag-wire').length>0);
  const expectedEdges=flow.iterations.flatMap(e=>((e.parent_ids || []).length?e.parent_ids:['@anchor']).map(p=>[p,e.id]));
  const edges=await page.locator('.ag-wire').evaluateAll(ns=>ns.map(n=>[n.dataset.agFrom,n.dataset.agTo]));

@@ -484,7 +484,7 @@ wire 上的真实次序，中间只隔一个步头，不为了好看把答复挪
 
 #### A→G 连续目标流
 
-仅 goal 条目可携带 `goal_flow={anchor,iterations,events?,tasks?,current?}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
+仅 goal 条目可携带 `goal_flow={anchor,iterations,events?,tasks?,current?,mode?}`。一个观测最多存在一个未撤回的目标流；已有目标流不能清除或改 kind。anchor 为 `{user_text,understanding,evidence,basis,choices?}`，必填文字是非空最多4000字符；basis 为 inferred / explicit，choices 最多20条非空字符串、每条最多1000字符。
 
 iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,basis,parent_ids?,status?,verification?,task_id?,change?}`。id 在流内唯一，1–64字符字母/数字/下划线/连字符，首字符为字母或数字；actor 为 user / ai / user_ai，basis 同 anchor。before/after/trigger 为非空最多4000字符。parent_ids 最多20个唯一的此前迭代 ID，首条默认空数组，后续必须非空。status 默认 active，另有 achieved / unresolved；achieved 必须附 verification。verification 必填 method/text/evidence，method 为 user_acceptance / independent_check，text 非空最多4000字符。所有 evidence 必须含1–50个不重复的有效 req_ ID。
 
@@ -492,23 +492,33 @@ iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,bas
 
 `tasks` 是可选的显式任务数组，最多200项，每项只能含 `{id,title,start_id}`。id 在 tasks 内唯一，id/start_id 沿用 G 的 ID 字符规则；title 非空、最多200字符。start_id 必须指向该任务首个显式归属的 G，不能只声明任务而无对应 G。任务 ID、G ID 和事件 ID 各自独立命名，不自动生成或解析别名；调用方提供稳定 ID。
 
-迭代的 `task_id` 与 `change` 必须同时提供或同时省略，task_id 必须引用 tasks。程序检查显式关系，不从措辞、文件切换或状态机械划分任务：
+迭代的 `task_id` 与 `change` 必须同时提供或同时省略，task_id 必须引用 tasks。程序检查显式关系，不从措辞、文件切换或状态机械划分任务。
+
+**两个平面要分清（260909 用户口径）**：G 是对话中的最高目标——用户总体上要达到的结果；T 是 G 的内环，为达成它拆出的交付单元。换一件交付是 `turn`，**不产生新的 G**；只有出现新的结果诉求、整体目标本身改变，才用 `goal`。同一任务内的口径修正是 `refine`，它既不是新 G 也不是新 T。导出页据此分两层：G 段在外，T 区在内，卡片按 `T<第几个任务>·<第几版口径>` 编号，不再把每条迭代都编号成 G。
+
 
 | change | 严格关系条件 | 阅读含义 |
 |---|---|---|
 | `initial` | 第一项显式任务的首个 G；父边可接旧无任务字段的 G | 从这里开始记录任务归属；不反向补写旧历史 |
 | `refine` | 已开始任务的后续 G；所有父边均指向同一 task_id 的此前 G，可同时引用多个分支 | 同一交付的结果、范围或验收条件发生修正 |
-| `turn` | 新任务的首个 G；至少一条父边指向已知其他任务的 G | 开始另一项可独立交付的任务，并保留跨任务来路 |
+| `turn` | 新任务的首个 G；至少一条父边指向已知其他任务的 G | 同一个整体目标下开始另一项可独立交付的任务，并保留跨任务来路 |
+| `goal` | 结构条件与 `turn` 完全相同 | **整体目标本身变了**：用户提出了新的结果诉求。它同时开一个新任务，所以结构规则不变，区别只在语义 |
 
 旧 flow 可继续完全省略 tasks/task_id/change；tasks 与 current 也可分别启用。若在旧 flow 上开始任务归属，保留全部无任务字段的旧 G，追加第一项任务及 initial G；不能改写旧 G 来补标。首次显式归属之后新增的 G 均须提供 task_id/change。任务可并行，也可随后 refine 较早任务；不要求父边是数组中紧邻的 G。turn 不会将旧任务标为达成、替代或结束；这类状态若有证据，仍显式追加 events。
 
 `current` 是可更新的当前说明，只能含 `{goal_ids,understanding,situation,evidence,carryover?}`。goal_ids 必须是1–20个不重复的已有 G ID，可引用多个任务的 G；understanding（它对要求的理解）与 situation（它对现状的判断）均非空、最多4000字符；evidence 沿用1–50个有效请求 ID。可选 carryover 是非空、最多4000字符的持续要求与旧任务残件说明。当前说明不从最新 G、status 或完成声明自动生成，也不证明验收。原因假设或现状判断变了但期望结果未变时，可只更新 current，不新增 G。
 
+这两段是**概览，不是工作日志**（260909 实测口径）：每件事一句话讲结果、最多带一个有说服力的数字；「未验收／未确认／未完成／搁置」这类判断必须保留；验证过程与逐项数字写进对应 G 的 trigger、verification 与事件里——分层的位置本来就在那儿，不另开字段。粒度判据一句话：同事口头汇报会提这个吗。
+
 提供 current 会整体替换旧说明，须重新提交必填四字段；此次省略 carryover 会清除旧 carryover，因此仍适用的约束和残件须主动保留。完整 goal_flow 或 delta 都可省略整个 current，保留已保存值；不接受 null 清除。current 的旧版随条目更新进入 history，A、tasks、G、events 仍保持原前缀。
+
+`mode` 是可选的建模模式声明，取 `incremental`（现场逐轮跟随）或 `retrospective`（事后一次性复盘）。缺省表示未声明，旧结构不受影响。它描述这份记录**怎么建的**，不描述被观察的会话；因此不进冻结校验，可以随时改（复盘建完再转现场跟随就改成 incremental），也可以在 delta 里替换。读取方据此判断中间态的可信度：一次性复盘会把「错目标→改目标」压成一句 trigger，声明了模式，读的人才知道该去找 `mistaken` 事件、以及找不到时意味着什么。
+
+**给旧观测后挂目标流**：直接对原来的 goal 条目 `update_item` 挂 `goal_flow` 即可，不要另建条目形成双轨。历史不迁移、不补标——`initial` 仍只用于第一个显式任务的首个 G，旧的无任务前缀保持无任务（260909 实测样本：obs_1805d7a 的 i_8befbc）。
 
 #### A→G 小增量写入
 
-首次用 `add_item.goal_flow` 或 `update_item.patch.goal_flow` 提交完整结构；已有流优先用 `update_item.patch.goal_flow_delta`，它与同一 patch 中的 goal_flow 互斥。delta 只接受 tasks/iterations/events/current 四个可选键，不能是空对象，不能用于 add_item 或初始化，也不接受 anchor。前三项必须是追加数组（允许空数组）；current 是上述完整替换对象。delta 不作为条目字段保存，响应仍给出合并后的 goal_flow。
+首次用 `add_item.goal_flow` 或 `update_item.patch.goal_flow` 提交完整结构；已有流优先用 `update_item.patch.goal_flow_delta`，它与同一 patch 中的 goal_flow 互斥。delta 只接受 tasks/iterations/events/current/mode 五个可选键，不能是空对象，不能用于 add_item 或初始化，也不接受 anchor。前三项必须是追加数组（允许空数组）；current 与 mode 是整体替换值。delta 不作为条目字段保存，响应仍给出合并后的 goal_flow。
 
 例如已保存第一任务 t1 的 g1 后，结果和验收标准均未改变，只补现状说明：
 
@@ -543,10 +553,12 @@ iterations 最多200条，条目为 `{id,actor,before,after,trigger,evidence,bas
 
 | 事件 | 必填字段与语义 | 最小示例 |
 |---|---|---|
-| status | id/kind/target/status/text/evidence；status 为 active / achieved / unresolved / superseded，achieved 必须另附 verification | `{"id":"e1","kind":"status","target":"g1","status":"unresolved","text":"核验发现仍有遗漏","evidence":["req_a"]}` |
+| status | id/kind/target/status/text/evidence；status 为 active / achieved / unresolved / superseded / mistaken，achieved 必须另附 verification | `{"id":"e1","kind":"status","target":"g1","status":"unresolved","text":"核验发现仍有遗漏","evidence":["req_a"]}` |
 | correction | id/kind/target/text/evidence/basis；basis 为 inferred / explicit，表示外环订正的依据，不改变原 A/G，也不冒充 user/ai 的目标操作 | `{"id":"c1","kind":"correction","target":"@anchor","text":"此前把试用理解成验收，现订正","evidence":["req_b"],"basis":"explicit"}` |
 
 事件 text 为非空最多4000字符；evidence 为1–50个不重复的有效请求 ID；verification 沿用 method/text/evidence 对象及 user_acceptance / independent_check 方法。status 事件可附 verification，achieved 必须有；correction 不接受 status、actor 或 verification。错误结构、未知 target 或重复事件 ID 返回 bad_goal_flow；改写、删除已有事件返回 goal_flow_frozen，均400且整批不落盘。
+
+`superseded`（被后来的目标接替）与 `mistaken`（曾经相信、后来判定方向本身就错了）是两种不同的判定，不可互相替代。两者都只能由 status 事件给出：迭代自身的 `status` 仍只有 active / achieved / unresolved，事后判定不写回当时的记录。标 `mistaken` 的 G 继续留在 iterations 里、继续显示，不允许删除它或只把它压进后一个 G 的 trigger——那正是一次性复盘会丢掉的东西（260909 实测：误做的 compare 档案检查页被验证通过后由用户打断纠正，复盘建模里那个错目标从未存在过）。事件本就必须带 text 与 evidence，所以「怎么发现错的」有地方写且必须挂证据。
 
 当前状态按原迭代 status/verification 起步，再依数组顺序应用 target 匹配的 status 事件，最新状态覆盖旧状态及旧核验，后续 unresolved/active 没有 verification 时不沿用旧达成证据。correction 是可追溯的外环说明，不参与目标状态投影。后续同目标核验不新增 G，已有 goal_iteration 工作归属仍指向同一 G。Python 只读辅助 `observe_goal.project_statuses(flow)` 返回 `{G_ID:{status,verification?,event_id?}}`；事件不会改写持久保存的原 iteration。
 
