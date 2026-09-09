@@ -2,6 +2,67 @@
 
 这里记录 v0.4.29 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读[整理前原文](issues/evidence/260906_变更记录简写/CHANGELOG-history-before.md)。历史路径与行为不代表当前状态。
 
+## v0.4.30 - 2026-09-09
+
+### 中文
+
+实时分析聚焦 AI 怎样理解要求、怎样判断现状，以及目标如何修正或转向另一件事。
+
+#### 新增
+
+- 顶部新增“它对你要求的理解”和“它对现状的判断”，先看清双方是否理解一致，再按需查看原话与证据。
+- A→G 目标流保留最初理解，区分同任务的“修正”和另一独立任务的“转折”。此前任务可折叠，未完事项与持续要求不会因切换任务而消失。
+- 目标状态、核验和观察者的解释订正分别留痕。状态变化不再制造新目标，AI 自称完成不等于通过验收。
+
+#### 变更
+
+- 主画面收起“工作与发现”“原始步骤”“预测核对”，集中呈现 A→G。旧记录与接口保留；尚无目标流的观测可通过“复制接入说明”交给观察 AI 补充。
+- 目标详情在同行展开，原话证据就地查看；三套外观保持一致，窄屏可定位目标和详情，刷新保留选择、展开与阅读位置。
+- 观察 AI 可增量更新当前理解与目标变化，无需反复提交全部历史；支持跨批次引用条目、删除关系和简短写入回执。
+
+#### 修复
+
+- 观测写入遇到错字段、错层级或内容超限会明确报错，不再出现成功回执却未生效或内容被截断的情况。
+- 账本续读到末尾后不再重复读取历史；可过滤辅助调用。修复复制接入说明后提示显示未翻译键名的问题。
+
+#### 文档
+
+- 更新三语接入说明与界面阅读指引，说明如何区分目标和现状、修正和转折，以及继续维护已有观测。刷新页面不会自动启动观察 AI。
+
+---
+
+### English
+
+Live analysis now focuses on how the AI understands the request, sees the situation, and revises its goal or switches tasks.
+
+#### Added and changed
+
+- Two summaries show the AI's current understanding and view of the situation. A→G preserves the starting point and distinguishes revisions within a task from switches to another task, retaining unfinished work.
+- Status, verification and observer corrections keep separate histories. The main view focuses on A→G; legacy records and APIs remain available, and Copy setup notes explains how to add a goal flow.
+- Evidence opens beside the selected goal. Three themes, narrow-screen navigation and refresh preserve a consistent reading experience. Observers can submit incremental updates, reuse references across batches and request compact replies.
+
+#### Fixed and documented
+
+- Invalid or oversized observation writes now fail explicitly. Empty incremental reads no longer reread history; auxiliary calls can be filtered. Fixed untranslated copy-success feedback.
+- Updated setup notes and the interface guide. Refreshing the page does not start the observing AI, and an AI completion claim is not acceptance.
+
+---
+
+### 日本語
+
+リアルタイム分析を、AI が要求をどう理解し、現状をどう判断し、目標を修正・別タスクへ転換したかに集中させました。
+
+#### 追加・変更
+
+- 現在の要求理解と現状判断を上部に表示。A→G は最初の理解を保持し、同タスクの修正と別タスクへの転換を区別して、旧タスクの残件も残します。
+- 状態・検証・観測者による解釈訂正を別々に記録。主画面は A→G に絞り、旧記録と API は保持します。目標流の追加方法は接続説明をコピーして確認できます。
+- 選択した目標の横で原文・根拠を確認できます。三つの外観、狭い画面の移動、更新時の選択保持を改善し、観測 AI の増分更新と簡潔な応答にも対応しました。
+
+#### 修正・文書
+
+- 不正なフィールドや上限超過を明示的に拒否し、空の増分読み取りで履歴を再読しないよう修正。補助呼び出しの除外と、コピー後の翻訳済み通知に対応しました。
+- 接続説明と画面ガイドを更新。画面の更新だけでは観測 AI は起動せず、AI の完了宣言だけで検収済みとは判定しません。
+
 ## v0.4.29 - 2026-09-08
 
 ### 中文
