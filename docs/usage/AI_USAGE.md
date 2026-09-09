@@ -575,6 +575,7 @@ headers 存的时候 `Authorization` 已脱敏，但 body 原样存——假设 
 | `link_items` 删除关系 | `{"op":"link_items","from":"phase1","to":"goal1","type":"belongs_to","remove":true}` | 精确删除 from/to/type 对应关系，保留源条目旧关系 history；不存在的关系返回 `no_link`，不需撤回重建条目 |
 | `retract_item` | `{"op":"retract_item","id":"phase1","reason":"证据不足"}` | `id` 必填；`reason` 可选字符串、最多1000字符；撤回保留条目、真实 ID 和 history |
 | `set_cursor` | `{"op":"set_cursor","cursor":16}` | `cursor` 必填非负整数，值取 actions 响应的 `next`；不能写 `next` 字段 |
+| `rebuild_goal_flow` | `{"op":"rebuild_goal_flow","id":"main-goal","reason":"首版把两件交付并成一个任务，按原始录制重建","goal_flow":{…}}` | 整份重做已有 A→G：`reason` 必填非空、最多1000字符；`goal_flow` 按首次提交规则独立校验；旧版进条目 `history`，条目上追加 `rebuilds`，界面显示「已重建」。只对已有 goal_flow 的 goal 条目生效，首次建立仍用 `add_item.goal_flow`；重建后其他条目的 `goal_iteration` 必须在同批改到新迭代 ID 或撤回 |
 
 | add_item 或 update_item.patch 的字段 | 类型、取值与边界 |
 |---|---|

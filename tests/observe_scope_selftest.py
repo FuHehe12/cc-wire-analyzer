@@ -130,6 +130,58 @@ class SpanApiTests(unittest.TestCase):
             self.assertEqual(conflict.json["state"]["revision"], 1)
 
 
+class CaptureScopeApiTests(unittest.TestCase):
+    """从一条录制请求走到覆盖它的观测：范围解析 + 匹配排序 + 无标题时的下拉摘要。"""
+
+    def setUp(self):
+        import app as web
+        self.web = web
+        self.client = web.app.test_client()
+        self.dag = {"nodes": [{"id": "req_main1", "lane": "s-aaa"}, {"id": "req_main2", "lane": "s-bbb"},
+                              {"id": "req_aux1", "lane": "aux"}]}
+        self.index = [{"id": "req_main1", "session_id": "sess-a"},
+                      {"id": "req_main2", "session_id": "sess-b"},
+                      {"id": "req_aux1", "session_id": "sess-a"}]
+
+    def ask(self, rid, date="2026-09-07"):
+        from unittest.mock import patch
+        with patch.object(self.web, "_dag_of", return_value=self.dag),              patch.object(self.web.capture_store, "list_index", return_value=self.index):
+            return self.client.get("/api/observations?rid=" + rid + "&date=" + date)
+
+    def test_lane_and_session_resolved_and_matches_ranked(self):
+        wide = OB.create({"date": "2026-09-07"}, "只按日期")["id"]
+        exact = OB.create({"date": "2026-09-07", "lane": "s-aaa"}, "这条泳道")["id"]
+        other = OB.create({"date": "2026-09-07", "lane": "s-bbb"}, "另一条泳道")["id"]
+        r = self.ask("req_main1")
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(r.json["capture_scope"],
+                         {"date": "2026-09-07", "source": "", "lane": "s-aaa", "session": "sess-a"})
+        self.assertEqual(r.json["matches"][0], exact)          # 泳道精确匹配排最前
+        self.assertIn(wide, r.json["matches"])                 # 未限定泳道的观测也覆盖它
+        self.assertNotIn(other, r.json["matches"])             # 别的泳道不算命中
+
+    def test_aux_request_falls_back_to_its_session_main_lane(self):
+        """辅助调用归 aux 泳道，它不是任何一场对话的泳道；跳转要落到同会话主线上。"""
+        exact = OB.create({"date": "2026-09-07", "lane": "s-aaa"}, "这条泳道")["id"]
+        r = self.ask("req_aux1")
+        self.assertEqual(r.json["capture_scope"]["lane"], "s-aaa")
+        self.assertEqual(r.json["matches"][0], exact)
+
+    def test_unresolvable_request_still_returns_scope_without_matches(self):
+        r = self.ask("req_unknown", date="2026-09-11")
+        self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(r.json["capture_scope"]["date"], "2026-09-11")
+        self.assertEqual(r.json["matches"], [])
+
+    def test_listing_preview_replaces_untitled_rows(self):
+        oid = OB.create({"date": "2026-09-07", "lane": "s-ccc"})["id"]   # 无标题：外环常常不写
+        OB.apply(oid, "seed", 0, [{"op": "add_item", "kind": "goal", "text": "记录一场切割引擎评估会话"}])
+        row = next(x for x in self.client.get("/api/observations").json["items"] if x["id"] == oid)
+        self.assertEqual(row["title"], "")
+        self.assertEqual(row["preview"], "记录一场切割引擎评估会话")
+        self.assertFalse(row["has_flow"])
+
+
 class GoalDeltaApiTests(unittest.TestCase):
     """Exercise the public write surface, including cover_span preprocessing."""
 

@@ -101,6 +101,22 @@ def read(oid: str) -> dict | None:
         raise ObserveError("unreadable", f"观测状态损坏：{e}")
 
 
+PREVIEW_MAX = 60
+
+
+def _preview(items: list) -> str:
+    """列表里认得出是哪场对话的一句话。**title 可省，所以不能只靠 title**——
+    外环建观测时常常不写标题，界面全变成「未命名观测」，同一天几条根本分不开。
+    这里只从已保存的事实里回落，不生成新说法：当前理解 → A 的用户原话 → 首条正文。"""
+    live = [i for i in items if i.get("status") != "retracted"]
+    flow = next((i["goal_flow"] for i in live if isinstance(i.get("goal_flow"), dict)), {})
+    text = ((flow.get("current") or {}).get("understanding")
+            or (flow.get("anchor") or {}).get("user_text")
+            or next((i.get("title") or i.get("text") or "" for i in live), ""))
+    text = " ".join(str(text).split())
+    return text[:PREVIEW_MAX - 1] + "…" if len(text) > PREVIEW_MAX else text
+
+
 def listing() -> list[dict]:
     """所有观测的摘要（不带条目正文）。按最近更新倒序。"""
     out: list[dict] = []
@@ -114,6 +130,8 @@ def listing() -> list[dict]:
         items = s.get("items") or []
         out.append({
             "id": s.get("id"), "title": s.get("title") or "",
+            "preview": _preview(items), "has_flow": any(
+                "goal_flow" in i and i.get("status") != "retracted" for i in items),
             "scope": s.get("scope") or {}, "revision": s.get("revision", 0),
             "cursor": s.get("cursor", 0), "updated": s.get("updated"),
             "n_items": sum(1 for i in items if i.get("status") != "retracted"),
@@ -163,7 +181,10 @@ OP_FIELDS = {
     "retract_item": {"op", "id", "reason"},
     "link_items": {"op", "from", "to", "type", "remove"},
     "set_cursor": {"op", "cursor"},
+    "rebuild_goal_flow": {"op", "id", "reason", "goal_flow"},
 }
+REASON_MAX = 1000
+REBUILDS_MAX = 20
 
 
 def check_fields(data, allowed, context):
@@ -187,7 +208,7 @@ def _check_op(op):
         check_fields(data, PATCH_FIELDS, "update_item.patch")
         if not data:
             raise ObserveError("empty_patch", "update_item.patch 不能为空")
-    for field in ({"id"} if kind in ("update_item", "retract_item") else
+    for field in ({"id"} if kind in ("update_item", "retract_item", "rebuild_goal_flow") else
                   {"from", "to"} if kind == "link_items" else set()):
         if not isinstance(op.get(field), str) or not op[field].strip():
             raise ObserveError("bad_reference", f"{kind}.{field} 必须为非空字符串")
@@ -201,8 +222,11 @@ def _check_op(op):
     if "evidence" in data and (not isinstance(data["evidence"], list) or len(data["evidence"]) > 50 or
             any(not isinstance(x, str) or not _RID_RE.fullmatch(x) for x in data["evidence"])):
         raise ObserveError("bad_evidence", "evidence 必须为最多50项的请求 ID 字符串数组")
-    if "reason" in op and (not isinstance(op["reason"], str) or len(op["reason"].strip()) > 1000):
-        raise ObserveError("bad_reason", "reason 必须为最多1000字符的字符串")
+    if "reason" in op and (not isinstance(op["reason"], str) or len(op["reason"].strip()) > REASON_MAX):
+        raise ObserveError("bad_reason", f"reason 必须为最多{REASON_MAX}字符的字符串")
+    # 重建是覆盖判断，理由不能省：没有它，界面上无法解释这版 A→G 为什么替换了上一版。
+    if kind == "rebuild_goal_flow" and not (op.get("reason") or "").strip():
+        raise ObserveError("bad_reason", "rebuild_goal_flow.reason 必填：说明为什么重建这份 A→G")
     if "remove" in op and type(op["remove"]) is not bool:
         raise ObserveError("bad_link", "remove 必须为布尔值")
     if kind == "set_cursor" and (type(op.get("cursor")) is not int or op["cursor"] < 0):
@@ -444,6 +468,25 @@ def apply(oid: str, submission_id: str, base_revision, ops: list) -> dict:
                         links.append({"type": rel, "to": b})
                     items[a]["rev"] = items[a].get("rev", 1) + 1
                     items[a]["updated"] = now
+            elif kind == "rebuild_goal_flow":
+                # 冻结的目的是「改判要留痕」，不是「永远不能重来」。外环第一次把 A→G 建歪，
+                # 或旧观测结构过时，此前只能整条删掉重建——连 cursor、条目和历史一起丢。
+                # 这里保留同一个目的：旧结构整版压进 history，理由必填，界面显式标注已重建。
+                tid = _resolve(op.get("id"))
+                it = items.get(tid)
+                if it is None:
+                    raise ObserveError("no_item", f"条目不存在：{op.get('id')}")
+                if it.get("kind") != "goal" or "goal_flow" not in it:
+                    raise ObserveError("bad_goal_flow", "rebuild_goal_flow 只能用于已有 goal_flow 的 goal 条目；首次建立请用 add_item.goal_flow")
+                import observe_goal
+                rebuilt = observe_goal.validate(op.get("goal_flow"))   # 独立校验，不与旧结构比前缀
+                _remember(it)
+                it["goal_flow"] = rebuilt
+                it.setdefault("rebuilds", []).append(
+                    {"at": now, "reason": op["reason"].strip(), "from_rev": it.get("rev", 1)})
+                it["rebuilds"] = it["rebuilds"][-REBUILDS_MAX:]
+                it["rev"] = it.get("rev", 1) + 1
+                it["updated"] = now
             elif kind == "set_cursor":
                 try:
                     s["cursor"] = max(0, int(op.get("cursor") or 0))

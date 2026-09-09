@@ -45,6 +45,24 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  await page.waitForFunction(r=>document.querySelector('.ag-inline-body')?.textContent.includes(r),rid);
  await page.getByRole('button',{name:'刷新',exact:true}).click();await page.waitForFunction(()=>!OB.loading);
  assert((await page.locator('.ag-inline-body').innerText()).includes(rid),'refresh retains evidence in the same column');
+ // 260909 反馈①②③④：跳转互链、滚轮不被画布吞掉、详情内字号统一。
+ const wheelBox=await page.locator('.ag-canvas-scroll').boundingBox();
+ await page.mouse.move(wheelBox.x+wheelBox.width/2,wheelBox.y+120);
+ await page.mouse.wheel(0,600);await page.waitForTimeout(400);
+ assert(await page.evaluate(()=>scrollY)>0,'wheel over the flow canvas still scrolls the page');
+ await page.evaluate(()=>scrollTo(0,0));
+ // .om-id 是等宽的请求编号，故意更小；正文段落、列表与引用必须同一号，强调靠色条与字重。
+ const sizes=await page.locator('.ag-inline-detail').evaluate(d=>[...d.querySelectorAll('p:not(.om-id),li,blockquote')].map(e=>getComputedStyle(e).fontSize));
+ assert.deepEqual([...new Set(sizes)],['12px'],'detail body keeps one type size: '+sizes);
+ assert(await page.locator('[data-om-action="open-capture"]').count()>0,'evidence offers a jump back to the capture');
+ const labels=await page.locator('#obSel option').allTextContents();
+ assert(labels.every(x=>/^\d{4}-\d{2}-\d{2} · /.test(x)),'observation labels lead with their scope: '+labels[0]);
+ const jump=await page.evaluate(async rid=>{
+  const r=await fetch('/api/observations?rid='+rid+'&date='+OB.state.scope.date);const j=await r.json();
+  return {scope:j.capture_scope,matches:j.matches};
+ },rid);
+ assert.equal(jump.scope.date,state.scope.date);
+ assert(jump.matches.includes(oid),'the observation covering this evidence is reachable from its capture');
  await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.qaPrompt=text;};});
  await page.getByRole('button',{name:'复制接入说明',exact:true}).click();
  const prompt=await page.evaluate(()=>window.qaPrompt);
@@ -75,6 +93,6 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
   await page.screenshot({path:path.join(out,'goal-width-'+width+'.png'),fullPage:true});
  }
  assert.deepEqual(errors,[]);
- fs.writeFileSync(path.join(out,'report.json'),JSON.stringify({scope:'current A→G tasks/current/inline evidence',passed:true,tasks:flow.tasks.length,iterations:flow.iterations.length,errors,contrasts},null,2));
- await browser.close();console.log('PASS current understanding/tasks/inline evidence/refresh/languages/contrast/widths');
+ fs.writeFileSync(path.join(out,'report.json'),JSON.stringify({scope:'current A→G tasks/current/inline evidence/capture links/scroll/type sizes',passed:true,tasks:flow.tasks.length,iterations:flow.iterations.length,errors,contrasts},null,2));
+ await browser.close();console.log('PASS understanding/tasks/inline evidence/capture links/scroll chaining/type sizes/refresh/languages/contrast/widths');
 })().catch(e=>{console.error(e);process.exit(1)});

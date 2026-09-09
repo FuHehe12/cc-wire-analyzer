@@ -164,6 +164,11 @@
     ja:{trajectory:'A→G 目標の流れ',requestReading:'依頼をどう理解しているか',situationReading:'現状をどう捉えているか',readingMissing:'まだ記録されていません。観測 AI が会話から補足します。',readingNote:'記録された会話からの整理です。開くと根拠を確認できます。',carryover:'タスクを切り替えても引き継ぐこと',change_initial:'出発点',change_refine:'修正',change_turn:'タスクの転換',task:'タスク',pastTask:'以前のタスク',currentTask:'現在のタスク',expandTask:'目標の変化を展開',collapseTask:'目標の変化を折り畳む',goalVersions:'件の目標',currentEvidence:'現在の理解の根拠を確認',findingsLane:'原文と説明',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。',flowIntro:'最初の理解を保ち、目標の修正と別タスクへの転換を追います。',flowSetup:'上の「接続説明をコピー」から最初の入力をもとに A→G を作成します。従来の記録は API で閲覧できます。'}
   })) Object.assign(words[lang],values);
   for(const [lang,values] of Object.entries({
+    zh:{openCapture:'在捕获中打开',rebuilt:'已重建',rebuildLog:'重建记录',rebuildNote:'这份 A→G 曾被观察 AI 整体重建，上一版保留在条目历史里。'},
+    en:{openCapture:'Open in captures',rebuilt:'Rebuilt',rebuildLog:'Rebuild log',rebuildNote:'The observer rebuilt this A→G. The previous version stays in the item history.'},
+    ja:{openCapture:'記録で開く',rebuilt:'再構築済み',rebuildLog:'再構築の記録',rebuildNote:'この A→G は観測 AI が再構築しました。前の版は項目履歴に残ります。'}
+  })) Object.assign(words[lang],values);
+  for(const [lang,values] of Object.entries({
     zh:{flowHelp:'为什么这样设计，怎么看这张图',helpWhy:'先看 AI 是否理解了你的要求、怎样判断现状，更容易发现沟通偏差。过程细节按需展开，避免大量日志盖住重点。',helpRead:'A 是最初的理解，G 是想达到的结果。同一任务改要求叫“修正”，转到另一项交付叫“转折”；只是现状变化时，不增加 G。',helpSource:'内容由独立的观察 AI 根据录制整理，解释可能有偏差，可以点击证据核对。刷新只读取已保存的分析，不会启动 AI。',helpUpgrade:'升级后可复制新的接入说明，交给观察 AI 继续分析。旧录制与观测记录会保留；缺少 A→G 的旧观测，需要观察 AI 根据原始记录补充。'},
     en:{flowHelp:'Why this view, and how to read it',helpWhy:'Start with how the AI understands your request and sees the situation, so misunderstandings are easier to spot. Open details when needed, without a long log obscuring the main point.',helpRead:'A is the initial understanding; G is the intended result. A changed requirement within one task is a revision; another deliverable is a task switch. A change in the situation alone does not add a G.',helpSource:'An independent observer AI interprets the recordings. Its interpretation can be wrong; select evidence to check it. Refresh only reads saved analysis and does not start an AI.',helpUpgrade:'After upgrading, copy the new setup notes to your observer AI. Existing recordings and observations are preserved. The observer needs to build A→G from the original records when an older observation lacks it.'},
     ja:{flowHelp:'この表示の目的と図の読み方',helpWhy:'AI が依頼をどう理解し、現状をどう捉えているかを先に見ると、認識のずれに気づきやすくなります。詳しい経緯は必要なときに開き、大量のログに要点が埋もれないようにしています。',helpRead:'A は最初の理解、G は目指す結果です。同じタスクの要件変更は「修正」、別の成果物への移行は「転換」です。現状だけが変わった場合、G は追加しません。',helpSource:'内容は独立した観測 AI が記録から整理します。解釈が誤る場合もあるため、根拠を選んで確認できます。更新は保存済みの分析を読み込むだけで、AI を起動しません。',helpUpgrade:'更新後は新しい接続手順をコピーして観測 AI に渡してください。既存の記録と観測は保持されます。A→G がない従来の観測は、元の記録から観測 AI が補足する必要があります。'}
@@ -334,9 +339,11 @@
     const parents=new Set(list(f.iterations).flatMap(e=>list(e.parent_ids)));
     return list(f.iterations).filter(e=>!parents.has(e.id)).map(e=>e.id);
   }
+  const rebuilds = () => list(flowItem()?.rebuilds);
   function readingHtml(f, detailed=false) {
     const c=f?.current;
-    return '<section class="ag-reading"><div class="ag-reading-pair">'+
+    const marks=rebuilds();
+    return '<section class="ag-reading">'+(marks.length && !detailed?'<p class="ag-rebuilt">'+badge(tr('rebuilt')+' × '+marks.length,'om-counter')+'<span>'+escape(tr('rebuildNote'))+'</span></p>':'')+'<div class="ag-reading-pair">'+
       [['requestReading',c?.understanding],['situationReading',c?.situation]].map(([key,text])=>
         '<section><h3>'+escape(tr(key))+'</h3><p class="om-prose">'+escape(text || tr('readingMissing'))+'</p></section>').join('')+'</div>'+
       (c?.carryover?'<p class="ag-carryover om-prose"><b>'+escape(tr('carryover'))+'：</b>'+escape(c.carryover)+'</p>':'')+
@@ -366,7 +373,22 @@
     }
     return output;
   }
-  const AG_RIGHT=0, AG_RIGHT_OPEN=430, AG_DETAIL_H=360;
+  const AG_RIGHT=0, AG_RIGHT_OPEN=430;
+  /** 就地详情的高度：固定 360px 在大屏上白白浪费，在小屏上又要在很小的窗口里翻长证据。 */
+  const detailHeight = () => Math.round(Math.min(620,Math.max(320,(window.innerHeight || 900)*0.58)));
+  /** 三列宽度按可用宽度分配。写死 230/320 时，2K 屏上两侧全是空白而正文还在换行。 */
+  function flowMetrics(lanes,inline) {
+    const avail=Math.max(320,(root()?.clientWidth || 1100)-8);
+    const rightWidth=inline?Math.min(AG_RIGHT_OPEN,Math.max(280,avail-48)):AG_RIGHT;
+    let leftW=230, centerWidth=lanes===1?320:lanes*252+20;
+    const spare=avail-(120+rightWidth+leftW+centerWidth);
+    if(spare>0) {
+      const addLeft=Math.min(140,Math.round(spare*0.35));
+      leftW+=addLeft;centerWidth+=Math.min(lanes===1?280:lanes*130,spare-addLeft);
+    }
+    const centerX=24+leftW+36;
+    return {leftW,centerWidth,rightWidth,centerX,rightX:centerX+centerWidth+36};
+  }
   /** Which goal row shows the detail in place, or null when the floating panel is used.
 
       Only the flow tab reads a third lane, so only it expands in place; the other
@@ -387,33 +409,37 @@
     const f=it?.goal_flow;
     if(!f) return '<section class="ag-empty"><h2>'+escape(tr('flowMissing'))+'</h2><p>'+escape(tr('noGoalFlow'))+'</p><p>'+escape(tr('flowSetup'))+'</p>'+flowHelpHtml()+'</section>';
     const events=list(f.iterations),parents=new Set(events.flatMap(e=>list(e.parent_ids))),heads=events.filter(e=>!parents.has(e.id));
-    const rows=taskRows(f), lanes=Math.max(1,...rows.map(r=>r.length)), centerWidth=lanes===1?320:lanes*252+20;
-    const inline=inlineTarget(), rightWidth=inline?Math.min(AG_RIGHT_OPEN,Math.max(280,(root()?.clientWidth || 478)-48)):AG_RIGHT, rightX=326+centerWidth, width=rightX+rightWidth+24;
-    const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;height:'+AG_DETAIL_H+'px">'+
+    const rows=taskRows(f), lanes=Math.max(1,...rows.map(r=>r.length));
+    const inline=inlineTarget(), DH=detailHeight();
+    const {leftW,centerWidth,rightWidth,centerX,rightX}=flowMetrics(lanes,inline), width=rightX+rightWidth+24;
+    const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;max-height:'+DH+'px">'+
       button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2><div class="ag-inline-body">'+detailHtml()+'</div></aside>';
-    let y=inline==='@anchor'?Math.max(172,48+AG_DETAIL_H+16):172, detailTop=inline==='@anchor'?48:null;
+    // 详情在右列，与目标列不重叠，所以不必把整条流往下推（那会在 A 下面留一大片空白）；
+    // 只要画布本身高到装得下它即可。
+    let y=172, detailTop=inline==='@anchor'?48:null;
     const shownTasks=new Set(), currentIds=new Set(currentGoals(f));
     const stations=rows.map(row=>{
       const task=list(f.tasks).find(t=>t.id===row[0]?.task_id), header=task && list(f.tasks).length>1 && !shownTasks.has(task.id);
       const taskTop=y;if(header) {y+=44;shownTasks.add(task.id);}
       const top=y, hasDetail=row.some(e=>e.id===inline);
       if(hasDetail) detailTop=top;
-      y+=Math.max(hasDetail?AG_DETAIL_H+16:0,112,row.length*66+12);
-      const columns=row.length===1?320:252;
-      const heading=header?'<div class="ag-task-heading" style="left:290px;top:'+taskTop+'px;width:'+centerWidth+'px"><strong>'+escape(task.title)+'</strong>'+(!row[0].compactTask?button('task-toggle',task.id,escape(tr('collapseTask')),'ag-task-toggle','aria-expanded="true"'):'')+'</div>':'';
+      y+=Math.max(112,row.length*66+12);
+      const columns=row.length===1?(lanes===1?centerWidth:320):252;
+      const heading=header?'<div class="ag-task-heading" style="left:'+centerX+'px;top:'+taskTop+'px;width:'+centerWidth+'px"><strong>'+escape(task.title)+'</strong>'+(!row[0].compactTask?button('task-toggle',task.id,escape(tr('collapseTask')),'ag-task-toggle','aria-expanded="true"'):'')+'</div>':'';
       return heading+row.map((e,i)=>{
-        const x=290+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
+        const x=centerX+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
         const compact=e.compactTask, label=compact?tr('pastTask'):'G'+events.findIndex(g=>g.id===e.id);
         const content='<span class="ag-label"><b>'+escape(label)+'</b><span>'+escape(compact?e.members.length+' '+tr('goalVersions'):goalStatus(e)==='completedGoal'?tr('completedGoal'):currentIds.has(e.id)?tr('goalNow'):tr(goalStatus(e)))+'</span></span><strong>'+escape(short(e.after,100))+'</strong>'+(compact?'<span class="ag-count">'+escape(tr('expandTask'))+' ↓</span>':'');
         const cause=compact?e.members[0]:e;
-        const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'style="left:24px;top:'+(top+i*66)+'px;width:230px"');
+        const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'style="left:24px;top:'+(top+i*66)+'px;width:'+leftW+'px"');
         return change+'<article class="ag-station ag-'+escape(e.actor)+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?compact.id:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
       }).join('');
     }).join('');
+    const anchorW=Math.min(centerWidth,520), height=Math.max(y+18,detailTop==null?0:detailTop+DH+18);
     return '<section class="ag-flow">'+readingHtml(f)+flowHelpHtml()+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
-      '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+(y+18)+'px">'+
-      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:290px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
-      '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(290+(centerWidth-320)/2)+'px;top:48px;width:320px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+
+      '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+height+'px">'+
+      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:'+centerX+'px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
+      '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(centerX+(centerWidth-anchorW)/2)+'px;top:48px;width:'+anchorW+'px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+
       (detailTop==null?'':detailBox(detailTop))+'</div></div><p class="ag-footnote">'+escape(tr('flowHint'))+'</p></section>';
   }
   function goalJournal(id) {
@@ -424,7 +450,8 @@
     if(id==='@anchor') {
       const a=flow.anchor;
       return badge(tr('observer'))+'<h3>'+escape(tr('initial'))+'</h3>'+badge(tr(a.basis))+'<h4>'+escape(tr('userWords'))+'</h4><p class="om-prose">'+escape(a.user_text)+'</p><h4>'+escape(tr('understanding'))+'</h4><p class="om-prose">'+escape(a.understanding)+'</p>'+
-        '<h4>'+escape(tr('choices'))+'</h4>'+(list(a.choices).length?'<ul>'+a.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':note(tr('noKind')))+refs(a.evidence)+goalJournal(id);
+        '<h4>'+escape(tr('choices'))+'</h4>'+(list(a.choices).length?'<ul>'+a.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':note(tr('noKind')))+refs(a.evidence)+
+        (rebuilds().length?'<h4>'+escape(tr('rebuildLog'))+'</h4><ul>'+rebuilds().map(r=>'<li>'+escape((r.at || '')+' · '+(r.reason || ''))+'</li>').join('')+'</ul>':'')+goalJournal(id);
     }
     const event=list(flow.iterations).find(e=>e.id===id);if(!event) return note(tr('missingItem'));
     const task=list(flow.tasks).find(t=>t.id===event.task_id);
@@ -523,6 +550,7 @@
       (!n?note(tr('missingStep')):'')+(n?.missing?note(tr('unavailable')):'')+
       '<div class="om-step-nav">'+(index>0?button('step',ns[index-1].id,escape(tr('previous')),'om-action'):'')+
       (index>=0 && index<ns.length-1?button('step',ns[index+1].id,escape(tr('next')),'om-action'):'')+'</div>'+
+      (typeof window.ccwaOpenCapture==='function'?'<div class="om-evidence">'+button('open-capture',rid,escape(tr('openCapture')+' ↗'),'om-action')+'</div>':'')+
       note([n?.ts_start,n?.model,n?.kind].filter(Boolean).join(' · '))+
       (n?.has_error?'<p class="om-error">'+escape(tr('error'))+'</p>':'')+
       (n?.text_preview?'<p class="om-prose">'+escape(n.text_preview)+'</p>':'')+
@@ -644,6 +672,7 @@
         if(target?.tagName==='DETAILS') {target.open=true;M.folds.add(target.dataset.omFold);}
         target?.scrollIntoView({block:'start'});requestAnimationFrame(drawRelations);return;
       }
+      if(action==='open-capture') {window.ccwaOpenCapture?.(id,M.state?.scope || {});return;}
       if(action==='retry') {refresh(); return;}
       if(action==='step') {chooseStep(id);return;}
       if(action==='raw' || action==='retry-step') {loadRecord(id,action==='retry-step'); return;}
@@ -664,7 +693,12 @@
       if(el.open) M.folds.add(el.dataset.omFold); else M.folds.delete(el.dataset.omFold);
       if(el.open) requestAnimationFrame(drawRelations);
     },true);
-    if(typeof ResizeObserver!=='undefined') {M.resize=new ResizeObserver(()=>requestAnimationFrame(drawRelations));M.resize.observe(r);}
+    // 列宽随可用宽度算，所以宽度真的变了必须重排；只重画连线会让卡片停在旧位置。
+    if(typeof ResizeObserver!=='undefined') {M.resize=new ResizeObserver(()=>{
+      const w=root()?.clientWidth || 0;
+      if(Math.abs(w-(M.width ?? 0))>24) {M.width=w;M.signature='';paint();}
+      else requestAnimationFrame(drawRelations);
+    });M.resize.observe(r);}
   }
   function clear(message='') {
     M.controller?.abort(); M.generation++;M.controller=null;M.pending=null;M.state=null;M.key='';M.trace=null;

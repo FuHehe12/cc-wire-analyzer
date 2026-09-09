@@ -498,5 +498,82 @@ class GoalDeltaStore(unittest.TestCase):
             self.assertEqual(OB.read(another), res["state"])
 
 
+class GoalRebuild(unittest.TestCase):
+    """外环把 A→G 建歪之后必须能重来——但重来要留痕，不能把上一版抹掉。"""
+
+    def setUp(self):
+        self.oid = OB.create({"date": "2026-09-09", "lane": "sample"}, "重建契约测试")["id"]
+        result = OB.apply(self.oid, "initial", 0, [{"op": "add_item", "client_ref": "goal",
+            "kind": "goal", "text": "明确目标", "goal_flow": dict(tasked(), current=current())}])
+        self.iid = result["refs"]["goal"]
+
+    def rebuild(self, sid, flow, reason="首版把两件交付并成了一个任务，按录制重建"):
+        return OB.apply(self.oid, sid, None, [{"op": "rebuild_goal_flow", "id": self.iid,
+                                               "reason": reason, "goal_flow": flow}])
+
+    def fresh(self):
+        flow = tasked()
+        flow["anchor"]["user_text"] = "重新读过原始录制后的最初一句"
+        flow["iterations"][0].update(after="改写后的目标", trigger="按原始录制重新判断")
+        return dict(flow, current=current())
+
+    def test_rebuild_replaces_flow_and_keeps_previous_version(self):
+        old = OB.read(self.oid)["items"][0]
+        state = self.rebuild("rebuild-1", self.fresh())["state"]
+        item = state["items"][0]
+        self.assertEqual(item["goal_flow"]["anchor"]["user_text"], "重新读过原始录制后的最初一句")
+        self.assertEqual(item["history"][-1]["goal_flow"], old["goal_flow"])
+        self.assertEqual([r["reason"] for r in item["rebuilds"]],
+                         ["首版把两件交付并成了一个任务，按录制重建"])
+        self.assertEqual(item["rebuilds"][0]["from_rev"], old["rev"])
+
+    def test_rebuild_is_idempotent_and_respects_revision_conflict(self):
+        first = self.rebuild("rebuild-1", self.fresh())
+        replay = self.rebuild("rebuild-1", self.fresh())
+        self.assertTrue(replay["replayed"])
+        self.assertEqual(replay["state"], first["state"])
+        with self.assertRaises(ObserveError) as caught:
+            OB.apply(self.oid, "stale-rebuild", 0, [{"op": "rebuild_goal_flow", "id": self.iid,
+                     "reason": "并发写", "goal_flow": self.fresh()}])
+        self.assertEqual(caught.exception.code, "conflict")
+
+    def test_rebuild_requires_reason_valid_flow_and_an_existing_flow(self):
+        old = OB.read(self.oid)
+        for op, code in [
+            ({"op": "rebuild_goal_flow", "id": self.iid, "goal_flow": self.fresh()}, "bad_reason"),
+            ({"op": "rebuild_goal_flow", "id": self.iid, "reason": "  ",
+              "goal_flow": self.fresh()}, "bad_reason"),
+            ({"op": "rebuild_goal_flow", "id": self.iid, "reason": "结构非法",
+              "goal_flow": {"anchor": {}}}, "bad_goal_flow"),
+            ({"op": "rebuild_goal_flow", "id": "i_missing", "reason": "条目不存在",
+              "goal_flow": self.fresh()}, "no_item"),
+        ]:
+            with self.assertRaises(ObserveError) as caught:
+                OB.apply(self.oid, "bad-rebuild", None, [op])
+            self.assertEqual(caught.exception.code, code)
+            self.assertEqual(OB.read(self.oid), old)
+        # 还没有目标流的条目必须走首次提交，不能用重建当初始化入口
+        other = OB.create({"date": "2026-09-09"}, "没有目标流")["id"]
+        res = OB.apply(other, "plain", 0, [{"op": "add_item", "kind": "goal",
+                                           "client_ref": "plain", "text": "尚未初始化"}])
+        with self.assertRaises(ObserveError) as caught:
+            OB.apply(other, "rebuild-empty", None, [{"op": "rebuild_goal_flow",
+                     "id": res["refs"]["plain"], "reason": "想直接建", "goal_flow": self.fresh()}])
+        self.assertEqual(caught.exception.code, "bad_goal_flow")
+        self.assertEqual(OB.read(other), res["state"])
+
+    def test_rebuild_must_not_strand_items_linked_to_removed_iterations(self):
+        state = OB.apply(self.oid, "link", None, [{"op": "add_item", "kind": "open",
+                         "text": "挂在 g0 上的未决", "goal_iteration": "g0"}])["state"]
+        dropped = self.fresh()
+        dropped["iterations"][0]["id"] = "h0"
+        dropped["tasks"] = [{"id": "t0", "title": "修复体验问题", "start_id": "h0"}]
+        dropped["current"] = current(["h0"])
+        with self.assertRaises(ObserveError) as caught:
+            self.rebuild("rebuild-drop", dropped)
+        self.assertEqual(caught.exception.code, "bad_goal_iteration")
+        self.assertEqual(OB.read(self.oid), state)
+
+
 if __name__ == "__main__":
     unittest.main()

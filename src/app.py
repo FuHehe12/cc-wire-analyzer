@@ -945,6 +945,51 @@ def observation_trace():
         return jsonify(error="internal", detail=str(e)), 500
 
 
+def _capture_scope(rid: str, date: str, source: str) -> dict:
+    """这条请求属于哪个范围：`{date,source,lane,session}`。
+
+    泳道从当天 DAG 取（与实时分析写观测时用的是同一份），session 从索引条目取；
+    认不出就留空——留空的字段在匹配时按"不限制"处理，不当成"匹配失败"。"""
+    scope = {"date": date, "source": source, "lane": "", "session": ""}
+    if not date:
+        return scope
+    try:
+        capture_store._validate_date(date)
+        lane_of = {n.get("id"): n.get("lane") or ""
+                   for n in _dag_of(date, source).get("nodes") or []}
+        entries = capture_store.list_index(date, "", "", source)
+        entry = next((e for e in entries if e.get("id") == rid), None)
+        scope["session"] = (entry or {}).get("session_id") or ""
+        lane = lane_of.get(rid) or ""
+        # 辅助调用（标题生成、建议等）在时序图里都归 aux 泳道，它不是任何一场对话的
+        # 泳道。从这样一条请求跳过去时改用同会话主线的泳道，否则永远匹配不到观测。
+        if lane == "aux" and scope["session"]:
+            lane = next((lane_of.get(e.get("id")) or "" for e in entries
+                         if e.get("session_id") == scope["session"]
+                         and (lane_of.get(e.get("id")) or "") not in ("", "aux")), "")
+        scope["lane"] = lane
+    except (capture_store.StoreError, ValueError, OSError):
+        pass       # 认不出范围仍要能跳过去建新观测，不因为解析失败挡住整条路
+    return scope
+
+
+def _scope_matches(items: list, scope: dict) -> list:
+    """范围能覆盖这条请求的观测 id，泳道精确匹配排前。
+
+    观测范围里的空字段表示"不限制"（例如只按日期建的观测覆盖当天全部泳道），
+    所以只有**两边都非空且不相等**才算排除。"""
+    hit = []
+    for it in items:
+        sc = it.get("scope") or {}
+        if sc.get("date") != scope["date"]:
+            continue
+        if any(sc.get(k) and scope[k] and sc[k] != scope[k] for k in ("source", "lane", "session")):
+            continue
+        hit.append((0 if sc.get("lane") and sc["lane"] == scope["lane"] else
+                    1 if sc.get("session") and sc["session"] == scope["session"] else 2, it["id"]))
+    return [oid for _, oid in sorted(hit, key=lambda x: x[0])]
+
+
 @app.route("/api/observations/<oid>", methods=["GET"])
 @app.route("/api/observations", methods=["GET", "POST"])
 def observations(oid=None):
@@ -954,6 +999,9 @@ def observations(oid=None):
     拿会话全文，判断完把结论小批量写回这里。CCWA 负责事实、持久化与显示，不跑模型。
 
     - `GET`：不带 `id` 列全部（摘要，不含条目正文）；带 `id` 取一份完整状态。
+      列表另接受 `rid`（配合 `date` / `source`）：把一条录制请求解析成它所在的范围，
+      返回 `capture_scope` 与 `matches`——范围能覆盖这条请求的观测 id，泳道精确匹配排前。
+      解析只用当天 DAG 与索引里的既有事实，认不出就返回空 `matches`，不猜。
     - `POST`：body 不带 `id` = 新建观测（`{scope:{date,source,lane,session}, title}`）；
       带 `id` = 提交一批操作。
 
@@ -975,7 +1023,14 @@ def observations(oid=None):
         if request.method == "GET":
             oid = oid or request.args.get("id", "")
             if not oid:
-                return jsonify({"items": OB.listing()})
+                items = OB.listing()
+                rid = request.args.get("rid", "")
+                if not rid:
+                    return jsonify({"items": items})
+                scope = _capture_scope(rid, request.args.get("date", ""),
+                                       request.args.get("source", ""))
+                return jsonify({"items": items, "capture_scope": scope,
+                                "matches": _scope_matches(items, scope)})
             st = OB.read(oid)
             if st is None:
                 return jsonify({"error": "not_found", "id": oid}), 404

@@ -397,6 +397,10 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 **`GET`**：不带 `id` 列全部（摘要，不含条目正文）；带 `id` 取一份完整状态；`GET /api/observations/<id>` 是同义单观测入口，不落入上游代理。
 
+列表每行除 `id/title/scope/revision/cursor/updated/n_items/n_retracted` 外还有 `preview` 与 `has_flow`。`preview` 是 60 字以内的一句话摘要，按 `current.understanding` → `anchor.user_text` → 首条未撤回条目正文回落，只从已保存内容里取，不新生成说法；`title` 可省，界面靠它把同一天的多条观测区分开。
+
+列表另接受 `rid`（配合 `date` / `source`）：把一条录制请求解析成它所在的范围，额外返回 `capture_scope:{date,source,lane,session}` 与 `matches:[观测 id]`。泳道取自当天 DAG；辅助调用（`aux` 泳道）改用同会话主线的泳道，否则它不属于任何一场对话。匹配规则是「观测范围里的空字段表示不限制」，只有两边都非空且不相等才排除；泳道精确匹配的排在最前。解析失败或认不出，仍返回 `capture_scope` 与空 `matches`，不猜。
+
 **`POST`**：body 不带 `id` = 新建（`{scope:{date,source,lane,session}, title}`，返回含 `id`）；
 带 `id` = 提交一批操作；带 `delete:true` = 删除。
 
@@ -407,6 +411,7 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
         {"op":"link_items","from":"f1","to":"i_cec8f9","type":"belongs_to"},
         {"op":"update_item","id":"i_cec8f9","patch":{"status":"supported"}},
         {"op":"retract_item","id":"i_9f31aa","reason":"证据不足"},
+        {"op":"rebuild_goal_flow","id":"i_cec8f9","reason":"首版把两件交付并成一个任务","goal_flow":{"anchor":"…","iterations":"…"}},
         {"op":"set_cursor","cursor":153}]}
 ```
 
@@ -434,9 +439,11 @@ Grep→`pattern`、`Task`→`[派生子代理] {description}`，截 80 字符）
 
 #### 严格写入与紧凑响应
 
-操作字段为：add_item = op/client_ref 加条目字段；update_item = op/id/patch（非空对象）；retract_item = op/id/reason（可选字符串）；link_items = op/from/to/type/remove；set_cursor = op/cursor（必填非负整数）。条目字段为 kind/text/status/evidence/title/progress/covers/cover_span/forecast/goal_flow/goal_iteration，其中 cover_span 仅由 HTTP 展开。text 最多4000字符、evidence 最多50项、reason 最多1000字符、观测/条目 title 最多200字符；超限明确拒绝，不截断。旧状态读取与省略字段的更新不重验旧值。未知字段或非法类型一律400，detail 指明错误；无效整批不写状态、水位、history 或 submission。重复写相同值、添加已存在关系仍允许成功。新建与提交外壳也拒绝未知字段、非对象 JSON；base_revision 如提供须为非负整数。
+操作字段为：add_item = op/client_ref 加条目字段；update_item = op/id/patch（非空对象）；retract_item = op/id/reason（可选字符串）；link_items = op/from/to/type/remove；set_cursor = op/cursor（必填非负整数）；rebuild_goal_flow = op/id/reason（必填非空）/goal_flow。条目字段为 kind/text/status/evidence/title/progress/covers/cover_span/forecast/goal_flow/goal_iteration，其中 cover_span 仅由 HTTP 展开。text 最多4000字符、evidence 最多50项、reason 最多1000字符、观测/条目 title 最多200字符；超限明确拒绝，不截断。旧状态读取与省略字段的更新不重验旧值。未知字段或非法类型一律400，detail 指明错误；无效整批不写状态、水位、history 或 submission。重复写相同值、添加已存在关系仍允许成功。新建与提交外壳也拒绝未知字段、非对象 JSON；base_revision 如提供须为非负整数。
 
 `update_item.patch` 另接受写入专用的 `goal_flow_delta`，不能用于 add_item，不保存为条目字段；与同一 patch 中的 goal_flow 互斥。合并规则见下方「A→G 小增量写入」。
+
+`rebuild_goal_flow` 整份替换某个 goal 条目已有的 goal_flow，用于外环第一次把 A→G 建歪、或旧观测结构过时需要按原始录制重做的情况。`reason` 必填、非空、最多1000字符；`goal_flow` 按首次提交的规则独立校验，不与旧结构比对前缀。重建前把旧条目整版压入 `history`，并在条目上追加 `rebuilds:[{at,reason,from_rev}]`（最多保留20条），界面据此显示「已重建」。条目没有 goal_flow、不是 goal 条目、缺 reason 或新结构非法一律400（`bad_goal_flow` / `bad_reason`），整批不落盘；`submission_id` 幂等与 `base_revision` 冲突规则与其他操作一致。重建后其他条目的 `goal_iteration` 若指向已消失的迭代 ID，整批以 `bad_goal_iteration` 拒绝——须在同一批里改关联或撤回条目。观测本身的删除仍是 `{"id":…,"delete":true}`，它会连同 cursor、条目与历史一起丢弃；只想重做 A→G 时用本操作，不要删观测。
 
 `link_items.remove:true` 按 from/to/type 精确删除关系，并将删除前源条目完整保存至 history；remove 仅接受布尔值，type 缺省 belongs_to，目标关系不存在返回400 no_link。`patch.links` 不支持且明确拒绝。
 
