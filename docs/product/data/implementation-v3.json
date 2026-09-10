@@ -170,28 +170,6 @@
       "excerptSha256": "453eb6a5d1acd716d25f1d9685a1ff999f4afe45db5193440070617277c423db"
     },
     {
-      "id": "trajectory",
-      "file": "src/trajectory.py",
-      "anchor": "def collect(",
-      "lines": 16,
-      "startLine": 66,
-      "endLine": 81,
-      "excerpt": "def collect(session_id: str, date: str):\n    \"\"\"本会话的全部记录，按 main/subagent/security/other 分组（时序）。\"\"\"\n    mains, subs, secs, others = [], [], [], []\n    for rec in capture_store.iter_records(date):\n        i = classifier.index_record(rec)\n        if i.get(\"session_id\") != session_id:\n            continue\n        k = classifier.classify_idx(i)\n        row = (rec.get(\"ts_start\") or \"\", rec, i, k)\n        (mains if k == \"main\" else subs if k == \"subagent\"\n         else secs if k == \"security\" else others).append(row)\n    for lst in (mains, subs, secs, others):\n        lst.sort(key=lambda x: x[0])\n    return mains, subs, secs, others\n\n",
-      "sourceSha256": "23007cd3f9d1b52ef71d73377f36f1c9fd85543373ff474ff003dd6135c0df1b",
-      "excerptSha256": "2c3397349aacc7314eca8a45d80dd702f28308f9328ba1f7a77a1b2212a3191a"
-    },
-    {
-      "id": "views",
-      "file": "src/trajectory.py",
-      "anchor": "const VIEWS=",
-      "lines": 6,
-      "startLine": 1907,
-      "endLine": 1912,
-      "excerpt": "const VIEWS=[['v1','状态快照','世界变成了什么样'],['v2','物料血统','产物由什么支撑'],\n             ['v3','验证矩阵','质检站够不够硬'],['v4','阀门与回路','什么在控制流向'],\n             ['v5','能耗与方差','代价与瓶颈'],\n             ['v6','最优轨迹','这趟本可以怎么走'],\n             ['v7','物料生命线','一件物料的一生与未验债'],\n             ['v8','最优时序图','节点—连线的反事实时序']];",
-      "sourceSha256": "23007cd3f9d1b52ef71d73377f36f1c9fd85543373ff474ff003dd6135c0df1b",
-      "excerptSha256": "9a85591e98bc6c4b153803d9477a2957d2ae8e443507fbe1fee5e12c2b4578fe"
-    },
-    {
       "id": "guide",
       "file": "src/app.py",
       "anchor": "def ai_guide(",
@@ -326,13 +304,11 @@
       "target": "s6",
       "title": "当前功能：快照比较与录制分析",
       "state": "现有实现 · 含已知缺口",
-      "how": "分析页通过快照选择材料，可以比较提示词差异或分析一份录制。列表归纳和八视图归纳分别启动；切换展示方式不会自动完成另一种分析。跨天统计可通过接口查询，确定性统计不调用模型；语义归纳与 AI 对话需要配置模型。",
+      "how": "分析页通过快照选择材料，可以比较提示词差异或分析一份录制（轮次骨架：步级简报与轮次归纳）。跨天统计可通过接口查询，确定性统计不调用模型；语义归纳与 AI 对话需要配置模型。八视图已随 260910 取消，原两条归纳管线只剩列表一条。",
       "flow": "在详情备份材料 → 分析页选择快照 → 比较或查看机械分析 → 按需启动语义归纳 → 回原文核对。",
-      "gap": "collect目前没有source参数；八视图名称常量仍为中文。英文与日文八视图的完整展示尚未确认。判断的确认/撤回与行动验收仍属V3新增设计。 当前页面按钮互斥不保证服务端作业互斥；八视图 details 的思考/回复各最多6000字符、工具结果2500、参数/prompt2000，不能当作完整原文。",
+      "gap": "判断的确认/撤回与行动验收仍属V3新增设计。当前页面按钮互斥不保证服务端作业互斥。八视图及其代码证据（trajectory/views）已随 260910 取消，本面板描述已更新。",
       "code": [
-        "trends",
-        "trajectory",
-        "views"
+        "trends"
       ],
       "images": [
         "analyse"
@@ -340,8 +316,6 @@
       "requirements": [
         "H-01",
         "J-02",
-        "I-01",
-        "I-11",
         "NEW-03"
       ],
       "refs": [

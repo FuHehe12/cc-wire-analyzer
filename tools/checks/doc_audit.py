@@ -259,7 +259,8 @@ def _contract_heads(text: str) -> list[dict]:
 def _error_codes() -> set[str]:
     """代码里真出现过的 `error_code` 取值。三种写法：直接写进响应字面量、异常类的
     `code=`、`raise XError("code", …)`。**跨模块扫 src/**——错误码是端点契约的一部分，
-    但生产它的常常不是 app.py（trajectory / snapshot_pack / updater 各有一批）。"""
+    但生产它的常常不是 app.py（snapshot_pack / updater 各有一批；trajectory 那批
+    已随八视图于 260910 删除）。"""
     out: set[str] = set()
     for p in sorted(SRC.glob("*.py")):
         t = _read(p)
@@ -921,7 +922,8 @@ def _selftest() -> int:
         ("幽灵查询参数能检出",
          bool(next(h["args"] for h in _fh if h["path"] == "/api/dag") - _rf["/api/dag"]["args"])),
         # 回归：真实契约必须零幽灵——260904 加这条检查时它抓到过一处真错
-        #（`GET|POST /semantic` 的 POST 其实在 `/trajectory` 上），修完才允许留在基线里。
+        #（`GET|POST /semantic` 的 POST 其实在 `/trajectory` 上；两个端点均已随八视图
+        # 于 260910 删除，基线随之更新），修完才允许留在基线里。
         ("真实契约零幽灵方法与参数",
          not audit()["ghost_methods"] and not audit()["ghost_query_args"]),
         ("真实契约每个端点只占一节", not audit()["duplicate_endpoint_sections"]),

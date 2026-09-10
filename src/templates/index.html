@@ -998,12 +998,8 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .chip.sig-b{background:var(--sig-b);}   /* 分支 */
 .chip.sig-c{background:var(--sig-c);}   /* 自我修正 */
 .chip.sig-u{background:var(--sig-u);}   /* 不确定 */
-/* 轮次骨架头部与视图切换 */
+/* 轮次骨架头部 */
 .an-steps-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
-.an-viewsw{margin-left:auto;display:flex;gap:4px;}
-.an-vbtn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
-  border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
-.an-vbtn.active{background:var(--accent-deep);border-color:var(--accent-deep);color:var(--accent-contrast);font-weight:600;}
 /* 总目标条（260828）：轮头只答"这一轮在干什么"，看不出跑没跑偏，所以总目标单独一行 */
 .an-goal{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin:8px 0 2px;
   padding:8px 12px;border-radius:var(--radius-sm);background:var(--bg-soft);
@@ -1021,55 +1017,6 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .an-got{font-size:12px;color:var(--text);margin-top:3px;line-height:1.6;
   padding-left:8px;border-left:2px solid var(--ok);}
 .an-got.bad{border-left-color:var(--err);}
-
-/* 八视图档：iframe 嵌独立单文件页（保留"单独打开也能用"），但要**看不出是 iframe**。
-   260829：此前它是一块带边框、带自己滚动条、纯黑底的面板嵌在暖色纸面上——
-   现在背景透明（母体画布透出来）、无边框、**高度跟着内容走**（子页报 scrollHeight），
-   于是全页只剩一条滚动条。右侧钻探抽屉在此档没交互，隐藏。 */
-.an-split.trajmode .an-drawer-grip,.an-split.trajmode .an-drawer{display:none;}
-.an-traj{min-height:420px;position:relative;}
-.an-traj iframe{width:100%;height:620px;border:0;background:transparent;display:block;}
-/* 加载期占位：融合改造把 iframe 改成透明 + 高度跟内容走之后，子页 load 之前屏幕上
-   一个像素都不变——用户唯一的反馈是「点了没反应」。判据不是"有个转圈"，
-   是**从点击到屏幕出现变化 ≤ 一帧**，所以它跟 iframe 同时渲染、由 onload 摘掉。 */
-.an-traj.loading iframe{visibility:hidden;}
-.traj-skel{position:absolute;inset:0;border:1px solid var(--border);border-radius:12px;
-  background:var(--bg-card);display:flex;flex-direction:column;gap:14px;padding:22px 24px;}
-.traj-skel .sk-line{height:12px;border-radius:6px;
-  background:linear-gradient(90deg,var(--bg-soft),var(--bg-softer),var(--bg-soft));
-  background-size:200% 100%;animation:skshine 1.4s ease-in-out infinite;}
-.traj-skel .sk-line.w1{width:38%;} .traj-skel .sk-line.w2{width:72%;}
-.traj-skel .sk-row{display:flex;gap:10px;}
-.traj-skel .sk-card{flex:1;height:78px;border-radius:10px;
-  background:linear-gradient(90deg,var(--bg-soft),var(--bg-softer),var(--bg-soft));
-  background-size:200% 100%;animation:skshine 1.4s ease-in-out infinite;}
-.traj-skel .sk-note{margin-top:2px;font-size:12px;color:var(--text-dim);line-height:1.7;}
-@keyframes skshine{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
-
-/* 树视图：一条主干竖线，节点挂在上面 */
-.an-tree{position:relative;padding-left:20px;margin-top:8px;}
-.an-tree::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;
-  background:linear-gradient(180deg,var(--border),color-mix(in srgb,var(--border) 30%,transparent));}
-.tnode{position:relative;padding:7px 0 7px 10px;cursor:pointer;border-radius:6px;}
-.tnode:hover{background:var(--bg-soft);}
-.tdot{position:absolute;left:-19px;top:14px;width:9px;height:9px;border-radius:50%;
-  background:var(--text-faint);box-shadow:0 0 0 3px var(--bg-card);}
-/* 有分支/自我修正信号的节点：实心强调 + 一条横向分叉小线 */
-.tnode.forked .tdot{background:var(--sig-b);width:11px;height:11px;left:-20px;}
-.tnode.forked::before{content:"";position:absolute;left:-9px;top:19px;width:12px;height:2px;
-  background:var(--sig-b);opacity:.6;}
-.thead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;}
-.tmarks{margin:5px 0 0 2px;display:flex;flex-direction:column;gap:4px;}
-.tmark{font-size:12px;color:var(--text-dim);line-height:1.55;padding-left:8px;
-  border-left:2px solid var(--border);}
-.tmark.sig-b{border-left-color:var(--sig-b);}
-.tmark.sig-c{border-left-color:var(--sig-c);}
-.tmark.sig-h{border-left-color:var(--sig-h);}
-.tmk{font-size:10px;padding:0 5px;border-radius:7px;margin-right:6px;
-  background:var(--chip-soft-bg);color:var(--text-faint);}
-.tdid{margin-top:5px;font-size:11px;color:var(--text-dim);display:flex;gap:5px;
-  align-items:center;flex-wrap:wrap;}
-.tdid.dim{color:var(--text-faint);}
 
 /* ===== 白板与贴纸（260808）===== */
 .an-boardbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
@@ -1983,7 +1930,6 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
       <div class="an-boardbar">
         <span class="an-sel-state" id="anRecState"></span>
         <button class="btn" onclick="anCopyBrief(this)" data-i18n="an.copyBrief">复制指令·审计</button>
-        <button class="btn" onclick="anCopyFlow(this)" data-i18n="an.copyFlow">复制指令·流程图</button>
         <button class="btn" onclick="anCopyPrompt(this)" data-i18n="an.copyPrompt">复制分析提示词</button>
         <button class="btn" onclick="anExportPack(this)" data-i18n="an.export"
                 data-i18n-title="an.exportTip"
@@ -2132,17 +2078,6 @@ zh: {
   "an.ai.goal": "总目标", "an.ai.drift": "目标变过：",
   "an.ai.said": "你要的", "an.ai.solving": "在解决",
   "an.ai.doneWhen": "完成标准", "an.ai.outcome": "结果",
-  "an.viewList": "列表", "an.viewTree": "八视图",
-  "an.trajHint": "轨迹八视图：状态换挡 / 物料血统 / 验证 / 阀门 / 能耗 / 反事实 / 生命线 / 时序图。地基是<b>全部主线请求的 blocks 并集</b>（不是单条最长请求——autocompact 剪掉的前半段会捞回来）。悬停节点看简述，点击看全文证据。",
-  "an.trajSemNone": "语义层未归纳：当前阶段是候选边界机械划分、节点简述是程序标签。点「AI 归纳」升级为模型语义（阶段名 / 状态快照 / 步级简述）。",
-  "an.trajSemOk": "语义层已归纳（阶段 + 状态快照 + 步级简述）。重新点「AI 归纳」补失败的部分。",
-  "an.trajLoadFailed": "八视图加载失败：{msg}",
-  "an.trajLoading": "正在计算轨迹——地基是当日全部主线请求的并集，长录制首次打开要几秒；算过之后再打开就很快了。",
-  "an.ai.runningTraj": "八视图语义层：切分阶段…",
-  "an.ai.runningTrajSnap": "八视图：填阶段快照 {d}/{t}…",
-  "an.ai.runningTrajBrief": "八视图：写步级简述 {d}/{t}…",
-  "an.treeHint": "主干是步骤顺序；蓝点是出现分支或自我修正的地方，下面是命中的原句与该步实际执行的动作。**这些是机械识别的候选，不是结论**——模型并没有把决策树显式写出来。",
-  "an.treeDid": "实际执行：", "an.treeNoTool": "（这一步没有调用工具）",
   "an.pickRec": "点一张贴纸分析这条录制",
   "an.pickedRec": "正在分析：{a}", "an.roleOnly": "析",
   "an.thinkN": "思考 {n} 字",
@@ -2153,7 +2088,7 @@ zh: {
   "an.bodyTitle": "正文差异", "an.bodyLegend": "左列行号 = 左/右；⟨⟩ 内是被揭示的不可见字符，波浪下划线是同形异码",
   "an.sideA": "左", "an.sideB": "右", "an.swap": "对调",
   "an.diffEmpty": "还没有快照。在捕获详情页右键，选择「备份这段提示词」或「备份当前录制」。",
-  "an.recPick": "录制快照", "an.copyBrief": "复制指令·审计", "an.copyFlow": "复制指令·流程图",
+  "an.recPick": "录制快照", "an.copyBrief": "复制指令·审计",
   "an.copyPrompt": "复制分析提示词",
   "an.recEmpty": "还没有录制快照。在捕获详情页右键，选择「备份当前录制」。",
   "ctx.snapPrompt": "备份这段提示词", "ctx.snapSelection": "备份选中文字",
@@ -2192,7 +2127,6 @@ zh: {
   "an.rep.same_tool_run": "连续调同一工具", "an.rep.same_target": "反复操作同一目标",
   "an.rep.tool_errors": "工具报错重试",
   "an.stepsTitle": "轮次骨架", "an.stepsShown": "显示 {n} / 共 {total} 步（点一行看该步思考原文）",
-  "an.turnN": "轮 {n}",
   "an.trig.user": "用户消息", "an.trig.tool_result": "工具返回", "an.trig.none": "无触发",
   "an.stepFull": "第 {n} 步的思考原文", "an.trigText": "触发：", "an.drawerClose": "关闭",
   "an.drawerDrag": "拖动调整宽度（记住这台机器的设置）",
@@ -2209,9 +2143,7 @@ zh: {
   "an.ai.turnCover": "轮级覆盖 {n}/{total} 步",
   "an.ai.fill": "补齐 {n} 步", 
   "an.ai.doList": "归纳列表", "an.ai.redoList": "重跑列表", "an.ai.fullList": "列表全部重算",
-  "an.ai.doTraj": "归纳八视图", "an.ai.redoTraj": "重跑八视图",
   "an.ai.listTip": "让模型在程序骨架之上补两层语义：每轮在做什么（轮头）+ 每步一行简报。只作用于「列表」档。",
-  "an.ai.trajTip": "让模型给轨迹补语义层：阶段切分 + 每阶段的状态快照四格 + 每个节点一句话简述。只作用于「八视图」档，与列表那份各算各的钱。",
   "an.ai.fullTip": "忽略已有结果，从头重算一遍（改了归纳提示词之后用这个；花费与第一次相同）",
   "an.sub.task": "任务", "an.sub.problems": "遇到的问题", "an.sub.resolution": "怎么解决",
   "an.sub.outcome": "最终结果", "an.sub.sumFail": "这条线的结论没生成成功，点「补齐」再试",
@@ -2572,20 +2504,9 @@ en: {
   "an.aiVerdict": "AI verdict", "an.aiRedo": "Analyse again", "an.transOnlyPrompt": "Only prompt snapshots can be translated whole",
   "an.hiddenHint2": "Differences the eye cannot see: invisible characters and homoglyphs. Character watermarks look exactly like this \u2014 click a line number on the right to jump to where it occurs.",
   "an.hiddenLine": "line {n}", "an.hiddenNoLoc": "(outside the body)",
-  "an.viewList": "List", "an.viewTree": "8 Views",
-  "an.trajHint": "Trajectory in 8 views: state shifts / material lineage / verification / valves / cost / counterfactual / lifeline / timeline. Built on the <b>union of all main-line requests</b> (not the single longest one — the history autocompact trimmed away is recovered). Hover a node for its brief, click for full evidence.",
-  "an.trajSemNone": "Semantic layer not summarized yet: phases are mechanically split at candidate boundaries, briefs are program labels. Click \"AI Summary\" to upgrade.",
-  "an.trajSemOk": "Semantic layer summarized (phases + state snapshots + per-node briefs).",
-  "an.trajLoadFailed": "Failed to load 8 views: {msg}",
-  "an.trajLoading": "Computing the trajectory — the foundation is the union of all main-line requests of that day, so a long recording takes a few seconds the first time. Later opens are fast.",
-  "an.ai.runningTraj": "8 views: splitting phases…",
-  "an.ai.runningTrajSnap": "8 views: filling snapshots {d}/{t}…",
-  "an.ai.runningTrajBrief": "8 views: writing briefs {d}/{t}…",
-  "an.treeHint": "The spine is the step order; a blue dot marks a branch or self-correction, with the matching sentence and what the step actually did below it. **These are mechanically detected candidates, not conclusions** \u2014 the model never wrote its decision tree down.",
   "an.ai.goal": "Overall goal", "an.ai.drift": "Goal shifted: ",
   "an.ai.said": "You asked", "an.ai.solving": "Solving",
   "an.ai.doneWhen": "Done when", "an.ai.outcome": "Result",
-  "an.treeDid": "Actually did: ", "an.treeNoTool": "(no tool call in this step)",
   "an.pickRec": "Pick one sticker to analyse that recording",
   "an.pickedRec": "Analysing: {a}", "an.roleOnly": "\u25b8",
   "an.thinkN": "{n} chars of reasoning",
@@ -2597,7 +2518,6 @@ en: {
   "an.sideA": "Left", "an.sideB": "Right", "an.swap": "Swap",
   "an.diffEmpty": "No snapshots yet. Right-click in a capture's detail view and choose \u201cSnapshot this prompt\u201d or \u201cSnapshot this recording\u201d.",
   "an.recPick": "Recording snapshot", "an.copyBrief": "Copy brief · audit",
-  "an.copyFlow": "Copy brief · flowchart",
   "an.copyPrompt": "Copy analysis prompt",
   "an.recEmpty": "No recording snapshots yet. Right-click in a capture's detail view and choose \u201cSnapshot this recording\u201d.",
   "ctx.snapPrompt": "Snapshot this prompt", "ctx.snapSelection": "Snapshot selection",
@@ -2640,7 +2560,6 @@ en: {
   "an.rep.tool_errors": "Retries after tool errors",
   "an.stepsTitle": "Step skeleton",
   "an.stepsShown": "Showing {n} of {total} steps (click a row for that step's reasoning)",
-  "an.turnN": "turn {n}",
   "an.trig.user": "user message", "an.trig.tool_result": "tool result", "an.trig.none": "no trigger",
   "an.stepFull": "Reasoning of step {n}", "an.trigText": "Triggered by: ", "an.drawerClose": "Close",
   "an.drawerDrag": "Drag to resize (remembered on this machine)",
@@ -2657,9 +2576,7 @@ en: {
   "an.ai.turnCover": "turn level covers {n}/{total} steps",
   "an.ai.fill": "Fill {n} gap(s)", 
   "an.ai.doList": "Summarise list", "an.ai.redoList": "Re-run list", "an.ai.fullList": "Recompute list from scratch",
-  "an.ai.doTraj": "Summarise 8 views", "an.ai.redoTraj": "Re-run 8 views",
   "an.ai.listTip": "Adds two semantic layers on top of the program skeleton: what each turn was doing, and a one-line brief per step. Applies to the List slot only.",
-  "an.ai.trajTip": "Adds the trajectory's semantic layer: phase split, the four state-snapshot cells per phase, and a one-line brief per node. Applies to the 8-views slot only, and is billed separately from the list.",
   "an.ai.fullTip": "Ignore what is cached and redo everything (use this after changing the analysis prompt; costs the same as the first run)",
   "an.sub.task": "Task", "an.sub.problems": "Problems hit", "an.sub.resolution": "How it was resolved",
   "an.sub.outcome": "Outcome", "an.sub.sumFail": "This lane’s verdict failed to generate — hit “Fill gaps” to retry",
@@ -3017,20 +2934,9 @@ ja: {
   "an.aiVerdict": "AI の結論", "an.aiRedo": "再分析", "an.transOnlyPrompt": "全文翻訳はプロンプトのスナップショットのみです",
   "an.hiddenHint2": "肉眼では分からない差異：不可視文字と同形異字。文字透かしはまさにこの形です —— 右の行番号をクリックすると該当箇所へ飛びます。",
   "an.hiddenLine": "{n} 行目", "an.hiddenNoLoc": "（本文外）",
-  "an.viewList": "リスト", "an.viewTree": "8ビュー",
-  "an.trajHint": "軌跡を8つのビューで：状態遷移 / 資材の系譜 / 検証 / バルブ / コスト / 反実仮想 / ライフライン / タイムライン。土台は<b>全主線リクエストの blocks 和集合</b>（最長1本ではない—autocompact に切り捨てられた前半も回収）。ノードをホバーで概要、クリックで全文証拠。",
-  "an.trajSemNone": "意味層は未要約：フェーズは機械的分割、概要はプログラムラベル。「AI 要約」でアップグレード。",
-  "an.trajSemOk": "意味層を要約済み（フェーズ＋状態スナップショット＋ステップ概要）。",
-  "an.trajLoadFailed": "8ビューの読み込みに失敗：{msg}",
-  "an.trajLoading": "軌跡を計算中——土台はその日の全主線リクエストの和集合なので、長い録画は初回に数秒かかります。二回目以降は高速です。",
-  "an.ai.runningTraj": "8ビュー：フェーズ分割中…",
-  "an.ai.runningTrajSnap": "8ビュー：スナップショット作成 {d}/{t}…",
-  "an.ai.runningTrajBrief": "8ビュー：概要作成 {d}/{t}…",
-  "an.treeHint": "幹はステップ順。青い点は分岐や自己修正が現れた箇所で、その下に該当する原文とそのステップで実際に行った操作を示します。**これらは機械的に検出した候補であり結論ではありません** —— モデルは決定木を明示的に書いていません。",
   "an.ai.goal": "全体目標", "an.ai.drift": "目標が変化：",
   "an.ai.said": "依頼内容", "an.ai.solving": "解決対象",
   "an.ai.doneWhen": "完了条件", "an.ai.outcome": "結果",
-  "an.treeDid": "実際の操作：", "an.treeNoTool": "（このステップではツール未使用）",
   "an.pickRec": "1 枚選ぶとその記録を分析します",
   "an.pickedRec": "分析中：{a}", "an.roleOnly": "析",
   "an.thinkN": "思考 {n} 文字",
@@ -3042,7 +2948,6 @@ ja: {
   "an.sideA": "左", "an.sideB": "右", "an.swap": "入れ替え",
   "an.diffEmpty": "スナップショットがありません。キャプチャ詳細で右クリックし「このプロンプトを保存」または「この記録を保存」を選んでください。",
   "an.recPick": "記録スナップショット", "an.copyBrief": "指示をコピー・監査",
-  "an.copyFlow": "指示をコピー・フロー図",
   "an.copyPrompt": "分析プロンプトをコピー",
   "an.recEmpty": "記録スナップショットがありません。キャプチャ詳細で右クリックし「この記録を保存」を選んでください。",
   "ctx.snapPrompt": "このプロンプトを保存", "ctx.snapSelection": "選択範囲を保存",
@@ -3084,7 +2989,6 @@ ja: {
   "an.rep.tool_errors": "ツールエラー後のリトライ",
   "an.stepsTitle": "ステップ骨格",
   "an.stepsShown": "{total} ステップ中 {n} を表示（行をクリックで思考原文）",
-  "an.turnN": "ターン {n}",
   "an.trig.user": "ユーザーメッセージ", "an.trig.tool_result": "ツール結果", "an.trig.none": "トリガーなし",
   "an.stepFull": "ステップ {n} の思考原文", "an.trigText": "トリガー：", "an.drawerClose": "閉じる",
   "an.drawerDrag": "ドラッグで幅を調整（この端末に記憶）",
@@ -3101,9 +3005,7 @@ ja: {
   "an.ai.turnCover": "ターン要約のカバー率 {n}/{total} ステップ",
   "an.ai.fill": "不足 {n} 件を補う", 
   "an.ai.doList": "リストを要約", "an.ai.redoList": "リストを再実行", "an.ai.fullList": "リストを全再計算",
-  "an.ai.doTraj": "8ビューを要約", "an.ai.redoTraj": "8ビューを再実行",
   "an.ai.listTip": "プログラム骨格の上に意味層を二つ足します：各ターンが何をしていたか、そして各ステップ一行の概要。「リスト」タブのみに作用します。",
-  "an.ai.trajTip": "軌跡に意味層を足します：フェーズ分割、フェーズごとの状態スナップショット四格、ノードごとの一行概要。「8ビュー」タブのみに作用し、リスト分とは別勘定です。",
   "an.ai.fullTip": "キャッシュを無視して最初からやり直します（要約プロンプトを変更した後に使用。費用は初回と同じ）",
   "an.sub.task": "タスク", "an.sub.problems": "遭遇した問題", "an.sub.resolution": "どう解決したか",
   "an.sub.outcome": "最終結果", "an.sub.sumFail": "この系列の結論は生成に失敗しました。「不足を補う」で再試行",
@@ -3451,7 +3353,6 @@ function setTheme(theme, announce=true){
   }catch(e){}
   syncThemePicker();
   if(S.view === "dag") loadDag();  /* 泳道色板随主题变化，重新取现有数据并重绘。 */
-  anTrajTheme(theme);  /* 八视图子页的颜色是取值内联进 SVG 的，必须让它重渲一遍 */
   if(announce) toast(t18("toast.themeChanged", {name:t18("theme." + theme)}));
 }
 function toggleSwitch(btn){
@@ -6206,10 +6107,8 @@ async function snapCreate(kind, where){
 
 const AN = {sub: "diff", items: [], dirty: true, recData: null, brief: "",
             selA: null, selB: null, recA: null, recB: null, pDiff: null,
-            pendingDel: null, stepView: "list", recSources: [],
+            pendingDel: null, recSources: [],
             recAnalysis: null, anaBusy: false, anaProg: null, anaTimer: 0,
-            anaTarget: null,   /* 这次点的是哪个归纳按钮：list / traj（260829）*/
-            recSid: null, recSem: null, trajError: "",   /* 八视图档（260828）*/
             openStep: null, openLane: "", stepFull: null,   /* 右侧钻探抽屉（260826） */
             subs: null,                          /* 子代理线（260826） */
             chat: [], chatBusy: false};
@@ -6911,22 +6810,17 @@ async function anRecLoad(){
   const sid = anSel("c")[0];
   AN.openStep = null; AN.openLane = ""; AN.stepFull = null;   /* 换录制＝换现场 */
   AN.subs = null;
-  AN.recSid = sid; AN.recSem = null; AN.trajError = "";
   if(!sid){ $("anRecOut").innerHTML = ""; return; }
   $("anRecOut").innerHTML = '<div class="card an-note">' + t18("an.loading") + '</div>';
   try{
-    const [tr, sr, br, bfr, semr] = await Promise.all([
+    const [tr, sr, br] = await Promise.all([
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/thinking?level=0"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/sources"),
       fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief"),
-      fetch("/api/snapshots/" + encodeURIComponent(sid) + "/brief?task=flow"),
-      fetch("/api/snapshots/" + encodeURIComponent(sid) + "/semantic"),
       anAnalysisLoad(sid)]);   /* 已有的 AI 归纳一并取回：分析过的不该再花一次钱（260809）*/
-    try{ AN.recSem = !!(await semr.json()).exists; }catch(e){ /* 状态条降级，不挡主流程 */ }
     anSubsLoad(sid);          /* 子代理线：不 await——它要回原始录制里捞，慢一点不该拖住主线 */
     const tj = await tr.json(), sj = await sr.json();
     AN.brief = await br.text();
-    AN.briefFlow = await bfr.text();
     if(!tj.ok) throw new Error(tj.error || "failed");
     AN.recData = tj.data;
     AN.recSources = sj.ok ? (sj.sources || []) : [];
@@ -6990,44 +6884,25 @@ function renderRec(d, sources){
   h += '<div class="card an-steps"><div class="an-steps-head"><b>' + t18("an.stepsTitle") + '</b>' +
     '<span class="an-counts">' + t18("an.stepsShown", {
       n: (d.steps || []).length, total: d.steps_total || 0}) + '</span>' +
-    '<span class="an-viewsw">' +
-      '<button class="an-vbtn' + (AN.stepView === "list" ? " active" : "") +
-        '" onclick="anStepView(\'list\')">' + t18("an.viewList") + '</button>' +
-      '<button class="an-vbtn' + (AN.stepView === "tree" ? " active" : "") +
-        '" onclick="anStepView(\'tree\')">' + t18("an.viewTree") + '</button>' +
-    '</span>' +
-    /* 两个归纳按钮**常驻**，不随档位显隐（260829 用户拍板）。此前是同一个按钮按档分流：
-       同样的字面，在列表档跑 /analysis、在八视图档跑 /trajectory，花两份不同的钱。
-       常驻的另一半价值是「不切过去也知道那边归纳过没有」。
-       只允许同时跑一条：两条打的是同一个模型端点，并行只会把失败率和限流风险乘起来。 */
-    '<button class="btn" id="anAnaBtn" onclick="anAnalyze(null,&quot;list&quot;)"' +
+    /* 归纳按钮只此一条（260910 八视图取消，轨迹那条管线随之退役）。
+       「全部重算」单独一个按钮，不藏在同一个里：两者花的钱差一个数量级，
+       而"点了以为在补、其实重算了半小时"正是这个软件最不该有的意外。 */
+    '<button class="btn" id="anAnaBtn" onclick="anAnalyze(null)"' +
       (AN.anaBusy ? " disabled" : "") + ' title="' + esc(t18("an.ai.listTip")) + '">' +
-      esc(AN.anaBusy && AN.anaTarget === "list" ? anAnaLabel()
+      esc(AN.anaBusy ? anAnaLabel()
             : (AN.recAnalysis
                  ? (anFailedSteps().length
                       ? t18("an.ai.fill", {n: anFailedSteps().length})
                       : t18("an.ai.redoList"))
                  : t18("an.ai.doList"))) +
     '</button>' +
-    /* 「全部重算」单独一个按钮，不藏在同一个里：两者花的钱差一个数量级，
-       而"点了以为在补、其实重算了半小时"正是这个软件最不该有的意外。
-       字面要写明目标——两个归纳按钮并存之后，「全部」指谁不明。
-       八视图不给这个按钮：可自定义的归纳提示词只作用于列表那条管线，
-       轨迹的任务描述是内置的，给它一个没有用武之地的按钮只会让人以为两边对称。 */
     (AN.recAnalysis && !AN.anaBusy
-      ? '<button class="btn" onclick="anAnalyze(&quot;full&quot;,&quot;list&quot;)" title="' +
+      ? '<button class="btn" onclick="anAnalyze(&quot;full&quot;)" title="' +
         esc(t18("an.ai.fullTip")) + '">' + esc(t18("an.ai.fullList")) + '</button>'
       : "") +
-    '<button class="btn" onclick="anAnalyze(null,&quot;traj&quot;)"' +
-      (AN.anaBusy ? " disabled" : "") + ' title="' + esc(t18("an.ai.trajTip")) + '">' +
-      esc(AN.anaBusy && AN.anaTarget === "traj" ? anAnaLabel()
-            : (AN.recSem ? t18("an.ai.redoTraj") : t18("an.ai.doTraj"))) +
-    '</button>' +
-    '</div>' + (AN.stepView === "tree" ? anTrajHead() : anAnalysisHead());
-  h += '<div class="an-split' + (AN.openStep ? " open" : "") +
-    (AN.stepView === "tree" ? " trajmode" : "") + '">' +
-    '<div class="an-splitmain">' +
-      (AN.stepView === "tree" ? anTrajHtml() : anListHtml(d.steps || [])) +
+    '</div>' + anAnalysisHead();
+  h += '<div class="an-split' + (AN.openStep ? " open" : "") + '">' +
+    '<div class="an-splitmain">' + anListHtml(d.steps || []) +
     '</div><div class="an-drawer-grip" id="anDrawerGrip" title="' + esc(t18("an.drawerDrag")) +
     '"></div><aside class="an-drawer" id="anDrawer">' + anDrawerHtml() + '</aside></div>';
   h += '</div>';
@@ -7102,7 +6977,7 @@ function anTurnHead(turn){
     '</div>';
 }
 /* 列表视图 = 简报流（260826）：每步一行人话（AI brief），连续纯工具步聚合成标签簇
-   （名称×次数，视觉降权），零点击——思考原文的钻探在树视图，两个视图分工。
+   （名称×次数，视觉降权），零点击——思考原文的钻探在右侧抽屉。
    分层不变：步行上的 signals chip 是程序识别的机械真源，与 AI 简报互相印证；
    没有简报的步（未分析/该批失败/旧缓存）退回机械行，不白屏也不装懂。 */
 function anListHtml(steps, lane){
@@ -7247,9 +7122,6 @@ function anAnaLabel(){
   /* 并发之后「第几批」没有意义——几个线程同时在跑，报哪一个都是错的。改成完成数/总数。 */
   if(p.phase === "sub")
     return t18("an.ai.runningSub", {lane: p.lane, lanes: p.lanes, b: p.done || 0, batches: p.total || 0});
-  if(p.phase === "traj_split") return t18("an.ai.runningTraj");
-  if(p.phase === "traj_snaps") return t18("an.ai.runningTrajSnap", {d: p.done || 0, t: p.total || 0});
-  if(p.phase === "traj_briefs") return t18("an.ai.runningTrajBrief", {d: p.done || 0, t: p.total || 0});
   if(p.phase === "turns") return t18("an.ai.runningTurns", {b: p.done || 0, batches: p.total || 0});
   if(p.phase === "lanes") return t18("an.ai.runningLanes", {b: p.done || 0, batches: p.total || 0});
   if(!p.total) return t18("an.ai.running");
@@ -7271,164 +7143,32 @@ function anAnaPoll(sid){
     }catch(e){ /* 进度取不到不影响归纳本身，安静退回"分析中…" */ }
   }, 2000);
 }
-async function anAnalyze(mode, target){
+async function anAnalyze(mode){
   const sid = anSel("c")[0];
   if(!sid || AN.anaBusy) return;
-  /* target 是**显式参数**，不再从 AN.stepView 推——按档推断正是 260829 拆掉的东西，
-     留着它，下一个人加第三档时会再犯一次。 */
-  const trajMode = target === "traj";
-  AN.anaBusy = true; AN.anaProg = null; AN.anaTarget = trajMode ? "traj" : "list";
+  AN.anaBusy = true; AN.anaProg = null;
   if(AN.recData) renderRec(AN.recData, AN.recSources || []);   /* 按钮进入"分析中…" */
   anAnaPoll(sid);
-  /* 两条管线各归各的：列表档归纳轮次骨架（turns/简报，挂步号），八视图档归纳轨迹语义层
-     （阶段/快照/简述，挂节点号）。**两套步号体系不同，产物不能互相喂**——地基也不同
-     （列表是快照那一条 record，八视图是当日全部主线请求的并集）。进度轮询共用一条通道，
-     phase 前缀 traj_ 区分。 */
   try{
-    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) +
-                          (trajMode ? "/trajectory" : "/analysis") +
+    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/analysis" +
                           "?mode=" + (mode === "full" ? "full" : "resume"),
                           {method: "POST"});
     const j = await r.json();
     if(!j.ok) throw new Error(j.error || "failed");
-    if(trajMode){
-      AN.recSem = true;
-      /* 归纳完成后 iframe 重建才会带新语义层（src 相同浏览器会用缓存） */
-      const f = document.querySelector(".an-traj iframe");
-      if(f){ const s = f.src; f.src = s; }
-    }else{
-      AN.recAnalysis = j.data;
-    }
+    AN.recAnalysis = j.data;
     toast(t18("an.ai.done"));
   }catch(e){
     toast(t18("an.ai.failed", {msg: e.message}), true);   /* 失败要说出来，不留空面板 */
   }finally{
-    AN.anaBusy = false; AN.anaProg = null; AN.anaTarget = null;
+    AN.anaBusy = false; AN.anaProg = null;
     clearInterval(AN.anaTimer);
     if(AN.recData) renderRec(AN.recData, AN.recSources || []);
   }
 }
 
-/* ---- 八视图档（260828）：tree 位置换成轨迹八视图 ----
-   独立单文件页走 iframe 嵌入——八视图自带整套暗色视觉体系（缩放画布/命中表/惰性渲染），
-   塞进 app 的 DOM 里样式必打架；iframe 让两边零冲突，也保留了"单独打开也能用"的特性。
-   语义层状态在这里说清：程序层（并集/节点/血统/反事实）永远是全的，缺的只是模型语义。 */
-function anTrajHead(){
-  return '<div class="an-hint">' + t18("an.trajHint") + '</div>' +
-    '<div class="an-hint">' + (AN.recSem ? t18("an.trajSemOk") : t18("an.trajSemNone")) + '</div>';
-}
-function anTrajHtml(){
-  if(!AN.recSid) return "";
-  if(AN.trajError) return '<div class="err-card">' +
-    esc(t18("an.trajLoadFailed", {msg: AN.trajError})) + '</div>';
-  /* 外观随 URL 一起交给子页：首屏就是对的颜色，不会先闪一下深色。
-     之后切外观走 anTrajTheme()——**不能重新 load**，payload 内嵌在那份 HTML 里，
-     reload 等于让服务端重算一遍（~20s）。 */
-  return '<div class="an-traj loading">' +
-    '<div class="traj-skel"><div class="sk-line w1"></div><div class="sk-line w2"></div>' +
-    '<div class="sk-row"><div class="sk-card"></div><div class="sk-card"></div>' +
-    '<div class="sk-card"></div><div class="sk-card"></div></div>' +
-    '<div class="sk-note">' + t18("an.trajLoading") + '</div></div>' +
-    '<iframe src="/api/snapshots/' + encodeURIComponent(AN.recSid) +
-    '/trajectory?format=html&embed=1&theme=' + encodeURIComponent(currentTheme()) +
-    '" title="' + esc(t18("an.viewTree")) +
-    '" onload="anTrajCheck(this)"></iframe></div>';
-}
-function anTrajFrame(){ return document.querySelector(".an-traj iframe"); }
-/* 把当前外观推给八视图子页（同源直调，postMessage 兜底） */
-function anTrajTheme(t){
-  const f = anTrajFrame(); if(!f) return;
-  try{
-    if(f.contentWindow && f.contentWindow.ccwaTrajTheme){ f.contentWindow.ccwaTrajTheme(t); return; }
-  }catch(e){}
-  try{ f.contentWindow.postMessage({t: "ccwa-traj-theme", theme: t}, "*"); }catch(e){}
-}
-/* 嵌入桥（父页这半边）：收子页报来的高度 → 设 iframe 高（消灭第二条滚动条）；
-   把**可视区**（相对子页文档的 top/height）喂回去 → 子页据此定位钻取抽屉与画布高度。 */
-function anTrajViewport(){
-  const f = anTrajFrame(); if(!f) return;
-  const r = f.getBoundingClientRect();
-  /* 可视区的上沿不是 0，是**吸顶头部的下沿**——否则子页的抽屉会顶到头部底下，
-     标题栏与关闭按钮被盖住（真机可见）。 */
-  const hd = document.querySelector(".app-header");
-  const topEdge = hd ? hd.getBoundingClientRect().bottom : 0;
-  const vis = Math.max(r.top, topEdge);
-  const top = Math.max(0, vis - r.top);
-  const height = Math.max(0, Math.min(r.bottom, innerHeight) - vis);
-  if(!height) return;
-  try{ f.contentWindow.postMessage({t: "ccwa-traj-viewport", top: top, height: height}, "*"); }catch(e){}
-}
-window.addEventListener("message", function(e){
-  const d = e.data || {};
-  if(d.t === "ccwa-traj-height"){
-    const f = anTrajFrame();
-    if(f && d.h > 0){ f.style.height = Math.max(420, d.h) + "px"; anTrajViewport(); }
-  }else if(d.t === "ccwa-traj-top"){
-    const f = anTrajFrame();
-    if(f) f.scrollIntoView({behavior: "smooth", block: "start"});
-  }
-});
-window.addEventListener("scroll", anTrajViewport, {passive: true});
-window.addEventListener("resize", anTrajViewport);
-/* 错误页也是一次 load：同源 iframe 读得到内容。#nav 是八视图、#trajerr 是后端出的
-   同款外观错误页（当日数据已归档之类），两者都算渲染成功；都没有才说明回的是裸 JSON，
-   那种东西留在 iframe 里没人读得懂，换成人话错误卡。 */
-function anTrajCheck(f){
-  const host = f.closest(".an-traj");
-  if(host){ host.classList.remove("loading"); const sk = host.querySelector(".traj-skel"); if(sk) sk.remove(); }
-  try{
-    const doc = f.contentDocument;
-    if(!doc || doc.getElementById("nav") || doc.getElementById("trajerr")) return;
-    const txt = (doc.body && doc.body.innerText || "").slice(0, 400);
-    try{ AN.trajError = JSON.parse(txt).error || txt; }
-    catch(e){ AN.trajError = txt; }
-    if(AN.recData) renderRec(AN.recData, AN.recSources || []);
-  }catch(e){ /* 读不到就留着原样 */ }
-}
-
 function sigCls(k){
   return {"犹豫": "sig-h", "分支": "sig-b", "自我修正": "sig-c", "不确定": "sig-u"}[k] || "";
 }
-function anStepView(v){
-  AN.stepView = v;
-  AN.openStep = null; AN.stepFull = null;   /* 换视图＝换看法，抽屉里那一步的原文不跟着走 */
-  if(AN.recData) renderRec(AN.recData, AN.recSources || []);
-}
-
-/* 树视图：主干是步骤序列，节点上挂**命中信号的原句**与该步实际执行的动作。
-
-   它回答的是「在哪一步它权衡过、最后做了什么」。**不是真正的决策树**——
-   模型没有把分支结构显式写出来，我们只能机械识别"这句话像在列选项"。
-   所以节点上的候选一律标着类别，判断留给读的人（这条边界写在界面上，见 an.treeHint）。 */
-function anTreeHtml(steps){
-  let h = '<div class="an-hint">' + t18("an.treeHint") + '</div><div class="an-tree">';
-  let lastTurn = null;
-  steps.forEach(s => {
-    if(s.turn !== lastTurn){ lastTurn = s.turn; h += anTurnHead(s.turn); }
-    const sig = Object.keys(s.signals || {});
-    const forked = (s.signals || {})["分支"] || (s.signals || {})["自我修正"];
-    h += '<div class="tnode' + (forked ? " forked" : "") + (AN.openStep === s.step ? " active" : "") +
-      '" data-step="' + s.step + '" onclick="anStepOpen(' + s.step + ')">' +
-      '<span class="tdot"></span>' +
-      '<div class="tbody">' +
-        '<div class="thead"><span class="an-sn">#' + s.step + '</span>' +
-          '<span class="chip outline">' + t18("an.turnN", {n: s.turn}) + '</span>' +
-          (s.thinking_chars ? '<span class="an-tk">' + fmtTok(s.thinking_chars) + t18("an.chars") + '</span>' : "") +
-          sig.map(k => '<span class="chip sig ' + sigCls(k) + '">' + esc(k) + " " + s.signals[k] + '</span>').join("") +
-        '</div>' +
-        ((s.marks || []).length
-          ? '<div class="tmarks">' + s.marks.map(m =>
-              '<div class="tmark ' + sigCls(m.kind) + '"><span class="tmk">' + esc(m.kind) +
-              '</span>' + esc(m.text) + '</div>').join("") + '</div>' : "") +
-        ((s.tools || []).length
-          ? '<div class="tdid">' + t18("an.treeDid") +
-            s.tools.map(x => '<span class="chip tool">' + esc(x) + '</span>').join("") + '</div>'
-          : '<div class="tdid dim">' + t18("an.treeNoTool") + '</div>') +
-      '</div></div>';
-  });
-  return h + '</div>';
-}
-
 /* 简报索引：把老缓存的单段 `brief` 与新的 title/detail 归一到一处。
    两处渲染各判一次「有没有 title」必然分叉，所以归一只做这一遍。 */
 function anBriefMap(lane){
@@ -7605,7 +7345,7 @@ function anDrawerPaint(){
   split.classList.toggle("open", !!AN.openStep);
   box.innerHTML = anDrawerHtml();
   anDrawerFitSoon();
-  document.querySelectorAll(".an-step.active,.tnode.active").forEach(e => e.classList.remove("active"));
+  document.querySelectorAll(".an-step.active").forEach(e => e.classList.remove("active"));
   if(AN.openStep){
     /* 步号在每条线里各自从 1 开始，所以选中态必须**连 lane 一起认**，
        否则点子代理第 3 步会把主线第 3 步也点亮。 */
@@ -7615,18 +7355,10 @@ function anDrawerPaint(){
   }
 }
 
-/* 复制给外部 agent 的指令（后端生成：端点清单是后端的事实，抄到前端就会分叉）。
-   两份、两个按钮：审计问的是"哪里疑惑/冲突/腐烂"，流程图要的是"实际执行拓扑"，
-   产出形状完全不同。**不做一个按钮按状态分叉**——v0.4.20 刚为这个形状返工过
-   （一个"AI 摘要"按钮在两个槽位跑两种任务两种价钱），同一个仓库里不该再合回去。 */
+/* 复制给外部 agent 的指令（后端生成：端点清单是后端的事实，抄到前端就会分叉）。 */
 function anCopyBrief(btn){
   if(!AN.brief){ toast(t18("an.pickFirst"), true); return; }
   return copyAndReport(AN.brief, btn);
-}
-
-function anCopyFlow(btn){
-  if(!AN.briefFlow){ toast(t18("an.pickFirst"), true); return; }
-  return copyAndReport(AN.briefFlow, btn);
 }
 
 /* 便携包（260827，issue 260827_快照便携包导出导入）：把选中的贴纸连同 AI 归纳打成一个文件。

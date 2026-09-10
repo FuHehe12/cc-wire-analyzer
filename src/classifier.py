@@ -555,7 +555,7 @@ def _agent_fp(blocks: list[str]) -> str:
 #
 # 这份判据此前在仓里有**三份互不相同的实现**，三份判错两份（260901 审计）：
 #   1. `classifier._is_turn_start`      —— 只排除 `<system-reminder>`，`[Image:]` 判成新轮
-#   2. `trajectory.py` 的 user_events   —— 有完整前缀清单，判对
+#   2. `trajectory.py` 的 user_events   —— 有完整前缀清单，判对（该实现已随八视图于 260910 删除，判据收进本文件）
 #   3. `snapshot_extract._trigger_of`   —— 有 tool_result 且无 text 才算回传，`[Image:]` 判成新轮
 # 后果不是三个 bug，是同一个 bug 的三份拷贝：时序图的轮、八视图的阶段、步级简报的 `turn` 号
 # 各错各的，还互相矛盾。（同型教训：`usage_norm` 键名归一被抄三份、同一个 bug 犯两次。）
@@ -598,8 +598,8 @@ def user_text_kind(text: str) -> tuple[str, str]:
     """user 角色下的一个 text 块 → (类别, 剥掉包装后的正文)。
 
     类别 ∈ reminder / status / compact_summary / payload / harness / user。
-    **这是这件事的唯一判据**——`_is_turn_start`、`trajectory` 的 user_events、
-    `snapshot_extract._trigger_of` 全都调它，不各自再写一份。
+    **这是这件事的唯一判据**——`_is_turn_start` 与 `snapshot_extract._trigger_of`
+    都调它，不各自再写一份（`trajectory` 的调用方已随八视图于 260910 删除）。
     """
     norm = (text or "").strip()
     if not norm:

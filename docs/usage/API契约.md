@@ -464,7 +464,7 @@ wire 上的真实次序，中间只隔一个步头，不为了好看把答复挪
    只追加不回改，最新结论会被埋在中间。
 
 存储是 `~/.cc-wire-analyzer/observations/<id>.json`，原子替换。与原始录制隔离：不覆盖
-`.analysis.json` / `.semantic.json`，也不塞进 snapshot note。
+`.analysis.json`，也不塞进 snapshot note。
 
 #### 严格写入与紧凑响应
 
@@ -1525,38 +1525,6 @@ user），挂到哪一步则是同一条判据、只是拿快照自己那一步�
   不能渲染成"这条会话没有子代理"。
 - `lane=<lane_id>&step=N`：那条线单步的思考原文，与主线 `thinking?level=2` 同义（同样的
   `level2` 产物），只是换了条记录。线不在了返回 404 `lane_not_found`。
-
-### `GET|POST /api/snapshots/<id>/trajectory` — 轨迹八视图（仅录制快照）
-
-程序层即时算（~20s/条录制），语义层有缓存就带上、没有就机械兜底并标 `semantic:"degraded"`。
-
-- 不带参数 → `{ok, exists, semantic_exists, data}`。`data` 是八视图 payload：
-  节点 / 动作 / 物料 / 血统 / 验证等级 / 阀门 / 未验债 / 成本 / 子代理线 / 必要闭包 / 阶段。
-- `?format=html` → **完整的八视图单文件页**（payload 内嵌，零外部依赖，单独打开也能用）。
-  另认两个外观参数：
-  - `theme=dark|classic|light` —— 不给则读 `ccwa_ui_theme` cookie，跟随主界面；
-  - `embed=1` —— 嵌入模式：背景透明、去掉自己的顶栏与滚动条，高度与可视区通过
-    `postMessage` 与父页协商（父页那半边见 `index.html` 的 `anTrajViewport()`）。
-    页面同时暴露 `window.ccwaTrajTheme(t)` 供父页即时换肤——**不能用 reload 换肤**，
-    payload 内嵌在页面里，reload 等于让服务端重算一遍。
-
-- `POST` → **跑语义层**（`?mode=resume|redo`）：一条可续跑的三段流水线——阶段切分
-  （程序给候选边界、模型定名）→ 状态快照四格（每阶段一次，并发）→ 步级简述（分批并发）。
-  进度走既有的 `analysis/progress` 通道，phase 前缀 `traj_`。跑完丢掉该 sid 的 HTML 缓存。
-
-地基是**全部主线请求的 blocks 并集**（`tool_use` id / `tool_result` id / 文本 md5 三键去重），
-不是单条最长请求——autocompact 剪掉的前半段只有并集能捞回来。当日数据已归档成 `.ccwa` 时
-如实回 `archived_or_missing`，而不是渲染半截 run。
-
-### `GET /api/snapshots/<id>/semantic` — 八视图语义层的存在性探测（仅录制快照）
-
-只回 `{ok, exists}`，**不调模型、不拉 payload**（前端状态条用）。
-跑语义层是 `POST …/trajectory` 那条——260904 校对发现这里此前写成 `GET|POST /semantic`，
-描述的 POST 其实不在这个路径上，是端点标题的机械事实第一次被对账查出来。
-
-结果存 `<id>.semantic.json`（与 `analysis.json` 同待遇的可重算派生物：随快照删除清理、
-计入 `size_of`、跟着便携包搬）。**事实四格不落盘**：`artifacts/pending/errors/constraints`
-在 compute 时由 `_attach_phase_facts()` 现算盖掉——模型改不了事实。
 
 ### `GET /api/snapshots/<id>/sources` — 多源指令清单（仅录制快照）
 

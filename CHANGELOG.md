@@ -12,6 +12,14 @@
 - **保留的产品问题**：把反复出现的故障转为检查规则，目前 `/api/diagnose/trends` 只能辅助判断是否复发；是否利用 Claude Code 本地日志修正轮次来源，尚未采用；存储方面仍有骨架指针增量编码和“先压实再清理”的后续方案。指针列表从约 477 MB 降到约 10 MB 是历史估算，尚非本轮实测结果。
 - **macOS 升级提示**：自 v0.4.2 起，应用名由 `CCWireAnalyzer.app` 改为 `cc-wire-analyzer.app`，不会覆盖 `/Applications` 中的旧名称，旧应用需要自行移除。
 
+## 未发布
+
+### 中文
+
+#### 变更
+
+- **取消八视图**（issue 260910_取消八视图）。用户真机用过之后的结论是「静态的分析没有用」：八视图是事后静态切分（阶段/快照/血统/反事实），而看一段录制的真实需求由轮次骨架总结与目标流满足。删除范围：`src/trajectory.py` 整个模块（3305 行）；`GET|POST /api/snapshots/<id>/trajectory` 与 `GET /api/snapshots/<id>/semantic` 两个端点及其语义层管线；分析页的「八视图」档与切换器（轮次骨架只剩列表一档）、八视图归纳按钮、「复制指令·流程图」按钮（其数据源与文案整体建立在八视图字段上）；agent-brief 里的 trajectory 入口与字段清单；便携包不再搬运 `.semantic.json`（磁盘上已有的语义层文件不删——那是花过钱的归纳，只是不再有读取方，老包导入时忽略该成员不报错）。**轮次骨架总结（`/api/snapshots/<id>/analysis` 的步级简报+轮次归纳+线级总结）一字不动**。随取消消解两件 open issue（260829 只认 captures、260829 三语——押后理由里「翻完再裁是白翻」按最极端的方式兑现）。HTML 说明书在原八视图位置备注「已于 260910 取消」，不无声消失；产品数据（capabilities 的 I 组 11 项、product-v3 的挂载与张力标记、implementation 的代码证据）同步移除。验证：全自测 + doc_audit（端点对账）+ workspace_audit + i18n 三语 696 键同步 + 浏览器实测（分析页只剩列表档、`/trajectory` 与 `/semantic` 回 404、brief 端点不再列 trajectory、console 无报错）。
+
 ## v0.4.32 - 2026-09-09
 
 ### 中文

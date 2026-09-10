@@ -25,21 +25,13 @@
       "API 契约",
       "docs/usage/API契约.md"
     ],
+    "fixtures": [
+      "固定样本与导入缺口（原八视图验收 issue，八视图已于 260910 取消，固定样本要求仍在）",
+      "issues/closed/260829_八视图只认captures与固定验收样本.md"
+    ],
     "arch": [
       "架构总览",
       "docs/development/架构总览.md"
-    ],
-    "trajectory": [
-      "八视图数据层",
-      "src/trajectory.py"
-    ],
-    "views": [
-      "八视图多语言待办",
-      "issues/open/260829_八视图三语.md"
-    ],
-    "fixtures": [
-      "八视图导入与固定样本缺口",
-      "issues/open/260829_八视图只认captures与固定验收样本.md"
     ],
     "future": [
       "方向性路线图（非排期）",
@@ -770,145 +762,6 @@
       ]
     },
     {
-      "id": "I",
-      "title": "轨迹重建与八视图",
-      "question": "如何从调用记录理解状态、物料与验证？",
-      "items": [
-        {
-          "id": "I-01",
-          "title": "跨请求重建完整步骤",
-          "phase": "P1",
-          "status": "现有",
-          "need": "压缩后的单条请求可能已失去前半段历史。",
-          "acceptance": "合并全部相关主线 blocks 并去重，步骤能回查原请求；缺口标明。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-02",
-          "title": "状态快照",
-          "phase": "P2",
-          "status": "现有",
-          "need": "查看各阶段目标、已有状态与变化。",
-          "acceptance": "每个状态主张有步骤引用；模型解释与程序观测分开标识。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-03",
-          "title": "物料血统",
-          "phase": "P2",
-          "status": "现有",
-          "need": "追踪一个产物由什么输入与动作产生。",
-          "acceptance": "资源、工具、产物、证据区分；推断血统有依据而非仅同名连线。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-04",
-          "title": "验证矩阵",
-          "phase": "P2",
-          "status": "现有",
-          "need": "检查输出获得何种验证。",
-          "acceptance": "测试命令、结果与对象对应；重新读取不被等同于验收通过。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-05",
-          "title": "阀门与回路",
-          "phase": "P2",
-          "status": "现有",
-          "need": "查看阻断、回退和重试。",
-          "acceptance": "循环返回原步骤，缺失控制状态保留未知。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-06",
-          "title": "能耗与方差",
-          "phase": "P2",
-          "status": "现有",
-          "need": "分析轨迹中的时间与代价分布。",
-          "acceptance": "计量单位、统计范围和缺测可见，不把单次波动推广成模型优劣。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-07",
-          "title": "最优轨迹（反事实推断）",
-          "phase": "P2",
-          "status": "现有",
-          "need": "探索哪些动作可能不是必要步骤。",
-          "acceptance": "显示推导假设和依赖闭包，明确不是经重跑证明的全局最优解。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-08",
-          "title": "物料生命线",
-          "phase": "P2",
-          "status": "现有",
-          "need": "看物料的读、写、执行和验证债务。",
-          "acceptance": "生命周期与时间位置可回查；未验证不写成已失败或已通过。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-09",
-          "title": "最优时序图（反事实推断）",
-          "phase": "P2",
-          "status": "现有",
-          "need": "比较观测轨迹和建议路径。",
-          "acceptance": "建议删去的节点及理由可检查，不改写原始事件。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-10",
-          "title": "语义分析进度、续跑与降级",
-          "phase": "P2",
-          "status": "现有",
-          "need": "长轨迹分析可能超时或只完成部分。",
-          "acceptance": "分批进度、重跑、已有结果状态清楚；机械兜底标明 degraded。",
-          "sources": [
-            "trajectory",
-            "api"
-          ]
-        },
-        {
-          "id": "I-11",
-          "title": "八视图语言与来源一致性",
-          "phase": "P2",
-          "status": "部分",
-          "need": "八视图应与主产品的数据入口和语言一致。",
-          "acceptance": "导入来源与本地数据均可打开；三语关键页面实测，错误页不能当成功。",
-          "sources": [
-            "views",
-            "fixtures"
-          ]
-        }
-      ]
-    },
-    {
       "id": "J",
       "title": "诊断、统计与协议变化",
       "question": "怎样从很多请求中找到值得调查的问题？",
@@ -1101,7 +954,7 @@
           "phase": "P1",
           "status": "现有",
           "need": "不同语言和屏幕下应可读可用。",
-          "acceptance": "主界面中英日与三套外观核验；八视图缺口另见 I-11。",
+          "acceptance": "主界面中英日与三套外观核验。",
           "sources": [
             "guide",
             "rules",
