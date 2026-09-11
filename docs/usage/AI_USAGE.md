@@ -206,9 +206,9 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 | GET | `/api/health/config` | **配置体检**（只读）：CC 的配置自相矛盾吗？ |
 | GET | `/api/diagnose/errors?date=…&limit=N` | **失败聚合**：到底哪里出了问题，按上游错误消息分组 |
 | GET | `/api/diagnose/trends?span=N&model=&kind=&limit=N` | **跨天趋势**：最近 N 天失败跨天归并 + 每日曲线 + trend（burst/sporadic/rising/declining/recurring）+ stale（还在不在发生）+ host/model/cc_version 切片。看失败是新发还是老毛病复发、集中哪个供应商/CC 版本 |
-| GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少）。比直读 jsonl 安全 |
+| GET | `/api/grep?date=…&pattern=…&in=all&limit=N` | **搜内容**：在录制里搜文本，带 coverage（搜了哪些区域、跳过多少、`not_searched` 是什么根本没进检索区）。比直读 jsonl 安全。**检索区只有请求体正文——查 beta / 工具面别用它**，那些声明在 HTTP 头上，搜出来的全是假阳性（见下）|
 | GET | `/api/stats?date=…` | **统计**：kind/model/status 分布、token 四项（含 cache_creation）、cache 命中率、耗时 p50/p95 |
-| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、没见过的 beta。每项带 samples id + `hosts` 归属 + 特异 beta（提升度筛过）。另有 `degraded` 段＝本工具录制降级，性质不同。**判读先看 hosts**（见下）|
+| GET | `/api/unknowns?date=…` | **盲区雷达**：已知集合外的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/thinking.type、没见过的 beta。每项带 samples id + `hosts` 归属 + 特异 beta（提升度筛过）。**工具面另有两段**：`tools`＝不在基线里的 CC 内置工具（`snippet` 是它的 description 片段，直接回答"这新工具干什么的"，`mcp__` 前缀一律不判），`tool_changes`＝**同一条泳道**（会话 + kind + agent_id）内工具集前后变了（`value` 是差集 `+A` / `-B`，只有 MCP 数变化时写成 `mcp 3→4`）。按会话分会全是假信号——子代理复用父会话 id，主线与子代理的工具面本就不同。另有 `degraded` 段＝本工具录制降级，性质不同。**判读先看 hosts**（见下）|
 | GET | `/api/snapshots` | **快照列表**：用户显式保存的提示词片段/整条录制备份。**不受 `retention_days` 自动清理**——录制会被清掉，快照不会 |
 | POST | `/api/snapshots` | 备份一条录制或其中一段提示词：`{kind:"capture"\|"prompt", record_id, date?, where?}` |
 | GET | `/api/snapshots/<id>/thinking?level=0` | **思考链骨架**：整条对话每一步的思考量/工具/机械信号。分析一段录制**从这里开始**，再按需要 `level=1`（摘要）/ `level=2&step=N`（某步原文）|
@@ -257,7 +257,13 @@ release、只走 https 且逐跳校验重定向主机、有 `SHA256SUMS.txt` 就
 `degraded` 段是另一回事：那是**本工具自己的降级标记**（SSE 在 `content_block_stop` 之前断了、
 工具入参 JSON 拼不出来），说明那条录制的正文是残的——要查的是代理侧，不是上游。
 
-`betas.new` 是没在基线里出现过的扩展，才是"CC 启用了新能力"的信号；`betas.known` 只是用量分布。
+`betas.new` 是没在基线里出现过的扩展，才是"CC 启用了新能力"的信号；`betas.known` 只是用量分布。两段都带 `hosts` / `cc_versions`，`new` 段另带 `samples`（≤5 个 id）——判读第一步要的归属就在响应里，不用自己拉一堆 `/api/captures` 再按 beta 重新聚合一遍。
+
+**工具面两段（`tools` / `tool_changes`）判读方法不同，别套用上面那三步。** `tools` 报的是不在 `KNOWN_TOOLS` 基线里的 CC **内置**工具，基线是"见过的并集"而不是白名单，所以它平时就是空的；有值时先读 `snippet`（该工具的 description）判断这是什么能力，再看 `hosts` / `cc_versions` 判断它跟的是 CC 版本还是某一条链路。`tool_changes` 报的是同一会话内相邻两条请求的工具集不一致，`value` 就是差集（`+TimeMachine`、`-Foo`、同时增删写成 `+A,B -C`，符号只在组首、最多列 3 个；内置面没变、只有 MCP 数变时写成 `mcp 3→4`），`snippet` 给出变化点的前后两条 req id，拿它们的 `tools_builtin` 就能看到完整清单。CC 的 `mid-conversation-tool-changes-2026-07-01` beta 声明的正是「工具集可在对话中途变化」，这一档就是看它真变没变。
+
+**一条实测教训：工具面差异常常只是会话配置不同，不是 CC 有了新能力。** 08-15 起 `Artifact` / `Monitor` / `PowerShell` 等内置工具只在第三方链路的会话上出现，同一台机器同一天的官方链路会话就没有它们。所以看到差集**先看 `hosts` 与 `samples`**，确认是"CC 版本带来的新能力"还是"这两条会话本来就跑在不同配置下"，再下结论。`mcp__` 前缀的工具压根不参与未知判定——那是使用者自己装的 MCP 服务器，不是 CC 协议演进；混进来的话每天几十条装卸 MCP 的噪声会把真信号淹掉，MCP 侧只保留一个数量（`tools_mcp_n`）。
+
+**查 beta 和工具面不要用 `/api/grep`。** HTTP 头（含 `anthropic-beta`）根本不在它的检索区，而 CC 的能力声明全在头上：实测拿特性名去 grep，命中的全是别的对话正文里提到它的地方，一条真正带该 beta 的请求都搜不出来——把那几条当证据就是彻底的假阳性。`/api/grep` 的 `coverage.not_searched` 现在恒带这句提醒。要按 beta 找具体请求，用 `/api/unknowns` 的 `betas.new[].samples`。
 
 ### 分析一段对话：上下文腐烂与冲突（快照）
 

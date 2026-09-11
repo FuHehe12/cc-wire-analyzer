@@ -159,10 +159,40 @@ KNOWN_BETAS = {
     "advisor-tool-2026-03-01", "advanced-tool-use-2025-11-20", "effort-2025-11-24",
     "fallback-credit-2026-06-01", "afk-mode-2026-01-31", "extended-cache-ttl-2025-04-11",
     "cache-diagnosis-2026-04-07", "structured-outputs-2025-12-15", "token-counting-2024-11-01",
+    # 260911 首次出现（CC 2.1.268，47 条）。逐日回查 08-31～09-10 全无，`claude.exe` 二进制
+    # 里有该字符串 → 是 CC 客户端声明的新能力，不是网关形状差异。语义是「工具集可在对话
+    # 中途变化」，正对应本次新增的 tool_changes 雷达档。
+    "mid-conversation-tool-changes-2026-07-01",
     # server-side-fallback 是 fallback-credit 的旧名（同日期段 2026-06-01）：旧名 07-14 最后
     # 出现、新名 07-25 首次出现，CC 版本间改了名。留着它，浏览改名前的老录制才不会误报。
     "server-side-fallback-2026-06-01",
 }
+
+# CC 内置工具名的实测并集（260911），**与 KNOWN_BETAS 同一惯例：不是白名单，是"见过的"**。
+# 取自 08-15～09-11 全部录制（含已压实的天）扫描结果，剔除只在 tests/dev_seed.py 合成数据里
+# 出现的 Task / TodoWrite。
+#
+# 为什么要有这份清单：CC 的能力面是按工具暴露的，而在此之前索引里关于工具只有 `tools_n`
+# 一个数字。260911 查「CC 是不是有新功能」时，7 个内置工具（Artifact / DesignSync / Monitor /
+# PowerShell / PushNotification / SendFeedback / Workflow）只出现在第三方链路的会话上、官方
+# 链路那条没有——这件事只能靠人打开 40 MB 主文件逐条扫才看得见，雷达一个字都报不出来。
+#
+# **`mcp__` 前缀的工具不进这份清单、也不参与未知判定**：那是使用者自己装的 MCP 服务器带来的，
+# 不是 CC 协议演进。把它们算进去，雷达每天会被几十个装/卸 MCP 的噪声淹掉，真正的新内置工具
+# 反而沉底——与 degraded 从 block_keys 分流出去是同一个道理。MCP 侧只记数量（tools_mcp_n）。
+KNOWN_TOOLS = {
+    "Agent", "Artifact", "AskUserQuestion", "Bash", "CronCreate", "CronDelete", "CronList",
+    "DesignSync", "Edit", "EndConversation", "EnterPlanMode", "EnterWorktree", "ExitPlanMode",
+    "ExitWorktree", "Glob", "Grep", "ListAgents", "Monitor", "NotebookEdit", "PowerShell",
+    "PushNotification", "Read", "RemoteTrigger", "ReportFindings", "ScheduleWakeup",
+    "SendFeedback", "SendMessage", "SendUserFile", "Skill", "TaskCreate", "TaskGet", "TaskList",
+    "TaskOutput", "TaskStop", "TaskUpdate", "WaitForMcpServers", "WebFetch", "WebSearch",
+    "Workflow", "Write",
+    # 小写 web_search：server tool（web_search_tool_result 那条链）的工具面形态，
+    # 09-06 实测 7 条，description 为空。与内置大驼峰工具不同源，但同样出现在 tools 数组里。
+    "web_search",
+}
+TOOL_MCP_PREFIX = "mcp__"
 
 KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens",
               "quota_probe", "hook_eval", "notify_eval", "self_prompt", "other")
@@ -224,7 +254,13 @@ KIND_ORDER = ("main", "subagent", "title", "compact", "security", "count_tokens"
 #                     子代理的审查因此首条 user 就是派生 prompt；wire 头上没有这个信息
 #                     （CC 的 side query 一律硬编码成 main，见 build_dag 的归属段注释）。
 #                     没有这两个字段，安全审查只能一律挂主线。
-IDX_SCHEMA = 18
+#   v18 → v19（260911）：新增工具面三字段 tools_builtin / tools_fp / tools_mcp_n + unknowns 的
+#                     tools 维度（见 KNOWN_TOOLS 注释）。此前索引里关于工具只有 tools_n 一个
+#                     数字，于是「CC 新增了内置工具」「这条会话的工具面和那条不一样」「工具集
+#                     在会话中途变了」三件事全部不可见——而 260911 新出现的 beta 正叫
+#                     mid-conversation-tool-changes。旧索引无这三个字段 → tools 档恒空、
+#                     tool_changes 恒无变化（静默降级，惯犯②），必须重建。
+IDX_SCHEMA = 19
 
 
 # ===== 请求体取文本 =====
@@ -753,7 +789,7 @@ def _snippet(v) -> str:
 def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
     """这条记录命中的未知维度（盲区雷达，260802）。
 
-    blocks / block_keys / body_fields / degraded 是 **value → snippet** dict（不只值名，还带一段
+    blocks / block_keys / body_fields / tools / degraded 是 **value → snippet** dict（不只值名，还带一段
     内容片段，让 AI 不必二次调 /api/captures/{id} 就能判断）；stop_reason / thinking_type 是标量。
     空 dict = 无未知。已知集合见顶部 KNOWN_*——出现集合外的值就是协议演进信号。
 
@@ -790,6 +826,19 @@ def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
         uf = {k: _snippet(body[k]) for k in body.keys() if k not in KNOWN_BODY_FIELDS}
         if uf:
             out["body_fields"] = uf
+        # 工具面（260911）：不在 KNOWN_TOOLS 里的内置工具 → {工具名: description 片段}。
+        # 片段用描述而不是整个工具定义：「这个新工具是干什么的」一眼可答，省一次详情调用，
+        # 而完整定义（含 input_schema）动辄数 KB，塞进索引会把它撑爆。
+        # mcp__ 前缀不判（见 KNOWN_TOOLS 注释）。
+        ut = {}
+        for t in (body.get("tools") or []):
+            if not isinstance(t, dict):
+                continue
+            n = t.get("name")
+            if n and not n.startswith(TOOL_MCP_PREFIX) and n not in KNOWN_TOOLS:
+                ut[n] = _snippet(t.get("description") or "")
+        if ut:
+            out["tools"] = ut
     sr = resp.get("stop_reason")
     if sr and sr not in KNOWN_STOP_REASONS:
         out["stop_reason"] = sr
@@ -799,6 +848,34 @@ def _unknowns(rec: dict, body: dict, resp: dict) -> dict:
         if tt and tt not in KNOWN_THINKING_TYPES:
             out["thinking_type"] = tt
     return out
+
+
+def _tools_face(body: dict) -> tuple[list[str], str, int]:
+    """工具面（260911）：(内置工具名排序列表, 联合指纹, MCP 工具数)。
+
+    **为什么存名字列表而不只存指纹**：会话内工具集变化要算「加了什么、少了什么」的差集，
+    只有指纹算不出来，而「变了」不带内容等于又要人去翻主文件——正是这次升级要消掉的那种活。
+    41 个短名约 300 字节/条，比存完整 tools（含 description 与 input_schema，实测数十 KB）
+    小三个数量级。
+
+    **指纹把 MCP 名也算进去**（列表不含）：否则用户装/卸一个 MCP 服务器，工具面明明变了，
+    指纹却纹丝不动。"""
+    names, mcp_n = [], 0
+    for t in (body.get("tools") or []):
+        if not isinstance(t, dict):
+            continue
+        n = t.get("name")
+        if not n:
+            continue
+        if n.startswith(TOOL_MCP_PREFIX):
+            mcp_n += 1
+        else:
+            names.append(n)
+    names.sort()
+    all_names = sorted(names + [t.get("name") for t in (body.get("tools") or [])
+                                if isinstance(t, dict) and str(t.get("name") or "").startswith(TOOL_MCP_PREFIX)])
+    fp = hashlib.md5("\n".join(all_names).encode("utf-8")).hexdigest()[:8] if all_names else ""
+    return names, fp, mcp_n
 
 
 def _tool_choice_flat(body: dict) -> str | None:
@@ -818,6 +895,7 @@ def index_record(rec: dict) -> dict:
     字段分两组：
       - 列表/SSE 摘要组：id/ts_start/method/path/model/status/ttft_ms/total_ms/
         usage(已归一)/stop_reason/has_error/summary
+      - 工具面组（260911）：tools_builtin/tools_fp/tools_mcp_n（CC 的能力清单，见 _tools_face）
       - DAG 分类原料组：sys_head/first_user/last_user/tools_n/uid/task_prompts/
         turn_start/tool_uses + is_subagent/entrypoint/session_id/agent_fp/first_user_task
         （classify_idx/_lane_key/_node_summary 只吃这些，不再碰完整 body）
@@ -836,6 +914,7 @@ def index_record(rec: dict) -> dict:
     # 安全审查解析跑一次就够——sec_action / sec_scope / sec_handoff 三个字段同源
     # （此前 `_sec_action_flat` 自己又调一次 sec_request，等于把 114K 规则库的 transcript 解析两遍）
     _sec = sec_request(body)
+    _tools = _tools_face(body)      # (内置工具名列表, 联合指纹, MCP 数)，260911
     summary = ""
     for blk in resp.get("content_blocks") or []:
         if isinstance(blk, dict) and blk.get("type") == "text" and blk.get("text"):
@@ -868,6 +947,12 @@ def index_record(rec: dict) -> dict:
         "first_user": (users[0][:2000] if users else ""),
         "last_user": (users[-1][:2000] if users else ""),
         "tools_n": len(body.get("tools") or []),
+        # ---- 工具面（260911）----
+        # CC 的能力清单。tools_n 只答"几个"，这三项答"哪些、是不是同一套、MCP 占几个"。
+        # 详见 _tools_face 与 KNOWN_TOOLS 的注释。
+        "tools_builtin": _tools[0],
+        "tools_fp": _tools[1],
+        "tools_mcp_n": _tools[2],
         "uid": (body.get("metadata") or {}).get("user_id") or "",
         "task_prompts": [p[:PROMPT_MATCH_LEN] for p in _task_prompts(rec)],
         "turn_start": _is_turn_start(body),

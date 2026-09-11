@@ -115,7 +115,12 @@ def new_record() -> dict:
 # is_subagent/entrypoint/agent_fp 是真正的子代理判别位（身份指纹），仍归内部不暴露。
 _IDX_PRIVATE = ("off", "len", "v", "sys_head", "first_user", "last_user",
                 "tools_n", "uid", "task_prompts", "turn_start", "tool_uses",
-                "is_subagent", "entrypoint", "agent_fp", "first_user_task")
+                "is_subagent", "entrypoint", "agent_fp", "first_user_task",
+                # 工具面三字段（260911）与 tools_n 同待遇：判别/雷达的原料，列表与 LIVE SSE
+                # 没有消费者（详情页读的是完整 record 的 body.tools，雷达读的是原始 idx）。
+                # tools_builtin 尤其不能漏——一行最多带 41 个工具名，200 行的列表页会多出
+                # 八千多个字符串，撞安全不变量⑦「输出必须有界」。
+                "tools_builtin", "tools_fp", "tools_mcp_n")
 
 
 def _public_summary(idx: dict) -> dict:
@@ -985,7 +990,14 @@ def grep(date: str | None = None, pattern: str = "", in_: str = "all",
     scanned_all = len(hits) < limit
     total = searched_chars + skipped_chars
     ratio = round(skipped_chars / total, 4) if (scanned_all and total) else None
-    coverage = {"searched": list(areas), "skipped": skipped, "skipped_ratio": ratio}
+    coverage = {"searched": list(areas), "skipped": skipped, "skipped_ratio": ratio,
+                # 检索区只有请求体正文（260911 补）。HTTP 头一个字都不在里面，而 CC 的能力
+                # 声明恰恰全在头上——实测拿 `anthropic-beta` 的特性名来 grep，命中的全是
+                # 别的对话正文里提到它的地方，一条真正带该 beta 的请求都搜不出来，
+                # 而 coverage 只列了"搜过哪些正文区域"，看不出这件事。
+                "not_searched": "HTTP 头（含 anthropic-beta）、计费头以外的元数据。"
+                                "查 beta / 工具面用 GET /api/unknowns；"
+                                "按 beta 找具体请求用它返回的 betas.new[].samples"}
     if not hits:
         coverage["note"] = (
             "0 命中 ≠ 不存在：本次未搜索的区域" +
@@ -1073,6 +1085,10 @@ def unknowns(date: str | None = None, exclude_session: str = "",
         "取 header 里的前几个"；高频未知值则被基线 100% 的那几个 beta 支配。两种情形都指不到
         "引入这个字段的那个能力"，所以这里算 P(beta|该未知)/P(beta|全体)。
 
+    工具面两段（260911）：tools = 基线（classifier.KNOWN_TOOLS）外的内置工具，
+    tool_changes = 同一会话内工具集前后不一致。前者答「CC 多了什么能力」，后者答
+    「这次对话中途换过工具面吗」——CC 的 mid-conversation-tool-changes beta 声明的就是后者。
+
     betas 维度分 new / known 两段：new = 不在 classifier.KNOWN_BETAS 里的，才是真信号。
     此前按频次升序、宣称"长尾即信号"，实测每天把同样几个结构性低频的已知特性顶在最前
     （structured-outputs 只在标题请求带、token-counting 只在 count_tokens 探针带）。"""
@@ -1081,14 +1097,28 @@ def unknowns(date: str | None = None, exclude_session: str = "",
     SAMPLE_MAX = 5
     blocks, block_keys, body_fields, degraded = Counter(), Counter(), Counter(), Counter()
     stop_reasons, thinking_types, betas = Counter(), Counter(), Counter()
+    tools_unknown = Counter()           # 未知内置工具（260911，见 classifier.KNOWN_TOOLS）
+    tool_changes = Counter()            # 会话内工具集变化（260911，聚合时现算）
     mainline_suspect = Counter()        # 主线可疑（260901，见 classifier.mainline_doubt）
     samples = defaultdict(list)
     snippets = {}                       # dim:value -> 内容片段（首次见到的作样例）
     beta_assoc = defaultdict(Counter)   # dim:value -> 该值出现的请求的 beta Counter
     host_assoc = defaultdict(Counter)   # dim:value -> 上游 host Counter
     ccver_assoc = defaultdict(Counter)  # dim:value -> CC 版本 Counter
+    # beta 自己的归属（260911）。此前 betas 段只有 {value,count}，而 note 的判读第一步正是
+    # 「先看 hosts」——要用的信息恰恰不在响应里。实测 260911 的新 beta 单一 host 独占，
+    # 只能人工拉 /api/captures?limit=300 自己按 beta 聚合才确认得了，这一步该由端点完成。
+    beta_host = defaultdict(Counter)    # beta -> 上游 host Counter
+    beta_ccver = defaultdict(Counter)   # beta -> CC 版本 Counter
+    beta_samples = defaultdict(list)    # beta -> 样本 id（只给 new 段用，见 _beta_rows）
+    tool_face = {}                      # 泳道键 -> (tools_fp, 内置工具名 set, MCP 数, 上一条 id)
     other_ids = []
     records = with_unknowns = degraded_records = 0
+
+    def _brief(xs: list) -> str:
+        """工具集差集的短标签：最多列 3 个，其余省略（雷达行要一眼看完，不是完整清单——
+        完整清单在 samples 指向的那两条记录的 tools_builtin 里）。"""
+        return ",".join(xs[:3]) + ("…" if len(xs) > 3 else "")
 
     def _tally(dim: str, val: str, snip: str, r: dict) -> None:
         """记一个未知值：样本 id + 首次片段 + beta/host/版本关联（计数在调用处）。"""
@@ -1116,7 +1146,8 @@ def unknowns(date: str | None = None, exclude_session: str = "",
         if u.get("degraded"):
             degraded_records += 1
         for dim, counter in (("blocks", blocks), ("block_keys", block_keys),
-                             ("body_fields", body_fields), ("degraded", degraded)):
+                             ("body_fields", body_fields), ("tools", tools_unknown),
+                             ("degraded", degraded)):
             for val, snip in (u.get(dim) or {}).items():   # value→snippet dict（schema v12+）
                 counter[val] += 1
                 _tally(dim, val, snip, r)
@@ -1127,7 +1158,42 @@ def unknowns(date: str | None = None, exclude_session: str = "",
                 _tally(dim, val, val, r)
         for b in (r.get("beta") or []):
             betas[b] += 1
+            if r.get("host"):
+                beta_host[b][r["host"]] += 1
+            if r.get("cc_version"):
+                beta_ccver[b][r["cc_version"]] += 1
+            if len(beta_samples[b]) < SAMPLE_MAX:
+                beta_samples[b].append(r.get("id"))
         kind = classifier.classify_idx(r)
+        # 工具集在会话中途变了（260911）。**在这里算而不是写时算**：它是相邻两条记录之间的
+        # 关系，不是单条记录的属性——与 mainline_suspect 同一惯例。260911 新出现的 beta
+        # 正叫 mid-conversation-tool-changes，CC 自己声明工具集会中途变，这一档就是看它真变没变。
+        #
+        # **分组键是 session + kind + agent_id，不是 session**（首版按 session 分，实测当天
+        # 26 条"变化"没有一条是真的）：① 子代理复用父会话 id（项目最老的一条实测结论），
+        # 主线与子代理的工具面本就不同，按 session 比就是 main↔subagent 来回翻牌；
+        # ② 并行的两个子代理同样共用会话 id，工具面各不相同，靠 agent_id 才分得开；
+        # ③ CC 自己发起的旁路请求（self_prompt 的检索派发实测恒 tools_n=1、title/compact 等）
+        # 与主线同会话但不是同一条对话线。三条都会把真信号淹掉。
+        # 只在带工具的请求之间比（tools_fp 空 = 无工具的辅助调用，进来只会制造假变化）。
+        fp = r.get("tools_fp") or ""
+        if fp and kind in ("main", "subagent"):
+            lane = f"{r.get('session_id') or ''}|{kind}|{r.get('agent_id') or ''}"
+            names = set(r.get("tools_builtin") or [])
+            prev = tool_face.get(lane)
+            if prev and prev[0] != fp:
+                added, removed = sorted(names - prev[1]), sorted(prev[1] - names)
+                parts = []
+                if added:
+                    parts.append("+" + _brief(added))
+                if removed:
+                    parts.append("-" + _brief(removed))
+                # 内置工具没变、只有 MCP 侧变化时给出可辨认的标签，而不是一个空字符串。
+                val = " ".join(parts) or f"mcp {prev[2]}→{r.get('tools_mcp_n')}"
+                tool_changes[val] += 1
+                _tally("tool_changes", val,
+                       f"{kind} {(r.get('session_id') or '')[:8]} {prev[3]} → {r.get('id')}", r)
+            tool_face[lane] = (fp, names, r.get("tools_mcp_n") or 0, r.get("id"))
         if kind == "other":
             other_ids.append(r.get("id"))
         # 主线可疑（260901）：判成主线但缺主线的结构特征。**在这里算而不是写时算**——
@@ -1166,8 +1232,18 @@ def unknowns(date: str | None = None, exclude_session: str = "",
         return out
 
     def _beta_rows(known: bool) -> list:
-        rows = [{"value": v, "count": n} for v, n in betas.items()
-                if (v in classifier.KNOWN_BETAS) == known]
+        """betas 段。260911 起带 hosts / cc_versions（判读第一步要的归属），new 段另带
+        samples——`new` 才是要去查上下文的那一段，而 known 段动辄上千条、给 id 无意义。"""
+        rows = []
+        for v, n in betas.items():
+            if (v in classifier.KNOWN_BETAS) != known:
+                continue
+            row = {"value": v, "count": n,
+                   "hosts": dict(beta_host[v].most_common()),
+                   "cc_versions": dict(beta_ccver[v].most_common())}
+            if not known:
+                row["samples"] = beta_samples[v][:SAMPLE_MAX]
+            rows.append(row)
         return sorted(rows, key=lambda x: x["count"])
 
     return {
@@ -1177,6 +1253,11 @@ def unknowns(date: str | None = None, exclude_session: str = "",
         "blocks": _agg(blocks, "blocks"),
         "block_keys": _agg(block_keys, "block_keys"),
         "body_fields": _agg(body_fields, "body_fields"),
+        # 工具面（260911）。tools = 基线外的内置工具（snippet 是它的 description 片段，直接
+        # 回答"这个新工具是干什么的"）；tool_changes = 同一会话里工具集前后不一致的次数。
+        # 两者性质不同：前者是"CC 多了个能力"，后者是"这次对话中途换了工具面"。
+        "tools": _agg(tools_unknown, "tools"),
+        "tool_changes": _agg(tool_changes, "tool_changes"),
         "stop_reason": _agg(stop_reasons, "stop_reason"),
         "thinking_type": _agg(thinking_types, "thinking_type"),
         # 本工具自己的降级（SSE 截断 / 工具入参拼不出 JSON）——不是协议未知，单列。
@@ -1196,6 +1277,7 @@ def unknowns(date: str | None = None, exclude_session: str = "",
             "stop_reasons": sorted(classifier.KNOWN_STOP_REASONS),
             "thinking_types": sorted(classifier.KNOWN_THINKING_TYPES),
             "betas": sorted(classifier.KNOWN_BETAS),
+            "tools": sorted(classifier.KNOWN_TOOLS),
             "mainline_doubt_reasons": classifier.MAINLINE_DOUBT_REASONS,
         },
         "note": ("已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。**判读顺序**："
@@ -1208,7 +1290,14 @@ def unknowns(date: str | None = None, exclude_session: str = "",
                  "辅助调用判成了主线**。判主线在 wire 上没有官方位——CC 自己的答案在它本地的"
                  "对话记录里（标题写成独立的 ai-title 行，安全审查/压缩/配额探测一条都不写进"
                  "对话），而那份记录不过 wire，只在开发期可用。所以这里只报可疑、不改判；"
-                 "要精确结论跑 tools/origin_probe.py --mode belong 做 request-id 对账。"),
+                 "要精确结论跑 tools/origin_probe.py --mode belong 做 request-id 对账。"
+                 " **工具面两段（260911）**：tools = 不在 KNOWN_TOOLS 基线里的内置工具"
+                 "（snippet 是它的 description 片段），`mcp__` 前缀的一律不判——那是使用者"
+                 "自己装的 MCP，不是 CC 协议演进；tool_changes = 同一会话内工具集前后不一致，"
+                 "value 是差集（+新增 / -消失），CC 的 mid-conversation-tool-changes beta "
+                 "声明的正是这件事。工具面差异**常常只是会话配置不同**（实测 08-15 起，"
+                 "Artifact/Monitor/PowerShell 等只在第三方链路的会话上出现），"
+                 "先看 hosts 与 samples 再下结论。"),
     }
 
 

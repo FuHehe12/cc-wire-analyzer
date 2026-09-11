@@ -1223,8 +1223,9 @@ CC 版本切片。**只读、不调 LLM、不进 GUI**（维度爆炸，是 AI �
 
 响应：`{ok, date, pattern, in, hits, items:[{id, ts_start, kind, where, snippet, match_count}], coverage, note}`
 
-- `coverage` = `{searched:[区域], skipped:[区域], skipped_ratio, note?}` —— **`hits:0` 必须连
+- `coverage` = `{searched:[区域], skipped:[区域], skipped_ratio, not_searched, note?}` —— **`hits:0` 必须连
   `coverage` 一起读**：0 命中与"根本没搜那块"在输出上曾经无法区分，agent 会把假阴性当否定证据用。
+- `not_searched`（260911 补）**恒有，不只在 0 命中时出现**：检索区只有请求体正文，HTTP 头一个字都不在里面，而 CC 的能力声明恰恰全在头上。实测拿 `anthropic-beta` 的特性名来 grep，命中的全是别的对话正文里提到它的地方，**一条真正带该 beta 的请求都搜不出来**——而 `coverage` 原先只列"搜过哪些正文区域"，看不出这件事，于是命中的那几条假阳性会被当成证据。字段内容固定指路：查 beta / 工具面走 `GET /api/unknowns`，按 beta 找具体请求用它返回的 `betas.new[].samples`。
 - `in` 可选 `all` / `system` / `user` / `assistant` / `sysmsg` / `tool_result` / `tool_use` / `tools`。
   **`all` 不含 `tools`**：工具定义每个请求全量重发（实测占请求体 44%），进默认集合等于让每条命中
   都混进同一份静态 schema。
@@ -1250,9 +1251,11 @@ cache_read,cache_creation}, cache_hit_ratio, total_ms{p50,p95,max}}`
 ## 11. 盲区雷达
 
 聚合当天所有「已知集合外」的值——非标响应块类型/字段、未解析请求字段、非标 stop_reason/
-thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
+thinking.type、没在基线里的 beta、不在基线里的内置工具，以及会话内工具集的前后变化。**给 AI 当协议演进 / 录制盲区的改进入口**：一次调用拿到全部
 盲区 + 样本 id + 归属，据此提改进（新增解析/渲染/分类规则，确认是标准的并入
 `classifier.KNOWN_*`）。读 idx（`unknowns` 已在写时算好），不读主文件，比 stats 快。
+
+**HTTP 头不在 `/api/grep` 的检索区，所以「有没有新 beta / 新工具」只能从本端点拿。** 实测拿 beta 特性名去 grep，命中的全是别的对话正文里提到它的地方，一条真正带该 beta 的请求都搜不出来。
 
 ### `GET /api/unknowns?date=YYYY-MM-DD&session=&exclude_session=` — 盲区雷达
 
@@ -1268,14 +1271,39 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
     "betas": [], "hosts": {"open.bigmodel.cn": 1}, "cc_versions": {"2.1.220": 1}
   }],
   "block_keys": [], "body_fields": [], "stop_reason": [], "thinking_type": [],
+  "tools": [],          // 基线是"见过的并集"，当天工具面全命中基线时这两段就是空的（常态）
+  "tool_changes": [],
   "degraded": [{"value": "tool_use._input_raw", "count": 2, "samples": ["req_…"],
                 "snippet": "{\"dimension\":\"…", "betas": [],
                 "hosts": {"open.bigmodel.cn": 2}, "cc_versions": {"2.1.220": 2}}],
-  "betas": {"new": [], "known": [{"value": "token-counting-2024-11-01", "count": 21}]},
+  "betas": {"new": [],  // new 段另带 samples（≤5）；known 段不带——上千条给 id 无意义
+            "known": [{"value": "token-counting-2024-11-01", "count": 21,
+                       "hosts": {"open.bigmodel.cn": 21}, "cc_versions": {"2.1.220": 21}}]},
   "other_kind_samples": [],
   "known": {"block_types": [...], "block_keys": {...}, "body_fields": [...],
-            "stop_reasons": [...], "thinking_types": [...], "betas": [...]},
+            "stop_reasons": [...], "thinking_types": [...], "betas": [...], "tools": [...]},
   "note": "已知集合（见 known）外的值 = 协议演进 / 录制盲区信号。**判读顺序**：① 先看 hosts…"
+}
+```
+
+工具面两段的条目形状（`value` 是构造出来的示例——260911 建基线时是拿全部录制的并集当 `KNOWN_TOOLS`，所以当天之后 `tools` 段一时为空；`hosts` / `cc_versions` 的分布形态照当天实况写：新 beta 与只在部分会话上出现的工具面都集中在同一条第三方链路）：
+
+```json
+{
+  "tools": [{
+    "value": "TimeMachine", "count": 12, "samples": ["req_9b0f21e"],
+    "snippet": "Rewind the workspace to a previous checkpoint…",   // 工具的 description 片段
+    "betas": [], "hosts": {"api.deepseek.com": 12}, "cc_versions": {"2.1.268": 12}
+  }],
+  "tool_changes": [
+    {"value": "+TimeMachine", "count": 2, "samples": ["req_c41aa08"],
+     "snippet": "main 12345678 req_9b0f21e → req_c41aa08",         // 泳道 + 变化点前后两条
+     "betas": [{"value": "mid-conversation-tool-changes-2026-07-01", "lift": 3.2}],
+     "hosts": {"api.deepseek.com": 2}, "cc_versions": {"2.1.268": 2}},
+    {"value": "mcp 3→4", "count": 1, "samples": ["req_4d1e0b3"],   // 内置面没变，只有 MCP 数变
+     "snippet": "subagent 7f0c31a2 req_b21c9f0 → req_4d1e0b3",
+     "betas": [], "hosts": {"api.deepseek.com": 1}, "cc_versions": {"2.1.268": 1}}
+  ]
 }
 ```
 
@@ -1287,18 +1315,23 @@ thinking.type、没在基线里的 beta。**给 AI 当协议演进 / 录制盲�
 | `betas` | 与该未知**特异相关**的 beta，`[{value, lift}]` | 提升度 = 组内出现率 ÷ 全体基线出现率，只留 ≥ `UNK_BETA_LIFT_MIN`(1.5)。**空列表是正常结果**。裸计数做不到这件事：单次出现的未知所有 beta 都并列 1，`most_common` 退化成"取 header 里的前几个"；高频未知则被基线 100% 的那几个支配 |
 | `snippet` | 值的前 ~80 字符 | 让 agent 一眼判断"这是哪类东西"，不必二次调详情 |
 | `degraded` | **本工具自己的降级标记**（`_input_raw` / `input_raw_fallback`，见 `classifier.CAPTURE_ARTIFACT_KEYS`）| 性质与其余维度不同：那是 SSE 在 `content_block_stop` 前断了 / 工具入参拼不出 JSON，说明**这条录制的正文是残的**，要查代理侧不是上游。混在 `block_keys` 里会双向坏事——真协议信号被自己的噪声顶掉，而录制降级又被埋在"协议演进"的语境里没人管 |
+| `tools` | 不在 `classifier.KNOWN_TOOLS` 基线里的**内置**工具，`snippet` 是该工具的 `description` 片段 | CC 的能力面是按工具暴露的，而此前索引里关于工具只有 `tools_n` 一个数字。260911 查「CC 是不是有新功能」时，7 个内置工具（Artifact / DesignSync / Monitor / PowerShell / PushNotification / SendFeedback / Workflow）只出现在第三方链路的会话上、官方链路那条没有——这件事当时只能靠人打开 40 MB 主文件逐条扫才看得见，雷达一个字都报不出来。**`mcp__` 前缀的工具既不进基线也不参与未知判定**：那是使用者自己装的 MCP 服务器带来的，不是 CC 协议演进，算进去雷达每天会被几十条装卸 MCP 的噪声淹掉、真正的新内置工具反而沉底（与 `degraded` 从 `block_keys` 分流是同一个道理），MCP 侧只留 `tools_mcp_n` 一个数量。`snippet` 取 description 而不是整份工具定义：「这个新工具是干什么的」一眼可答，而完整定义含 `input_schema` 动辄数 KB，塞进索引会把它撑爆 |
+| `tool_changes` | **同一条泳道**（`session_id` + kind + `agent_id`）内相邻两条记录 `tools_fp` 不同即记一次。`value` 是差集——`+TimeMachine`、`-Foo`、`+A,B,C…`（符号只在组首，最多列 3 个、多出的省略），一次同时增删写成 `+A,B -C`；内置面没变而只有 MCP 数变化时写成 `mcp 3→4`。`snippet` 是 `<kind> <session 前 8 位> <前一条 req> → <这一条 req>` | **聚合时现算**（与 `mainline_suspect` 同一惯例）：它是相邻两条记录之间的关系、不是单条记录的属性，写时算不出来。`value` 给差集而不是只报一句"变了"——不带内容等于又把人赶回主文件翻，那正是这一档要消掉的活；只列 3 个是因为雷达行要一眼看完，完整清单在 `samples` 指向的那两条记录的 `tools_builtin` 里。**分组键是泳道不是会话**：首版按 `session_id` 分，260911 当天报出 26 条"变化"、没有一条是真的——① 子代理复用父会话 id，主线与子代理的工具面本就不同；② 并行的两个子代理同样共用会话 id、彼此工具面又各不相同，靠 `agent_id` 才分得开；③ CC 自己发起的旁路请求（检索派发实测恒 `tools_n=1`）与主线同会话但不是同一条对话线。收口后同一批录制只剩 1 条真变化。只比 `main` / `subagent` 且 `tools_fp` 非空的记录：无工具的辅助调用混进来只会制造假变化。260911 出现的 `mid-conversation-tool-changes-2026-07-01` 声明的正是「工具集可在对话中途变化」，这一档就是看它真变没变。**依赖 `IDX_SCHEMA=19` 的 `tools_fp` / `tools_builtin` / `tools_mcp_n`，旧索引必须重建**，否则恒无变化（静默降级） |
 | `betas.new` / `betas.known` | 分别是不在 / 在 `classifier.KNOWN_BETAS` 基线里的 | `new` 才是"CC 启用了新能力"的信号。原先全量按频次升序、称"长尾即信号"——实测每天把同样几个**结构性**低频的已知特性顶在最前（`structured-outputs` 只在标题请求带、`token-counting` 只在 count_tokens 探针带），低频与新出现是两回事 |
+| `betas.*.hosts` / `cc_versions`，`betas.new[].samples` | beta 自己的归属；`samples` ≤5，只有 `new` 段给 | `note` 的判读第一步就是"先看 hosts"，而此前 betas 段只有 `{value, count}` —— 要用的信息恰恰不在响应里。260911 那个新 beta 是单一 host 独占（当天 47 条全在 `api.deepseek.com` 链路上，逐日回查 08-31～09-10 全无），确认这一点当时只能人工拉 `/api/captures?limit=300` 自己按 beta 聚合，这一步该由端点完成。`known` 段不给 `samples`：动辄上千条，给 id 无意义 |
 | `totals.with_unknowns` / `degraded` | 分开计数 | 否则 `with_unknowns` 会被本工具自己的噪声撑起来 |
 | `other_kind_samples` | 固化 `quota_probe`/`hook_eval`/`notify_eval` 后仍落 `other` 的真未知（理想为空）| — |
-| `known` | 当前已知集合基准（真源 `classifier.KNOWN_*` + `KNOWN_BETAS`）| 让 AI 判断「什么算未知」 |
+| `known` | 当前已知集合基准（真源 `classifier.KNOWN_*` + `KNOWN_BETAS` + `KNOWN_TOOLS`）| 让 AI 判断「什么算未知」。`known.tools` 是当前内置工具基线（41 个，`mcp__` 不在其中）|
 
 **`KNOWN_BETAS` 的真源在 `classifier.py`**，前端由 `render_template(known_betas=…)` 注入消费——
 260802 之前它只硬编码在 `index.html`，于是唯一会问"有没有新 beta"的消费者（AI 走本端点）拿不到，
-只能退而按频次猜。
+只能退而按频次猜。`KNOWN_TOOLS` 同一惯例：**不是白名单，是"见过的并集"**，260911 建立时取 08-15～09-11 全部录制（含已压实的天）的扫描结果，剔除了只在 `tests/dev_seed.py` 合成数据里出现的 `Task` / `TodoWrite`。
 
-> **自检**：加新 kind 或扩充 `KNOWN_*` / `KNOWN_BETAS` 必须同步改 `classifier.py` + 此契约 +
+**工具面两段的判读，与协议未知不是同一条路**：`tools` 段空、`tool_changes` 段有内容是常态，因为**工具面差异常常只是会话配置不同**——实测 08-15 起 `Artifact` / `Monitor` / `PowerShell` 等只在第三方链路的会话上出现，同一台机器同一天的官方链路会话就没有。所以看到差集先看 `hosts` 与 `samples`，确认是"CC 版本带来了新能力"还是"这两条会话本来就跑在不同配置下"，再决定要不要动 `KNOWN_TOOLS`。
+
+> **自检**：加新 kind 或扩充 `KNOWN_*` / `KNOWN_BETAS` / `KNOWN_TOOLS` 必须同步改 `classifier.py` + 此契约 +
 > 架构总览 kind 列举 + 界面导览/报文解读的 kind 表 + `IDX_SCHEMA` bump + `cli_selftest.py`
-> 的 `[1.5] 盲区雷达` 段。
+> 的 `[1.5] 盲区雷达` 段。**工具面另有一组同步点**：改 `_tools_face` 的产物（`tools_builtin` / `tools_fp` / `tools_mcp_n`）要同时 bump `IDX_SCHEMA`（`tool_changes` 是聚合时拿这三个字段现算的，旧索引不重建就恒无变化）、改本节字段表，并检查 §14「harness 声明面字段」那条是否也要跟上。
 
 ---
 
@@ -1671,6 +1704,7 @@ GET /api/ai-guide?format=html                            → 排好版的说明�
 - **路径前缀**：UI 所有路由必须 `/api/` 开头，否则会被代理 catch-all 当成上游流量转发。
   （例外只有页面：`/`、`/favicon.ico`、`/view`。加页面路由等于在代理面上多占一个路径，
   Anthropic 的 API 都在 `/v1/*` 下，目前不冲突，但**新增页面路由前先确认不撞上游路径**。）
+- **未命中的 `/api/*` 一律 404，不透传上游**，响应形状是 `{error:"not_found", path, did_you_mean:[最接近的已注册端点, ≤3], hint}`。这一面的消费者主要是 agent，它按别处的惯例猜端点名很正常——实测 AI 分析本机录制时第一反应是去调惯例名 `status`（多数工具把代理状态端点挂在这个名字上，本项目的真名是 `/api/proxy/status`），而旧的 `{error, path}` 404 不给任何线索，拿到之后只能接着猜。`did_you_mean` 从 Flask 的 `url_map` **现算**（`app._nearest_api_routes`），**不维护第二份端点清单**：手抄一份必然与路由分叉，而分叉的指路比没有指路更坏——它会把人指到一个不存在的端点上。相似度用 `difflib`，再叠一条"末段一致"加分（惯例名与 `/api/proxy/status` 的字面相似度并不高，但前者显然该被指向后者）；低于阈值就不给候选，宁可空着。`hint` 固定指向 `GET /api/ai-guide`（自描述说明书，无需源码），让一次 404 就能自己纠回来。
 - **`format=html` 是保留 query 参数**：任何 GET 端点都不该把 `format` 用作业务参数，否则会
   与浏览面的渲染开关撞车。现有端点均未使用。
 

@@ -68,20 +68,25 @@ def _fake_record(rid: str, kind: str) -> dict:
 
 
 def _radar_record(rid: str, *, betas: str, session: str, host: str,
-                  blocks: list[dict]) -> dict:
-    """造一条给盲区雷达用的记录：beta 头 / 会话 / 上游 host / 响应块都可控。
+                  blocks: list[dict], tools: list[dict] | None = None,
+                  ts: str = "2026-07-13T10:00:00.000", subagent: bool = False) -> dict:
+    """造一条给盲区雷达用的记录：beta 头 / 会话 / 上游 host / 响应块 / 工具面都可控。
 
-    雷达的三条语义（未知带 host 归属、beta 关联算提升度、本工具的降级标记单列）此前零覆盖，
-    而它们恰恰是最容易悄悄退化的那种逻辑——错了不报错，只是把 AI 引向错误的改进方向。"""
+    雷达的语义（未知带 host 归属、beta 关联算提升度、本工具的降级标记单列、260911 起的
+    工具面两档）此前零覆盖，而它们恰恰是最容易悄悄退化的那种逻辑——错了不报错，
+    只是把 AI 引向错误的改进方向。"""
     return {
-        "id": rid, "ts_start": "2026-07-13T10:00:00.000", "ts_end": "2026-07-13T10:00:05.000",
+        "id": rid, "ts_start": ts, "ts_end": "2026-07-13T10:00:05.000",
         "method": "POST", "path": "v1/messages", "upstream": f"https://{host}/v1/messages",
         "request": {
             "headers_safe": {"anthropic-beta": betas, "X-Claude-Code-Session-Id": session,
                              "user-agent": "claude-cli/2.1.220 (external, cli)"},
             "body": {"model": "glm-5.2", "max_tokens": 32000,
-                     "system": [{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}],
-                     "tools": [{"name": "Read"}],
+                     "system": ([{"type": "text",
+                                  "text": "x-anthropic-billing-header: cc_version=2.1.220; "
+                                          "cc_entrypoint=cli; cc_is_subagent=true;"}] if subagent else [])
+                               + [{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}],
+                     "tools": (tools if tools is not None else [{"name": "Read"}]),
                      "messages": [{"role": "user", "content": "hi"}]},
         },
         "response": {"status": 200, "ttft_ms": 100, "total_ms": 500,
@@ -308,9 +313,33 @@ def main() -> None:
                 blocks=[{"type": "weird_block", "payload": "??"},
                         {"type": "tool_use", "name": "Read", "_input_raw": '{"file'}],
             ), ensure_ascii=False) + "\n")
+            # 工具面（260911）：同一会话里工具集中途变了——加了个基线外的内置工具，
+            # 同时装上一个 MCP。MCP 不该被当协议演进报出来，内置的那个该报。
+            f.write(json.dumps(_radar_record(
+                "req_tool1", betas=UBIQ, session="sess-tool-0003", host="api.anthropic.com",
+                blocks=[{"type": "text", "text": "fine"}],
+                tools=[{"name": "Read"}, {"name": "Bash"}],
+                ts="2026-07-13T11:00:00.000"), ensure_ascii=False) + "\n")
+            f.write(json.dumps(_radar_record(
+                "req_tool2", betas=UBIQ, session="sess-tool-0003", host="api.anthropic.com",
+                blocks=[{"type": "text", "text": "fine"}],
+                tools=[{"name": "Read"}, {"name": "Bash"},
+                       {"name": "TimeMachine", "description": "Rewinds the repository to a past state"},
+                       {"name": "mcp__srv__do_thing", "description": "user-installed mcp"}],
+                ts="2026-07-13T11:00:10.000"), ensure_ascii=False) + "\n")
+            # 反例（260911 实测踩过）：**子代理复用父会话 id**，工具面本就与主线不同。
+            # 首版按 session 分组，当天 26 条"工具集中途变化"没有一条是真的——全是
+            # main↔subagent 来回翻牌。没有这条反例，把分组键改回 session 也能测过去。
+            f.write(json.dumps(_radar_record(
+                "req_sub1", betas=UBIQ, session="sess-tool-0003", host="api.anthropic.com",
+                blocks=[{"type": "text", "text": "fine"}],
+                tools=[{"name": "Read"}, {"name": "Grep"}],   # 子代理的工具面窄一圈
+                ts="2026-07-13T11:00:20.000", subagent=True), ensure_ascii=False) + "\n")
         o = run(env, "unknowns", "--date", "2026-07-13")
+        # with_unknowns = 2：未知块那条 + 未知内置工具那条（工具面也是协议未知的一种）；
+        # degraded = 1：本工具自己的降级标记单独计数，不混进 with_unknowns。
         check("雷达只把真未知计入 with_unknowns（降级不算）",
-              o.get("totals", {}).get("with_unknowns") == 1 and o["totals"]["degraded"] == 1,
+              o.get("totals", {}).get("with_unknowns") == 2 and o["totals"]["degraded"] == 1,
               str(o.get("totals")))
         blk = (o.get("blocks") or [{}])[0]
         check("未知块被报出", blk.get("value") == "weird_block", str(blk.get("value")))
@@ -331,10 +360,48 @@ def main() -> None:
               str(o.get("betas", {}).get("new")))
         check("已知 beta 归 known 段",
               UBIQ in [b["value"] for b in o.get("betas", {}).get("known", [])])
+        # beta 归属（260911）：note 的判读第一步是"先看 hosts"，而 betas 段此前只有
+        # {value,count}——要用的信息恰恰不在响应里。new 段另带 samples，否则拿不到 id 就
+        # 没法调 /api/captures/{id} 看上下文。
+        new_row = (o.get("betas", {}).get("new") or [{}])[0]
+        check("betas.new 带 host 归属", new_row.get("hosts") == {"gw.example.com": 1},
+              str(new_row.get("hosts")))
+        check("betas.new 带 cc 版本", new_row.get("cc_versions") == {"2.1.220": 1},
+              str(new_row.get("cc_versions")))
+        check("betas.new 带样本 id（能接着查上下文）", new_row.get("samples") == ["req_unk1"],
+              str(new_row.get("samples")))
+        known_row = [b for b in o.get("betas", {}).get("known", []) if b["value"] == UBIQ][0]
+        check("betas.known 也带归属，但不带 samples（上千条给 id 无意义）",
+              bool(known_row.get("hosts")) and "samples" not in known_row, str(known_row))
+
+        # 工具面两档（260911）
+        tool_rows = o.get("tools") or []
+        check("基线外的内置工具被报出",
+              [t["value"] for t in tool_rows] == ["TimeMachine"], str([t["value"] for t in tool_rows]))
+        check("未知工具带 description 片段（一眼看出它是干什么的）",
+              "Rewinds" in (tool_rows[0].get("snippet") if tool_rows else ""),
+              str(tool_rows[0].get("snippet") if tool_rows else ""))
+        check("用户自己装的 MCP 工具不当协议演进报",
+              all("mcp__" not in t["value"] for t in tool_rows), str([t["value"] for t in tool_rows]))
+        chg = o.get("tool_changes") or []
+        check("会话内工具集中途变化被记一次",
+              len(chg) == 1 and chg[0]["value"] == "+TimeMachine", str(chg))
+        check("工具变化带样本 id", chg and chg[0].get("samples") == ["req_tool2"],
+              str(chg[0].get("samples") if chg else None))
+        check("工具面不变的会话不产生变化记录",
+              sum(c["count"] for c in chg) == 1, str(chg))
+        check("子代理复用父会话 id 不算工具集中途变化（泳道分开比）",
+              all("Grep" not in c["value"] for c in chg), str([c["value"] for c in chg]))
+        check("known 段给出工具基线（消费者据此判断什么算未知）",
+              "Read" in (o.get("known", {}).get("tools") or []),
+              str(len(o.get("known", {}).get("tools") or [])))
         o = run(env, "unknowns", "--date", "2026-07-13", "--exclude-session", SID_ODD)
+        # 排掉带未知块的那条会话后，块维度必须整个空掉；剩下的 1 条 with_unknowns 是
+        # 另一个会话的未知工具（sess-tool-0003），它本就不该被这个过滤带走。
         check("会话过滤生效（双 CC 审计时排除审计者自身）",
-              o.get("totals", {}).get("with_unknowns") == 0 and not o.get("blocks"),
-              str(o.get("totals")))
+              o.get("totals", {}).get("with_unknowns") == 1 and not o.get("blocks")
+              and [t["value"] for t in (o.get("tools") or [])] == ["TimeMachine"],
+              str(o.get("totals")) + str([t["value"] for t in (o.get("tools") or [])]))
         o = run(env, "stats", "--date", "2026-07-13", "--session", SID_ODD)
         check("stats 也能按会话过滤", o.get("records") == 1, str(o.get("records")))
         o = run(env, "trends", "--span", "1")

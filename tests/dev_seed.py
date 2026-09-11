@@ -1,8 +1,13 @@
 """开发用：写一套覆盖 DAG 全要素的样例捕获，供 UI 自测。
 
 用法：uv run python tests/dev_seed.py
-每次运行追加 18 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
+每次运行追加 19 条（id 随机），测完删 ~/.cc-wire-analyzer/captures/<今天>.jsonl，
 或用界面「清理」按钮（清除录制 / 清除并压缩存档）。
+
+⚠️ **它写的是你真实的 `~/.cc-wire-analyzer`**（这是有意的——UI 自测要在真界面上看），
+所以**跑完立刻删**。260911 实测教训：09-10 跑了 3 次没删，54 条合成记录留在真实录制里，
+一个月后回头查「CC 是不是有新协议」时，雷达报出来的 `imaginary-feature-2026-09-01` 与
+`api.example.com` 差点被当成真信号——合成数据混进事实源，比没有样例数据坏得多。
 
 时序设计（同一天，验证分类 + DAG 推断 + 泳道多色配色）：
   A 会话线（主线 1）3 轮 + 派生子代理（子代理 2 条请求）；B 会话线（主线 2）502；
@@ -72,8 +77,12 @@ def main_sys(entrypoint: str = "cli") -> list[dict]:
 TOOLS = [
     {"name": n, "description": f"{n} tool.",
      "input_schema": {"type": "object", "properties": {}}}
-    for n in ("Bash", "Read", "Edit", "Write", "Glob", "Grep", "Task",
-              "WebFetch", "WebSearch", "NotebookEdit", "TodoWrite")
+    # 工具名必须取自 classifier.KNOWN_TOOLS 的实测基线（260911）：此前这里写的是
+    # Task / TodoWrite 两个真流量里早已不存在的名字，于是 seed 出来的每一条都被新的工具面
+    # 雷达报成「没见过的内置工具」——样例数据自己制造的噪声会盖住真信号，正是
+    # 「样例必须长得像真流量」那条约定要防的事。想演示未知工具看 e5()。
+    for n in ("Bash", "Read", "Edit", "Write", "Glob", "Grep", "Agent",
+              "WebFetch", "WebSearch", "NotebookEdit", "Skill")
 ]
 TASK_PROMPT = ("调研某前端库的内存泄漏常见成因：归纳 3-5 个根因假设，"
                "给出每个的验证方法与替代方案，输出简报。")
@@ -398,6 +407,27 @@ def e4():
     return r
 
 
+def e5():
+    """工具集在会话中途变了（260911）——A 会话线后续的一条请求，比前面多一个基线外的内置
+    工具，同时装上一个 MCP。界面应把那个内置工具标橙，雷达的 tools 档报它、tool_changes
+    档记一次 `+TimeMachine`；MCP 那个则一概不报（使用者自己装的，不是 CC 协议演进）。
+
+    CC 从 2.1.268 起声明 `mid-conversation-tool-changes` beta，工具面中途变化是它自己承认的
+    事实；在此之前索引里关于工具只有 tools_n 一个数字，这种变化一个字都留不下来。"""
+    r = base("22:42:33.200", session_id=SID_A)
+    b = r["request"]["body"]
+    b["system"] = main_sys()
+    b["tools"] = TOOLS + [
+        {"name": "TimeMachine", "description": "Rewinds the repository to a past state.",
+         "input_schema": {"type": "object", "properties": {}}},
+        {"name": "mcp__demo__do_thing", "description": "user-installed mcp tool.",
+         "input_schema": {"type": "object", "properties": {}}},
+    ]
+    b["messages"] = [{"role": "user", "content": "继续"}]
+    r["response"]["content_blocks"] = [{"type": "text", "text": "好的。"}]
+    return r
+
+
 def d1():
     r = base("22:42:30.300", session_id=SID_D)
     b = r["request"]["body"]
@@ -539,6 +569,7 @@ if __name__ == "__main__":
                      (e2(), "E2 compaction块+stop_sequence"),
                      (e3(), "E3 解码失败落痕"),
                      (e4(), "E4 未知beta特性"),
+                     (e5(), "E5 工具集中途变化（未知内置工具 + MCP）"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
             cs.append(rec)

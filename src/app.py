@@ -185,7 +185,8 @@ def index():
     import classifier
     return render_template("index.html",
                            known_betas=json.dumps(sorted(classifier.KNOWN_BETAS)),
-                           known_body_fields=json.dumps(sorted(classifier.KNOWN_BODY_FIELDS)))
+                           known_body_fields=json.dumps(sorted(classifier.KNOWN_BODY_FIELDS)),
+                           known_tools=json.dumps(sorted(classifier.KNOWN_TOOLS)))
 
 
 @app.route("/favicon.ico")
@@ -3914,12 +3915,52 @@ def open_folder():
 import proxy as _proxy  # noqa: E402
 
 
+def _nearest_api_routes(path: str, limit: int = 3) -> list[str]:
+    """未命中的 /api/* 路径 → 最接近的几个已注册端点（260911，给 404 当指路）。
+
+    从 Flask 自己的 url_map 现算，**不维护第二份端点清单**——手抄一份必然与路由分叉，
+    而分叉的指路比没有指路更坏（把人指到一个不存在的端点上）。
+    相似度用 difflib，**比的是去掉 `api/` 之后的部分**——所有候选都以它开头，带着比会把
+    每一对的相似度整体抬高，连 `logs` 这种根本不存在的名字也能配出三个"最接近"来。
+    再叠一条末段一致的加分：`status` 与 `proxy/status` 的字面相似度并不高，但前者显然
+    该被指向后者。宁可返回空列表也不给错的指引——错的指引比没有更坏。
+
+    （本段举的都是**不存在的**端点名，故意不写成 `/api/…` 的形式：`doc_audit` 把本文件
+    当文档面对账，写成路径就会被判成幽灵端点。）"""
+    import difflib
+    want = path.strip("/").lower()
+    want = want[4:] if want.startswith("api/") else want
+    routes = sorted({str(r.rule) for r in app.url_map.iter_rules()
+                     if str(r.rule).startswith("/api/") and "<" not in str(r.rule)})
+    if not want or not routes:
+        return []
+
+    def _score(rule: str) -> float:
+        cand = rule.strip("/").lower()[4:]
+        s = difflib.SequenceMatcher(None, want, cand).ratio()
+        tail = want.rsplit("/", 1)[-1]
+        if tail and cand.endswith("/" + tail):      # 末段完全一致（status → proxy/status）
+            s += 0.5
+        elif tail and tail in cand:
+            s += 0.2
+        return s
+
+    ranked = sorted(routes, key=lambda r: -_score(r))
+    return [r for r in ranked[:limit] if _score(r) >= 0.6]
+
+
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 @app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 def proxy_catch_all(path):
     if path.startswith("api/"):
-        # 未定义的 /api/* → 404（不透传到上游）
-        return jsonify({"error": "not_found", "path": path}), 404
+        # 未定义的 /api/* → 404（不透传到上游）。
+        # 带上指路（260911）：消费者是 agent，它按别处的惯例猜端点名很正常——实测 AI 分析
+        # 本机录制时第一反应调 `status`（多数工具的惯例名，这里叫 /api/proxy/status），
+        # 拿回一个只有 {error, path} 的 404 就只能继续猜。已注册端点是现成的，给最接近的几个
+        # 加上 ai-guide 的入口，一次 404 就能自己纠回来。
+        return jsonify({"error": "not_found", "path": path,
+                        "did_you_mean": _nearest_api_routes(path),
+                        "hint": "端点清单与用法见 GET /api/ai-guide（自描述说明书，无需源码）"}), 404
     return _proxy.forward(path)
 
 

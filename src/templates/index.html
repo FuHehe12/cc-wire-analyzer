@@ -2361,6 +2361,7 @@ zh: {
   "detail.paramsNew": "有 {n} 个没见过的字段（橙色）",
   "detail.betaTitle": "协议扩展",
   "detail.betaNew": "有 {n} 个没见过的扩展（橙色）——CC 启用了新能力，可能带来我们还不认识的字段或响应块",
+  "detail.toolsNew": "有 {n} 个没见过的内置工具（橙色）",
   "detail.compaction": "上下文自动压缩的产出",
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
@@ -2791,6 +2792,7 @@ en: {
   "detail.paramsNew": "{n} field(s) we haven't seen before (orange)",
   "detail.betaTitle": "Protocol extensions",
   "detail.betaNew": "{n} extension(s) we haven't seen before (orange) — CC enabled a new capability, which may bring fields or response blocks we don't yet recognise",
+  "detail.toolsNew": "{n} built-in tool(s) we haven't seen before (orange)",
   "detail.compaction": "produced by automatic context compaction",
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
@@ -3220,6 +3222,7 @@ ja: {
   "detail.paramsNew": "未知のフィールドが {n} 件（オレンジ）",
   "detail.betaTitle": "プロトコル拡張",
   "detail.betaNew": "未知の拡張が {n} 件（オレンジ）——CC が新機能を有効化しており、未対応のフィールドやレスポンスブロックが含まれる可能性があります",
+  "detail.toolsNew": "未知の組み込みツールが {n} 件（オレンジ）",
   "detail.compaction": "コンテキスト自動圧縮の産物",
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
@@ -3423,6 +3426,10 @@ const KNOWN_BETAS = {{ known_betas | safe }};
    详情页的调用参数行据此把「没见过的字段」高亮出来。判据与盲区雷达（/api/unknowns）共用
    一份清单——两处各存一份的话，界面说"新字段"而雷达说没有，谁也不知道该信哪个。 */
 const KNOWN_BODY_FIELDS = {{ known_body_fields | safe }};
+/* CC 内置工具基线：**同样由后端注入**（classifier.KNOWN_TOOLS，260911）。
+   工具面是 CC 的能力清单，与 anthropic-beta 同等地位；详情页 Tools 折叠据此把基线外的
+   内置工具高亮。同一份清单也是 /api/unknowns 的 tools 档判据。 */
+const KNOWN_TOOLS = {{ known_tools | safe }};
 function stopReasonLabel(v){ return (v && I18N.zh["sr." + v] != null) ? t18("sr." + v) : (v || ""); }
 function errKindLabel(v){ return (v && I18N.zh["ek." + v] != null) ? t18("ek." + v) : (v || ""); }
 /* 后端 error_code → 本地化文案；无对应码时回退原始诊断串 */
@@ -4798,16 +4805,25 @@ function renderDetail(d){
         '</div>' + bigText(blk.text || "", 3000) + '</div>';
     }).join("") + '</div></details>';
 
-  /* tools */
+  /* tools —— 工具面就是 CC 的能力清单，和 anthropic-beta 同等地位（260911）。
+     基线外的内置工具高亮成橙色，判据与盲区雷达 /api/unknowns 的 tools 档同源
+     （KNOWN_TOOLS 由后端注入）。`mcp__` 前缀的一律不判：那是使用者自己装的 MCP，
+     不是 CC 协议演进，报它只会把真信号淹掉（同后端 KNOWN_TOOLS 注释）。 */
   const tools = Array.isArray(body.tools) ? body.tools : [];
-  L += '<details class="fold"><summary>Tools (' + tools.length + ')' +
+  const toolNew = tools.filter(t => t.name && t.name.indexOf("mcp__") !== 0 && KNOWN_TOOLS.indexOf(t.name) < 0);
+  const toolMcpN = tools.filter(t => t.name && t.name.indexOf("mcp__") === 0).length;
+  L += '<details class="fold"><summary>Tools (' + tools.length +
+    (toolMcpN ? ' · mcp ' + toolMcpN : '') + ')' +
+    (toolNew.length ? ' · <span style="color:var(--warn)">' + t18("detail.toolsNew", {n: toolNew.length}) + '</span>' : '') +
     (tools.length ? ' · ' + esc(tools.slice(0,5).map(t => t.name).join(" / ")) + (tools.length > 5 ? "…" : "") : "") +
     '</summary><div class="fold-body">' +
-    (tools.length ? tools.map(t =>
-      '<details class="tool-item"><summary>' +
+    (tools.length ? tools.map(t => {
+      const isNew = t.name && t.name.indexOf("mcp__") !== 0 && KNOWN_TOOLS.indexOf(t.name) < 0;
+      return '<details class="tool-item"><summary' + (isNew ? ' style="color:var(--warn);font-weight:600;"' : '') + '>' +
       esc(t.name) + '</summary>' +
       bigText((t.description || "") + "\n\ninput_schema: " + JSON.stringify(t.input_schema || {}, null, 1), 2000) +
-      '</details>').join("")
+      '</details>';
+    }).join("")
     : '<span class="blk-meta">' + t18("detail.noTools") + '</span>') +
     '</div></details>';
 
