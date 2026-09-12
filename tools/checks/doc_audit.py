@@ -31,6 +31,8 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
      必须在代码里成立；`error_code` 的取值必须在代码里出现过
   8. markdown 相对链接点得到（第 3 项查的是"反引号里提到的文件在不在"，这项查"点下去到不到"）
   9. 当前与历史 CHANGELOG 必须存在，全文不许机械硬折行；正文不设字数目标
+  10. 架构总览 §3.1 端点分组表的**组覆盖**（软，260912）：每个 `/api/<组>` 前缀在表里出现过——
+      只查组、不查具体端点，所以表里的通配写法（`/api/snapshots/*`）天然兼容
 
 最后一项是 v0.4.7 加的，来由与前面几项一样：三主题落地后，"新加的 token 要三套都定义"
 这条只存在于人的记忆里——实测当时就有 7 个 token 定义了从没被引用。为了让它可判定，
@@ -132,6 +134,31 @@ def _routes() -> set[str]:
     for m in re.finditer(r'@app\.route\("([^"]+)"', text):
         out.add(re.sub(r"<[^>]+>", "<id>", m.group(1)))
     return out
+
+
+def _overview_group_gaps(routes: set[str], overview_text: str) -> list[str]:
+    """架构总览 §3.1 端点分组表的**组覆盖**（软差异，260912 / issue 260911）。
+
+    端点规格的真源是 API契约.md，第 1 条硬检查只对账那一份；架构总览这张表是**导航层**——
+    漏了它不会把读者指去不存在的端点（所以不挡发版），但它是新人和 agent 的第一张地图，
+    而契约侧全绿时没有任何机器在看这张表：260911 发现它整组整组地缺了 40+ 条端点
+    （快照 / 就地更新 / 外环观测等），症状完全静默。
+
+    判据**只查组、不查端点**：每个 `/api/*` 路由的组前缀（第一段）在 §3.1 正文里出现过就算
+    覆盖。因此 `/api/snapshots/*` 这种通配写法天然兼容——同组新增端点不必回改表，新增一个
+    **组**（新前缀）才会被提示。段落锚点（`### 3.1` 到下一个 `### `）解析不到时 covered 为空、
+    所有组一起报——失效方向是吵，不是静默。
+    """
+    m = re.search(r"^### 3\.1 .*?$(.*?)(?=^### )", overview_text, re.M | re.S)
+    covered = set(re.findall(r"/api/[a-z0-9-]+", m.group(1))) if m else set()
+    gaps = set()
+    for r in routes:
+        if not r.startswith("/api/"):
+            continue
+        group = "/api/" + r.split("/")[2]
+        if group not in covered:
+            gaps.add(f"{group}/*（如 {r}）不在架构总览 §3.1 分组表里")
+    return sorted(gaps)
 
 
 def _cli_commands() -> set[str]:
@@ -675,6 +702,7 @@ def audit() -> dict:
 
     changelog_wrapped = _changelog_style()
     bq = _blockquote_style()
+    overview_gaps = _overview_group_gaps(routes, doc_text.get("架构总览.md", ""))
 
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
@@ -690,6 +718,7 @@ def audit() -> dict:
         "undocumented_methods": undocumented_methods,
         "ghost_routes": ghost_routes,
         "stale_external_endpoints": stale_external,
+        "uncovered_route_groups": overview_gaps,
         "undocumented_cli": undocumented_cmds,
         "missing_paths": missing_paths,
         "dead_links": dead_links,
@@ -701,7 +730,7 @@ def audit() -> dict:
                  "missing_selftest_files / changelog_hard_wrapped / "
                  "tokens.theme_gaps / tokens.shared_leaked / "
                  "tokens.unresolved_refs）"
-                 "是文档说错了，会挡发版；软差异（undocumented_*、dead_tokens）只是文档没写，"
+                 "是文档说错了，会挡发版；软差异（undocumented_*、uncovered_route_groups、dead_tokens）只是文档没写，"
                  "有意不公开的内部端点会一直待在那里，人判断。看 `ok` 字段，别猜退出码。"),
     }
 
@@ -749,6 +778,7 @@ def _rows(r: dict) -> tuple[list, list]:
              for e in r.get("enums", [])]
     soft = [("文档里没提到的端点", r["undocumented_routes"]),
             ("端点标题没写全的方法", r.get("undocumented_methods", [])),
+            ("架构总览 §3.1 没提到的端点分组", r.get("uncovered_route_groups", [])),
             ("文档里没提到的 CLI 子命令", r["undocumented_cli"]),
             ("定义了但无人引用的 token", tk["dead_tokens"])]
     soft += [(f"代码有但文档没列的 {e['enum']} 值", e["undocumented"])
@@ -934,6 +964,24 @@ def _selftest() -> int:
         ("仓库外的相对写法不算断链",
          not any("releases" in x for x in _dead_links())),
         ("真实文档零断链", not _dead_links()),
+    ]
+    # 分组覆盖软检查（260912 / issue 260911）：缺口要能被检出（否则这条检查自己就是摆设），
+    # 真实架构总览必须全覆盖；段落锚点要真的解析到 §3.1 正文——锚点漂移时失效方向必须是
+    # 吵（covered 为空、所有组一起报），不能静默通过。
+    _ov = _read_required(DEVELOPMENT / "架构总览.md")
+    _ovm = re.search(r"^### 3\.1 .*?$(.*?)(?=^### )", _ov, re.M | re.S)
+    ecases += [
+        ("真实架构总览分组全覆盖", not audit()["uncovered_route_groups"]),
+        ("分组缺口能检出",
+         _overview_group_gaps({"/api/proxy/start", "/api/snapshots"},
+                              "### 3.1 表\n\n| 代理控制 | `/api/proxy/*` |\n\n### 3.2 下\n")
+         == ["/api/snapshots/*（如 /api/snapshots）不在架构总览 §3.1 分组表里"]),
+        ("通配写法覆盖同组全部端点",
+         not _overview_group_gaps({"/api/snapshots", "/api/snapshots/export",
+                                   "/api/snapshots/<id>/thinking"},
+                                  "### 3.1 表\n\n| 快照 | `/api/snapshots/*` |\n\n### 3.2 下\n")),
+        ("§3.1 段落锚点解析得到正文", bool(_ovm and "/api/" in _ovm.group(1))),
+        ("分组缺口不挡发版（软）", n_hard(uncovered_route_groups=["/api/x/* 不在表里"]) == 0),
     ]
     # spec 对账：提取器要真读到东西（读空了会让检查静默变成永远通过），
     # 两份 spec 的一致性是 260801 真事故（mac spec 没跟上 brotli）的防线。
