@@ -366,7 +366,10 @@ test('the overall goal is the outer plane and tasks are its inner loop',()=>{
   M.taskOpen.set('t1',true);
   const html=flowDiagramHtml(g);
   assert.equal((html.match(/ag-goal-heading/g)||[]).length,2,'one band per overall goal, not per iteration');
-  assert(html.includes('G1 · '+words.en.overallGoal) && html.includes('G2 · '+words.en.overallGoal));
+  // 编号与「整体目标」分成徽标与类别两段（260912：G 与 T 一眼分不出来，编号做成实心徽标）。
+  assert(html.includes('<b class="ag-goal-no">G1</b>') && html.includes('<b class="ag-goal-no">G2</b>'));
+  assert(html.includes('<span class="ag-goal-kind">'+words.en.overallGoal+'</span>'));
+  assert.equal((html.match(/ag-goal-zone/g)||[]).length,2,'each overall goal gets a band of its own to sit in');
   assert(!/>G3\b/.test(html),'a task switch never earns a G number');
   assert(html.includes('>T1·1<') && html.includes('>T1·2<'),'cards are numbered inside their own task');
   assert(!/<b>G[0-9]+<[/]b>/.test(html),'iterations are no longer numbered as goals');

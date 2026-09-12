@@ -351,6 +351,13 @@
     return list(f.iterations).filter(e=>!parents.has(e.id)).map(e=>e.id);
   }
   const rebuilds = () => list(flowItem()?.rebuilds);
+  /** 观察者常把整理好的要点写成一整段，序号（①②③ / 1. 2. / ①之外的「其一」不管）
+      就埋在句子中间。正文是 pre-wrap，所以只要在序号前补一个换行，密排的一坨就还原成
+      分条——只动显示，不动存的内容（260912 用户反馈「大量内容叠在一起，1、2 混在一起」）。 */
+  const enumerated = text => String(text || '').replace(/(?!^)[ \t]*(?=[①-⑳])/gu,'\n');
+  /** 分条各占一个段落，序号行再挂上悬挂缩进——不然折行的下半句顶格，读起来又粘回上一条。 */
+  const proseHtml = text => String(text).split('\n').map(line=>
+    '<p class="om-prose'+(/^[①-⑳]/u.test(line)?' ag-prose-item':'')+'">'+escape(line)+'</p>').join('');
   function readingHtml(f, detailed=false) {
     const c=f?.current;
     const marks=rebuilds();
@@ -361,7 +368,7 @@
         escape(c?.headline || short([c?.understanding,c?.situation].filter(Boolean).join(' · ') || tr('readingMissing'),120))+'</span></summary>','</details>'];
     return tag[0]+(c?.headline?'<p class="ag-headline">'+escape(c.headline)+'</p>':'')+(marks.length && !detailed?'<p class="ag-rebuilt">'+badge(tr('rebuilt')+' × '+marks.length,'om-counter')+'<span>'+escape(tr('rebuildNote'))+'</span></p>':'')+'<div class="ag-reading-pair">'+
       [['requestReading',c?.understanding],['situationReading',c?.situation]].map(([key,text])=>
-        '<section><h3>'+escape(tr(key))+'</h3><p class="om-prose">'+escape(text || tr('readingMissing'))+'</p></section>').join('')+'</div>'+
+        '<section><h3>'+escape(tr(key))+'</h3>'+proseHtml(enumerated(text) || tr('readingMissing'))+'</section>').join('')+'</div>'+
       (c?.carryover?'<p class="ag-carryover om-prose"><b>'+escape(tr('carryover'))+'：</b>'+escape(c.carryover)+'</p>':'')+
       (c?(detailed?refs(c.evidence):'<div class="ag-reading-source"><span>'+escape(tr('readingNote'))+'</span>'+button('goal-current','',escape(tr('currentEvidence')),'om-action')+'</div>'):'')+tag[1];
   }
@@ -446,12 +453,15 @@
     return '@anchor';
   }
   const AG_CARD_H=118, AG_ROW_PITCH=66, AG_ROW_GAP=24, AG_HEAD_H=46, AG_SECTION_GAP=18, AG_GOAL_H=64;
-  /** G 段头：整体目标本身。点它看这次目标变化的原话与依据；只有一个 G 时它指向 A。 */
+  /** G 段头：整体目标本身。点它看这次目标变化的原话与依据；只有一个 G 时它指向 A。
+      编号做成实心徽标、标题一档大字：260912 用户反馈「G 和 T 一眼看上去不能区分」——
+      此前两个段头都是 11px 小标签加一行字，只差顶线与左线，而下属的 T 卡片反倒是
+      最重的元素，层级是反的。 */
   function goalHeadHtml(band,index,top,left,width) {
-    const label='G'+index+' · '+tr('overallGoal');
     return '<div class="ag-goal-heading" style="left:'+left+'px;top:'+top+'px;width:'+width+'px">'+
       button(band.goal?'goal-event':'goal-anchor',band.goal?band.goal.id:'@anchor',
-        '<b>'+escape(label)+'</b><span>'+escape(short(band.text,110))+'</span>','ag-goal-band')+'</div>';
+        '<b class="ag-goal-no">G'+index+'</b><span class="ag-goal-kind">'+escape(tr('overallGoal'))+'</span>'+
+        '<span class="ag-goal-text">'+escape(short(band.text,110))+'</span>','ag-goal-band')+'</div>';
   }
   /** 任务分区头：标题、这件事上有几版目标、现在是什么状态，折起来就剩这一行。 */
   function taskHeadHtml(sec,top,left,width,index) {
@@ -485,11 +495,18 @@
     const banded=sections.length>1, currentIds=new Set(currentGoals(f));
     const layered=banded || bands.length>1;
     let taskNo=0;
+    const zones=[];
     const stations=bands.map((band,bi)=>layered?goalBandHtml(band,bi):band.sections.map(sec=>sectionHtml(sec)).join('')).join('');
+    /** 段底衬：把属于这个 G 的 T 全都圈进一块淡雾里，「谁属于谁」不再靠读标签。
+        高度要等本段的 T 排完才知道，所以先渲染再回填；底衬收进 zones 里，由调用处
+        插在连线 svg 之前——负 z-index 试过，画布自己有背景，底衬直接被它盖掉了
+        （.ag-canvas 不是层叠上下文，负层级退到更外层，连画布背景都压不过）。 */
     function goalBandHtml(band,bi) {
-      const head=goalHeadHtml(band,bi+1,y,centerX,centerWidth);
+      const top=y-14, head=goalHeadHtml(band,bi+1,y,centerX,centerWidth);
       y+=AG_GOAL_H;
-      return head+band.sections.map(sec=>sectionHtml(sec)).join('');
+      const body=band.sections.map(sec=>sectionHtml(sec)).join('');
+      zones.push('<div class="ag-goal-zone" style="left:'+(centerX-18)+'px;top:'+top+'px;width:'+(centerWidth+36)+'px;height:'+Math.max(0,y-top-AG_SECTION_GAP+14)+'px"></div>');
+      return head+body;
     }
     function sectionHtml(sec) {
       const si=taskNo++;
@@ -517,7 +534,7 @@
     const anchorW=Math.min(centerWidth,520), height=Math.max(y+18,detailTop==null?0:detailTop+DH+18);
     return '<section class="ag-flow">'+readingHtml(f)+primerHtml(f)+flowHelpHtml()+'<div class="ag-heading"><p>'+escape(tr('flowIntro'))+'</p>'+button('goal-latest',currentGoals(f).at(-1) || heads.at(-1)?.id || '',escape(tr('goLatest')),'om-action')+'</div><nav class="ag-lane-nav">'+[['left','changesLane'],['center','goalsLane'],...(inline?[['right','detail']]:[])].map(([id,key])=>button('flow-lane',id,escape(tr(key)),'om-action')).join('')+'</nav>'+
       '<div class="ag-canvas-scroll" tabindex="0" aria-label="'+escape(tr('flowTab'))+'"><div class="ag-canvas" style="width:'+width+'px;height:'+height+'px">'+
-      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:'+centerX+'px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div><svg class="ag-wires" aria-hidden="true"></svg>'+
+      '<div class="ag-lane-label" style="left:24px">'+escape(tr('changesLane'))+'</div><div class="ag-lane-label" style="left:'+centerX+'px">'+escape(tr('goalsLane'))+'</div><div class="ag-lane-label" style="left:'+rightX+'px">'+(inline?escape(tr('detail')):'')+'</div>'+zones.join('')+'<svg class="ag-wires" aria-hidden="true"></svg>'+
       '<article class="ag-anchor" data-ag-node="@anchor" style="left:'+(centerX+(centerWidth-anchorW)/2)+'px;top:48px;width:'+anchorW+'px">'+button('goal-anchor','@anchor','<span class="ag-label"><b>'+escape(tr('initial'))+'</b></span><strong>'+escape(short(f.anchor.user_text,75))+'</strong><span class="ag-anchor-reading">'+escape(f.anchor.understanding)+'</span>','ag-goal-button','aria-label="'+escape(tr('viewAnchor'))+'"')+'</article>'+stations+
       (detailTop==null?'':detailBox(detailTop))+'</div></div><p class="ag-footnote">'+escape(tr('flowHint'))+'</p></section>';
   }

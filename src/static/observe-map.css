@@ -269,24 +269,35 @@ details.ag-reading:not([open]){padding-bottom:12px;}
 .ag-reading-peek{display:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--apple-text);}
 details.ag-reading:not([open]) .ag-reading-peek{display:block;}
 .ag-rebuilt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 16px;font-size:11px;color:var(--apple-text-secondary);line-height:1.7;}
-.om-shell .ag-headline{margin:0 0 20px;font-size:17px;line-height:1.7;font-weight:600;color:var(--apple-text);max-width:min(100%,46em);overflow-wrap:anywhere;}
-.om-shell .ag-inline-body .ag-headline{font-size:13px;margin-bottom:12px;}
-.ag-reading-pair{display:grid;grid-template-columns:1fr 1fr;gap:32px;}
-.ag-reading-pair>section{min-width:0;}
-.ag-reading h3{font-size:13px;font-weight:600;margin:0 0 10px;color:var(--ag-key);}
-.ag-reading .om-prose{font-size:14px;line-height:1.85;margin:0;max-width:min(100%,52em);white-space:pre-wrap;overflow-wrap:anywhere;}
+/* 260912 反馈：这一段展开后「字体怪、集中在一侧、小标题比正文还小、正文叠成一坨」。
+   三处对症——口头汇报改成带色条的引导块并放开宽度上限（原来卡在 46em，宽屏上只占左半边）；
+   小标题提到 15px 并加上色点，不再比它领起的正文小；两栏各自坐进一张卡片里，正文行距放宽。 */
+.om-shell .ag-headline{margin:0 0 22px;padding:2px 0 2px 16px;border-left:3px solid var(--brand-ink);font-size:18px;line-height:1.75;font-weight:650;letter-spacing:.01em;color:var(--apple-text);max-width:none;overflow-wrap:anywhere;}
+.om-shell .ag-inline-body .ag-headline{font-size:13px;margin-bottom:12px;padding-left:10px;border-left-width:2px;}
+.ag-reading-pair{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.ag-reading-pair>section{min-width:0;padding:16px 18px;background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;}
+.ag-reading h3{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:650;margin:0 0 12px;color:var(--ag-key);letter-spacing:.01em;}
+.ag-reading h3::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ag-key);flex-shrink:0;}
+.ag-reading .om-prose{font-size:13.5px;line-height:2;margin:0;max-width:min(100%,52em);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--apple-text-secondary);}
+.ag-reading .om-prose+.om-prose{margin-top:4px;}
+.ag-reading .ag-prose-item{padding-left:1.6em;text-indent:-1.6em;}
 .ag-reading-source{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;font-size:11px;color:var(--apple-text-secondary);}
 .ag-reading .ag-carryover{font-size:12px;max-width:none;margin:18px 0 0;padding-left:12px;border-left:2px solid var(--ag-wire);color:var(--apple-text-secondary);}
-.ag-goal-heading{position:absolute;z-index:1;background:var(--bg-card);border-top:2px solid var(--brand-ink);}
-.om-shell .ag-goal-band b{letter-spacing:.06em;}
-.om-shell .ag-goal-band{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 0 6px;font:inherit;color:var(--apple-text);line-height:1.5;}
-.om-shell .ag-goal-band b{display:block;font-size:11px;letter-spacing:.04em;color:var(--brand-ink);margin-bottom:3px;}
-.om-shell .ag-goal-band span{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* G 段：底衬 + 实心徽标 + 大一档的标题，T 段：描边 chip + 常规字重（260912 反馈
+   「G 和 T 一眼看上去不能区分」）。两者此前都是 11px 小标签加一行字，只差顶线与左线，
+   而下属的 T 卡片是全场最重的元素，层级读起来是反的。颜色全部从 --ag-key 派生，
+   不新增主题 token（新增就得三套主题同时补，还要过 doc_audit 的覆盖检查）。 */
+.ag-goal-zone{position:absolute;border-radius:14px;background:color-mix(in srgb,var(--ag-key) 7%,transparent);border:1px solid color-mix(in srgb,var(--ag-key) 22%,transparent);border-top:2px solid color-mix(in srgb,var(--brand-ink) 60%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ag-key) 12%,transparent);pointer-events:none;}
+.ag-goal-heading{position:absolute;z-index:1;background:none;}
+.om-shell .ag-goal-band{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:6px 8px 8px 0;font:inherit;color:var(--apple-text);line-height:1.5;border-radius:8px;}
+.om-shell .ag-goal-band .ag-goal-no{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:22px;padding:0 8px;border-radius:6px;background:var(--brand-ink);color:var(--bg-card);font-size:12px;font-weight:700;letter-spacing:.04em;box-shadow:var(--apple-shadow-sm);}
+.om-shell .ag-goal-band .ag-goal-kind{font-size:11px;letter-spacing:.08em;color:var(--ag-key);text-transform:none;}
+.om-shell .ag-goal-band .ag-goal-text{flex-basis:100%;font-size:15px;font-weight:650;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .om-shell .ag-goal-band:hover{background:var(--ag-hover);}
-.ag-task-heading{position:absolute;padding-left:14px;border-left:2px solid var(--ag-wire);z-index:1;display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.6;color:var(--apple-text);background:var(--bg-card);padding-bottom:6px;}
-.ag-task-heading>b{color:var(--ag-key);font-size:11px;letter-spacing:.04em;flex-shrink:0;}
+.ag-task-heading{position:absolute;padding-left:14px;border-left:2px solid var(--ag-wire);z-index:1;display:flex;align-items:center;gap:10px;font-size:12px;line-height:1.6;color:var(--apple-text-secondary);background:none;padding-bottom:6px;}
+.ag-task-heading>b{display:inline-flex;align-items:center;height:18px;padding:0 7px;border:1px solid var(--ag-card-border);border-radius:9px;background:var(--ag-card);color:var(--text-tertiary);font-size:10px;font-weight:600;letter-spacing:.04em;flex-shrink:0;}
 .ag-task-state{color:var(--text-tertiary);font-size:11px;white-space:nowrap;flex-shrink:0;}
-.ag-task-heading strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ag-task-heading strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:550;color:var(--apple-text);}
 .om-shell .ag-task-toggle{margin-left:auto;flex-shrink:0;border:0;background:transparent;color:var(--ag-key);font-size:10px;padding:4px;}
 .ag-primer{margin:16px 0 4px;padding:12px 16px;background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;}
 .ag-glossary{display:flex;flex-wrap:wrap;gap:10px 26px;margin:0;font-size:11.5px;line-height:1.75;color:var(--apple-text-secondary);}
