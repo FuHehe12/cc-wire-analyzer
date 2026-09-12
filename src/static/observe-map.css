@@ -206,7 +206,9 @@
 .ag-canvas-scroll{max-height:none;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);}
 .ag-canvas{margin:0 auto;min-width:0;position:relative;padding:0;background:var(--bg-card);}
 .ag-lane-label{position:absolute;top:17px;color:var(--text-tertiary);font-size:11px;line-height:18px;}
-.ag-canvas .ag-anchor,.ag-canvas .ag-station{position:absolute;margin:0;min-width:0;max-width:none;height:112px;box-sizing:border-box;overflow:hidden;border:1px solid var(--ag-card-border);border-radius:6px;background:var(--ag-card);box-shadow:var(--apple-shadow-sm);}
+/* 高度自适应而不是钉死 112px：钉死的时候长一点的目标就被 clamp 掉半句，而位置又是按
+   同一个常量算的，段头一旦换行就压到下一块上。改成 min-height + layoutGoalFlow 实测重排。 */
+.ag-canvas .ag-anchor,.ag-canvas .ag-station{position:absolute;margin:0;min-width:0;max-width:none;min-height:112px;box-sizing:border-box;overflow:hidden;border:1px solid var(--ag-card-border);border-radius:6px;background:var(--ag-card);box-shadow:var(--apple-shadow-sm);}
 .om-shell .ag-canvas .ag-goal-button{height:100%;box-sizing:border-box;overflow:hidden;}
 .ag-canvas .ag-station.ag-mistaken,.ag-canvas .ag-station.ag-has-mistaken{border-color:var(--ag-alert);}
 .ag-canvas .ag-label .ag-wrong,.ag-task-heading .ag-wrong{color:var(--ag-alert-ink);font-weight:600;}
@@ -218,7 +220,7 @@
 .ag-canvas .ag-station:hover{box-shadow:var(--apple-shadow);}
 .om-shell .ag-canvas .ag-goal-button{padding:9px 12px;line-height:1.5;color:var(--apple-text);}
 .ag-canvas .ag-goal-button:hover{background:var(--ag-hover);}
-.ag-canvas .ag-goal-button strong{font-size:13px;font-weight:550;margin:4px 0;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.ag-canvas .ag-goal-button strong{font-size:13px;font-weight:550;margin:4px 0;line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 .ag-canvas .ag-goal-button .ag-label{display:flex;gap:10px;align-items:center;font-size:10px;color:var(--text-tertiary);}
 .ag-canvas .ag-label b{color:var(--ag-key);font-size:12px;}
 .ag-canvas .ag-label span{margin-left:auto;}

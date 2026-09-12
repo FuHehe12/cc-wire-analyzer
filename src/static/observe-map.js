@@ -458,14 +458,14 @@
       此前两个段头都是 11px 小标签加一行字，只差顶线与左线，而下属的 T 卡片反倒是
       最重的元素，层级是反的。 */
   function goalHeadHtml(band,index,top,left,width) {
-    return '<div class="ag-goal-heading" style="left:'+left+'px;top:'+top+'px;width:'+width+'px">'+
+    return '<div class="ag-goal-heading" data-ag-block="goal" data-ag-zone="'+(index-1)+'" style="left:'+left+'px;top:'+top+'px;width:'+width+'px">'+
       button(band.goal?'goal-event':'goal-anchor',band.goal?band.goal.id:'@anchor',
         '<b class="ag-goal-no">G'+index+'</b><span class="ag-goal-kind">'+escape(tr('overallGoal'))+'</span>'+
         '<span class="ag-goal-text">'+escape(short(band.text,110))+'</span>','ag-goal-band')+'</div>';
   }
   /** 任务分区头：标题、这件事上有几版目标、现在是什么状态，折起来就剩这一行。 */
   function taskHeadHtml(sec,top,left,width,index) {
-    return '<div class="ag-task-heading" style="left:'+left+'px;top:'+top+'px;width:'+width+'px"><b>T'+index+'</b>'+
+    return '<div class="ag-task-heading" data-ag-block="task" style="left:'+left+'px;top:'+top+'px;width:'+width+'px"><b>T'+index+'</b>'+
       '<strong>'+escape(sec.task?sec.task.title:tr('untasked'))+'</strong>'+
       '<span class="ag-task-state">'+escape(tr(sec.state)+' · '+sec.members.length+' '+tr('goalVersions'))+
       (sec.wrong?'<b class="ag-wrong">· '+escape(tr('mistaken'))+'</b>':'')+'</span>'+
@@ -487,14 +487,14 @@
     const lanes=Math.max(1,...sections.flatMap(sec=>sec.rows).map(r=>r.length));
     const inline=inlineTarget(), DH=detailHeight();
     const {leftW,centerWidth,rightWidth,centerX,rightX}=flowMetrics(lanes,inline), width=rightX+rightWidth+24;
-    const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;max-height:'+DH+'px">'+
+    const detailBox=top=>'<aside class="ag-inline-detail" aria-label="'+escape(tr('detail'))+'" data-ag-detail-row="'+detailRow+'" style="left:'+rightX+'px;top:'+top+'px;width:'+rightWidth+'px;max-height:'+DH+'px">'+
       button('close-detail','',escape(tr('closeDetail'))+' ×','ag-close')+'<h2>'+escape(tr('detail'))+'</h2><div class="ag-inline-body">'+detailHtml()+'</div></aside>';
     // 详情在右列，与目标列不重叠，所以不必把整条流往下推（那会在 A 下面留一大片空白）；
     // 只要画布本身高到装得下它即可。
-    let y=172, detailTop=inline==='@anchor'?48:null;
+    let y=172, detailTop=inline==='@anchor'?48:null, detailRow=inline==='@anchor'?'@anchor':'';
     const banded=sections.length>1, currentIds=new Set(currentGoals(f));
     const layered=banded || bands.length>1;
-    let taskNo=0;
+    let taskNo=0, rowNo=0;
     const zones=[];
     const stations=bands.map((band,bi)=>layered?goalBandHtml(band,bi):band.sections.map(sec=>sectionHtml(sec)).join('')).join('');
     /** 段底衬：把属于这个 G 的 T 全都圈进一块淡雾里，「谁属于谁」不再靠读标签。
@@ -505,7 +505,7 @@
       const top=y-14, head=goalHeadHtml(band,bi+1,y,centerX,centerWidth);
       y+=AG_GOAL_H;
       const body=band.sections.map(sec=>sectionHtml(sec)).join('');
-      zones.push('<div class="ag-goal-zone" style="left:'+(centerX-18)+'px;top:'+top+'px;width:'+(centerWidth+36)+'px;height:'+Math.max(0,y-top-AG_SECTION_GAP+14)+'px"></div>');
+      zones.push('<div class="ag-goal-zone" data-ag-zone="'+bi+'" style="left:'+(centerX-18)+'px;top:'+top+'px;width:'+(centerWidth+36)+'px;height:'+Math.max(0,y-top-AG_SECTION_GAP+14)+'px"></div>');
       return head+body;
     }
     function sectionHtml(sec) {
@@ -513,10 +513,11 @@
       const heading=banded?taskHeadHtml(sec,y,centerX,centerWidth,si+1):'';
       if(banded) y+=AG_HEAD_H;
       const body=sec.rows.map(row=>{
-        const top=y, columns=row.length===1?(lanes===1?centerWidth:320):252;
-        if(row.some(e=>e.id===inline)) detailTop=top;
-        // 行距按固定节拍算，卡片高度由 CSS 钉死：算出来的位置和画出来的框对得上，
-        // 卡片就不会压住下一行（260909 反馈第 4 条「被挡住一部分」）。
+        const top=y, columns=row.length===1?(lanes===1?centerWidth:320):252, ri=rowNo++;
+        if(row.some(e=>e.id===inline)) {detailTop=top;detailRow=ri;}
+        // 这里算的是首屏近似位：固定节拍摆得出大致次序，但段头的真实高度要等字体
+        // 排完才知道（实测 G 段头 67px 而节拍只留 64，每段都压住下面的 T 段头 2px）。
+        // layoutGoalFlow 会在渲染后按实测高度重排一次，所以这里不必也不可能算准。
         y+=Math.max(AG_CARD_H,row.length*AG_ROW_PITCH)+AG_ROW_GAP;
         return row.map((e,i)=>{
           const x=centerX+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
@@ -524,8 +525,8 @@
           const label=compact?tr('pastTask'):'T'+(si+1)+'·'+(sec.members.findIndex(m=>m.id===e.id)+1);
           const content='<span class="ag-label"><b>'+escape(label)+'</b><span'+(compact && e.wrong?' class="ag-wrong"':'')+'>'+escape(compact?e.members.length+' '+tr('goalVersions')+(e.wrong?' · '+tr('mistaken'):''):state==='completedGoal'?tr('completedGoal'):currentIds.has(e.id)?tr('goalNow'):tr(state))+'</span></span><strong>'+escape(short(e.after,100))+'</strong>'+(compact?'<span class="ag-count">'+escape(tr('expandTask'))+' ↓</span>':'');
           const cause=compact?e.members[0]:e;
-          const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'style="left:24px;top:'+(top+i*AG_ROW_PITCH)+'px;width:'+leftW+'px"');
-          return change+'<article class="ag-station ag-'+escape(e.actor)+(compact?(e.wrong?' ag-has-mistaken':''):state==='mistaken'?' ag-mistaken':'')+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?e.taskKey:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
+          const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'data-ag-block="row" data-ag-row="'+ri+'" data-ag-lane="'+i+'" style="left:24px;top:'+(top+i*AG_ROW_PITCH)+'px;width:'+leftW+'px"');
+          return change+'<article class="ag-station ag-'+escape(e.actor)+(compact?(e.wrong?' ag-has-mistaken':''):state==='mistaken'?' ag-mistaken':'')+(isSelected('goal-event',e.id)?' is-selected':'')+'" data-ag-node="'+escape(e.id)+'"'+(compact?' data-ag-members="'+escape(e.members.map(m=>m.id).join(' '))+'"':'')+' data-ag-block="row" data-ag-row="'+ri+'" style="left:'+x+'px;top:'+top+'px;width:'+columns+'px">'+button(compact?'task-toggle':'goal-event',compact?e.taskKey:e.id,content,'ag-goal-button',compact?'aria-expanded="false"':'aria-pressed="'+isSelected('goal-event',e.id)+'"')+'</article>';
         }).join('');
       }).join('');
       y+=AG_SECTION_GAP;
@@ -552,6 +553,55 @@
     const event=list(flow.iterations).find(e=>e.id===id);if(!event) return note(tr('missingItem'));
     const task=list(flow.tasks).find(t=>t.id===event.task_id);
     return (task?'<h3>'+escape(task.title)+'</h3>':'')+(event.change?badge(tr('change_'+event.change)):'')+goalEventHtml(event)+goalJournal(id);
+  }
+  /** 二遍布局。首屏那套 top 是按固定节拍估的，可真实高度要等字体排完才知道：实测 G 段头
+      67px 而节拍只留了 64，于是每一段都压住下面的 T 段头 2px，而 T 段头只有 25px 却按 46px
+      留位，间距排下来是 12 / -2 / 21 / 30 / 48 的乱序（260912 用户反馈「卡片能不重叠么」）。
+      这里在渲染后按实测高度重排一次，连线随后照新位置画，节拍常量退回首屏近似值的角色。 */
+  const AG_GAP={anchor:30,band:36,goalHead:12,taskHead:10,row:20,zonePad:18,tail:26};
+  function layoutGoalFlow() {
+    const canvas=root()?.querySelector('.ag-canvas');
+    if(!canvas || !canvas.offsetWidth) return;
+    const blocks=[...canvas.querySelectorAll('[data-ag-block]')];
+    if(!blocks.length) return;
+    // 同一行的左列原因块与中列卡片共用一个 top，取组内最高的那个当行高。
+    const groups=[];
+    for(const el of blocks) {
+      const kind=el.dataset.agBlock, row=el.dataset.agRow ?? null, last=groups.at(-1);
+      if(kind==='row' && last && last.kind==='row' && last.row===row) last.els.push(el);
+      else groups.push({kind,row,els:[el]});
+    }
+    const zones=new Map([...canvas.querySelectorAll('.ag-goal-zone')].map(z=>[z.dataset.agZone,z]));
+    const anchor=canvas.querySelector('.ag-anchor');
+    const rowTop=new Map();
+    let y=anchor?anchor.offsetTop+anchor.offsetHeight+AG_GAP.anchor:172, zone=null, zoneTop=0, bottom=y;
+    const closeZone=() => {
+      if(!zone) return;
+      zone.style.top=(zoneTop-14)+'px';
+      zone.style.height=Math.max(0,bottom-zoneTop+14+AG_GAP.zonePad)+'px';
+    };
+    for(const g of groups) {
+      if(g.kind==='goal') {
+        closeZone();
+        if(zone) y=bottom+AG_GAP.band;
+        zone=zones.get(g.els[0].dataset.agZone) || null;
+        zoneTop=y;
+      }
+      const h=Math.max(...g.els.map(el=>el.offsetHeight));
+      for(const el of g.els) el.style.top=y+'px';
+      if(g.kind==='row') rowTop.set(g.row,y);
+      bottom=y+h;
+      y=bottom+(g.kind==='goal'?AG_GAP.goalHead:g.kind==='task'?AG_GAP.taskHead:AG_GAP.row);
+    }
+    closeZone();
+    let end=bottom+AG_GAP.tail;
+    const aside=canvas.querySelector('.ag-inline-detail');
+    if(aside) {
+      const top=rowTop.get(aside.dataset.agDetailRow);
+      if(top!=null) aside.style.top=top+'px';
+      end=Math.max(end,aside.offsetTop+aside.offsetHeight+AG_GAP.tail);
+    }
+    canvas.style.height=end+'px';
   }
   function drawGoalFlow() {
     const canvas=root()?.querySelector('.ag-canvas'),svg=canvas?.querySelector('.ag-wires');if(!svg || !canvas.offsetWidth) return;
@@ -694,6 +744,7 @@
     requestAnimationFrame(drawRelations);
   }
   function drawRelations() {
+    layoutGoalFlow();   // 先按实测高度落位，连线才画得到正确的框上
     drawGoalFlow();
     const graph=root()?.querySelector('.om-graph'), svg=graph?.querySelector('.om-wires'); if(!svg) return;
     const bounds=graph.getBoundingClientRect(); if(!bounds.width) return;

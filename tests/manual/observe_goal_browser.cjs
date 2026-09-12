@@ -20,9 +20,12 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  await page.locator('.ag-canvas').waitFor();
  assert.equal(await page.locator('.ag-tabs').count(),0,'removed work/records/forecast tabs are not part of current view');
  const reading=page.locator('.ag-flow > .ag-reading');
- assert((await reading.innerText()).includes(flow.current.understanding));
- assert((await reading.innerText()).includes(flow.current.situation));
- if(flow.current.carryover) assert((await reading.innerText()).includes(flow.current.carryover));
+ // 比对去掉空白后的正文：页面在 ①②③ 前补换行、按行拆段（260912 反馈「1、2 这种混在一起」），
+ // 加的只是空白，一个字都不会改——守住的仍是「页面不篡改观察者写的内容」。
+ const flat=s=>s.replace(/\s+/g,'');
+ assert(flat(await reading.innerText()).includes(flat(flow.current.understanding)));
+ assert(flat(await reading.innerText()).includes(flat(flow.current.situation)));
+ if(flow.current.carryover) assert(flat(await reading.innerText()).includes(flat(flow.current.carryover)));
  assert.equal(await page.locator('.ag-anchor').count(),1,'one fixed starting point');
  const collapsed=page.locator('[data-om-action="task-toggle"][aria-expanded="false"]');
  for(let n=0;await collapsed.count();n++){
@@ -40,7 +43,9 @@ const out=process.env.CCWA_QA_OUTPUT || 'local/artifacts/observe-goal-browser';f
  const edges=await page.locator('.ag-wire').evaluateAll(ns=>ns.map(n=>[n.dataset.agFrom,n.dataset.agTo]));
  assert.deepEqual(edges,expectedEdges,'expanded task history keeps explicit parent links');
  await page.screenshot({path:path.join(out,'overview.png'),fullPage:true});
- await page.locator('[data-om-action="goal-anchor"]').click();
+ // A 卡片里的那个：首个 G 段没有显式的目标变化可指，它的段头也挂 goal-anchor（260909 起如此），
+ // 光按 action 选会同时选中两个。
+ await page.locator('.ag-anchor [data-om-action="goal-anchor"]').click();
  assert((await page.locator('.ag-inline-body').innerText()).includes(flow.anchor.user_text));
  assert.equal(await page.locator('.om-detail').isVisible(),false,'goal details use the inline third column');
  await page.locator('.ag-station [data-om-id="'+last.id+'"]').first().click();
