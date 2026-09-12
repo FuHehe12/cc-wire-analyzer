@@ -1,6 +1,23 @@
 # 变更历史
 
-这里记录 v0.4.33 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读[整理前原文](issues/evidence/260906_变更记录简写/CHANGELOG-history-before.md)。历史路径与行为不代表当前状态。
+这里记录 v0.4.34 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读[整理前原文](issues/evidence/260906_变更记录简写/CHANGELOG-history-before.md)。历史路径与行为不代表当前状态。
+
+## v0.4.34 - 2026-09-11
+
+### 中文
+
+#### 新增
+
+- **工具面进索引与盲区雷达**（issue 260911_工具面雷达与beta归属）。索引新增 `tools_builtin`（内置工具名列表）/ `tools_fp`（内置+MCP 的联合指纹）/ `tools_mcp_n`（MCP 工具数），`/api/unknowns` 随之多出两档：`tools` 报不在 `classifier.KNOWN_TOOLS` 基线里的内置工具（snippet 直接给该工具的 description 片段，一眼看出它是干什么的），`tool_changes` 报同一条泳道内工具集前后不一致（value 是差集，如 `+TaskCreate,TaskGet,TaskList… -EndConversation,RemoteTrigger,SendUserFile`）。**起因**：09-11 查「CC 是不是有新功能」时，`Artifact` / `DesignSync` / `Monitor` / `PowerShell` / `PushNotification` / `SendFeedback` / `Workflow` 七个内置工具只出现在第三方链路的会话上，而索引里关于工具只有 `tools_n` 一个数字——这件事只能靠人打开 40 MB 主文件逐条扫才看得见，雷达一个字都报不出来。工具面是 CC 的能力清单，地位等同于 `anthropic-beta`。`mcp__` 前缀的工具不进基线、不参与未知判定，只记数量：那是使用者自己装的 MCP，报它会把真信号淹掉（与 degraded 从 block_keys 分流出去同一个道理）。**分组键是会话 + kind + agent_id 而不是会话**：首版按会话分组，当天 26 条「工具集变化」没有一条是真的——子代理复用父会话 id、并行子代理之间工具面各不相同、CC 自己发起的检索派发恒 `tools_n=1`，三者合起来就是 main↔subagent 来回翻牌。收口后 09-06 只剩 1 条真变化。详情页的 Tools 折叠同步高亮基线外的内置工具，并在标题显示 MCP 数量。
+- **betas 段带归属**。`/api/unknowns` 的 `betas.new` / `betas.known` 现在带 `hosts` / `cc_versions`，`new` 段另带 `samples`。端点的判读第一步写的就是「先看 hosts」，而 betas 恰恰是唯一没有归属的那一段——09-11 的新 beta 正好单一 host 独占，判读要用的信息不在响应里，只能人工拉 `/api/captures?limit=300` 自己按 `beta` 聚合才确认得了。`known` 段不给 samples（上千条给 id 无意义），`new` 段必须给——那才是要接着查上下文的一段。
+- **`/api/*` 的 404 会指路**。未命中的 `/api/*` 响应从 `{error, path}` 扩成带 `did_you_mean`（最接近的已注册端点，≤3 个，从 Flask url_map 现算，不维护第二份清单）与 `hint`（指向 `GET /api/ai-guide`）。起因：AI 消费者按别处的惯例第一反应调 `/api/status`（本工具叫 `/api/proxy/status`），旧 404 不给任何线索，只能继续猜。相似度比的是去掉 `api/` 之后的部分——所有候选都以它开头，带着比会让 `/api/logs` 这种根本不存在的东西也配出三个「最接近」；宁可返回空列表也不给错的指引。
+- **`/api/grep` 的 coverage 说明未检索区**。新增 `not_searched`：HTTP 头（含 `anthropic-beta`）不在检索区，查 beta / 工具面走 `/api/unknowns`。起因：拿 beta 特性名去 grep，命中的全是别的对话正文里提到它的地方，一条真正带该 beta 的请求都搜不出来，而 `coverage` 只列了「搜过哪些正文区域」，看不出这件事。
+
+#### 变更
+
+- **`KNOWN_BETAS` 并入 `mid-conversation-tool-changes-2026-07-01`**。09-11 首次出现（CC 2.1.268，当天 47 条全在同一条第三方链路上），逐日回查 08-31～09-10 全无，`claude.exe` 二进制里能取到该字符串——是 CC 客户端声明的新能力，不是网关的形状差异。它的语义正是「工具集可在对话中途变化」，与本版新增的 `tool_changes` 档是同一件事的两面。
+- **`IDX_SCHEMA` 18 → 19**。新增的三个工具面字段在旧索引里恒缺失，会让 `tools` 档恒空、`tool_changes` 恒无变化而不报任何错（静默降级）。升级后首次读取会重建当天索引。
+- **`tests/dev_seed.py`**：工具名从 `Task` / `TodoWrite`（真流量里早已不存在）换成基线内的真实名字，否则 seed 出来的每一条都被新雷达报成「没见过的内置工具」，样例数据自己制造的噪声会盖住真信号；新增 E5 样例演示工具集中途变化（未知内置工具 + MCP 各一个）；docstring 补上「跑完立刻删」的警告——09-10 有 54 条合成记录因为跑完没删留在真实录制里，回头查协议演进时差点被当成真信号。
 
 ## v0.4.33 - 2026-09-10
 
