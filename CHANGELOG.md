@@ -12,6 +12,16 @@
 - **保留的产品问题**：把反复出现的故障转为检查规则，目前 `/api/diagnose/trends` 只能辅助判断是否复发；是否利用 Claude Code 本地日志修正轮次来源，尚未采用；存储方面仍有骨架指针增量编码和“先压实再清理”的后续方案。指针列表从约 477 MB 降到约 10 MB 是历史估算，尚非本轮实测结果。
 - **macOS 升级提示**：自 v0.4.2 起，应用名由 `CCWireAnalyzer.app` 改为 `cc-wire-analyzer.app`，不会覆盖 `/Applications` 中的旧名称，旧应用需要自行移除。
 
+## 未发布
+
+### 修复
+
+- **`tools/build/manual/build_product.py` 在 Python 3.11 下编译不过**（issue 260912_build_product在311下不可编译）。第 34 行在 f-string 的替换字段里用了与外层同类型的引号（`f'… {gap['id']}'`），这是 PEP 701（3.12）才合法的写法，3.10/3.11 直接报 `SyntaxError: f-string: unmatched '['`。CONTRIBUTING 写的是「本地说明书生成使用 Python 3.12+」，所以生成说明书本身没暴露它；露出来的是第八节清单最后那条 `compileall … tools/build …`——它覆盖了 `tools/build` 却没写这个前提，于是任何人按清单跑到最后一条，都会撞上一个与本次改动毫无关系的报错，还得先判断「这是不是我改坏的」。在 3.11.13 下逐文件 `compile()` 扫描 `src/`、`tests/`、`tools/` 全部 74 个 .py，**失败只有这一处**，是孤例不是一类问题。改成内层双引号后 3.10+ 均可编译，语义不变。
+
+### 文档
+
+- **第八节自测清单补回 `node tests/observe_guide_selftest.js`**（issue 260912_自测清单漏登observe_guide_selftest）。与 `release.yml` 的 verify job 逐条对账，**CI 有而清单没有的只有这一条**（清单多出的 compileall 是有意差异：CI 把语法检查拆成单独的 Syntax 步，路径只到 `src tests tools`，清单那条多覆盖 `tools/build`、`tools/checks`、`tools/probes`）。少这一条的后果是它只会在 CI 上跑，本地怎么跑都是绿的——而 CI 一旦红在它上面，本地复现不出来；它覆盖的正是界面「复制接入说明」三语×已建/未建观测的文案断言，属本版改动的邻接面。清单自己在 260825 就写过「这张清单自己也会腐化，改 CI 时顺手对一遍」，这次是发版逐条跑时对账对出来的，说明「顺手」这件事没有触发点，靠不住。
+
 ## v0.4.36 - 2026-09-12
 
 ### 中文
