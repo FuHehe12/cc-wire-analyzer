@@ -31,7 +31,7 @@ for rid, correction in data.get('requirementOverrides', {}).items():
 GAPS=DATA/f'gaps-{VERSION}.json'
 gaps=json.loads(GAPS.read_text(encoding='utf-8')) if GAPS.exists() else {'items':[]}
 for gap in gaps['items']:
-    assert gap['id'] not in requirements, f'gap id collides with catalog: {gap['id']}'
+    assert gap['id'] not in requirements, f"gap id collides with catalog: {gap['id']}"
     assert gap.get('derivedFrom') and gap.get('need') and gap.get('acceptance'), gap['id']
     requirements[gap['id']]=gap
 review=data.get('reviewNotes',{})
