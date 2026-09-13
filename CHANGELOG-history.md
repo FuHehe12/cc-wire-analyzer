@@ -1,6 +1,6 @@
 # 变更历史
 
-这里记录 v0.4.35 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读[整理前原文](issues/evidence/260906_变更记录简写/CHANGELOG-history-before.md)。历史路径与行为不代表当前状态。
+这里记录 v0.4.35 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。条目保留当时的问题、改动与必要边界；详细调查过程与验证记录可用 `git show 68881ba:CHANGELOG-history.md` 查看，或阅读整理前原文——中文 [public/CHANGELOG-history.zh.md](public/CHANGELOG-history.zh.md)、英文 [public/CHANGELOG-history.md](public/CHANGELOG-history.md)（冻结快照，不随版本更新）。历史路径与行为不代表当前状态。
 
 ## v0.4.35 - 2026-09-12
 
