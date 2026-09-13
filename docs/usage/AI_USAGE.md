@@ -115,6 +115,7 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 |---|---|---|
 | `YYYY-MM-DD.jsonl` | 今天。格式没变，一行一条 | HTTP/CLI 优先；真要直读就分块读，别 `cat` 整个文件 |
 | `YYYY-MM-DD.pack/` | 过去某天，已压实 | **只能走 HTTP/CLI**。目录里是骨架 + blob 池 + 索引，`skel.jsonl` 里的 `{"$cas":[...]}` 是指针不是内容 |
+| `cold/YYYY-MM-DD.ccwz` | 久不点开，已冷藏 | **读之前要先解冻**。它是一整个压缩流，没有随机访问；这天也不在 `dates_available` 里 |
 
 **这对你的影响只有一条：别再假设「录制 = 一个 jsonl 文件」。** 所有 API 与 CLI 对两种形态
 行为完全一致（同一天压实前后，list/dag/get/grep/stats 的输出逐字节相同——除了 stats 的
@@ -122,6 +123,14 @@ CC 因为 prompt caching 每轮把整段历史原样重发，而录制是逐条�
 
 - 压实：`POST /api/captures/compact {date?}` 或 `cc-wire-analyzer compact [--date D]`。
   **今天永远不压**（代理正往里写）。压实**不删任何东西**，可用 `uncompact` 还原回 jsonl。
+- 冷藏：`POST /api/captures/freeze {date?}`，CLI 是 `freeze --date D`；
+  反向是 `thaw --date D`，清单看 `GET /api/captures/cold` 或 CLI 的 `cold`。
+  默认开着，超过 7 天没被界面点开过的天会被自动收起来（数据没丢，解冻即回）。
+  **你会怎么撞上它**：按日期读的端点碰到冷藏的天回 **409** `{"error":"cold"}`，
+  `/api/captures` 则回 `"cold": true` + 空 `items`，并在 `cold_dates` 里列出全部冷藏日期。
+  **别把它读成"那天没录到"**——先 `thaw --date D` 再重试原请求。
+  也别去调 `/api/captures/viewed`：那是界面用来记"人点开过这天"的，替人按下去会让
+  自动冷藏永远不触发。
 - 归档：`POST /api/captures/archive {date, label?}` 或 `cc-wire-analyzer archive --date D --label 机器名`
   → `archives/<date>.<label>.<时分秒>.ccwa` 单文件，可以拷到别的机器。
 - 导入：`POST /api/captures/import {file}` 或 `cc-wire-analyzer import <file.ccwa>`

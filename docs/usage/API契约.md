@@ -627,12 +627,17 @@ HTTP 写入还支持 `cover_span:{first_rid,last_rid}`（放在 add_item 或 upd
 
 ---
 
-## 3. 存储形态：压实 / 归档 / 导入
+## 3. 存储形态：压实 / 冷藏 / 归档 / 导入
 
-一天有两种形态：`captures/<date>.jsonl`（今天，格式未变）与 `captures/<date>.pack/`（过去某天，
-已压实）。**所有读取端点对两种形态行为一致**——同一天压实前后 `/api/captures`、`/api/dag`、
+一天有三种形态：`captures/<date>.jsonl`（今天，格式未变）、`captures/<date>.pack/`（过去某天，
+已压实）与 `captures/cold/<date>.ccwz`（久不点开，已冷藏）。
+
+**前两种形态对所有读取端点行为一致**——同一天压实前后 `/api/captures`、`/api/dag`、
 `/api/captures/<id>`、`/api/grep` 的响应逐字节相同；`/api/stats` 只有 `file_size` / `packed` /
 `raw_bytes` 三个字段会变，因为它们的语义就是"现在占多少"。
+
+**冷藏是例外，它是要先解冻才能读的**：冷藏拿掉的正是随机访问。读到 409 `cold` 就先解冻，
+见下面「读冷藏的天会怎样」。
 
 压实做的是内容寻址去重 + 逐块 zstd，**逐字节可还原**（压实前全量比对，通过才删原文件）。
 为什么值得做、实测省下多少、随机读多快，见 [开发约定.md](../development/开发约定.md) 的「为什么要压实
@@ -661,6 +666,66 @@ HTTP 写入还支持 `cover_span:{first_rid,last_rid}`（放在 add_item 或 upd
 **请求**：`{ "date": "2026-08-24", "source"?: "标签" }`。
 **响应**：`{ "ok": true, "date": …, "count": 855, "bytes": 500284782 }`。
 还原后按 manifest 里记的原文件哈希复核，对不上就删掉半成品并报 `verify_failed`。
+
+### `POST /api/captures/freeze` — 冷藏（收起来，再压小一截）
+
+冷藏是第四种语义，与压实 / 归档 / 清除都不同：**本机收起来，拿"能不能直接翻"换体积**。
+冷藏态是单文件 `captures/cold/<date>.ccwz`，不能随机读——要看这天必须先解冻。
+
+实测（本机 6 天）：89.34MB 的 pack → 21.32MB，整体 4.19x，单天 1.45x~8.99x。差距取决于
+这天的 pack 里明文骨架占多大比例（41% 的那天压到 9x，16% 的只有 1.45x）。
+
+**请求**：`{ "date"?: "2026-08-24", "source"?: "标签", "older_than"?: 7 }`。
+给 `date` = 只冷藏这一天；不给则按「多久没点开过」扫一轮（`older_than` 缺省取设置里的天数）。
+**今天永远不冻**，理由同压实。
+
+**响应**：
+```json
+{ "ok": true, "saved_bytes": 10012160,
+  "frozen": [{ "date": "2026-09-02", "count": 616, "pack_bytes": 13123456,
+               "cold_bytes": 3111296, "saved_bytes": 10012160, "ratio": 4.2,
+               "compacted_first": null, "elapsed_ms": 4512 }],
+  "failed": [{ "date": "…", "error_code": "is_today|already_cold|not_found|cold_failed", "error": "…" }] }
+```
+不是压实态的天会**先自动压实**（结果放在 `compacted_first` 里），所以一次调用可能同时做了两件事。
+
+### `POST /api/captures/thaw` — 解冻（回到日期列表）
+
+**请求**：`{ "date": "2026-08-24", "source"?: "标签" }`。
+**响应**：`{ "ok": true, "date": …, "count": 616, "bytes": 13123456 }`。
+解冻先校验冷藏文件正文的哈希，对不上直接 `verify_failed` 且不落盘——冷藏是长期放着的形态，
+坏了要在"还原成录制之前"被抓住。解冻成功会顺手记一次查看时间，不然下一轮扫描会把它冻回去。
+失败码：`not_cold` / `dst_exists` / `bad_cold` / `verify_failed` / `thaw_failed`。
+
+### `GET /api/captures/cold` — 冷藏清单
+
+`?source=` 可选。只读每个文件的首行说明，不解压。
+
+```json
+{ "ok": true, "source": "",
+  "items": [{ "date": "2026-09-02", "size": 3111296, "count": 616,
+              "frozen_at": "2026-09-13T15:38:14", "pack_bytes": 13123456,
+              "raw_bytes": 876846699, "last_viewed": "" }] }
+```
+
+### `POST /api/captures/viewed` — 记一次"点开了这天"
+
+**请求**：`{ "date": "2026-08-24", "source"?: "标签" }`。**响应**：`{ "ok": true, "date": …, "at": "ISO 时间" }`。
+
+自动冷藏的判据读它（存在 `views.json`）。**这个打点只该由界面发**：读录制的端点不会隐式记账，
+否则分析 Agent 扫一遍全年录制就把所有日期焐热了，自动冷藏从此永远不触发且不会报错。
+分析 Agent 没有理由调它。
+
+### 读冷藏的天会怎样
+
+冷藏的天**不出现在** `/api/captures` 的 `dates_available` 里，而是出现在同一份响应新增的
+`cold_dates` 里；请求的就是冷藏那天时，响应带 `"cold": true` 且 `items` 为空。
+
+其余按日期读录制的端点（`/api/grep`、`/api/stats`、`/api/unknowns`、`/api/dag`、`/api/actions`、
+`/api/observations/trace`）返回 **409** `{"error":"cold","detail":"…","date":…}`。
+
+**为什么不回空**：回一个空结果等于说"那天什么都没录到"，分析 Agent 会据此下结论。
+收到 409 就先 `POST /api/captures/thaw`，再重试原请求。
 
 ### `POST /api/captures/archive` — 归档成可搬运的单文件
 
