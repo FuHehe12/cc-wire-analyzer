@@ -1120,10 +1120,12 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 /* 观测者退出后界面不能假装还在跟——过期就明说停了多久（issue 260908 第 9 节） */
 .ob-meta .stale{color:var(--warn);font-weight:600;}
 .ob-scope{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
-  padding:12px 16px;margin-bottom:12px;font-size:12px;line-height:1.7;color:var(--text-dim);}
+  padding:12px 16px;margin-bottom:12px;font-size:12px;line-height:1.75;color:var(--text-dim);}
 .ob-empty{padding:22px;}
-.ob-empty-t{font-size:14px;font-weight:600;margin-bottom:8px;}
-.ob-empty-b{font-size:13px;color:var(--text-dim);line-height:1.7;}
+/* 本段字号跟 observe-map.css 顶部那把阶梯走（18/15/13/12/11/10），这一页两个文件同一套。
+   它们不共享 CSS 变量——那把梯子挂在 .om-shell 上，而顶栏与空白说明在它外面。 */
+.ob-empty-t{font-size:15px;font-weight:600;margin-bottom:8px;}
+.ob-empty-b{font-size:13px;color:var(--text-dim);line-height:1.75;}
 .ob-group{margin-bottom:14px;}
 .ob-group-h{display:flex;align-items:center;gap:8px;margin:0 2px 8px;
   font-size:12px;font-weight:600;color:var(--apple-text-secondary);}
@@ -1134,7 +1136,7 @@ html[data-ui-scale="large"] .dag-bar,html[data-ui-scale="large"] .dag-toolbar{fl
 .ob-item.retracted{opacity:.55;}
 .ob-item.retracted .ob-text{text-decoration:line-through;text-decoration-color:var(--text-faint);}
 .ob-item-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;}
-.ob-text{font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word;}
+.ob-text{font-size:13px;line-height:1.75;white-space:pre-wrap;word-break:break-word;}
 .ob-why{font-size:12px;color:var(--text-dim);margin-top:6px;}
 .ob-ev{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;}
 /* 证据点得回具体那一步——点不回去的结论就是一句不能核验的话（可研第十节第 2 条） */
