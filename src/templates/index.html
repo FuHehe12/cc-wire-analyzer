@@ -632,6 +632,10 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 .blk{display:flex;flex-direction:column;gap:5px;}
 .blk-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .blk-meta{font-family:var(--font-mono);font-size:10px;color:var(--apple-secondary);}
+/* 块内的人话说明（加密思考块用）。blk-meta 是等宽 10px，给字节数这类标量用的，
+   整句中文塞进去既小又挤——说明句需要正常字体和行高才读得下去。 */
+.blk-note{font-size:11.5px;line-height:1.7;color:var(--text-dim);}
+.blk-note.dim{color:var(--text-faint);}
 .excerpt{border-radius:var(--radius-sm);background:var(--terminal-bg);border:1px solid var(--border-soft);overflow:hidden;}
 .excerpt pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:var(--font-mono);
   font-size:11px;line-height:1.65;color:var(--terminal-text);padding:12px 14px;max-height:420px;overflow:auto;}
@@ -2428,6 +2432,12 @@ zh: {
   "detail.betaNew": "有 {n} 个没见过的扩展（橙色）——CC 启用了新能力，可能带来我们还不认识的字段或响应块",
   "detail.toolsNew": "有 {n} 个没见过的内置工具（橙色）",
   "detail.compaction": "上下文自动压缩的产出",
+  "detail.thinkSealed": "已加密",
+  "detail.thinkSigOnly": "上游只回了签名，没回思考明文——这段想了什么读不到。",
+  "detail.thinkRedacted": "上游把这段思考加密成了 redacted_thinking 块——内容读不到。",
+  "detail.thinkSigN": "签名 {n} 字节",
+  "detail.thinkCipherN": "密文 {n} 字节",
+  "detail.thinkNotAbsent": "这不等于它没有思考：真的没思考时，这里根本不会有块。",
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
   "set.ui.scale": "界面缩放", "set.ui.scaleSub": "高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存",
@@ -2867,6 +2877,12 @@ en: {
   "detail.betaNew": "{n} extension(s) we haven't seen before (orange) — CC enabled a new capability, which may bring fields or response blocks we don't yet recognise",
   "detail.toolsNew": "{n} built-in tool(s) we haven't seen before (orange)",
   "detail.compaction": "produced by automatic context compaction",
+  "detail.thinkSealed": "encrypted",
+  "detail.thinkSigOnly": "The upstream returned only a signature, no plaintext — what it thought here is unreadable.",
+  "detail.thinkRedacted": "The upstream sealed this reasoning into a redacted_thinking block — the content is unreadable.",
+  "detail.thinkSigN": "signature {n} bytes",
+  "detail.thinkCipherN": "ciphertext {n} bytes",
+  "detail.thinkNotAbsent": "This does not mean it did not think: when it truly does not, there is no block here at all.",
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
   "set.ui.scale": "Interface scale", "set.ui.scaleSub": "Turn it up if text looks small on a 2K/4K display — applied and saved immediately",
@@ -3305,6 +3321,12 @@ ja: {
   "detail.betaNew": "未知の拡張が {n} 件（オレンジ）——CC が新機能を有効化しており、未対応のフィールドやレスポンスブロックが含まれる可能性があります",
   "detail.toolsNew": "未知の組み込みツールが {n} 件（オレンジ）",
   "detail.compaction": "コンテキスト自動圧縮の産物",
+  "detail.thinkSealed": "暗号化済み",
+  "detail.thinkSigOnly": "上流は署名のみを返し、思考の平文を返していません——ここで何を考えたかは読めません。",
+  "detail.thinkRedacted": "上流はこの思考を redacted_thinking ブロックに暗号化しました——内容は読めません。",
+  "detail.thinkSigN": "署名 {n} バイト",
+  "detail.thinkCipherN": "暗号文 {n} バイト",
+  "detail.thinkNotAbsent": "これは「思考しなかった」という意味ではありません：本当に思考がない場合、ここにブロック自体が存在しません。",
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
   "set.ui.scale": "表示倍率", "set.ui.scaleSub": "2K/4K ディスプレイで文字が小さいと感じたら上げてください。即時反映・保存されます",
@@ -5132,6 +5154,40 @@ function renderDetail(d){
     '</div></details>';
   $("respCol").innerHTML = R;
 }
+/* 思考块有三种形态，界面上必须分得开（260913）：明文可读 / 上游只回签名不回明文 /
+   上游回 redacted_thinking 块。后两种此前都渲染成一个空盒子——一个 thinking 标签，底下什么
+   都没有——与"这一轮压根没思考"长得一模一样，而后者根本不会产生块。
+
+   实测用户 6 天真实录制（08-31/09-01/09-03/09-06/09-12/09-13）：679 个思考块里 186 个
+   （27.4%）是"空正文 + 长签名"形态，全部 claude-opus-5 + thinking=adaptive；其中 09-01 与
+   09-13 两天是 69/69 与 24/24，**整天 100%**。照旧渲染，翻这两天会得出"opus 从来不思考"的
+   结论。而 redacted_thinking 这 6 天一条都没有——只照 Anthropic 文档给那个类型写分支等于没修，
+   判据必须是"正文是否为空"。这与 snapshot_extract.py 的判档口径一致（那边叫 signature_only，
+   同样只认明文、不认块存在），两处说的是同一件事，不另造概念。
+
+   签名/密文字节数要摆出来：它是"这一步确实思考过、思考量大致多少"的唯一可见证据
+   （实测签名长度 400~23,900 字符，随思考量变化），也是判断这步值不值得关注的唯一抓手。 */
+function thinkingBlockHtml(b){
+  const red = b.type === "redacted_thinking";
+  const txt = red ? "" : (b.thinking || b.text || "");
+  /* 标签打 wire 上的真实类型名（`thinking` / `redacted_thinking`），与详情页其余块一致。
+     两种都标成 `thinking` 会把「上游发的到底是哪种块」这个事实抹掉。 */
+  const head = '<div class="blk-head"><span class="chip" style="background:var(--chip-thinking-bg)">' +
+    esc(b.type || "thinking") + '</span>';
+  if(txt.trim()){
+    return '<div class="blk">' + head + '</div>' + bigText(txt, 3000) + '</div>';
+  }
+  const n = String((red ? b.data : b.signature) || "").length;
+  return '<div class="blk">' + head +
+    '<span class="chip outline">' + esc(t18("detail.thinkSealed")) + '</span>' +
+    (n ? '<span class="blk-meta">' +
+         esc(t18(red ? "detail.thinkCipherN" : "detail.thinkSigN", {n: n.toLocaleString()})) +
+         '</span>' : "") + '</div>' +
+    '<div class="blk-note">' + esc(t18(red ? "detail.thinkRedacted" : "detail.thinkSigOnly")) + '</div>' +
+    /* 使用者看见空盒子会自己推出"它没想"，只有把这句否定写出来才堵得住
+       （同 AI_USAGE 里冷藏那条"别把它读成那天没录到"的写法）。 */
+    '<div class="blk-note dim">' + esc(t18("detail.thinkNotAbsent")) + '</div></div>';
+}
 function renderMsg(m, mi){
   const role = m.role || "user";
   const isUser = role === "user";
@@ -5160,9 +5216,8 @@ function renderMsg(m, mi){
         inner += '<div class="tooluse-box"><span class="blk-meta">citations (' + b.citations.length + '):</span>' +
           bigText(cl.join("\n"), 1500) + '</div>';
       }
-    }else if(b.type === "thinking"){
-      inner += '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--chip-thinking-bg)">thinking</span></div>' +
-        bigText(b.thinking || b.text || "", 3000) + '</div>';
+    }else if(b.type === "thinking" || b.type === "redacted_thinking"){
+      inner += thinkingBlockHtml(b);
     }else if(b.type === "tool_use"){
       /* 260825：原先是 `JSON.stringify(...).slice(0,1500)` —— 硬切、没有展开按钮、
          也不说被切了。实测 6 天真实录制，10.6% 的 tool_use 超过 1500 字符，最长一个
@@ -5195,10 +5250,7 @@ function renderMsg(m, mi){
   return '<div class="' + cls + '"><div class="blk-head">' + chip + '</div>' + inner + '</div>';
 }
 function renderRespBlock(b){
-  if(b.type === "thinking"){
-    return '<div class="blk"><div class="blk-head"><span class="chip" style="background:var(--chip-thinking-bg)">thinking</span></div>' +
-      bigText(b.text || b.thinking || "", 3000) + '</div>';
-  }
+  if(b.type === "thinking" || b.type === "redacted_thinking") return thinkingBlockHtml(b);
   if(b.type === "text"){
     /* web_search 的回答带 citations（引用来源）——260802 前完全不显示。现折叠展示
        cited_text 片段 + url，让带搜索的回答可追溯。 */

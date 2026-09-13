@@ -428,6 +428,26 @@ def e5():
     return r
 
 
+def e6():
+    """思考块的三种形态并排（260913）。此前后两种都渲染成一个空盒子，与「这一轮压根没思考」
+    分不开——而压根没思考时根本不会有块。实测用户 6 天真实录制 679 个思考块里 186 个
+    （27.4%）是「空正文 + 长签名」，两天是整天 100%；redacted_thinking 反而一条没有。
+    所以判据是「正文是否为空」，不是块类型。三种摆在同一条响应里，改渲染时一眼能对照。"""
+    r = base("22:42:34.500", model="claude-opus-5")
+    b = r["request"]["body"]
+    b["system"] = main_sys(); b["tools"] = TOOLS
+    b["thinking"] = {"type": "adaptive"}      # 实测 186 条全部是 adaptive
+    b["messages"] = [{"role": "user", "content": "把这三种思考块的区别讲清楚"}]
+    r["response"]["content_blocks"] = [
+        {"type": "thinking", "thinking": "先看这三种块在录制里分别长什么样，再决定界面怎么说。",
+         "signature": "c0ffee" * 8},
+        # 空正文 + 长签名：签名长度随思考量变化，是「确实想过、想了多少」的唯一可见证据
+        {"type": "thinking", "thinking": "", "signature": "CAISyQQKpgEIERgCKkCIBM5u" + "A" * 1800},
+        {"type": "redacted_thinking", "data": "EvgBCkYIBRgCKkD" + "B" * 620},
+        {"type": "text", "text": "三种块的区别见详情页里各自的说明。"}]
+    return r
+
+
 def d1():
     r = base("22:42:30.300", session_id=SID_D)
     b = r["request"]["body"]
@@ -570,6 +590,7 @@ if __name__ == "__main__":
                      (e3(), "E3 解码失败落痕"),
                      (e4(), "E4 未知beta特性"),
                      (e5(), "E5 工具集中途变化（未知内置工具 + MCP）"),
+                     (e6(), "E6 思考块三形态（明文 / 只回签名 / redacted）"),
                      (d1(), "D1 main"), (a3(), "A3 main"), (d2(), "D2 main"),
                      (c1(), "C1 compact")):
             cs.append(rec)
