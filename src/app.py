@@ -162,6 +162,41 @@ def _rolling_housekeeper():
 threading.Thread(target=_rolling_housekeeper, daemon=True,
                  name="rolling-housekeeper").start()
 
+# 自动冷藏（260913）：久不点开的日期深压收进 captures/cold/，实测在压实之上再省约 4 倍。
+# 结果经 /api/about 回给设置页——与 retention 同一条纪律：自动动数据的功能必须**看得见
+# 地在工作**，而不是又一句无法验证的承诺。
+_COLD_SWEPT: list[str] = []
+
+
+def _cold_housekeeper():
+    """把过了期限还没被点开的日期冷藏起来。启动跑一次，之后每 6 小时一次。
+
+    **必须在后台线程里**：首次开启时积压的历史会一次性全被收起来（这是拍板的口径），
+    实测单天约 4.5 秒，几十天就是几分钟——挡在启动路径上等于软件打不开。
+
+    与 `_rolling_housekeeper` 同样不做跨零点定时器：每 6 小时看一眼，对"整夜不开"和
+    "连开三天"都成立，漏跑一轮的代价只是晚几小时收起来。
+    """
+    while True:
+        try:
+            cold = CFG.get_config().get("cold_storage") or {}
+            if cold.get("enabled") and cold.get("days"):
+                r = capture_store.sweep_cold(cold["days"])
+                if r["frozen"]:
+                    _COLD_SWEPT.extend(x["date"] for x in r["frozen"])
+                    log.info("cold: froze %d day(s), saved %d bytes: %s",
+                             len(r["frozen"]), r["saved_bytes"],
+                             [x["date"] for x in r["frozen"]])
+                for f in r["failed"]:
+                    log.error("cold: freeze %s failed: %s", f["date"], f["error"])
+        except Exception as e:
+            log.error("cold housekeeper sweep failed: %s", e)
+        time.sleep(6 * 3600)
+
+
+threading.Thread(target=_cold_housekeeper, daemon=True,
+                 name="cold-housekeeper").start()
+
 # 上一次就地更新留下的 `<exe>.old` / `.new`：那时它们还被占用着删不掉（正在跑的就是旧文件），
 # 只能等下一次启动。删不掉也不报错——残留一个 30MB 的旧 exe 是小事，
 # 为它中断启动是大事（260808）。
@@ -734,6 +769,20 @@ def captures_list():
         request.args.get("source", "")))
 
 
+def _cold_block(date: str = "", source: str = ""):
+    """按日期读录制的端点统一的冷藏门：冷藏的天读出来是空的，必须说出来。
+
+    回一个空结果等于告诉调用方"那天什么都没录到"——分析 Agent 会据此下结论，而这是本项目
+    最不能容忍的失败形状（惯犯 ③）。409 = 资源在，但当前状态下读不了，解冻即可。
+    `/api/captures` 是例外：界面靠它画日期条，那里用 `cold` 标记而不是 409。
+    """
+    date = date or time.strftime("%Y-%m-%d", time.localtime())
+    if not capture_store.is_cold(date, source):
+        return None
+    return jsonify(error="cold", detail=f"{date} 已冷藏，解冻后才能读（POST /api/captures/thaw）",
+                   date=date, source=source), 409
+
+
 @app.route("/api/grep")
 def api_grep():
     """在指定日期录制里搜文本（与 cli grep 同源，走 capture_store.grep）。
@@ -742,6 +791,9 @@ def api_grep():
     tool_result|tool_use|tools）/ limit（默认 50）/ case / fixed（后两个传 1/true 启用）。
     返回 items:[{id,ts_start,kind,where,snippet,match_count}] + coverage（搜了哪、跳过多少）。"""
     date = request.args.get("date") or time.strftime("%Y-%m-%d", time.localtime())
+    blocked = _cold_block(date, request.args.get("source", ""))
+    if blocked:
+        return blocked
     def _to_int(v, d):
         try:
             return int(v)
@@ -769,6 +821,9 @@ def api_stats():
     返回 kinds/models/statuses 分布 + tokens 四项（含 cache_creation）+ cache_hit_ratio +
     total_ms{p50,p95,max}。不做美元换算（单价随模型/链路/TTL 变）。
     参数另有 session / exclude_session（双 CC 审计时排除审计者自身）。"""
+    blocked = _cold_block(request.args.get("date", ""), request.args.get("source", ""))
+    if blocked:
+        return blocked
     return jsonify(capture_store.stats(request.args.get("date"),
                                        request.args.get("exclude_session", ""),
                                        request.args.get("session", ""),
@@ -783,6 +838,9 @@ def api_unknowns():
     返回每维度 [{value,count,samples,snippet,betas(提升度筛过),hosts,cc_versions}]
     + betas{new,known} + degraded（本工具录制降级，性质不同）+ known 基准 + note。
     **判读先看 hosts**：单一第三方 host 独占 = 网关差异，不是 CC 协议演进。"""
+    blocked = _cold_block(request.args.get("date", ""), request.args.get("source", ""))
+    if blocked:
+        return blocked
     return jsonify(capture_store.unknowns(request.args.get("date"),
                                           request.args.get("exclude_session", ""),
                                           request.args.get("session", ""),
@@ -822,6 +880,9 @@ def dag_view():
     excl = request.args.get("exclude_session", "")
     sess = request.args.get("session", "")
     src = request.args.get("source", "")
+    blocked = _cold_block(date, src)
+    if blocked:
+        return blocked
     # 不带 session 过滤的整天图走 _dag_of（缓存实现只此一份，子代理线用的是同一份）；
     # 带过滤的是另一张图，不进缓存也不该进——它不是"这一天"，键相同内容不同。
     if not (excl or sess):
@@ -870,6 +931,9 @@ def actions_view():
 
     date = request.args.get("date") or time.strftime("%Y-%m-%d", time.localtime())
     src = request.args.get("source", "")
+    blocked = _cold_block(date, src)
+    if blocked:
+        return blocked
     lane = request.args.get("lane", "")
     sess = request.args.get("session", "")
     since = max(0, _to_int(request.args.get("since", 0), 0))
@@ -1017,6 +1081,11 @@ def observation_trace():
     source = request.args.get("source", "")
     try:
         capture_store._validate_date(date)
+        # 冷藏的天读出来是零个节点。回一份"空轨迹"就等于说"那天什么都没录到"，而实际是
+        # 收起来了——与 list_captures 的 cold 标记同一条理由：静默空是最坏的形状。
+        if capture_store.is_cold(date, source):
+            return jsonify(error="cold", detail=f"{date} 已冷藏，解冻后才能读轨迹",
+                           date=date, source=source), 409
         return jsonify(observe_trace.project(date, source,
                        request.args.get("lane", ""), request.args.get("session", ""),
                        _dag_of(date, source)))
@@ -1270,6 +1339,61 @@ def captures_uncompact():
     data = request.get_json(silent=True) or {}
     return _store_call(capture_store.uncompact_date,
                        data.get("date") or "", data.get("source") or "")
+
+
+@app.route("/api/captures/freeze", methods=["POST"])
+def captures_freeze():
+    """冷藏：深压收进 `captures/cold/`，**这天从日期列表里消失**，要看先解冻。
+
+    body: {date?, source?, older_than?}。不给 date 则按"多久没点开过"扫一轮
+    （older_than 缺省用配置里的天数）。今天永不冻。
+    返回 {ok, frozen:[{date,count,pack_bytes,cold_bytes,saved_bytes,ratio}], failed:[]}。
+
+    与 compact / archive 的分工：compact 是原地瘦身、照常查看；archive 是打成可搬运的
+    单文件拷去别的机器；冷藏是本机收起来，拿"能不能直接翻"换体积。"""
+    data = request.get_json(silent=True) or {}
+    source = data.get("source") or ""
+    date = data.get("date")
+    if date:
+        try:
+            return jsonify({"ok": True, "frozen": [capture_store.freeze_date(date, source)],
+                            "failed": []})
+        except capture_store.StoreError as e:
+            return jsonify({"ok": False, "error_code": e.code, "error": str(e)}), 500
+    older = data.get("older_than")
+    if not isinstance(older, int) or older <= 0:
+        older = (CFG.get_config().get("cold_storage") or {}).get("days") or 0
+    r = capture_store.sweep_cold(older, source)
+    return jsonify({"ok": bool(r["frozen"]) or not r["failed"], **r})
+
+
+@app.route("/api/captures/thaw", methods=["POST"])
+def captures_thaw():
+    """解冻：把冷藏的一天还原成 pack，这天重新出现在日期列表里。body: {date, source?}。"""
+    data = request.get_json(silent=True) or {}
+    return _store_call(capture_store.thaw_date,
+                       data.get("date") or "", data.get("source") or "")
+
+
+@app.route("/api/captures/cold")
+def captures_cold():
+    """冷藏清单（界面的折叠区读它）。不解压，只读每个文件的首行说明。"""
+    source = request.args.get("source", "")
+    return jsonify({"ok": True, "source": source,
+                    "items": capture_store.list_cold(source)})
+
+
+@app.route("/api/captures/viewed", methods=["POST"])
+def captures_viewed():
+    """记一次「用户点开了这天」。自动冷藏的判据读它。body: {date, source?}。
+
+    **只由界面显式打点**，不在 GET /api/captures 里隐式记：分析 Agent 扫一遍全年录制
+    就会把所有日期焐热，自动冷藏从此永远不触发——一个不报错、只会静静失效的功能。"""
+    data = request.get_json(silent=True) or {}
+    return _store_call(lambda date, source: {
+        "date": date, "source": source,
+        "at": capture_store.mark_viewed(date, source)},
+        data.get("date") or "", data.get("source") or "")
 
 
 @app.route("/api/captures/archive", methods=["POST"])
@@ -1714,6 +1838,7 @@ def about():
         "captures_dir": str(capture_store.CAPTURES_DIR),
         "log_path": str(CFG.LOG_FILE),
         "retention_removed": _RETENTION_REMOVED,   # 本次启动清掉的日期（供设置页反馈）
+        "cold_swept": _COLD_SWEPT,                 # 本次运行冷藏掉的日期（同上，自动动数据要看得见）
         # 自描述入口：AI 拿到 about 就知道去哪读完整用法，不必先知道有哪些端点（260801）
         "ai_guide": "/api/ai-guide",
     })
@@ -1799,10 +1924,17 @@ def storage():
                     largest = {"date": stem, "bytes": size}
     except OSError as err:
         log.debug("usage day scan failed: %s", err)
+    # 冷藏（260913）：它在 captures/cold/ 里，上面按目录名认日期的那趟扫描看不见它，
+    # 所以"天数"要单列一份，否则冷藏一开，界面上的录制天数会莫名其妙地往下掉。
+    # **cold_bytes 是明细不是加数**：`_dir_usage` 递归子目录，这些字节已经算在 captures
+    # 里了，再加进 total_bytes 就是重复计数。
+    cold_rows = capture_store.list_cold()
+    cold_bytes = sum(r["size"] for r in cold_rows)
     return jsonify({
         "data_dir": str(CFG.CONFIG_DIR),
         "captures": caps, "archives": arch, "snapshots": snaps, "sources": srcs,
         "packed_days": packed_days,
+        "cold_days": len(cold_rows), "cold_bytes": cold_bytes,
         # 还能压出多少空间：按实测 20~34x 保守取 20x（说"最少能省这么多"，不夸大）
         "compactable_bytes": compactable,
         "compactable_saving": int(compactable * 0.95) if compactable else 0,

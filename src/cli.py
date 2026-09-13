@@ -473,6 +473,44 @@ def cmd_uncompact(a) -> None:
         _die(e.code, str(e))
 
 
+def cmd_freeze(a) -> None:
+    """冷藏：深压收进 captures/cold/，**这天从日期列表里消失**，要看先 thaw。
+
+    与 compact 的区别：compact 之后照常查看（读取侧透明），冷藏之后不能直接翻——
+    它拿掉的正是随机访问，换来实测再省约 4 倍的体积。
+    """
+    src = getattr(a, "source", "")
+    if a.date:
+        try:
+            _out({"ok": True, "frozen": [capture_store.freeze_date(a.date, src)], "failed": []})
+        except capture_store.StoreError as e:
+            _die(e.code, str(e))
+        return
+    days = a.older_than
+    if days is None:
+        days = (CFG.get_config().get("cold_storage") or {}).get("days") or 0
+    r = capture_store.sweep_cold(days, src)
+    _out({"ok": bool(r["frozen"]) or not r["failed"], **r})
+
+
+def cmd_thaw(a) -> None:
+    if not a.date:
+        _die("bad_args", "要 --date YYYY-MM-DD")
+    try:
+        _out({"ok": True, **capture_store.thaw_date(a.date, getattr(a, "source", ""))})
+    except capture_store.StoreError as e:
+        _die(e.code, str(e))
+
+
+def cmd_cold(a) -> None:
+    """冷藏清单。不解压，只读每个文件的首行说明。"""
+    src = getattr(a, "source", "")
+    items = capture_store.list_cold(src)
+    _out({"ok": True, "source": src, "items": items,
+          "bytes": sum(x["size"] for x in items),
+          "hint": "点开某一天前先 thaw --date；冷藏的天不出现在 dates 里"})
+
+
 def cmd_archive(a) -> None:
     """归档成单文件 .ccwa（可拷到另一台机器 import）。默认保留原录制，要清理加 --clear。"""
     if not a.date:
@@ -642,6 +680,22 @@ def main(argv=None) -> None:
     pun.add_argument("--date")
     _source_arg(pun)
     pun.set_defaults(fn=cmd_uncompact)
+
+    pfz = sub.add_parser("freeze", help="冷藏录制（深压收起，比压实再省约 4x；要看先 thaw）")
+    pfz.add_argument("--date", help="指定某天；不给则按「多久没点开过」扫一轮")
+    pfz.add_argument("--older-than", dest="older_than", type=int,
+                     help="冷藏超过 N 天没点开过的（默认取设置里的天数）")
+    _source_arg(pfz)
+    pfz.set_defaults(fn=cmd_freeze)
+
+    pth = sub.add_parser("thaw", help="解冻冷藏的一天，让它回到日期列表")
+    pth.add_argument("--date")
+    _source_arg(pth)
+    pth.set_defaults(fn=cmd_thaw)
+
+    pcd = sub.add_parser("cold", help="冷藏清单（哪些天被收起来了）")
+    _source_arg(pcd)
+    pcd.set_defaults(fn=cmd_cold)
 
     pa = sub.add_parser("archive", help="归档成单文件 .ccwa（可拷到另一台机器 import）")
     pa.add_argument("--date")

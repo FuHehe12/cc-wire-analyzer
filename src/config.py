@@ -4,6 +4,8 @@
   - ui_lang: 界面语言 zh/en/ja（默认 zh）
   - auto_start_proxy: 启动软件时是否自动启动代理（默认 False；260713 前是死配置，从没接线）
   - retention_days: 捕获录制保留天数（默认 30；260713 前是死配置，UI 承诺自动清理却零实现）
+  - cold_storage: 自动冷藏（enabled 默认 True / days 默认 7）——久不点开的日期深压收起，
+    点一下解冻；days <= 0 = 从不自动冷藏
   - translate: LLM 配置（api_key/base_url/model/temperature 供翻译与 AI 解读共用）
     + target_lang: 翻译目标语言 zh/en/ja（默认 zh）
   - explain: AI 解读配置（prompt 留空 = 用内置默认提示词，按界面语言取）
@@ -46,6 +48,12 @@ _DEFAULTS = {
     "rolling_compact": True,
     # 切段阈值（MB），读写两侧夹到 20~2000（见 _clamp_seg_mb）。
     "rolling_compact_mb": 200,
+    # 自动冷藏（260913）：超过 days 天没点开过的日期收进 captures/cold/，实测在压实之上
+    # 再省约 4 倍（13.12MB → 3.11MB）。代价是冷藏态不能直接翻，点一下解冻——这正是
+    # 「已冷藏折起来」那个交互要的形态。
+    # 默认开：录制是只增不减的，而绝大多数历史录制录完就再也没被点开过。
+    # days <= 0 = 从不自动冷藏（显式出口，与 retention_days 同一条口径，不是当成 0 天全冻）。
+    "cold_storage": {"enabled": True, "days": 7},
     "translate": {
         "api_key": "",
         "base_url": "https://api.deepseek.com",
@@ -107,6 +115,9 @@ def get_config() -> dict:
     an = merged.get("analysis") or {}
     an["concurrency"] = _clamp_workers(an.get("concurrency"))
     merged["rolling_compact_mb"] = _clamp_seg_mb(merged.get("rolling_compact_mb"))
+    cold = merged.get("cold_storage") or {}
+    cold["days"] = _clamp_cold_days(cold.get("days"))
+    cold["enabled"] = bool(cold.get("enabled"))
     return merged
 
 
@@ -119,6 +130,16 @@ def _clamp_seg_mb(v, default: int = 200) -> int:
     """
     try:
         return max(20, min(2000, int(v) or default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _clamp_cold_days(v, default: int = 7) -> int:
+    """自动冷藏天数夹到 0~365。0 是显式的「从不自动冷藏」出口（与 retention_days 同一条
+    口径），所以下限不是 1；上限 365 防手滑填个天文数字——那等于把开关关掉却以为它开着，
+    比明确关掉更糟，因为它看起来是开的（与 _clamp_seg_mb 末段同一条理由）。"""
+    try:
+        return max(0, min(365, int(v)))
     except (TypeError, ValueError):
         return default
 
@@ -167,6 +188,9 @@ def set_config(updates: dict) -> dict:
     tr["chat_context_max_chars"] = _clamp_chars(tr.get("chat_context_max_chars"))
     an = current.get("analysis") or {}
     an["concurrency"] = _clamp_workers(an.get("concurrency"))
+    cold = current.get("cold_storage") or {}
+    cold["days"] = _clamp_cold_days(cold.get("days"))
+    cold["enabled"] = bool(cold.get("enabled"))
     CONFIG_FILE.write_text(
         json.dumps(current, ensure_ascii=False, indent=2),
         encoding="utf-8",
