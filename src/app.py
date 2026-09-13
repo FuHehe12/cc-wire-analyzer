@@ -169,7 +169,7 @@ _COLD_SWEPT: list[str] = []
 
 
 def _cold_housekeeper():
-    """把过了期限还没被点开的日期冷藏起来。启动跑一次，之后每 6 小时一次。
+    """把过了期限还没被点开的日期冷藏起来。起一次跑一次，之后每 6 小时一次。
 
     **必须在后台线程里**：首次开启时积压的历史会一次性全被收起来（这是拍板的口径），
     实测单天约 4.5 秒，几十天就是几分钟——挡在启动路径上等于软件打不开。
@@ -194,8 +194,24 @@ def _cold_housekeeper():
         time.sleep(6 * 3600)
 
 
-threading.Thread(target=_cold_housekeeper, daemon=True,
-                 name="cold-housekeeper").start()
+_COLD_THREAD: threading.Thread | None = None
+
+
+def start_cold_housekeeper() -> None:
+    """由**真正要长期跑下去的进程**显式启动（三个入口：desktop 的 GUI / serve，与
+    `app.py` 直跑），不在 import 时起，也不挂在 `set_listen_port` 上。
+
+    与 retention / rolling 那两个不同，这一个会**搬数据**（一天从 captures 根挪进 cold/）。
+    `import app` 的场合不只有起服务：自测、体检、离线工具都会 import，其中有些还会为了
+    拿端口号去调 `set_listen_port`。在那些场合起一个会自己动数据的线程，测到一半存储形态
+    就变了（view_selftest 的「/api/storage 逐字节不变」正是这么被冻掉一天而失败的）。
+    """
+    global _COLD_THREAD
+    if _COLD_THREAD and _COLD_THREAD.is_alive():
+        return
+    _COLD_THREAD = threading.Thread(target=_cold_housekeeper, daemon=True,
+                                    name="cold-housekeeper")
+    _COLD_THREAD.start()
 
 # 上一次就地更新留下的 `<exe>.old` / `.new`：那时它们还被占用着删不掉（正在跑的就是旧文件），
 # 只能等下一次启动。删不掉也不报错——残留一个 30MB 的旧 exe 是小事，
@@ -4106,6 +4122,7 @@ if __name__ == "__main__":
     if not port:
         raise SystemExit("无空闲端口（5051-5100 全占用）")
     set_listen_port(port)
+    start_cold_housekeeper()
     CFG.write_port(port)
     print(f"CC Wire Analyzer 启动于 http://127.0.0.1:{port}/", flush=True)
     app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False, threaded=True)
