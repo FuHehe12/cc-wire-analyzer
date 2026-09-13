@@ -209,6 +209,32 @@
           "size": 3728
         }
       ]
+    },
+    {
+      "date": "2026-09-13",
+      "reason": "First batch of the snapshot's planned full retirement, at the user's direction: the three license copies are byte-identical to the root files, and the handbook differs from its living mainline version (docs/guides/同类工具构建手册.md) only in two link paths. The remaining files stay pending a content review. Still recoverable with `git show 9b1673f:public/<path>` — the entries below keep the original digests so the recovered bytes can be verified.",
+      "files": [
+        {
+          "path": "handbook/同类工具构建手册.md",
+          "sha256": "63a1605f34c26c7cfcd58def7cb2c895b489caf4f922db50277ce41acf4851d9",
+          "size": 55974
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "5414605e2f9bc3cbcabbdae60ad4d990eaee273c630033f63857d8982d970f79",
+          "size": 1086
+        },
+        {
+          "path": "LICENSE-DOCS",
+          "sha256": "0bc8f19547ba04532a83fdc88207fd1b4de23c8e76a7eb390af4000874b5f7c8",
+          "size": 892
+        },
+        {
+          "path": "THIRD_PARTY_NOTICES",
+          "sha256": "9d1ce039049cd82cf7002c954e95bea44045259067ab169d70ff879d77f12b79",
+          "size": 778
+        }
+      ]
     }
   ],
   "files": [
@@ -338,21 +364,6 @@
       "size": 370
     },
     {
-      "path": "handbook/同类工具构建手册.md",
-      "sha256": "63a1605f34c26c7cfcd58def7cb2c895b489caf4f922db50277ce41acf4851d9",
-      "size": 55974
-    },
-    {
-      "path": "LICENSE",
-      "sha256": "5414605e2f9bc3cbcabbdae60ad4d990eaee273c630033f63857d8982d970f79",
-      "size": 1086
-    },
-    {
-      "path": "LICENSE-DOCS",
-      "sha256": "0bc8f19547ba04532a83fdc88207fd1b4de23c8e76a7eb390af4000874b5f7c8",
-      "size": 892
-    },
-    {
       "path": "README.ja.md",
       "sha256": "2a3e1a54319ba16c46371dcd6ba384d433caaed4bac2229d2b21f164eee3c825",
       "size": 11173
@@ -366,11 +377,6 @@
       "path": "README.zh.md",
       "sha256": "cef8ef9a45e4d54163333c14ffd8ef07b9cf1803558c0238b6c07670a3a51972",
       "size": 7771
-    },
-    {
-      "path": "THIRD_PARTY_NOTICES",
-      "sha256": "9d1ce039049cd82cf7002c954e95bea44045259067ab169d70ff879d77f12b79",
-      "size": 778
     }
   ]
 }
