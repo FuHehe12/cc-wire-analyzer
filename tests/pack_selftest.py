@@ -283,6 +283,53 @@ def run(TMP: Path) -> None:
         pass
     ok(not dst3.exists(), "导入失败不留半成品目录")
 
+    # ===== 9b. 冷藏往返（.ccwz）=====
+    # 冷藏拿随机访问换体积，所以它唯一的验收线就是**还原得回来**：解冻出的 pack 必须能
+    # 还原成与原文件逐字节一致的 jsonl。只比 count 是不够的——条数对而内容错，正是
+    # 界面上看不出任何异常的那类损坏。
+    print("\n[9b] 冷藏往返（.ccwz）")
+    cold = TMP / "2026-08-24.ccwz"
+    cinfo = P.freeze(pk, cold)
+    ok(cold.exists() and cinfo["count"] == len(recs), "冷藏成单文件并记下条数")
+    ok(P.is_pack(pk), "冷藏不删源目录（删不删由调用方在校验后决定）")
+    cm = P.read_cold_manifest(cold)
+    ok(cm["date"] == "2026-08-24" and cm["count"] == len(recs),
+       "不解压就能读出日期与条数（首行明文说明）")
+    ok(cold.stat().st_size < pack_size, f"确实更小（pack {pack_size} → 冷藏 {cold.stat().st_size}）")
+
+    thawed = TMP / "thawed.pack"
+    tinfo = P.thaw(cold, thawed)
+    ok(P.is_pack(thawed) and tinfo["count"] == len(recs), "解冻出的是个合法 pack")
+    ok(P.read_manifest(thawed).get("raw_blake2b") == mf["raw_blake2b"],
+       "解冻后 manifest 仍记着原录制的哈希")
+    back3 = TMP / "restored3.jsonl"
+    P.unpack(thawed, back3)
+    ok(back3.read_bytes() == src.read_bytes(), "冷藏往返后仍与原录制逐字节一致")
+    with P.PackReader(thawed) as r:
+        ok(r.record_i(5) == recs[5], "解冻后的随机访问取出同一条记录")
+    ok(P.idx_path(thawed).exists(), "索引跟着冷藏走（解冻后免掉一次全量重建）")
+
+    # 坏冷藏文件要拒绝，且不留半成品
+    junkz = TMP / "junk.ccwz"
+    junkz.write_bytes(b"not a cold file")
+    try:
+        P.read_cold_manifest(junkz)
+        ok(False, "非冷藏文件必须拒绝", "居然读了")
+    except P.PackError as e:
+        ok(e.code == "bad_cold", "非冷藏文件报 bad_cold", e.code)
+    # 正文被改一个字节 → 必须在落盘成录制之前就被抓住
+    tampered = TMP / "tampered.ccwz"
+    raw = bytearray(cold.read_bytes())
+    raw[-1] ^= 0xFF
+    tampered.write_bytes(bytes(raw))
+    dst4 = TMP / "shouldnotexist2.pack"
+    try:
+        P.thaw(tampered, dst4)
+        ok(False, "被改过的冷藏文件必须拒绝解冻", "居然解了")
+    except P.PackError as e:
+        ok(e.code in ("bad_cold", "verify_failed"), "被改过的冷藏文件解冻失败", e.code)
+    ok(not dst4.exists(), "解冻失败不留半成品目录")
+
     # ===== 10. 存储分层：压实前后读取行为必须一致 =====
     # 这一节测的不是格式而是**契约**：同一天压实前后，列表 / DAG / 详情 / grep / 索引条数
     # 必须逐字节相同。压实是"换个存法"，不是"换份数据"——这条一破，压实就从优化变成了

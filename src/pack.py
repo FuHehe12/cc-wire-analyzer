@@ -574,3 +574,199 @@ def _rmtree_quiet(p: Path) -> None:
         shutil.rmtree(p, ignore_errors=True)
     except OSError:
         pass
+
+
+# ===== 冷藏（.ccwz）：拿随机访问换体积 =====
+#
+# pack 为了随机读单条，把每个 blob 压成独立的 zstd 帧，且骨架与 map 明文放着。久不翻的天
+# 用不上随机访问，那份代价就纯是浪费。实测 `2026-09-02.pack`（13.12MB）：
+#
+#   blobs.zst 9.08MB / skel.jsonl 3.92MB（明文）/ map.json 46.5KB（明文）/ idx 84.8KB
+#   逐项按 level 19 重压：合计 8.96MB（省 32%）
+#   **把 blob 解回原文、四段拼成一个流再压**（level 19 + 长距离匹配）：3.01MB
+#
+# 差距全在最后那一步：对已经是 zstd-3 的 blobs.zst 再压一遍等于白压，而跨 blob 的重复
+# 只有落进同一个流才看得见。代价是冷藏态**不能翻**，得先解冻——这正好对上界面里
+# 「已冷藏的日期折起来，点一下才展开」的交互。
+#
+# 与 `.ccwa` 的分工（别混）：
+#   .ccwa  可搬运的跨机归档，ZIP_STORED，拷到别的机器不解压就能翻
+#   .ccwz  本机冷藏，一个 zstd 帧，只为省地方，翻之前必须 thaw 回 pack
+#
+# 解冻要重建 blob 偏移：冷藏里存的是解压后的 blob 字节，`thaw` 逐个按 `_LEVEL` 压回去并
+# 重算 [off, clen]，产出与 `write_pack` 同构——读取侧一个字节都不用改。
+
+COLD_SUFFIX = ".ccwz"
+COLD_SCHEMA = 1
+
+# 冷藏用 level 19 + 长距离匹配（window_log=27 → 128MB 窗口）。这里与 `_LEVEL=3` 的取舍
+# 正好相反：压实在写盘热路径边上、要快；冷藏一天只跑一次、之后放着不动，慢几秒换 4 倍空间。
+_COLD_LEVEL = 19
+_COLD_WINDOW_LOG = 27
+_COLD_PARTS = (_MAP, _SKEL, "blobs.raw", _IDX)
+
+
+def _cold_params() -> "zstd.ZstdCompressionParameters":
+    return zstd.ZstdCompressionParameters.from_level(
+        _COLD_LEVEL, enable_ldm=True, window_log=_COLD_WINDOW_LOG)
+
+
+def is_cold(p: Path) -> bool:
+    return p.is_file() and p.suffix == COLD_SUFFIX
+
+
+def read_cold_manifest(src: Path) -> dict:
+    """只读冷藏文件的首行 manifest（不解压正文）。列表页与体检用。"""
+    try:
+        with src.open("rb") as f:
+            head = f.readline()
+    except OSError as e:
+        raise PackError("cold_unreadable", f"读不了冷藏文件 {src.name}：{e}")
+    try:
+        m = json.loads(head.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise PackError("bad_cold", f"{src.name} 首行不是本工具的冷藏说明：{e}")
+    if m.get("cold_schema") != COLD_SCHEMA:
+        raise PackError("schema_mismatch",
+                        f"冷藏格式版本 {m.get('cold_schema')!r}，本版本只认 {COLD_SCHEMA}")
+    return m
+
+
+def freeze(pack_dir: Path, dst: Path) -> dict:
+    """pack 目录 → 单文件 `.ccwz`。**不删源目录**——删不删由调用方在校验通过后决定。
+
+    布局：第一行是明文 JSON manifest（`head -1` 就能看清是哪天、多少条），其后是一个 zstd
+    帧，解开按 `_COLD_PARTS` 的顺序首尾拼接。段长写在 manifest 的 parts 里，所以拼接不需要
+    分隔符，也就不存在「内容里恰好出现分隔符」这类坑。
+    """
+    if not is_pack(pack_dir):
+        raise PackError("not_a_pack", f"不是 pack 目录：{pack_dir}")
+    m = _read_map(pack_dir)
+    blobs = m.get("blobs") or []
+    dctx = zstd.ZstdDecompressor()
+    try:
+        pool = (pack_dir / _BLOBS).read_bytes()
+        raw = bytearray()
+        # blob 表改成只留 rawlen：off/clen 描述的是 blobs.zst 里的位置，冷藏态没有那个文件，
+        # 留着就是留一份解冻时必然要推翻的假数据。
+        for off, clen, rawlen in blobs:
+            raw += dctx.decompress(pool[off:off + clen], max_output_size=rawlen)
+        cold_map = {**m, "blobs": [b[2] for b in blobs]}
+        parts = {
+            _MAP: json.dumps(cold_map, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+            _SKEL: (pack_dir / _SKEL).read_bytes(),
+            "blobs.raw": bytes(raw),
+            _IDX: (pack_dir / _IDX).read_bytes() if (pack_dir / _IDX).exists() else b"",
+        }
+    except zstd.ZstdError as e:
+        raise PackError("cold_failed", f"冷藏时解 blob 失败：{e}")
+    except OSError as e:
+        raise PackError("cold_failed", f"冷藏读盘失败：{e}")
+
+    payload = b"".join(parts[name] for name in _COLD_PARTS)
+    manifest = {
+        "cold_schema": COLD_SCHEMA,
+        "date": m.get("date", ""),
+        "label": m.get("label", ""),
+        "count": m.get("count", 0),
+        "blob_count": len(blobs),
+        "parts": [[name, len(parts[name])] for name in _COLD_PARTS],
+        "payload_bytes": len(payload),
+        "payload_blake2b": hashlib.blake2b(payload, digest_size=16).hexdigest(),
+        "codec": f"zstd-{_COLD_LEVEL}-ldm",
+        "pack_bytes": sum(f.stat().st_size for f in pack_dir.iterdir() if f.is_file()),
+        "frozen_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+        "pack": {k: v for k, v in m.items() if k not in ("blobs", "lines")},
+    }
+    t0 = time.time()
+    try:
+        z = zstd.ZstdCompressor(compression_params=_cold_params()).compress(payload)
+        with dst.open("wb") as f:
+            f.write(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            f.write(b"\n")
+            f.write(z)
+    except (OSError, zstd.ZstdError) as e:
+        try:
+            if dst.exists():
+                dst.unlink()
+        except OSError:
+            pass
+        raise PackError("cold_failed", f"写冷藏文件失败：{e}")
+    return {**manifest, "path": str(dst), "size": dst.stat().st_size,
+            "elapsed_ms": int((time.time() - t0) * 1000)}
+
+
+def thaw(src: Path, pack_dir: Path) -> dict:
+    """`.ccwz` → pack 目录（冷藏的逆操作）。目标必须不存在或为空。
+
+    先按 manifest 的 blake2b 复核解出来的正文，再落盘：冷藏是长期放着的形态，位翻转与
+    半截文件都要在**还原成录制之前**被抓住，而不是等某天点开某一条才发现内容不对。
+    """
+    manifest = read_cold_manifest(src)
+    if pack_dir.exists() and any(pack_dir.iterdir()):
+        raise PackError("dst_not_empty", f"目标目录非空：{pack_dir}")
+    try:
+        data = src.read_bytes()
+    except OSError as e:
+        raise PackError("cold_unreadable", f"读不了冷藏文件 {src.name}：{e}")
+    nl = data.find(b"\n")
+    if nl < 0:
+        raise PackError("bad_cold", f"{src.name} 只有说明行，没有正文")
+    try:
+        # 走 decompressobj 而不是 decompress()：后者要么依赖帧里写没写内容长度，要么要调用方
+        # 先声明一个上限，而这里正文可能几十 MB 且长度就记在说明行里——不必为它多一条分支。
+        payload = zstd.ZstdDecompressor().decompressobj().decompress(data[nl + 1:])
+    except zstd.ZstdError as e:
+        raise PackError("bad_cold", f"{src.name} 正文解不开：{e}")
+    if hashlib.blake2b(payload, digest_size=16).hexdigest() != manifest.get("payload_blake2b"):
+        raise PackError("verify_failed", f"{src.name} 正文与说明行记录的哈希不符，已放弃解冻")
+
+    parts, at = {}, 0
+    for name, size in manifest.get("parts") or []:
+        parts[name] = payload[at:at + size]
+        at += size
+    for name in (_MAP, _SKEL, "blobs.raw"):
+        if name not in parts:
+            raise PackError("bad_cold", f"冷藏文件缺段 {name}")
+    try:
+        cold_map = json.loads(parts[_MAP].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise PackError("bad_cold", f"冷藏里的 {_MAP} 读不出来：{e}")
+
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        cctx = zstd.ZstdCompressor(level=_LEVEL)
+        blobs, pos, rawpos = [], 0, 0
+        with (pack_dir / _BLOBS).open("wb") as fb:
+            for rawlen in cold_map.get("blobs") or []:
+                z = cctx.compress(parts["blobs.raw"][rawpos:rawpos + rawlen])
+                fb.write(z)
+                blobs.append([pos, len(z), rawlen])
+                pos += len(z)
+                rawpos += rawlen
+        if rawpos != len(parts["blobs.raw"]):
+            raise PackError("bad_cold",
+                            f"blob 长度表与正文对不上（表 {rawpos}B / 正文 {len(parts['blobs.raw'])}B）")
+        (pack_dir / _SKEL).write_bytes(parts[_SKEL])
+        (pack_dir / _MAP).write_text(
+            json.dumps({**cold_map, "blobs": blobs}, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8")
+        if parts.get(_IDX):
+            (pack_dir / _IDX).write_bytes(parts[_IDX])
+    except PackError:
+        _rmtree_quiet(pack_dir)
+        raise
+    except (OSError, zstd.ZstdError) as e:
+        _rmtree_quiet(pack_dir)
+        raise PackError("thaw_failed", f"解冻写盘失败：{e}")
+    try:
+        got = _read_map(pack_dir)        # 解完立刻验版本与可读性，别等用户点开才炸
+    except PackError:
+        _rmtree_quiet(pack_dir)
+        raise
+    if got.get("count") != manifest.get("count"):
+        _rmtree_quiet(pack_dir)
+        raise PackError("verify_failed",
+                        f"解冻后条数不符（说明行 {manifest.get('count')} / 实得 {got.get('count')}）")
+    return {"date": manifest.get("date", ""), "count": got.get("count", 0),
+            "bytes": sum(f.stat().st_size for f in pack_dir.iterdir() if f.is_file())}
