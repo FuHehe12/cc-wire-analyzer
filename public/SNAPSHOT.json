@@ -2,27 +2,33 @@
   "captured_at": "2026-09-06",
   "source_commit": "a2553a45573658ba5ed80d45b6344bf4f8091ca8",
   "scope": "Local disclosure files at restructuring start; not a live-site verification or a runnable software checkout.",
+  "removed": {
+    "date": "2026-09-13",
+    "reason": "Changelog work concluded on the mainline; these working copies were dropped at the user's instruction. Still recoverable with `git show 9b1673f:public/<path>` — the entries below keep the original digests so the recovered bytes can be verified.",
+    "files": [
+      {
+        "path": "CHANGELOG-history.md",
+        "sha256": "15b2efe59e5a0b8294d1e743ee5f562c8c05df7fc2f58f7832b3fb28c61cb7ef",
+        "size": 224260
+      },
+      {
+        "path": "CHANGELOG-history.zh.md",
+        "sha256": "1bab3a12842a63a0d978cccf1a262dcab36e85915d6beedc5ccd5cf73a2863a7",
+        "size": 199594
+      },
+      {
+        "path": "CHANGELOG.md",
+        "sha256": "701905ec487a7c0b08a6743f65df7c2ceae0256c96acad4fcf8ce4b9e3bd2899",
+        "size": 3173
+      },
+      {
+        "path": "CHANGELOG.zh.md",
+        "sha256": "3485ccbc980580445126388edb487117be4890081ed9d786bfc24ab8523fe292",
+        "size": 2872
+      }
+    ]
+  },
   "files": [
-    {
-      "path": "CHANGELOG-history.md",
-      "sha256": "15b2efe59e5a0b8294d1e743ee5f562c8c05df7fc2f58f7832b3fb28c61cb7ef",
-      "size": 224260
-    },
-    {
-      "path": "CHANGELOG-history.zh.md",
-      "sha256": "1bab3a12842a63a0d978cccf1a262dcab36e85915d6beedc5ccd5cf73a2863a7",
-      "size": 199594
-    },
-    {
-      "path": "CHANGELOG.md",
-      "sha256": "701905ec487a7c0b08a6743f65df7c2ceae0256c96acad4fcf8ce4b9e3bd2899",
-      "size": 3173
-    },
-    {
-      "path": "CHANGELOG.zh.md",
-      "sha256": "3485ccbc980580445126388edb487117be4890081ed9d786bfc24ab8523fe292",
-      "size": 2872
-    },
     {
       "path": "CONTRIBUTING.md",
       "sha256": "8fb7e651ed3175a523eeb3a67c1c162ba07762f9ab3ec39328f0fb408b0edd8c",

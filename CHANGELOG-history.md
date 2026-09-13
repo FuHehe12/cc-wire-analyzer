@@ -1,6 +1,12 @@
 # 变更历史
 
-这里记录 v0.4.35 及更早版本的变化，当前版本见 [CHANGELOG.md](CHANGELOG.md)。一条一句，只说做了什么；想知道为什么这么定，顺着条目末尾的 issue 名去 `issues/closed/` 读（v0.4.27 及更早的条目大多没有 issue 名，那时还没有这个习惯，查 `git log` 或 `issues/closed/INDEX.md`）。260913 全文改写过一次，改写前的长版本在 `git log` 里，也另存于 [public/CHANGELOG-history.zh.md](public/CHANGELOG-history.zh.md)（中文）与 [public/CHANGELOG-history.md](public/CHANGELOG-history.md)（英文）。历史路径与行为不代表当前状态。
+这里记录 v0.4.36 及更早版本的变化，最新一版见 [CHANGELOG.md](CHANGELOG.md)。一条一句，只说做了什么；想知道为什么这么定，顺着条目末尾的 issue 名去 `issues/closed/` 读（v0.4.27 及更早的条目大多没有 issue 名，那时还没有这个习惯，查 `git log` 或 `issues/closed/INDEX.md`）。本文件被整理过两次，原文都在 git 里：260913 改写前的那版取 `git show 71b1499~1:CHANGELOG-history.md`，260906 瘦身前那份最长的（含大量解释性正文）取 `git show 9b1673f:public/CHANGELOG-history.zh.md`，英文全文同一提交下的 `public/CHANGELOG-history.md`。历史路径与行为不代表当前状态。
+
+## v0.4.36 - 2026-09-12
+
+### 文档
+
+- 观察者提示词写清了「最高目标」怎么判、什么样的变化才算换了目标。此前目标被抬高或收窄容易被记成普通调整。（issue 260909-260912_观察者提示词的判据演进）
 
 ## v0.4.35 - 2026-09-12
 

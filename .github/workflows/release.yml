@@ -170,16 +170,16 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout（取 CHANGELOG.md 与 tag message 做 release notes）
+      - name: Checkout（取 RELEASE_NOTES.md 做 release notes）
         uses: actions/checkout@v4
         # 不加 fetch-tags: true —— tag 触发时 checkout 本身就把触发 commit 的 SHA fetch 到
         # refs/tags/<tag>，与 fetch-tags 要拉的 annotated tag 对象同 ref 不同目标，git 直接
         # fatal "Cannot fetch both ..."（v0.3.0 首次 tag 触发实测，重试三次后 job 失败）。
 
-      - name: Fetch annotated tag（tag message 做 fallback notes 用）
-        # checkout 把 refs/tags/<tag> 指到了触发 commit（lightweight 化），%(contents) 读不到
-        # annotated message —— 强制覆盖回真 tag 对象。失败不致命：还有占位 fallback 兜底。
-        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" || true
+      # 260913 删掉了原来的 "Fetch annotated tag" 一步：它唯一的用途是把 tag message 取回来做
+      # fallback notes（checkout 会把 refs/tags/<tag> 指到触发 commit，%(contents) 读不到
+      # annotated message，需要强制覆盖回真 tag 对象）。fallback 已随 release notes 改为硬失败
+      # 而取消，这一步不再喂任何东西。要恢复 tag message 做正文时把它加回来。
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -187,10 +187,6 @@ jobs:
           path: artifacts
           merge-multiple: true   # 各平台 artifact 的文件合并到同一目录
 
-      # release notes 取 CHANGELOG.md 当前 tag 段落（单一真源，已在维护、最详细）。
-      # 不用 generate_release_notes：它按 PR 分组列 "What's Changed"，本项目是单人直接
-      # push commit（无 PR），结果只剩一行 Full Changelog 链接，CHANGELOG 和 tag message
-      # 全被忽略——v0.1.0/v0.2.0 的 release 页面即如此（260714 修）。
       # 校验和清单（260808）：软件内的「下载并安装」会取这个文件比对下载到的字节，
       # 对不上就删文件并报错。**没有它时软件会明说"本次无校验和"**，而不是默默降级——
       # 所以这一步不能悄悄失效。只 glob 产物名，不写 `*`：那会把清单自己也算进去。
@@ -200,28 +196,38 @@ jobs:
           sha256sum cc-wire-analyzer-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Build release notes from CHANGELOG
+      # release notes 取 RELEASE_NOTES.md 全文（260913 起）。此前取的是 CHANGELOG.md 的
+      # "## <TAG>" 段落，同一天用户把根目录两份 CHANGELOG 定为**只用中文**（本地自己看，
+      # 没有第二个读者），而 GitHub 发布仍要中英日三语——继续从 CHANGELOG 取就会静默发出
+      # 单语 release。于是三语正文独立成 RELEASE_NOTES.md，只装本次这一版，发完被下一版覆盖。
+      #
+      # 不用 generate_release_notes：它按 PR 分组列 "What's Changed"，本项目是单人直接
+      # push commit（无 PR），结果只剩一行 Full Changelog 链接——v0.1.0/v0.2.0 即如此（260714 修）。
+      #
+      # **tag 对不上就硬失败**，不再保留「CHANGELOG → tag message → 占位」那三层兜底。
+      # 那三层防的是「正文空白」，代价是正文错了也照发。发版是外向不可逆动作：拿上一版的
+      # 说明发出去，比 job 红一次糟得多，而红了只需改文件、删 tag、重推。
+      - name: Build release notes
         run: |
-          TAG="${GITHUB_REF_NAME}"   # 例 v0.2.0
-          # 提取 "## <TAG>" 段落：跳过标题行本身，遇下一个 "## " 截止。
-          # 纯字符串前缀匹配（兼容 "## v0.2.0 - 日期" 与 "## v0.1.0" 两种），免正则转义坑。
-          awk -v tag="$TAG" '
-            /^## / {
-              if (found) exit                       # 已在记录，遇下一版本标题 → 停
-              rest = substr($0, 4)                  # 去掉 "## "
-              if (rest == tag || substr(rest, 1, length(tag)+1) == tag " ") found = 1
-              next                                  # 标题行不进 body
-            }
-            found { print }
-          ' CHANGELOG.md > release_notes.md
-          # 三层兜底，绝不空白：
-          if [ ! -s release_notes.md ]; then
-            git tag -l --format='%(contents)' "$TAG" > release_notes.md   # fallback 1：tag message
+          TAG="${GITHUB_REF_NAME}"   # 例 v0.4.38
+          if [ ! -f RELEASE_NOTES.md ]; then
+            echo "::error::RELEASE_NOTES.md 不存在。GitHub 发布的三语正文取自它，发版前必须先写好。"
+            exit 1
           fi
-          if [ ! -s release_notes.md ]; then
-            echo "Release ${TAG}. See CHANGELOG.md for details." > release_notes.md   # fallback 2：占位
+          # 首行注释块里的 "tag: vX.Y.Z" 是这份正文自报的版本，用来挡「忘了更新」。
+          NOTES_TAG="$(sed -n 's/^tag:[[:space:]]*//p' RELEASE_NOTES.md | head -1)"
+          if [ "$NOTES_TAG" != "$TAG" ]; then
+            echo "::error::RELEASE_NOTES.md 停在 '${NOTES_TAG}'，本次发的是 '${TAG}'。先把三语正文改成本版再重推 tag。"
+            exit 1
           fi
-          echo "--- release_notes.md 首部 ---"; head -5 release_notes.md
+          # 正文 = HTML 注释块结束行 "-->" 之后的全部内容（注释在 GitHub 上不渲染，
+          # 但直接发出去会在 Release 页源码里留一坨说明，所以这里剥掉）。
+          awk 'body { print; next } /^-->[[:space:]]*$/ { body = 1 }' RELEASE_NOTES.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "::error::RELEASE_NOTES.md 的 '-->' 之后没有正文。"
+            exit 1
+          fi
+          echo "--- release_notes.md 首部 ---"; head -8 release_notes.md
 
       - name: Attach all assets to Release
         uses: softprops/action-gh-release@v2

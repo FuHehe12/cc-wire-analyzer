@@ -30,7 +30,9 @@ CONTRIBUTING 复述的开发约定失真（自测停在 2 条、不变量停在 
   7. 端点标题的机械事实（260904）：同一 (方法, 路径) 只准占一节；标题声明的方法与查询参数
      必须在代码里成立；`error_code` 的取值必须在代码里出现过
   8. markdown 相对链接点得到（第 3 项查的是"反引号里提到的文件在不在"，这项查"点下去到不到"）
-  9. 当前与历史 CHANGELOG 必须存在，全文不许机械硬折行；长度不机械检查（口径「一条一句」见 CLAUDE.md）
+  9. 当前与历史 CHANGELOG 必须存在，全文不许机械硬折行；长度不机械检查（口径「一条一句」见 CLAUDE.md）。
+     另查三份变更记录的分层（260913）：`CHANGELOG.md` 只准留一个版本、两份 CHANGELOG 不准出现语言小节、
+     `RELEASE_NOTES.md` 三语齐全且自报 tag 与 CHANGELOG 里那一版一致
   10. 架构总览 §3.1 端点分组表的**组覆盖**（软，260912）：每个 `/api/<组>` 前缀在表里出现过——
       只查组、不查具体端点，所以表里的通配写法（`/api/snapshots/*`）天然兼容
 
@@ -378,6 +380,52 @@ def _changelog_style(paths=None) -> list[str]:
     return wrapped
 
 
+RELEASE_NOTES = ROOT / "RELEASE_NOTES.md"
+_VER_HEAD = re.compile(r"^## (v\d+\.\d+\.\d+\S*)")
+_LANG_HEAD = re.compile(r"^#{3,4}\s*(中文|English|日本語)\s*$")
+_RN_LANGS = ("## 中文", "## English", "## 日本語")
+
+
+def _changelog_layout(cur=None, hist=None, notes=None) -> list[str]:
+    """三份变更记录的分层（260913 定，口径见 CLAUDE.md「CHANGELOG 纪律」）。
+
+    查三件靠人记就一定会漂的事：`CHANGELOG.md` 只准留最新一版（多留一版它就开始变流水账）；
+    两份 CHANGELOG 只用中文，不准再出现 `### English` 这类语言小节；三语正文独立在
+    `RELEASE_NOTES.md`，且它自报的 tag 必须等于 CHANGELOG 里那一版——发版时漏改它，
+    CI 会拿上一版的说明去发 Release，这条把那次失败提前到本地。
+    """
+    cur = CHANGELOGS[0] if cur is None else cur
+    hist = CHANGELOGS[1] if hist is None else hist
+    notes = RELEASE_NOTES if notes is None else notes
+    bad: list[str] = []
+
+    cur_text = cur.read_text(encoding="utf-8") if cur.is_file() else ""
+    versions = [m[1] for ln in cur_text.splitlines() if (m := _VER_HEAD.match(ln))]
+    if len(versions) > 1:
+        bad.append(f"{cur.name} 留了 {len(versions)} 个版本（{'、'.join(versions)}），只准留最新一个，其余搬进 {hist.name}")
+
+    for path in (cur, hist):
+        if not path.is_file():
+            continue
+        for i, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if m := _LANG_HEAD.match(ln.strip()):
+                bad.append(f"{path.name}:{i} 出现语言小节「{m[1]}」——根目录变更记录只用中文，三语在 {notes.name}")
+
+    if not notes.is_file():
+        bad.append(f"{notes.name} 不存在——GitHub 发布的三语正文取自它")
+        return bad
+    nt = notes.read_text(encoding="utf-8")
+    missing = [h for h in _RN_LANGS if h not in nt.splitlines()]
+    if missing:
+        bad.append(f"{notes.name} 缺语言小节：{'、'.join(missing)}")
+    m = re.search(r"^tag:[ \t]*(\S+)", nt, re.M)
+    if not m:
+        bad.append(f"{notes.name} 首部注释里没有 `tag: vX.Y.Z`，CI 靠它挡「忘了更新」")
+    elif versions and m[1] != versions[0]:
+        bad.append(f"{notes.name} 自报 {m[1]}，{cur.name} 当前是 {versions[0]}——发版前必须一致")
+    return bad
+
+
 # `>` 块允许的三类。参考手册里的引用块要承担**功能**（扫读时必须跳出来的东西），
 # 不承担**修辞**——一份文档里抬起来 20 次，等于一次也没抬。260904 立，来由见
 # workspace-spec `issues/closed/260904_撤销文档写作工作流.md`：工作区曾有一条
@@ -701,12 +749,14 @@ def audit() -> dict:
                     f"{name} 没有引入 tools/build/version_res.py —— 该平台的产物在程序外看不到版本号")
 
     changelog_wrapped = _changelog_style()
+    changelog_layout = _changelog_layout()
     bq = _blockquote_style()
     overview_gaps = _overview_group_gaps(routes, doc_text.get("架构总览.md", ""))
 
     return {
         "routes": len(routes), "cli_commands": len(cmds), "idx_schema": schema,
         "changelog_hard_wrapped": changelog_wrapped,
+        "changelog_layout": changelog_layout,
         "rhetorical_blockquotes": bq,
         "enums": enums,
         "spec_missing_datas": spec_missing,
@@ -727,7 +777,7 @@ def audit() -> dict:
         "tokens": _theme_tokens(),
         "note": ("硬差异（ghost_routes / dead_links / duplicate_endpoint_sections / ghost_methods / "
                  "ghost_query_args / missing_paths / idx_schema_drift / "
-                 "missing_selftest_files / changelog_hard_wrapped / "
+                 "missing_selftest_files / changelog_hard_wrapped / changelog_layout / "
                  "tokens.theme_gaps / tokens.shared_leaked / "
                  "tokens.unresolved_refs）"
                  "是文档说错了，会挡发版；软差异（undocumented_*、uncovered_route_groups、dead_tokens）只是文档没写，"
@@ -770,6 +820,7 @@ def _rows(r: dict) -> tuple[list, list]:
              r.get("stale_external_endpoints", []))]
     # 只约束机械折行，不把说明问题所需的正文长度当成缺陷。
     hard += [("CHANGELOG 里的硬折行", r.get("changelog_hard_wrapped", [])),
+             ("变更记录分层不合口径", r.get("changelog_layout", [])),
              ("docs/ 里的修辞性引用块", r.get("rhetorical_blockquotes", []))]
     hard += [("同一端点在契约里写了不止一节（分叉的开始）", r.get("duplicate_endpoint_sections", [])),
              ("端点标题声明了代码没有的方法", r.get("ghost_methods", [])),
@@ -1047,6 +1098,37 @@ def _selftest() -> int:
         ("较长历史正文允许", _changelog_style(_w("f.md", _rel_en)) == []),
         ("真实两份 CHANGELOG 无硬折行", _changelog_style() == []),
         ("CHANGELOG 硬折行挡验收", n_hard(changelog_hard_wrapped=["x.md:9 续行"]) == 1),
+    ]
+    # 三份变更记录的分层（260913）。正例用仓库真实文件；反例逐条造，因为这三条都是
+    # 「放过了才致命」——漏判的后果是发版时拿上一版说明发出去，而那时已经不可回收。
+    _ly = _cd / "layout"
+    _ly.mkdir(exist_ok=True)
+
+    def _lw(name, text):
+        f = _ly / name
+        f.write_text(text, encoding="utf-8")
+        return f
+
+    _rn_ok = _NL.join(["<!--", "tag: v0.4.37", "-->", "", "## 中文", "", "- 条目。", "",
+                       "## English", "", "- Entry.", "", "## 日本語", "", "- 項目。", ""])
+    _cur_ok = _lw("cur_ok.md", "## v0.4.37 - 2026-09-13" + _NL * 2 + "### 新增" + _NL * 2 + "- 条目。" + _NL)
+    _hist_ok = _lw("hist_ok.md", "## v0.4.36" + _NL * 2 + "### 文档" + _NL * 2 + "- 条目。" + _NL)
+    _notes_ok = _lw("rn_ok.md", _rn_ok)
+    _cur_two = _lw("cur_two.md", _cur_ok.read_text(encoding="utf-8") + _NL + "## v0.4.36 - 2026-09-12" + _NL * 2 + "- 条目。" + _NL)
+    _cur_lang = _lw("cur_lang.md", "## v0.4.37" + _NL * 2 + "### 中文" + _NL * 2 + "#### 新增" + _NL * 2 + "- 条目。" + _NL)
+    _notes_stale = _lw("rn_stale.md", _rn_ok.replace("v0.4.37", "v0.4.36"))
+    _notes_1lang = _lw("rn_1lang.md", _NL.join(["<!--", "tag: v0.4.37", "-->", "", "## 中文", "", "- 条目。", ""]))
+    _notes_notag = _lw("rn_notag.md", _rn_ok.replace("tag: v0.4.37", "（忘了写 tag）"))
+    ecases += [
+        ("真实三份变更记录分层合规", _changelog_layout() == []),
+        ("样板正例不误报", _changelog_layout(_cur_ok, _hist_ok, _notes_ok) == []),
+        ("CHANGELOG.md 留了两版能检出", len(_changelog_layout(_cur_two, _hist_ok, _notes_ok)) == 1),
+        ("CHANGELOG 里的语言小节能检出", len(_changelog_layout(_cur_lang, _hist_ok, _notes_ok)) == 1),
+        ("RELEASE_NOTES 停在上一版能检出", len(_changelog_layout(_cur_ok, _hist_ok, _notes_stale)) == 1),
+        ("RELEASE_NOTES 缺语种能检出", len(_changelog_layout(_cur_ok, _hist_ok, _notes_1lang)) == 1),
+        ("RELEASE_NOTES 没写 tag 能检出", len(_changelog_layout(_cur_ok, _hist_ok, _notes_notag)) == 1),
+        ("RELEASE_NOTES 缺失能检出", len(_changelog_layout(_cur_ok, _hist_ok, _ly / "nope.md")) == 1),
+        ("分层不合口径挡验收", n_hard(changelog_layout=["x"]) == 1),
     ]
     # `>` 三类闸门（260904）：三个豁免各造一个正例、修辞块造一个反例。
     # 豁免写错方向（把该报的放过）与报错方向同样致命，所以正反都测。
