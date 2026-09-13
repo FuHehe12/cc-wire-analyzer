@@ -635,7 +635,6 @@ details.fold[open]>summary{border-bottom:1px solid var(--border-soft);}
 /* 块内的人话说明（加密思考块用）。blk-meta 是等宽 10px，给字节数这类标量用的，
    整句中文塞进去既小又挤——说明句需要正常字体和行高才读得下去。 */
 .blk-note{font-size:11.5px;line-height:1.7;color:var(--text-dim);}
-.blk-note.dim{color:var(--text-faint);}
 .excerpt{border-radius:var(--radius-sm);background:var(--terminal-bg);border:1px solid var(--border-soft);overflow:hidden;}
 .excerpt pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:var(--font-mono);
   font-size:11px;line-height:1.65;color:var(--terminal-text);padding:12px 14px;max-height:420px;overflow:auto;}
@@ -2433,11 +2432,10 @@ zh: {
   "detail.toolsNew": "有 {n} 个没见过的内置工具（橙色）",
   "detail.compaction": "上下文自动压缩的产出",
   "detail.thinkSealed": "已加密",
-  "detail.thinkSigOnly": "上游只回了签名，没回思考明文——这段想了什么读不到。",
-  "detail.thinkRedacted": "上游把这段思考加密成了 redacted_thinking 块——内容读不到。",
+  "detail.thinkSigOnly": "上游只回了签名，思维链无法展示——不等于没有思考。",
+  "detail.thinkRedacted": "上游把这段思考加密封装，思维链无法展示——不等于没有思考。",
   "detail.thinkSigN": "签名 {n} 字节",
   "detail.thinkCipherN": "密文 {n} 字节",
-  "detail.thinkNotAbsent": "这不等于它没有思考：真的没思考时，这里根本不会有块。",
   "set.ui.title": "界面", "set.ui.sub": "界面语言切换立即生效并保存",
   "set.ui.lang": "界面语言", "set.ui.langSub": "Language / 言語",
   "set.ui.scale": "界面缩放", "set.ui.scaleSub": "高分辨率屏（2K/4K）觉得字小就调大，立即生效并保存",
@@ -2878,11 +2876,10 @@ en: {
   "detail.toolsNew": "{n} built-in tool(s) we haven't seen before (orange)",
   "detail.compaction": "produced by automatic context compaction",
   "detail.thinkSealed": "encrypted",
-  "detail.thinkSigOnly": "The upstream returned only a signature, no plaintext — what it thought here is unreadable.",
-  "detail.thinkRedacted": "The upstream sealed this reasoning into a redacted_thinking block — the content is unreadable.",
+  "detail.thinkSigOnly": "The upstream returned only a signature, so the reasoning cannot be shown — not that there was none.",
+  "detail.thinkRedacted": "The upstream sealed this reasoning away, so it cannot be shown — not that there was none.",
   "detail.thinkSigN": "signature {n} bytes",
   "detail.thinkCipherN": "ciphertext {n} bytes",
-  "detail.thinkNotAbsent": "This does not mean it did not think: when it truly does not, there is no block here at all.",
   "set.ui.title": "Interface", "set.ui.sub": "Language switch applies immediately and is saved",
   "set.ui.lang": "Language", "set.ui.langSub": "界面语言 / 言語",
   "set.ui.scale": "Interface scale", "set.ui.scaleSub": "Turn it up if text looks small on a 2K/4K display — applied and saved immediately",
@@ -3322,11 +3319,10 @@ ja: {
   "detail.toolsNew": "未知の組み込みツールが {n} 件（オレンジ）",
   "detail.compaction": "コンテキスト自動圧縮の産物",
   "detail.thinkSealed": "暗号化済み",
-  "detail.thinkSigOnly": "上流は署名のみを返し、思考の平文を返していません——ここで何を考えたかは読めません。",
-  "detail.thinkRedacted": "上流はこの思考を redacted_thinking ブロックに暗号化しました——内容は読めません。",
+  "detail.thinkSigOnly": "上流は署名のみを返したため、思考の内容は表示できません——思考がなかったわけではありません。",
+  "detail.thinkRedacted": "上流はこの思考を暗号化して封じたため、内容は表示できません——思考がなかったわけではありません。",
   "detail.thinkSigN": "署名 {n} バイト",
   "detail.thinkCipherN": "暗号文 {n} バイト",
-  "detail.thinkNotAbsent": "これは「思考しなかった」という意味ではありません：本当に思考がない場合、ここにブロック自体が存在しません。",
   "set.ui.title": "インターフェース", "set.ui.sub": "言語の切り替えは即時反映され保存されます",
   "set.ui.lang": "表示言語", "set.ui.langSub": "界面语言 / Language",
   "set.ui.scale": "表示倍率", "set.ui.scaleSub": "2K/4K ディスプレイで文字が小さいと感じたら上げてください。即時反映・保存されます",
@@ -5183,10 +5179,9 @@ function thinkingBlockHtml(b){
     (n ? '<span class="blk-meta">' +
          esc(t18(red ? "detail.thinkCipherN" : "detail.thinkSigN", {n: n.toLocaleString()})) +
          '</span>' : "") + '</div>' +
-    '<div class="blk-note">' + esc(t18(red ? "detail.thinkRedacted" : "detail.thinkSigOnly")) + '</div>' +
-    /* 使用者看见空盒子会自己推出"它没想"，只有把这句否定写出来才堵得住
-       （同 AI_USAGE 里冷藏那条"别把它读成那天没录到"的写法）。 */
-    '<div class="blk-note dim">' + esc(t18("detail.thinkNotAbsent")) + '</div></div>';
+    /* 一句话说完：读不到什么 + 它不等于什么。后半句的否定不能省——使用者看见空盒子会
+       自己推出"它没想"，但压缩成短短一个尾句就够，不值得单开一行（260913 用户反馈）。 */
+    '<div class="blk-note">' + esc(t18(red ? "detail.thinkRedacted" : "detail.thinkSigOnly")) + '</div></div>';
 }
 function renderMsg(m, mi){
   const role = m.role || "user";
