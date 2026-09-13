@@ -276,6 +276,18 @@ def setup_logging() -> None:
             exc_type.__name__,
             "".join(traceback.format_exception(exc_type, exc, tb)),
         )
+        # **记进日志之后必须照常打出来**。这个钩子的目的是"noconsole 构建也能查崩溃"，
+        # 也就是给没有控制台的场合**补**一条出路；它从来不该把有控制台的场合原本就有的那条
+        # 堵死。而直接赋值 sys.excepthook 就是替换掉默认行为，于是任何未捕获异常在终端和 CI
+        # 里都变成"exit=1 + 一片空白"——260913 发 v0.4.38 时 CI 红了一次，完整日志 49 行里
+        # 没有一个字的报错，就是这么来的（当时只能靠重跑通过，根因查了才知道在这儿）。
+        # upstream_history.py 的自测入口早就撞过同一个坑，但当时是在那一个文件里自己
+        # try/except 绕开的，没回到这里修——于是 settings_guard.py 再撞一次时照样哑。
+        # noconsole 构建里 sys.stderr 可能是 None，__excepthook__ 自己会处理，但仍兜一层。
+        try:
+            sys.__excepthook__(exc_type, exc, tb)
+        except Exception:
+            pass
 
     sys.excepthook = _excepthook
 

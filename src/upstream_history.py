@@ -531,9 +531,12 @@ if __name__ == "__main__":
         pass
     CFG.setup_logging()
     if "--self-test" in sys.argv:
-        # 显式捕获 + 打印：`CFG.setup_logging()` 装的 excepthook 只把未捕获异常写进 run.log，
-        # **不打 stderr**——于是自测失败时终端一片空白只留 exit=1，得去翻日志才知道断在哪
-        # （首跑实测踩中）。对一个自测入口来说这就是惯犯 ③「静默吞异常」的形状。
+        # 显式捕获 + 打印，外加一个 [FAILED] 标记。
+        # 历史：`CFG.setup_logging()` 装的 excepthook 曾经**只**把未捕获异常写进 run.log、
+        # 不打 stderr，于是自测失败时终端一片空白只留 exit=1（首跑实测踩中）。当时是在这里
+        # 自己 try/except 绕开的，没回到 config.py 修根上——结果 settings_guard.py 后来
+        # 照样哑，260913 在 CI 上红了一次且一个字的报错都没有。根因已修（钩子记完日志会
+        # 照常走默认行为打出来），这里保留只是为了那句醒目的 [FAILED]，不再是唯一出路。
         import traceback
         try:
             self_test()

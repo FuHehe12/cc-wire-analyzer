@@ -233,8 +233,10 @@ def backup_file(path: Path | None = None) -> Path | None:
     for old in backups[:-MAX_BACKUPS]:
         try:
             old.unlink()
-        except OSError:
-            pass
+        except OSError as e:
+            # 删不掉就算了（Windows 上可能被杀软/索引器短暂占用），但**不能一声不吭**：
+            # 裁剪长期失败意味着备份无上限地涨，而界面与日志都看不出来。记一条，别静默。
+            log.warning("backup 裁剪失败，保留 %s: %s", old.name, e)
     log.info("backup → %s", dst)
     return dst
 
@@ -590,11 +592,25 @@ def self_test() -> None:
         print(f"[5] restore 幂等 OK")
 
         # 6. backup 留最近 MAX_BACKUPS
+        #
+        # 备份名精确到毫秒，紧凑循环里两次调用可能落在同一毫秒、写进同一个文件名，于是
+        # "造了 7 份"这个前提本身就不成立，份数不足。那是**本测试的时序假象**，不是
+        # backup_file 的毛病（真实使用里一次 serve 启动才备份一次，撞不上）——所以这里
+        # 让时钟走够再调下一次，并单独断言前提，不去改产品侧的命名规则来迁就测试。
+        made: set[str] = set()
         for _ in range(MAX_BACKUPS + 2):
-            backup_file(fake)
-        n = len(list(BACKUP_DIR.glob("settings.json.*")))
-        assert n == MAX_BACKUPS, f"备份未裁剪: {n}"
-        print(f"[6] backup 裁剪 OK: 留 {n} 份 (max={MAX_BACKUPS})")
+            dst = backup_file(fake)
+            made.add(dst.name if dst else "<none>")
+            time.sleep(0.002)
+        got = sorted(p.name for p in BACKUP_DIR.glob("settings.json.*"))
+        # 断言消息自带证据：份数比 MAX 少 → 上面撞名了；比 MAX 多 → 裁剪没删成
+        #（unlink 的 OSError 只记日志不抛）。两种病因靠这个数和文件名当场分得开，
+        # 不用再去猜——260913 这条断言在 CI 上红过一次，而当时它一个字都没说。
+        assert len(made) == MAX_BACKUPS + 2, \
+            f"造备份时撞名：{MAX_BACKUPS + 2} 次调用只得到 {len(made)} 个文件名 {sorted(made)}"
+        assert len(got) == MAX_BACKUPS, \
+            f"备份未裁剪: {len(got)} 份（期望 {MAX_BACKUPS}）{got}"
+        print(f"[6] backup 裁剪 OK: 留 {len(got)} 份 (max={MAX_BACKUPS})")
 
         # 7. 无 BASE_URL 场景（直连官方，260712 修复）：snapshot fallback + restore 删键
         nobase = tmpdir / "settings_nobase.json"
