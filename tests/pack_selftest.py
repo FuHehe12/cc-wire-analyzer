@@ -412,6 +412,67 @@ def run(TMP: Path) -> None:
     except CS.StoreError as e:
         ok(e.code == "bad_label", "非法来源标签被拒（bad_label）", e.code)
 
+    # ===== 11. 冷藏的存储语义 =====
+    # 冷藏改的不只是文件形态，还有"这天在不在日期列表里"。这一节钉住四件事：收起来之后
+    # 读取侧说得出真话（不是静默空）、解冻回来读取行为与冷藏前一致、清除与保留天数照样
+    # 管得着它（否则冷藏会把"保留天数"悄悄架空）、以及自动挑选的判据真的看阅读记账。
+    print("\n[11] 冷藏：日期列表 / 读取真话 / 清除与保留 / 自动判据")
+    import datetime as _dt
+    CS.VIEWS_FILE = _HOME / "views.json"
+    OLD = (_dt.date.today() - _dt.timedelta(days=40)).isoformat()
+    write_jsonl(CS.CAPTURES_DIR / f"{OLD}.jsonl", recs)
+    warm = CS.list_captures(OLD, limit=10000)
+
+    fz = CS.freeze_date(OLD)
+    ok(CS.is_cold(OLD) and fz["count"] == len(recs), "冷藏成单文件")
+    ok(fz["ratio"] and fz["ratio"] > 1, f"确实更小（pack → 冷藏 {fz['ratio']}x）")
+    ok(OLD not in CS.list_dates(), "冷藏的天从日期列表里消失（这正是「收起来」的语义）")
+    cold_view = CS.list_captures(OLD, limit=10000)
+    ok(cold_view["cold"] is True and cold_view["items"] == [],
+       "读冷藏的天说得出它是冷藏态，不是静默回一个空列表")
+    ok(OLD in cold_view["cold_dates"], "冷藏清单出现在 /api/captures 的响应里")
+    lst = CS.list_cold()
+    ok(len(lst) == 1 and lst[0]["count"] == len(recs), "冷藏清单读得出条数（不解压）")
+    ok(CS.day_info(OLD)["cold"] is True, "day_info 认得冷藏态")
+    try:
+        CS.freeze_date(OLD)
+        ok(False, "重复冷藏必须被拒", "居然又冻了一次")
+    except CS.StoreError as e:
+        ok(e.code == "already_cold", "重复冷藏被拒（already_cold）", e.code)
+
+    tw = CS.thaw_date(OLD)
+    ok(not CS.is_cold(OLD) and OLD in CS.list_dates(), "解冻后这天回到日期列表")
+    ok(tw["count"] == len(recs), "解冻后条数不变")
+    J2 = lambda o: json.dumps(o, ensure_ascii=False, sort_keys=True)
+    ok(J2(CS.list_captures(OLD, limit=10000)) == J2(warm),
+       "冷藏往返后列表逐字节一致（换存法，不是换数据）")
+    ok(CS.get_view(OLD) != "", "解冻顺手记一次查看时间（否则下一轮扫描会把它当场冻回去）")
+
+    # 自动判据：看的是阅读记账，不是文件 mtime
+    CS.VIEWS_FILE.unlink(missing_ok=True)
+    ok(OLD in CS.cold_candidates(7), "40 天前、从没点开过的天会被挑中")
+    CS.mark_viewed(OLD)
+    ok(OLD not in CS.cold_candidates(7), "刚点开过就不再被挑中")
+    ok(CS.cold_candidates(0) == [], "天数 <= 0 = 从不自动冷藏（显式出口，不是当成 0 天全冻）")
+    today = _dt.date.today().isoformat()
+    write_jsonl(CS.CAPTURES_DIR / f"{today}.jsonl", recs[:2])
+    ok(today not in CS.cold_candidates(1), "今天永远不冷藏")
+    try:
+        CS.freeze_date(today)
+        ok(False, "冷藏今天必须被拒", "居然冻了")
+    except CS.StoreError as e:
+        ok(e.code == "is_today", "冷藏今天被拒（is_today）", e.code)
+
+    # 清除与保留天数照样管得着冷藏的天
+    CS.freeze_date(OLD)
+    ok(CS.purge_date(OLD) == len(recs), "清除冷藏的天报得出真实条数")
+    ok(not CS.is_cold(OLD) and OLD not in CS.list_cold(), "清除后冷藏文件也没了")
+    write_jsonl(CS.CAPTURES_DIR / f"{OLD}.jsonl", recs)
+    CS.freeze_date(OLD)
+    ok(OLD in CS.enforce_retention(7), "保留天数同样清得掉冷藏的天")
+    ok(not CS.is_cold(OLD), "被保留天数清掉后冷藏文件确实不在了（否则空间只涨不减）")
+    (CS.CAPTURES_DIR / f"{today}.jsonl").unlink(missing_ok=True)
+
     print()
     if FAILED:
         print(f"[FAILED] {len(FAILED)} 条断言未通过：")

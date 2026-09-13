@@ -27,6 +27,8 @@
 ## 三个存储根，语义各不相同
 
   captures/        本机录制（热 + 温）。retention 会自动删这里
+  captures/cold/   冷藏的天（冷，260913）：单文件 `.ccwz`，翻之前要先解冻。它仍属于
+                   captures 的语义——retention 照删不误，否则"保留天数"会被冷藏悄悄架空
   archives/        归档单文件 .ccwa（用户显式产出，**绝不自动删**）
   sources/<标签>/  从别的机器导入的录制。日期会与本机撞车（两台机器同一天都在录），
                    靠标签命名空间隔开；界面上必须一眼可辨是外来的
@@ -809,6 +811,11 @@ def list_captures(date: str | None = None, limit: int = 200, offset: int = 0,
         "total": total,
         "items": items,
         "dates_available": _available_dates(source),
+        # 冷藏的天读出来是空的（它不在 captures 根下）。**必须说出来**：回一个静默的
+        # 空列表，Agent 只会得出"那天没录到"这个错结论，而这是本项目最不能容忍的失败
+        # 形状。cold_dates 同时给界面画折叠区用（260913）。
+        "cold_dates": cold_dates(source),
+        "cold": is_cold(date, source),
     }
 
 
@@ -1442,6 +1449,16 @@ def purge_date(date: str, source: str = "") -> int:
                 fi.unlink()
         except OSError:
             pass        # 索引删不掉不致命：主文件已没，读取侧会清陈旧索引
+        # 冷藏文件也是这一天的录制，只是换了个存法（260913）。不删它，"清除这一天"
+        # 就会留下一份用户以为已经删掉的数据——比没删更糟，因为界面说删了。
+        cold = _cold_file(date, source)
+        if cold.exists():
+            if not removed:
+                try:
+                    removed = pack.read_cold_manifest(cold).get("count", 0)
+                except pack.PackError:
+                    pass
+            _rm(cold)
         _IDX_CACHE.pop((source, date), None)
         if date == today and not source:
             _LIVE_DEQUE.clear()
@@ -1461,7 +1478,10 @@ def enforce_retention(days: int) -> list[str]:
     但全项目没有一行代码消费它，录制从第一天起永远堆着（实测 13 条 = 5.6MB，重度使用一天上百 MB）。
 
     - days <= 0 视为「永不清理」（给要留全量的人一个显式出口，不是当成 0 天全删）。
-    - 只动 captures/*.jsonl；archives/ 是用户显式存档的，绝不自动删。
+    - 只动 captures/（含 `cold/` 里冷藏的天）；archives/ 是用户显式存档的，绝不自动删。
+      **冷藏必须一起清**：冷藏只是换了个存法，仍然是这天的录制。漏掉它，用户设了保留
+      30 天却发现空间一直在涨，而"保留天数"这个功能看上去还在正常工作——260713 修的
+      「retention 是死配置」就是这个形状，不能借冷藏再生一个。
     - 按日期字符串比（YYYY-MM-DD 字典序 = 时间序），不碰文件 mtime——
       mtime 会被拷贝/同步改掉，日期在文件名里才是事实。
     """
@@ -1473,7 +1493,7 @@ def enforce_retention(days: int) -> list[str]:
         return []
     cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
     removed = []
-    for d in sorted(_available_dates()):
+    for d in sorted(set(_available_dates()) | set(cold_dates())):
         if not _DATE_RE.match(d):
             continue          # 非日期文件名（如存档中的 .YYYY-MM-DD.archiving.* 临时文件）一律不碰
         if d < cutoff:
@@ -2196,6 +2216,9 @@ def cleanup_partials() -> dict:
                     ".packing." in p.name or ".archiving." in p.name):
                 shutil.rmtree(p, ignore_errors=True)
                 dirs += 1
+            elif p.is_dir() and p.name.startswith(".") and ".thawing." in p.name:
+                shutil.rmtree(p, ignore_errors=True)    # 解冻中断的半个 pack（冷藏文件仍在原位）
+                dirs += 1
             elif p.is_file() and p.name.startswith(".") and (
                     ".unpacking." in p.name or ".merging." in p.name
                     or ".archiving." in p.name):
@@ -2206,6 +2229,15 @@ def cleanup_partials() -> dict:
                     files += 1
                 except OSError:
                     pass
+        cold = root / COLD_DIRNAME       # 冷藏中断留下的 `.{date}.freezing.*`（原 pack 未动）
+        if cold.is_dir():
+            for p in cold.iterdir():
+                if p.is_file() and p.name.startswith(".") and ".freezing." in p.name:
+                    try:
+                        p.unlink()
+                        files += 1
+                    except OSError:
+                        pass
         try:
             files += _recover_sealing(root, "" if root == CAPTURES_DIR else root.name)
         except Exception as e:
@@ -2224,6 +2256,243 @@ def cleanup_partials() -> dict:
     if dirs or files:
         log.info("清理中断残留：%d 个目录 / %d 个文件", dirs, files)
     return {"dirs": dirs, "files": files}
+
+
+# ===== 冷藏（260913）=====
+#
+# 与前面三个动作的边界（接着模块里那份声明往下排）：
+#   compact_date()  原地压实成 pack，读取侧透明——纯瘦身，照常查看
+#   freeze_date()   pack → 单文件 `cold/{date}.ccwz`，**这天从日期列表里消失**，
+#                   点开要先 thaw_date() 解冻。拿"能不能直接翻"换体积，实测再省 4.2 倍
+#   archive_date()  打成可搬运的 `.ccwa` 拷去别的机器——是搬运，不是瘦身
+#
+# 为什么冷藏的日期该消失在日期列表里：它的语义就是"久不翻的天收起来"。`_available_dates`
+# 只非递归地 glob 本目录的 *.jsonl / *.pack，冷藏文件在 `cold/` 子目录里，天然不命中——
+# 不必为此加一条过滤（少一条过滤就少一处将来会忘记同步的地方）。
+
+COLD_DIRNAME = "cold"
+
+
+def _cold_root(source: str = "") -> Path:
+    return _source_root(source) / COLD_DIRNAME
+
+
+def _cold_file(date: str, source: str = "") -> Path:
+    return _cold_root(source) / f"{date}{pack.COLD_SUFFIX}"
+
+
+def is_cold(date: str, source: str = "") -> bool:
+    return _cold_file(date, source).is_file()
+
+
+def cold_dates(source: str = "") -> list[str]:
+    """冷藏了哪些日期（降序）。只认 `{YYYY-MM-DD}.ccwz` 这一种形状。"""
+    root = _cold_root(source)
+    if not root.exists():
+        return []
+    return sorted((f.stem for f in root.glob(f"*{pack.COLD_SUFFIX}")
+                   if _DATE_RE.match(f.stem)), reverse=True)
+
+
+def list_cold(source: str = "") -> list[dict]:
+    """冷藏清单（给界面的折叠区）。说明行读不出来的不跳过——冷藏是长期放着的形态，
+    静默跳过等于让一个坏文件从界面上彻底消失，用户只会以为那天从来没录过。"""
+    out = []
+    for date in cold_dates(source):
+        f = _cold_file(date, source)
+        row = {"date": date, "source": source, "size": f.stat().st_size}
+        try:
+            m = pack.read_cold_manifest(f)
+        except pack.PackError as e:
+            out.append({**row, "count": 0, "error": str(e), "error_code": e.code})
+            continue
+        row.update(count=m.get("count", 0), frozen_at=m.get("frozen_at", ""),
+                   pack_bytes=m.get("pack_bytes", 0),
+                   raw_bytes=(m.get("pack") or {}).get("raw_bytes"),
+                   last_viewed=get_view(date, source))
+        out.append(row)
+    return out
+
+
+def freeze_date(date: str, source: str = "", progress=None) -> dict:
+    """把某天冷藏成 `cold/{date}.ccwz`。今天永不冻（与 compact 同一条理由：别碰热路径）。
+
+    非压实态先走 `compact_date`（分片形态它内部会先合并），所以这里只需要处理 pack。
+    顺序同压实那条老规矩——**新的就位了才删旧的**：先写 staging，再读回说明行验一遍，
+    改名就位之后才删 pack 目录。中间断电最多留一个点开头的 `.ccwz.freezing.*`，
+    原 pack 一个字节没动。
+    """
+    _validate_date(date)
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    if not source and date == today:
+        raise StoreError("is_today", "今天正在录制，不冷藏（冷藏只处理过去的天）")
+    if is_cold(date, source):
+        raise StoreError("already_cold", f"{date} 已经是冷藏态")
+    day = _Day(date, source)
+    if not day.exists:
+        raise StoreError("not_found", f"{date} 无录制")
+    packed_first = None
+    if not day.is_pack:
+        packed_first = compact_date(date, source, progress)   # 分片形态它内部会先合并
+    if not day.is_pack:
+        raise StoreError("not_packed", f"{date} 压实后仍不是 pack 形态，已放弃冷藏")
+
+    _cold_root(source).mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%H%M%S", time.localtime())
+    staging = _cold_root(source) / f".{date}.freezing.{ts}{pack.COLD_SUFFIX}"
+    try:
+        info = pack.freeze(day.pack_dir, staging)
+        pack.read_cold_manifest(staging)       # 读回验一遍，别把一个读不出来的文件顶上去
+    except pack.PackError as e:
+        _rm_quiet(staging)
+        raise StoreError(e.code, str(e))
+    except OSError as e:
+        _rm_quiet(staging)
+        raise StoreError("cold_failed", f"冷藏失败：{e}")
+    with _LOCK:
+        try:
+            staging.rename(_cold_file(date, source))
+        except OSError as e:
+            _rm_quiet(staging)
+            raise StoreError("cold_failed", f"冷藏结果就位失败：{e}")
+        _IDX_CACHE.pop((source, date), None)
+    try:
+        shutil.rmtree(day.pack_dir)
+    except OSError as e:
+        # 冷藏文件已就位且验过；残留的 pack 只是占地方，不是数据风险。但**这天此刻两种
+        # 形态都在**，而读取侧只看得见 pack——所以必须说出来，不能静默。
+        log.error("冷藏后删 pack 目录失败 %s（这天仍会出现在日期列表里）：%s", date, e)
+    return {"date": date, "source": source, "count": info["count"],
+            "pack_bytes": info["pack_bytes"], "cold_bytes": info["size"],
+            "saved_bytes": max(0, info["pack_bytes"] - info["size"]),
+            "ratio": (round(info["pack_bytes"] / info["size"], 1) if info["size"] else None),
+            "compacted_first": packed_first, "elapsed_ms": info["elapsed_ms"]}
+
+
+def thaw_date(date: str, source: str = "") -> dict:
+    """冷藏 → pack（冷藏的逆操作）。解冻完这天重新出现在日期列表里。
+
+    解冻后**立刻记一次查看时间**：不记的话，用户刚点开的这一天在下一轮自动冷藏里
+    仍然满足"很久没看过"，会被当场冻回去——一个自己跟自己打架的循环。
+    """
+    _validate_date(date)
+    src = _cold_file(date, source)
+    if not src.is_file():
+        raise StoreError("not_cold", f"{date} 不是冷藏态")
+    day = _Day(date, source)
+    if day.exists:
+        raise StoreError("dst_exists", f"{date} 的录制已在原位，未覆盖")
+    ts = time.strftime("%H%M%S", time.localtime())
+    staging = day.root / f".{date}.thawing.{ts}"
+    try:
+        info = pack.thaw(src, staging)
+    except pack.PackError as e:
+        pack._rmtree_quiet(staging)
+        raise StoreError(e.code, str(e))
+    with _LOCK:
+        if day.exists:
+            pack._rmtree_quiet(staging)
+            raise StoreError("dst_exists", f"{date} 的录制已在原位，未覆盖")
+        try:
+            staging.rename(day.pack_dir)
+        except OSError as e:
+            pack._rmtree_quiet(staging)
+            raise StoreError("thaw_failed", f"解冻结果就位失败：{e}")
+        _IDX_CACHE.pop((source, date), None)
+    try:
+        src.unlink()
+    except OSError as e:
+        log.error("解冻后删冷藏文件失败 %s：%s", date, e)
+    mark_viewed(date, source)
+    return {"date": date, "source": source, "count": info["count"], "bytes": info["bytes"]}
+
+
+# ===== 阅读记账（views.json）=====
+#
+# 自动冷藏的判据是"多久没点开过"，所以得有个地方记"上次点开是什么时候"。
+#
+# **只由界面显式打点**，不在 `/api/captures` 里隐式记：分析 Agent 扫一遍全年录制就会把
+# 所有日期焐热，自动冷藏从此永远不触发——一个不会报错、只会静静失效的功能。
+#
+# 从没点开过的日期按**录制日期**算，不按文件 mtime：mtime 会被拷贝/同步/备份改掉，
+# 日期在文件名里才是事实（与 `enforce_retention` 同一条纪律）。
+
+VIEWS_FILE = CFG.CONFIG_DIR / "views.json"
+_VIEWS_LOCK = threading.Lock()
+
+
+def _view_key(date: str, source: str = "") -> str:
+    return f"{source}|{date}"
+
+
+def _load_views() -> dict:
+    try:
+        data = json.loads(VIEWS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def get_view(date: str, source: str = "") -> str:
+    """这天最后一次被点开的时间（ISO），没记过返回空串。"""
+    return _load_views().get(_view_key(date, source), "")
+
+
+def mark_viewed(date: str, source: str = "") -> str:
+    """记一次"用户点开了这天"。写坏了不抛——记账失败最多让这天早一点被冷藏，
+    而冷藏是可逆的；为它打断用户正在做的浏览不划算。"""
+    _validate_date(date)
+    at = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+    with _VIEWS_LOCK:
+        views = _load_views()
+        views[_view_key(date, source)] = at
+        try:
+            CFG.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            VIEWS_FILE.write_text(json.dumps(views, ensure_ascii=False, indent=2),
+                                  encoding="utf-8")
+        except OSError as e:
+            log.error("阅读记账写盘失败 %s：%s", date, e)
+    return at
+
+
+def cold_candidates(days: int, source: str = "") -> list[str]:
+    """按"多久没点开过"挑出该冷藏的日期（升序）。今天与今天之内的都不挑。
+
+    判据取 `max(最后点开, 录制日期)` 的日期部分：从没点开过的老录制按录制日期算，
+    所以首次开启时积压的历史会一次性被收起来（这是有意的，也是用户拍板的口径）。
+    """
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        return []
+    if days <= 0:
+        return []
+    today = datetime.date.today()
+    cutoff = (today - datetime.timedelta(days=days)).isoformat()
+    views, out = _load_views(), []
+    for d in sorted(_available_dates(source)):
+        if not _DATE_RE.match(d) or d >= today.isoformat():
+            continue
+        seen = views.get(_view_key(d, source), "")[:10]
+        if max(d, seen) < cutoff:
+            out.append(d)
+    return out
+
+
+def sweep_cold(days: int, source: str = "", progress=None) -> dict:
+    """把该冷藏的日期逐个冷藏。单个失败不影响其余——一天压不动（占用/权限）不该
+    让整轮停摆，下次扫描再试。"""
+    done, failed = [], []
+    for d in cold_candidates(days, source):
+        try:
+            done.append(freeze_date(d, source, progress))
+        except StoreError as e:
+            failed.append({"date": d, "error_code": e.code, "error": str(e)})
+        except Exception as e:                 # noqa: BLE001 —— 扫描是后台活，不能整轮炸掉
+            log.exception("冷藏失败 %s", d)
+            failed.append({"date": d, "error_code": "internal", "error": str(e)})
+    return {"frozen": done, "failed": failed,
+            "saved_bytes": sum(x["saved_bytes"] for x in done)}
 
 
 def list_dates(source: str = "") -> list[str]:
@@ -2246,7 +2515,19 @@ def day_anchor_size(date: str, source: str = "") -> int:
 def day_info(date: str, source: str = "") -> dict:
     """一天的形态与占用（设置页/CLI dates 用）。"""
     day = _Day(date, source)
-    info = {"date": date, "source": source, "exists": day.exists,
+    if not day.exists and is_cold(date, source):
+        f = _cold_file(date, source)
+        info = {"date": date, "source": source, "exists": False, "packed": True,
+                "cold": True, "bytes": f.stat().st_size, "count": 0,
+                "mtime": f.stat().st_mtime}
+        try:
+            m = pack.read_cold_manifest(f)
+            info.update(count=m.get("count", 0), packed_at=m.get("frozen_at", ""),
+                        raw_bytes=(m.get("pack") or {}).get("raw_bytes"))
+        except pack.PackError as e:
+            info["error"] = str(e)
+        return info
+    info = {"date": date, "source": source, "exists": day.exists, "cold": False,
             "packed": day.is_pack, "bytes": day.disk_bytes(), "count": day.count()}
     try:
         anchor = day.pack_dir if day.is_pack else day.jsonl
