@@ -4711,6 +4711,11 @@ function chipFor(status){
   const cls = status < 300 ? "ok-soft" : "err-soft";
   return '<span class="chip ' + cls + '">' + status + (status < 300 ? " OK" : "") + '</span>';
 }
+/* upstream URL → host（netloc）。chip 里只放 host，完整 URL 进 title——与 stop_reason 等
+   协议字段的裸展示风格一致，不引入 i18n 键。260913（issue 捕获详情显示实际转发上游）。 */
+function hostOf(u){
+  try{ return new URL(u).host; }catch(e){ return u; }   /* 格式坏时原样展示，不吞 */
+}
 function renderDetail(d){
   const req = d.request || {}, resp = d.response || {}, body = req.body || {};
   /* 头部 */
@@ -4734,6 +4739,10 @@ function renderDetail(d){
      count_tokens / security 这类恰恰都是非流式。 */
   L += '<div class="dcard meta-row"><div class="chip-row">' +
     '<span class="chip outline">' + esc(body.model || "—") + '</span>' +
+    /* 实际转发目标（260913）：rec.upstream 每条都有、后端聚合与 AI 分析都在用，唯独界面没给过——
+       OAuth 会话被 BASE_URL patch 劫到第三方上游时，用户在界面上看不到「401 是谁拒的」（那次
+       排障靠 API 查 upstream 才破案）。裸 host 自解释，完整 URL 悬停可见；空（极老录制）不渲染。 */
+    (d.upstream ? '<span class="chip outline" title="upstream: ' + esc(d.upstream) + '">' + esc(hostOf(d.upstream)) + '</span>' : "") +
     '<span class="chip outline">stream: ' + (body.stream ? "true" : "false") + '</span>' +
     '</div></div>';
 
