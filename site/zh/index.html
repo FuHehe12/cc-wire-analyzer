@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CC Wire Analyzer：提示词、子代理、快照比较与 AI 辅助阅读</title>
-  <meta name="description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
+  <meta name="description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、实时分析与快照比较，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
   <meta name="theme-color" content="#172b46">
   <link rel="canonical" href="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
   <link rel="alternate" hreflang="en" href="https://fuhehe12.github.io/cc-wire-analyzer/">
@@ -18,7 +18,7 @@
   <meta property="og:site_name" content="CC Wire Analyzer">
   <meta property="og:locale" content="zh_CN">
   <meta property="og:title" content="CC Wire Analyzer：提示词、子代理、快照比较与 AI 辅助阅读">
-  <meta property="og:description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
+  <meta property="og:description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、实时分析与快照比较，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
   <meta property="og:url" content="https://fuhehe12.github.io/cc-wire-analyzer/zh/">
   <meta property="og:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
   <meta property="og:image:width" content="1280">
@@ -26,14 +26,14 @@
   <meta property="og:image:alt" content="实际软件的捕获列表，显示示例请求、失败、耗时和 Token">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="CC Wire Analyzer：提示词、子代理、快照比较与 AI 辅助阅读">
-  <meta name="twitter:description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
+  <meta name="twitter:description" content="在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、实时分析与快照比较，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。">
   <meta name="twitter:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
 
   <script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "CC Wire Analyzer",
-  "description": "在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。",
+  "description": "在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、实时分析与快照比较，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。",
   "url": "https://fuhehe12.github.io/cc-wire-analyzer/zh/",
   "downloadUrl": "https://github.com/FuHehe12/cc-wire-analyzer/releases/latest",
   "softwareHelp": "https://fuhehe12.github.io/cc-wire-analyzer/manual.html",
@@ -77,7 +77,7 @@
 <div>
 <p class="product-type">Claude Code 运行观测与分析工作台</p>
 <h1>看见发给模型的内容，<br>看懂任务背后的调用。</h1>
-<p class="hero-copy">在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、快照比较与 AI 分析，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。</p>
+<p class="hero-copy">在本机记录 Claude Code 的请求与响应，展开提示词、工具和上下文；再用时序图、实时分析与快照比较，追查一次任务中发生的变化。你可以自己查看，也可以交给 Agent 继续调查。</p>
 <div class="actions">
 <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">下载软件</a>
 <a class="button secondary" href="../manual.html">阅读产品说明书</a>
@@ -141,6 +141,8 @@
 <li>
 <strong>调用参数</strong>：检查模型、输出限制及其他请求字段。</li>
 <li>
+<strong>实际转发</strong>：详情页标出每条请求实际发往的上游地址。</li>
+<li>
 <strong>原文与解释</strong>：复制、格式化、翻译或 AI 解读，保留原文对照。</li>
 </ul>
 <a class="section-link" href="../manual.html#manual-read">了解请求详情</a>
@@ -189,6 +191,36 @@
 </figure>
 <p class="note">以下为实际软件界面，使用隔离的合成示例数据。</p>
 </div>
+</div>
+</section>
+<section class="section" id="observe">
+<div class="shell">
+<div class="section-head">
+<h2>这段运行在做什么，进行得怎么样？</h2>
+<p>实时分析把一段录制整理成可核对的结构——目标、动作与轮次，由观察 AI 写成，每一条都能回到请求原文。</p>
+</div>
+<div class="agent-grid">
+<article class="agent-col">
+<h3>按轮次读长会话</h3>
+<p>一轮等于一条用户消息和它引发的全部调用，分析逐轮跟随，不在轮中间截断。</p>
+<ul>
+<li>整体目标与手头任务分层画出，一眼分清。</li>
+<li>后来判定方向错了的目标划掉留痕，不悄悄消失。</li>
+<li>每份分析都注明是现场逐轮跟随还是事后复盘写成。</li>
+</ul>
+</article>
+<article class="agent-col">
+<h3>区分来源的动作账本</h3>
+<p>消息不再一律当「用户」：真人输入、斜杠命令、系统合成、上级会话派给子代理的指令，分别标注。</p>
+<ul>
+<li>一句口头汇报先讲当下最重要的。</li>
+<li>捕获详情与实时分析互相跳转，证据点回请求原文。</li>
+<li>盲区雷达点名没见过的能力声明与中途变化的工具集。</li>
+</ul>
+</article>
+</div>
+<p class="note">账本与目标图是需要核对的解读，不是录制事实：它由经本地接口阅读录制的 AI 写成，每一条都指回它依据的请求。</p>
+<a class="section-link" href="../manual.html#s0-goals">了解目标与阶段进展</a>
 </div>
 </section>
 <section class="section" id="compare">
@@ -307,7 +339,7 @@
 <div class="faq-list">
 <details>
 <summary>录制与分析的数据会去哪里？</summary>
-<p>请求经过本机代理继续发往已配置的上游，记录保存在本机。翻译、AI 解读和语义分析会把相应材料发往你配置的分析端点；更新检查与下载也会联网。</p>
+<p>请求经过本机代理继续发往已配置的上游，记录保存在本机。翻译与 AI 解读会把选中的材料发往你配置的分析端点；实时分析由经本地接口阅读录制的 AI 写成。更新检查与下载也会联网。</p>
 </details>
 <details>
 <summary>可以直接公开分享录制吗？</summary>

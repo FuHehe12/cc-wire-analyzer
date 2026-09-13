@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CC Wire Analyzer — Prompts, subagents, snapshots and run analysis</title>
-  <meta name="description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
+  <meta name="description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, realtime analysis and snapshot comparisons to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
   <meta name="theme-color" content="#172b46">
   <link rel="canonical" href="https://fuhehe12.github.io/cc-wire-analyzer/">
   <link rel="alternate" hreflang="en" href="https://fuhehe12.github.io/cc-wire-analyzer/">
@@ -18,7 +18,7 @@
   <meta property="og:site_name" content="CC Wire Analyzer">
   <meta property="og:locale" content="en_US">
   <meta property="og:title" content="CC Wire Analyzer — Prompts, subagents, snapshots and run analysis">
-  <meta property="og:description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
+  <meta property="og:description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, realtime analysis and snapshot comparisons to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
   <meta property="og:url" content="https://fuhehe12.github.io/cc-wire-analyzer/">
   <meta property="og:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
   <meta property="og:image:width" content="1280">
@@ -26,14 +26,14 @@
   <meta property="og:image:alt" content="Actual capture list showing synthetic requests, a failure, timing and token usage">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="CC Wire Analyzer — Prompts, subagents, snapshots and run analysis">
-  <meta name="twitter:description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
+  <meta name="twitter:description" content="Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, realtime analysis and snapshot comparisons to investigate what changed during a run. Explore it yourself, or let an agent investigate further.">
   <meta name="twitter:image" content="https://fuhehe12.github.io/cc-wire-analyzer/assets/social-preview.png">
 
   <script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "CC Wire Analyzer",
-  "description": "Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.",
+  "description": "Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, realtime analysis and snapshot comparisons to investigate what changed during a run. Explore it yourself, or let an agent investigate further.",
   "url": "https://fuhehe12.github.io/cc-wire-analyzer/",
   "downloadUrl": "https://github.com/FuHehe12/cc-wire-analyzer/releases/latest",
   "softwareHelp": "https://fuhehe12.github.io/cc-wire-analyzer/manual.html",
@@ -77,7 +77,7 @@
 <div>
 <p class="product-type">An observability workspace for Claude Code</p>
 <h1>See what reaches the model.<br>Follow the calls behind the task.</h1>
-<p class="hero-copy">Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, snapshot comparisons and AI analysis to investigate what changed during a run. Explore it yourself, or let an agent investigate further.</p>
+<p class="hero-copy">Record Claude Code requests and responses locally. Inspect prompts, tools and context, then use timelines, realtime analysis and snapshot comparisons to investigate what changed during a run. Explore it yourself, or let an agent investigate further.</p>
 <div class="actions">
 <a class="button primary" href="https://github.com/FuHehe12/cc-wire-analyzer/releases/latest">Download the app</a>
 <a class="button secondary" href="manual.html">Read the manual (中文)</a>
@@ -141,6 +141,8 @@
 <li>
 <strong>Call parameters</strong>: check the model, output limits and other request fields.</li>
 <li>
+<strong>Actual forwarding</strong>: the detail page shows the upstream each request was really sent to.</li>
+<li>
 <strong>Originals and explanations</strong>: copy, format, translate or explain passages while retaining the source.</li>
 </ul>
 <a class="section-link" href="manual.html#manual-read">Request details (中文)</a>
@@ -189,6 +191,36 @@
 </figure>
 <p class="note">Actual software UI with isolated synthetic data.</p>
 </div>
+</div>
+</section>
+<section class="section" id="observe">
+<div class="shell">
+<div class="section-head">
+<h2>What is the run trying to do, and how is it going?</h2>
+<p>Realtime analysis turns a recording into a structured account — goals, actions and turns — written by an observer AI and checkable against the recorded requests.</p>
+</div>
+<div class="agent-grid">
+<article class="agent-col">
+<h3>Read a long run by turns</h3>
+<p>One turn is a user message plus every call it triggered; the analysis follows the run turn by turn instead of cutting mid-step.</p>
+<ul>
+<li>Overall goals and their tasks are drawn as one layered map.</li>
+<li>Goals later judged wrong stay in the sequence, struck through.</li>
+<li>Each analysis states whether it followed the run live or was rebuilt afterwards.</li>
+</ul>
+</article>
+<article class="agent-col">
+<h3>An action ledger with sources</h3>
+<p>Messages are told apart: typed by a person, slash commands, system-synthesized, or instructions a parent session handed to a subagent.</p>
+<ul>
+<li>A one-line report leads with what matters most.</li>
+<li>Capture details and the analysis open each other; evidence returns to the recorded request.</li>
+<li>The blind-spot radar flags unseen capability claims and tool sets that changed mid-conversation.</li>
+</ul>
+</article>
+</div>
+<p class="note">The account is interpretation to check, not recorded fact: it is produced by an AI reading the recording through the local API, and every entry points back to the request it came from.</p>
+<a class="section-link" href="manual.html#s0-goals">Goals and progress (中文)</a>
 </div>
 </section>
 <section class="section" id="compare">
@@ -307,7 +339,7 @@
 <div class="faq-list">
 <details>
 <summary>Where does the data go?</summary>
-<p>The local proxy forwards requests to the configured upstream and saves records locally. Translation, AI explanations and semantic analysis send relevant material to your configured analysis endpoint. Update checks and downloads also use the network.</p>
+<p>The local proxy forwards requests to the configured upstream and saves records locally. Translation and AI explanations send selected material to your configured analysis endpoint; realtime analysis is written by an AI reading the recording through the local API. Update checks and downloads also use the network.</p>
 </details>
 <details>
 <summary>Can I share a recording publicly?</summary>
