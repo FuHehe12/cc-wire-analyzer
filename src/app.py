@@ -259,6 +259,7 @@ _VIEW_NOTES: dict[str, tuple[str, str]] = {
     "/api/grep":                    ("captures", "grep"),
     "/api/stats":                   ("captures", "stats"),
     "/api/sources":                 ("captures", "sources"),
+    "/api/captures/cold":           ("captures", "coldList"),
     "/api/unknowns":                ("analysis", "unknowns"),
     "/api/diagnose/errors":         ("analysis", "diagErrors"),
     "/api/diagnose/trends":         ("analysis", "diagTrends"),

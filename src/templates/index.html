@@ -476,6 +476,19 @@ select:focus-visible,a:focus-visible,.toggle:focus-visible,.ctx-item:focus-visib
   margin-left:7px;padding:0 4px;border-radius:8px;background:var(--brand-ink);color:var(--accent-contrast);
   font-family:var(--font-body);font-size:10px;font-weight:700;line-height:1;vertical-align:1px;}
 .date-meta{font-size:11.5px;color:var(--apple-secondary);}
+/* 已冷藏（260913）。折叠入口做成一枚与日期格同形的按钮排在日期后面——它是"还有一些日期
+   在这儿"，不是另一种工具，所以不进右边的工具区。展开的架子占满一行，不挤日期条。 */
+.cold-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius-sm);
+  border:1px dashed var(--border);background:transparent;font-family:var(--font-mono);font-size:11.5px;
+  color:var(--apple-text-secondary);cursor:pointer;transition:var(--apple-transition);}
+.cold-chip:hover{border-color:var(--border-warm);color:var(--gold-text);}
+.cold-chip .caret{font-size:10px;font-family:var(--font-body);line-height:1;}
+.cold-shelf{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  margin-top:2px;padding-top:10px;border-top:1px dashed var(--border);}
+.cold-shelf .cold-note{flex-basis:100%;font-size:11px;color:var(--apple-text-secondary);line-height:1.7;}
+.cold-shelf .date-chip{border-style:dashed;}
+.cold-shelf .date-chip .cold-size{margin-left:7px;font-size:10px;color:var(--text-tertiary);}
+.cold-shelf .date-chip:disabled{opacity:.6;cursor:progress;}
 /* 来源切换（260825）。外来录制用一颗实心点 + 高亮边框标出来——不变量：导入的录制
    必须一眼可辨，否则排查时会把别的机器的证据当本机事实。 */
 .source-picker{display:flex;gap:6px;flex-wrap:wrap;padding-right:10px;margin-right:4px;
@@ -1482,6 +1495,13 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
               <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
               <span><span data-i18n="stor.archive">归档为单文件</span><span class="dm-sub" data-i18n="stor.archiveSub">存到 archives/，可拷到另一台机器查看；原录制保留</span></span>
             </button>
+            <!-- 冷藏（260913）：第四种语义，与上面三种都不同——本机收起来，拿"能不能直接翻"
+                 换体积。放进同一个菜单是为了保持单一入口：存储动作在捕获页只有这一处，
+                 设置页那张"录制体积"卡的规矩（只读、不放动作）因此仍然成立。 -->
+            <button onclick="doFreeze()">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M4.9 7 19.1 17"/><path d="M19.1 7 4.9 17"/></svg>
+              <span><span data-i18n="cold.freeze">冷藏这一天</span><span class="dm-sub" data-i18n="cold.freezeSub">再压小一截并收进「已冷藏」，点一下就能解冻回来</span></span>
+            </button>
             <button class="danger" onclick="requestClear('archive')">
               <svg class="ico" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
               <span><span data-i18n="clear.archive">归档后清除</span><span class="dm-sub" data-i18n="clear.archiveSub">先归档到 archives/，再删除原录制</span></span>
@@ -1493,6 +1513,9 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
           </div>
         </div>
       </div>
+      <!-- 已冷藏（260913）：久不点开的日期被收起来的地方。默认折叠——它天天都在，展开着
+           就是把日期条挤成两倍高去放一堆不会点的东西。点某一天即解冻并切过去。 -->
+      <div class="cold-shelf" id="coldShelf" hidden></div>
     </div>
     <!-- 失败聚合面板：只在用户点上面那个按钮时就地展开，默认收起 -->
     <div class="doctor-drawer" id="diagDrawer" hidden>
@@ -1683,6 +1706,18 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
           <div><label class="lbl" for="cfgRollingMb" data-i18n="set.rollingMb">压缩阈值 (MB)</label><div class="sub" data-i18n="set.rollingMbSub">写到这么大就压一段 · 太小会切出很多段，去重率反而下降</div></div>
           <input type="number" id="cfgRollingMb" min="20" max="2000" step="10" value="200">
         </div>
+        <!-- 自动冷藏（260913）。与上面「当天滚动压缩」的分工：那个管今天的磁盘峰值，这个管
+             历史的长期堆积。冷藏拿掉的是随机访问（冷藏态不能直接翻），所以它只对"久不点开"
+             的天动手，判据是阅读记账而不是文件时间。 -->
+        <div class="srow">
+          <div><div class="lbl" id="lblCold" data-i18n="set.cold">自动冷藏旧录制</div><div class="sub" data-i18n="set.coldSub">很久没点开的日期收进「已冷藏」，再压小一截 · 点一下就解冻回来</div></div>
+          <button class="toggle" id="cfgCold" type="button" role="switch" aria-checked="false"
+            aria-labelledby="lblCold" onclick="toggleSwitch(this)"></button>
+        </div>
+        <div class="srow">
+          <div><label class="lbl" for="cfgColdDays" data-i18n="set.coldDays">多少天没看就冷藏</label><div class="sub" data-i18n="set.coldDaysSub">填 0 = 从不自动冷藏（仍可在捕获页手动冷藏某一天）</div></div>
+          <input type="number" id="cfgColdDays" min="0" max="365" value="7">
+        </div>
         <!-- 曾有个「Headers 脱敏」开关：它是假的（proxy._redact() 一直无条件调用，从不看配置）。
              260713 连开关一起删掉，脱敏恒开——真让它可关 = 提供把 API key 明文写进 jsonl 的选项，
              而录制现在可被 AI 经 CLI 读取（docs/usage/AI_USAGE.md），等于给 key 修一条直通 AI 上下文的路。 -->
@@ -1714,6 +1749,13 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
         <div class="srow">
           <div><div class="lbl" data-i18n="set.stor.index">写时索引</div><div class="sub" data-i18n="set.stor.indexSub">列表与时序图读它，不必碰正文</div></div>
           <div class="val" id="storIdx">—</div>
+        </div>
+        <!-- 冷藏（260913）。**必须单列**：它算在"录制正文"的字节里，但上面那行的天数是按
+             captures 根下的日期文件数来的，看不见 cold/ 里的天——不单列，冷藏一开用户会
+             看到天数莫名其妙地掉下去。 -->
+        <div class="srow" id="storColdRow" hidden>
+          <div><div class="lbl" data-i18n="set.stor.cold">已冷藏</div><div class="sub" id="storColdSub">—</div></div>
+          <div class="val" id="storCold">—</div>
         </div>
         <div class="srow">
           <div><div class="lbl" data-i18n="set.stor.archives">存档</div><div class="sub" data-i18n="set.stor.archivesSub">手动压缩存档，保留天数不会自动删它</div></div>
@@ -1984,6 +2026,12 @@ const S = {
   status: null,          // /api/proxy/status
   date: null,            // 当前选中日期 YYYY-MM-DD
   dates: [],             // dates_available
+  /* 已冷藏（260913）。cold 是日期清单（跟着 /api/captures 一起回来，画折叠入口够用了）；
+     coldRows 是带体积与条数的明细，只在用户真的展开时才去取——为一个折起来的东西每次
+     都多打一个请求不值当。 */
+  cold: [],
+  coldRows: null,
+  coldOpen: false,
   /* 外来录制来源（260825）。"" = 本机录制；否则是 sources/<标签>/ 下导入的别的机器的录制。
      两台机器同一天都在录，日期必然撞车，所以来源必须是**独立命名空间**而不是混在一起；
      界面上也必须一眼看得出当前看的是谁的（把别的机器的证据当本机事实读，排查会直接跑偏）。 */
@@ -2262,6 +2310,11 @@ zh: {
   "stor.archive": "归档为单文件", "stor.archiveSub": "存到 archives/，可拷到另一台机器查看；原录制保留",
   "stor.working": "处理中…", "stor.fail": "操作失败",
   "stor.compactOk": "已压缩 {n} 天，省下 {saved}", "stor.compactNone": "没有可压缩的日期（今天不压、已压的不再压）",
+  "cold.title": "已冷藏", "cold.note": "这些日期很久没点开，已经收起来并再压小一截。点一下就解冻回日期栏。",
+  "cold.freeze": "冷藏这一天", "cold.freezeSub": "再压小一截并收进「已冷藏」，点一下就能解冻回来",
+  "cold.freezeOk": "已冷藏 {date}，又省下 {saved}（{ratio}x）", "cold.freezeNone": "这一天没法冷藏（今天正在录，永远不冻）",
+  "cold.thawing": "解冻中…", "cold.thawOk": "已解冻 {date}（{n} 条）", "cold.thawFail": "解冻失败",
+  "cold.thisDate": "这一天已冷藏，解冻后才能查看。", "cold.thawBtn": "解冻这一天",
   "stor.archiveOk": "已归档（{size}）", "stor.importOk": "已导入 {label} 的 {date}（{n} 条）",
   "stor.import": "导入", "stor.imported": "已导入", "stor.legacy": "旧格式",
   "stor.snapPack": "快照包 · {n} 份", "stor.importSnap": "导入快照",
@@ -2404,6 +2457,8 @@ zh: {
   "set.retention": "保留天数", "set.retentionSub": "超过天数的 captures 自动清理",
   "set.rolling": "当天滚动压缩", "set.rollingSub": "录到阈值就压缩已写完的部分，不必等到第二天",
   "set.rollingMb": "压缩阈值 (MB)", "set.rollingMbSub": "写到这么大就压一段 · 太小会切出很多段，去重率反而下降",
+  "set.cold": "自动冷藏旧录制", "set.coldSub": "很久没点开的日期收进「已冷藏」，再压小一截 · 点一下就解冻回来",
+  "set.coldDays": "多少天没看就冷藏", "set.coldDaysSub": "填 0 = 从不自动冷藏（仍可在捕获页手动冷藏某一天）",
   "set.maxTokens": "最大输出 tokens", "set.maxTokensSub": "长文本翻译/解读要足够大，否则输出被截断（0 = 用上游默认）。上游模型自身也有输出上限，填得再大也不会超过它",
   "set.inputMax": "最大输入字符", "set.inputMaxSub": "翻译 / AI 解读单次发送的原文上限（字符）。超了会截断并有提示——录制里单条 system prompt 40K+ 常见，默认 20K 会砍掉一半",
   "set.chatCtxMax": "分析对话上下文上限", "set.chatCtxSub": "分析页多轮对话每轮注入的快照摘要上限（字符）。调大能问得更细，代价是每轮花费",
@@ -2439,6 +2494,7 @@ zh: {
   "set.stor.title": "录制体积", "set.stor.sub": "数据目录占用情况 · 只读展示，不在这里做清理",
   "set.stor.captures": "录制正文", "set.stor.index": "写时索引", "set.stor.indexSub": "列表与时序图读它，不必碰正文",
   "set.stor.archives": "归档", "set.stor.archivesSub": "可搬运的单文件，保留天数不会自动删它",
+  "set.stor.cold": "已冷藏", "set.stor.coldSub": "{n} 天已收起（已算进上面的录制正文）· 点开要先解冻",
   "set.stor.snapshots": "快照", "set.stor.snapshotsSub": "提示词快照与对话",
   "set.stor.log": "运行日志", "set.stor.logSub": "run.log",
   "set.stor.total": "合计", "set.stor.days": "{n} 天", "set.stor.largest": "最大的一天 {date} · {size}",
@@ -2693,6 +2749,11 @@ en: {
   "stor.archive": "Archive to a single file", "stor.archiveSub": "Saved to archives/, viewable on another machine; originals kept",
   "stor.working": "Working…", "stor.fail": "Action failed",
   "stor.compactOk": "Compacted {n} day(s), saved {saved}", "stor.compactNone": "Nothing to compact (today is skipped, already-compacted days too)",
+  "cold.title": "Frozen", "cold.note": "These dates had not been opened in a while, so they were put away and compressed further. Select one to thaw it back into the date bar.",
+  "cold.freeze": "Freeze this date", "cold.freezeSub": "Compress it further and put it under Frozen; one click brings it back",
+  "cold.freezeOk": "Froze {date}, saved another {saved} ({ratio}x)", "cold.freezeNone": "This date cannot be frozen (today is still recording and is never frozen)",
+  "cold.thawing": "Thawing…", "cold.thawOk": "Thawed {date} ({n} records)", "cold.thawFail": "Thaw failed",
+  "cold.thisDate": "This date is frozen; thaw it to browse it.", "cold.thawBtn": "Thaw this date",
   "stor.archiveOk": "Archived ({size})", "stor.importOk": "Imported {date} from {label} ({n} records)",
   "stor.import": "Import", "stor.imported": "Imported", "stor.legacy": "legacy format",
   "stor.snapPack": "snapshot bundle · {n} item(s)", "stor.importSnap": "Import snapshots",
@@ -2835,6 +2896,8 @@ en: {
   "set.retention": "Retention days", "set.retentionSub": "Captures older than this are cleaned up",
   "set.rolling": "Compact today as it records", "set.rollingSub": "Compact the finished part once it hits the threshold, instead of waiting for tomorrow",
   "set.rollingMb": "Compaction threshold (MB)", "set.rollingMbSub": "Seal a segment at this size · too small cuts many segments and the dedup ratio drops",
+  "set.cold": "Freeze old recordings", "set.coldSub": "Dates you have not opened in a while move to Frozen and shrink further · one click brings them back",
+  "set.coldDays": "Freeze after this many days unopened", "set.coldDaysSub": "0 = never freeze automatically (you can still freeze a single day from the capture page)",
   "set.maxTokens": "Max output tokens", "set.maxTokensSub": "Long translations need this large or output gets truncated (0 = use upstream default). The upstream model has its own ceiling — a larger value here cannot exceed it",
   "set.inputMax": "Max input characters", "set.inputMaxSub": "Cap on the source text sent per translate / AI-explain call (characters). Longer text is cut with a notice — single system prompts of 40K+ are common in recordings, so the 20K default cuts them in half",
   "set.chatCtxMax": "Analysis chat context cap", "set.chatCtxSub": "Snapshot digest injected each analysis-chat turn (characters). Raising it buys finer questions at the cost of each turn",
@@ -2870,6 +2933,7 @@ en: {
   "set.stor.title": "Recording size", "set.stor.sub": "Disk used by the data directory · read-only, no cleanup here",
   "set.stor.captures": "Recordings", "set.stor.index": "Write-time index", "set.stor.indexSub": "Lists and the timeline read this, never the bodies",
   "set.stor.archives": "Archives", "set.stor.archivesSub": "Portable single files; retention never deletes these",
+  "set.stor.cold": "Frozen", "set.stor.coldSub": "{n} day(s) put away (already counted in recordings above) · thaw one to browse it",
   "set.stor.snapshots": "Snapshots", "set.stor.snapshotsSub": "Prompt snapshots and chats",
   "set.stor.log": "Run log", "set.stor.logSub": "run.log",
   "set.stor.total": "Total", "set.stor.days": "{n} days", "set.stor.largest": "Largest day {date} · {size}",
@@ -3123,6 +3187,11 @@ ja: {
   "stor.archive": "単一ファイルにアーカイブ", "stor.archiveSub": "archives/ に保存 · 別のマシンでも閲覧可 · 元の録画は残す",
   "stor.working": "処理中…", "stor.fail": "操作に失敗",
   "stor.compactOk": "{n} 日分を圧縮し {saved} を節約", "stor.compactNone": "圧縮できる日付がありません（今日と圧縮済みは対象外）",
+  "cold.title": "冷蔵済み", "cold.note": "しばらく開いていない日付を収納し、さらに圧縮しました。選ぶと解凍して日付欄に戻ります。",
+  "cold.freeze": "この日を冷蔵", "cold.freezeSub": "さらに圧縮して「冷蔵済み」に収納 · クリックで元に戻ります",
+  "cold.freezeOk": "{date} を冷蔵し、さらに {saved} を節約（{ratio}x）", "cold.freezeNone": "この日は冷蔵できません（今日は録画中のため対象外）",
+  "cold.thawing": "解凍中…", "cold.thawOk": "{date} を解凍しました（{n} 件）", "cold.thawFail": "解凍に失敗しました",
+  "cold.thisDate": "この日は冷蔵済みです。解凍すると閲覧できます。", "cold.thawBtn": "この日を解凍",
   "stor.archiveOk": "アーカイブしました（{size}）", "stor.importOk": "{label} の {date} を取り込みました（{n} 件）",
   "stor.import": "取り込む", "stor.imported": "取り込み済み", "stor.legacy": "旧形式",
   "stor.snapPack": "スナップショットパック · {n} 件", "stor.importSnap": "スナップショットを取り込む",
@@ -3265,6 +3334,8 @@ ja: {
   "set.retention": "保持日数", "set.retentionSub": "日数を超えた captures は自動削除",
   "set.rolling": "当日ローリング圧縮", "set.rollingSub": "しきい値に達したら書き終えた分を圧縮 · 翌日を待たない",
   "set.rollingMb": "圧縮しきい値 (MB)", "set.rollingMbSub": "この大きさで 1 区間を封じる · 小さすぎると区間が増え重複除去率が下がる",
+  "set.cold": "古い記録を自動で冷蔵", "set.coldSub": "しばらく開いていない日付を「冷蔵済み」に収めてさらに圧縮 · クリックで元に戻ります",
+  "set.coldDays": "何日開かなければ冷蔵するか", "set.coldDaysSub": "0 = 自動冷蔵しない（記録ページから 1 日ずつ手動で冷蔵はできます）",
   "set.maxTokens": "最大出力トークン", "set.maxTokensSub": "長文の翻訳・解釈には十分な大きさが必要（小さいと出力が切り詰められる、0 = 上流のデフォルト）。上流モデル自体にも出力上限があり、これを超えることはできません",
   "set.inputMax": "最大入力文字数", "set.inputMaxSub": "翻訳・AI 解釈で 1 回に送る原文の上限（文字）。超えると切り詰めとその旨の表示が出ます——録画内の単一 system prompt は 40K+ も珍しくなく、既定 20K では半分落ちます",
   "set.chatCtxMax": "分析対話のコンテキスト上限", "set.chatCtxSub": "分析タブの対話で毎ターン注入するスナップショット要約の上限（文字）。大きくすれば細かく聞けますが、ターンごとの費用が増えます",
@@ -3300,6 +3371,7 @@ ja: {
   "set.stor.title": "記録容量", "set.stor.sub": "データディレクトリの使用量 · 表示のみ、ここでは削除しません",
   "set.stor.captures": "記録本体", "set.stor.index": "書き込み時インデックス", "set.stor.indexSub": "一覧とタイムラインはこれを読み、本体には触れません",
   "set.stor.archives": "アーカイブ", "set.stor.archivesSub": "持ち運べる単一ファイル · 保持日数では削除されません",
+  "set.stor.cold": "冷蔵済み", "set.stor.coldSub": "{n} 日分を収納（上の記録本体に含まれます）· 閲覧には解凍が必要",
   "set.stor.snapshots": "スナップショット", "set.stor.snapshotsSub": "プロンプトのスナップショットと対話",
   "set.stor.log": "実行ログ", "set.stor.logSub": "run.log",
   "set.stor.total": "合計", "set.stor.days": "{n} 日分", "set.stor.largest": "最大の日 {date} · {size}",
@@ -4247,9 +4319,18 @@ async function fetchCaptures(date){
     const _sids = new Set(S.items.map(it => it.session_id).filter(Boolean));
     S.multiSession = _sids.size > 1;
     S.dates = d.dates_available || [];
+    S.cold = d.cold_dates || [];
+    S.coldDate = !!d.cold;    /* 这天已冷藏：列表是空的，但不是"没录到"（renderList 要说清） */
     /* 跟随今天 = 当前看的就是今天。用户点历史 chip 后置 false，跨天不再把他抢走 */
     S.followToday = (S.date === todayStr());
     if(S.followToday) S.todayNew.clear();   /* 已经看到今天了，待看计数归零 */
+    /* 阅读记账（260913）：自动冷藏的判据是"多久没点开过"，而"点开过"只有界面知道。
+       打点必须由这里显式发出——记在 GET /api/captures 里的话，分析 Agent 扫一遍全年
+       录制就会把所有日期焐热，自动冷藏从此永远不触发，且不会有任何东西报错。
+       失败不管：记账丢一次最多让这天早几天被冷藏，而冷藏是可逆的。 */
+    if(!S.coldDate) fetch("/api/captures/viewed", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({date: S.date, source: S.source})}).catch(() => {});
     renderDates(); renderList(); renderStatus();
     renderDiag();      /* 先按新日期把旧结论撤下（S.diagDate 不匹配 → 隐藏），再异步取新的 */
     refreshDiag();
@@ -4270,9 +4351,78 @@ function renderDates(){
   const wrap = $("dateChips");
   wrap.innerHTML = dateChipList().map(d =>
     '<button class="date-chip' + (d === S.date ? " active" : "") + dateChipHot(d) + '" onclick="fetchCaptures(\'' + d + '\')">' + d + dateChipBadge(d) + '</button>'
-  ).join("");
+  ).join("") + coldToggleHtml();
   $("dateMeta").textContent = t18("dates.meta", {shown: S.items.length, total: S.total}) +
     (S.status && S.status.running ? t18("dates.live") : "");
+  renderColdShelf();
+}
+/* 折叠入口：没有冷藏过的天就完全不出现——一个恒为 0 的控件天天占位，是把界面越堆越满的
+   那种加法（与来源切换器同一条规矩）。 */
+function coldToggleHtml(){
+  if(!S.cold.length) return "";
+  return '<button class="cold-chip" id="coldToggle" aria-expanded="' + S.coldOpen + '" onclick="toggleCold()">' +
+    '<span class="caret" aria-hidden="true">' + (S.coldOpen ? "▾" : "▸") + '</span>' +
+    esc(t18("cold.title")) + '<span class="chip outline">' + S.cold.length + '</span></button>';
+}
+function renderColdShelf(){
+  const shelf = $("coldShelf");
+  if(!shelf) return;
+  shelf.hidden = !(S.coldOpen && S.cold.length);
+  if(shelf.hidden){ shelf.innerHTML = ""; return; }
+  const byDate = new Map((S.coldRows || []).map(r => [r.date, r]));
+  shelf.innerHTML = '<div class="cold-note">' + esc(t18("cold.note")) + '</div>' +
+    S.cold.map(d => {
+      const r = byDate.get(d);
+      /* 明细还没到时先只画日期：宁可少一个体积数字，也不要为了凑齐它让整排格子晚几百毫秒
+         才出现（用户点的是"展开"，不是"等一下再展开"）。 */
+      const size = r ? '<span class="cold-size">' + esc(fmtBytes(r.size || 0)) + '</span>' : "";
+      return '<button class="date-chip" data-cold="' + esc(d) + '" onclick="thawDate(\'' + d + '\')">' +
+        d + size + '</button>';
+    }).join("");
+}
+async function toggleCold(){
+  S.coldOpen = !S.coldOpen;
+  renderDates();
+  if(!S.coldOpen || S.coldRows) return;
+  try{
+    const r = await fetch("/api/captures/cold?source=" + encodeURIComponent(S.source));
+    const j = await r.json();
+    S.coldRows = j.items || [];
+    renderColdShelf();
+  }catch(e){ /* 取不到明细不影响解冻：日期格已经画出来了，点它照样能解冻 */ }
+}
+/* 解冻要几百毫秒到几秒（一天几十 MB），期间这一格 disabled 并改文案——异步动作从点击到
+   结果可见之间不许有裸窗，否则用户会以为没点上而反复点（同 _storAction 那条教训）。 */
+async function thawDate(date){
+  const btn = $("coldShelf").querySelector('[data-cold="' + CSS.escape(date) + '"]');
+  if(btn){ btn.disabled = true; btn.textContent = t18("cold.thawing"); }
+  try{
+    const r = await fetch("/api/captures/thaw", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({date, source:S.source})});
+    const j = await r.json();
+    if(!j.ok){ toast(t18("cold.thawFail") + "：" + (j.error || ""), true); renderColdShelf(); return; }
+    S.coldRows = null;          // 少了一天，明细整份作废，下次展开重取
+    toast(t18("cold.thawOk", {date, n: j.count || 0}));
+    await fetchCaptures(date);  // 切过去看它——解冻完还停在原来那天，等于什么都没发生
+    if(S.view === "dag") loadDag();
+    loadStorage();
+  }catch(e){ toast(t18("cold.thawFail") + "：" + e.message, true); renderColdShelf(); }
+}
+function doFreeze(){
+  _storAction("/api/captures/freeze", {date: S.date, source: S.source}, j => {
+    const one = (j.frozen || [])[0];
+    if(!one){
+      const why = (j.failed || [])[0];
+      toast(why ? (t18("stor.fail") + "：" + why.error) : t18("cold.freezeNone"), !!why);
+      return;
+    }
+    S.coldRows = null;
+    /* 刚冷藏掉的那天已经不能翻了，停在它上面等于对着一片空白。置空让 _storAction 收尾时
+       回到今天（fetchCaptures(null) = 今天）。 */
+    S.date = null;
+    toast(t18("cold.freezeOk", {date: one.date, saved: fmtBytes(one.saved_bytes || 0),
+                                ratio: one.ratio || 1}));
+  });
 }
 
 /* 跨天自愈（260801）：软件开着过午夜时，S.date 停在昨天 → flushSSE 的守卫把新一天的每条
@@ -4340,6 +4490,13 @@ function rowHtml(it, isNew){
 function renderList(){
   const wrap = $("captureList");
   if(!S.items.length){
+    /* 冷藏的天读出来也是空的，但"收起来了"和"那天没录到"是两回事。说成后者，用户会以为
+       录制丢了——这正是后端在 /api/captures 上挂 cold 标记要防的那件事（260913）。 */
+    if(S.coldDate){
+      wrap.innerHTML = '<div class="list-empty">' + esc(t18("cold.thisDate")) +
+        ' <button class="btn" onclick="thawDate(\'' + S.date + '\')">' + esc(t18("cold.thawBtn")) + '</button></div>';
+      return;
+    }
     wrap.innerHTML = '<div class="list-empty">' + (S.date === todayStr()
       ? t18("list.emptyToday") : t18("list.emptyDate")) + '</div>';
     return;
@@ -7727,6 +7884,10 @@ async function loadConfig(){
     $("cfgRolling").classList.toggle("on", !!cfg.rolling_compact);
     $("cfgRolling").setAttribute("aria-checked", cfg.rolling_compact ? "true" : "false");
     $("cfgRollingMb").value = cfg.rolling_compact_mb ?? 200;
+    const cold = cfg.cold_storage || {};
+    $("cfgCold").classList.toggle("on", cold.enabled !== false);
+    $("cfgCold").setAttribute("aria-checked", cold.enabled !== false ? "true" : "false");
+    $("cfgColdDays").value = cold.days ?? 7;
     const tr = cfg.translate || {};
     $("cfgTransKey").value = tr.api_key || "";
     $("cfgTransBase").value = tr.base_url || "";
@@ -7853,6 +8014,12 @@ function renderStorage(){
   if(j.compactable_saving) sub += " · " + t18("set.stor.canSave", {size: fmtBytes(j.compactable_saving)});
   $("storCapSub").textContent = sub;
   $("storIdx").textContent = fmtBytes(cap.index_bytes || 0);
+  const coldRow = $("storColdRow");
+  if(coldRow){
+    coldRow.hidden = !j.cold_days;
+    $("storCold").textContent = fmtBytes(j.cold_bytes || 0);
+    $("storColdSub").textContent = t18("set.stor.coldSub", {n: j.cold_days || 0});
+  }
   $("storArch").textContent = fmtBytes(arch.bytes || 0);
   $("storSnap").textContent = fmtBytes(snap.bytes || 0);
   const srcEl = $("storSrc");
@@ -8067,6 +8234,12 @@ async function saveConfig(){
     rolling_compact: $("cfgRolling").classList.contains("on"),
     /* 两侧都夹（后端 _clamp_seg_mb 也夹）：0 会让每条记录都触发一次切段 */
     rolling_compact_mb: Math.min(2000, Math.max(20, parseInt($("cfgRollingMb").value, 10) || 200)),
+    cold_storage: {
+      enabled: $("cfgCold").classList.contains("on"),
+      /* 0 要留得住：它是"从不自动冷藏"的显式出口，`|| 7` 会把它悄悄改回 7（后端
+         _clamp_cold_days 同样允许 0）。 */
+      days: Math.min(365, Math.max(0, parseInt($("cfgColdDays").value, 10) || 0)),
+    },
     translate: {
       api_key: $("cfgTransKey").value,
       base_url: $("cfgTransBase").value.trim(),
