@@ -12,12 +12,12 @@ const source = fs.readFileSync(path.join(project, 'src/static/observe-map.js'), 
 // Test-only access to the actual pure reader functions, not a second algorithm.
 const seam = 'window.ObserveMap={render,refresh,clear};';
 assert.equal(source.split(seam).length, 2, 'reader API seam must be unique');
-const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,taskRows,taskSections,goalBands,primerHtml,readingHtml,goalDetail};');
+const code = source.replace(seam, seam + '\nwindow.audit={words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml,flowDiagramHtml,flowLayers,taskRows,taskSections,goalBands,primerHtml,readingHtml,goalDetail,goalLabels};');
 const context = {window:{}, document:{getElementById:()=>null}, URLSearchParams, AbortController, LANG:'en'};
 vm.createContext(context);
 vm.runInContext(code, context, {filename:'observe-map.js'});
 const {words,M,windowOf,predictionState,adoptTrace,stepDetail,predictionHtml,itemDetail,graphHtml,overviewHtml,errorText,reportHtml,goalFlowHtml} = context.window.audit;
-const {flowDiagramHtml,flowLayers,taskRows,taskSections,goalBands,primerHtml,readingHtml,goalDetail}=context.window.audit;
+const {flowDiagramHtml,flowLayers,taskRows,taskSections,goalBands,primerHtml,readingHtml,goalDetail,goalLabels}=context.window.audit;
 let passed = 0;
 function test(name, fn) {fn(); passed++; console.log('PASS ' + name);}
 function pred(extra={}) {
@@ -375,6 +375,35 @@ test('the overall goal is the outer plane and tasks are its inner loop',()=>{
   assert(!/<b>G[0-9]+<[/]b>/.test(html),'iterations are no longer numbered as goals');
   assert(html.includes(words.en.change_goal),'the change that raised a new overall goal is named as such');
   M.taskOpen.clear();
+});
+test('the detail panel names a goal by the number shown on its card, never by its stored id',()=>{
+  reset();
+  const e=(id,task_id,parent_ids,change,after)=>({id,task_id,parent_ids,change,after,trigger:'Because '+id,actor:'user',basis:'explicit',before:'Before '+id,evidence:['req_'+id]});
+  const f={anchor:{user_text:'Slim the docs',understanding:'Slim the docs'},
+    tasks:[{id:'t1',title:'Verify yesterday',start_id:'g1'},{id:'t2',title:'Slim evidence',start_id:'g2'}],
+    iterations:[e('g1','t1',[],'initial','Yesterday verified'),
+      e('g2','t2',['g1'],'turn','Evidence directory slimmed'),
+      e('g3','t2',['g2'],'refine','Evidence directory dropped entirely')],
+    current:{goal_ids:['g3']}};
+  const g={id:'goal',kind:'goal',goal_flow:f};M.state.items=[g];M.items=new Map([[g.id,g]]);
+  // 存的 id 与显示编号是两套东西：g2 是观察 AI 起的名字，它在图上叫 T2·1。
+  assert.equal(goalLabels(f).get('g2').label,'T2·1');
+  assert.equal(goalLabels(f).get('g3').label,'T2·2');
+  assert.equal(goalLabels(f).get('g1').g,'G1','a task switch stays inside the same overall goal');
+  M.taskOpen.set('t2',true);
+  const detail=goalDetail('g2');
+  assert(detail.includes('>T2·1<'),'the panel leads with the number the card shows');
+  assert(detail.includes('>T1·1<'),'and renders its parent as a number too');
+  assert(!/>g[0-9]<|: ?g[0-9]/.test(detail.replace(/class="om-id">[^<]*</g,'class="om-id"><')),
+    'stored ids never appear as the identity of a goal - that is the G/T collision');
+  assert(detail.includes(words.en.internalId+' g2'),'the stored id stays readable, as an internal record number');
+  assert(detail.includes('data-om-action="goal-event" data-om-id="g1"'),'the parent is reachable, not just named');
+  // 未知父指针说找不到，不回落成裸 id（回落正是这次要根除的形状）。
+  const orphan={...f,iterations:[f.iterations[0],{...f.iterations[1],parent_ids:['gone']},f.iterations[2]]};
+  M.state.items=[{id:'goal',kind:'goal',goal_flow:orphan}];M.labelsFor=null;
+  const lost=goalDetail('g2');
+  assert(lost.includes(words.en.missingItem) && !lost.includes('>gone<'));
+  M.taskOpen.clear();M.labelsFor=null;
 });
 test('the two current summaries fold away but never disappear without a trace',()=>{
   reset();

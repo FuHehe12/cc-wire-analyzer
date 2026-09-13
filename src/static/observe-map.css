@@ -108,6 +108,9 @@
 .om-tag{background-color:var(--bg-card);display:inline-block;padding:2px 6px;border:1px solid var(--border);border-radius:4px;color:var(--apple-text-secondary);font-size:var(--ob-fs-5);line-height:var(--ob-lh-tight);vertical-align:middle;}
 .om-tag+.om-tag{margin-left:5px;}
 .om-tag.om-support{color:var(--ok);}.om-tag.om-counter{color:var(--err);}
+/* 详情面板里的 T2·1 徽标：与图上那张卡的编号是同一个东西，配色也跟着 --ag-key 走，
+   一眼能认出「我点开的是哪张卡」（260913 G-T 收口）。 */
+.om-shell .om-tag.om-goal-no{color:var(--ag-key);border-color:color-mix(in srgb,var(--ag-key) 45%,transparent);font-weight:var(--ob-w-med);}
 .om-error{color:var(--err);font-size:var(--ob-fs-3);line-height:var(--ob-lh-body);overflow-wrap:anywhere;}
 .om-notice{border-left:3px solid var(--brand-ink);background-color:var(--bg-soft);padding:11px 14px;font-size:var(--ob-fs-4);line-height:var(--ob-lh-body);margin:16px 0;color:var(--apple-text-secondary);}
 .om-graph-scroll{overflow:auto;padding-bottom:10px;}

@@ -164,9 +164,12 @@
     ja:{untasked:'タスク未指定の旧目標',readingFold:'現在の理解と現状',headlineHint:'一言で',overallGoal:'全体目標',change_goal:'全体目標の変更',mistaken:'誤りと判明した目標',glossaryA:'A｜起点',glossaryANote:'会話の起点：利用者の最初の言葉と、作業 AI の当時の理解。会話ごとに一つだけです。',glossaryG:'G｜目標',glossaryGNote:'会話の最上位の目標：利用者が全体として求める結果。その目標が引き上げ・絞り込み・方向転換されたときに G2・G3 が増え、目標が変わらないまま別の作業に移るだけでは増えません。',glossaryT:'T｜タスク',glossaryTNote:'G の内側のループ：G を達成するための納品単位。T1・T2 は開始順のタスク、T3·2 は 3 番目のタスクの 2 版目の言い方です。',mode_incremental:'その場で一ターンずつ作成',mode_incremental_note:'録画に沿って逐次記録：途中の目標変更も残っているはずです。',mode_retrospective:'事後の一括再構成',mode_retrospective_note:'後からまとめて作成：一度信じて取り下げた目標は、明示がない限り残っていません。',trajectory:'A→G 目標の流れ',requestReading:'依頼をどう理解しているか',situationReading:'現状をどう捉えているか',readingMissing:'まだ記録されていません。観測 AI が会話から補足します。',readingNote:'記録された会話からの整理です。開くと根拠を確認できます。',carryover:'タスクを切り替えても引き継ぐこと',change_initial:'出発点',change_refine:'修正',change_turn:'タスクの転換',task:'タスク',pastTask:'以前のタスク',currentTask:'現在のタスク',expandTask:'目標の変化を展開',collapseTask:'目標の変化を折り畳む',goalVersions:'件の目標',currentEvidence:'現在の理解の根拠を確認',findingsLane:'原文と説明',flowHint:'A・G・変更理由を選ぶと、その場で原文と根拠を確認できます。',flowIntro:'最初の理解を保ち、目標の修正と別タスクへの転換を追います。',flowSetup:'上の「接続説明をコピー」から最初の入力をもとに A→G を作成します。従来の記録は API で閲覧できます。'}
   })) Object.assign(words[lang],values);
   for(const [lang,values] of Object.entries({
-    zh:{openCapture:'在捕获中打开',rebuilt:'已重建',rebuildLog:'重建记录',rebuildNote:'这份 A→G 曾被观察 AI 整体重建，上一版保留在条目历史里。'},
-    en:{openCapture:'Open in captures',rebuilt:'Rebuilt',rebuildLog:'Rebuild log',rebuildNote:'The observer rebuilt this A→G. The previous version stays in the item history.'},
-    ja:{openCapture:'記録で開く',rebuilt:'再構築済み',rebuildLog:'再構築の記録',rebuildNote:'この A→G は観測 AI が再構築しました。前の版は項目履歴に残ります。'}
+    zh:{openCapture:'在捕获中打开',rebuilt:'已重建',rebuildLog:'重建记录',rebuildNote:'这份 A→G 曾被观察 AI 整体重建，上一版保留在条目历史里。',
+      internalId:'观察记录里的编号'},
+    en:{openCapture:'Open in captures',rebuilt:'Rebuilt',rebuildLog:'Rebuild log',rebuildNote:'The observer rebuilt this A→G. The previous version stays in the item history.',
+      internalId:'Observer record id'},
+    ja:{openCapture:'記録で開く',rebuilt:'再構築済み',rebuildLog:'再構築の記録',rebuildNote:'この A→G は観測 AI が再構築しました。前の版は項目履歴に残ります。',
+      internalId:'観測記録内の ID'}
   })) Object.assign(words[lang],values);
   for(const [lang,values] of Object.entries({
     zh:{flowHelp:'为什么这样设计，怎么看这张图',helpWhy:'先看 AI 是否理解了你的要求、怎样判断现状，更容易发现沟通偏差。过程细节按需展开，避免大量日志盖住重点。',helpRead:'A 是最初的理解，G 是想达到的结果。同一任务改要求叫“修正”，转到另一项交付叫“转折”；只是现状变化时，不增加 G。',helpSource:'内容由独立的观察 AI 根据录制整理，解释可能有偏差，可以点击证据核对。刷新只读取已保存的分析，不会启动 AI。',helpUpgrade:'升级后可复制新的接入说明，交给观察 AI 继续分析。旧录制与观测记录会保留；缺少 A→G 的旧观测，需要观察 AI 根据原始记录补充。'},
@@ -179,7 +182,8 @@
   const list = x => Array.isArray(x) ? x : [];
   const M = {state:null, key:'', trace:null, nodes:new Map(), turns:[], items:new Map(), selected:null,
     open:new Set(), folds:new Set(), shut:new Set(), records:new Map(), rawOpen:new Set(), error:'', checked:'',
-    generation:0, controller:null, pending:null, signature:'', binding:null, resize:null, panel:'flow', taskOpen:new Map()};
+    generation:0, controller:null, pending:null, signature:'', binding:null, resize:null, panel:'flow', taskOpen:new Map(),
+    labelsFor:null, labels:new Map()};
   const root = () => document.getElementById('obBody');
   const items = () => list(M.state?.items);
   const live = it => it.status !== 'retracted';
@@ -293,15 +297,28 @@
       (entries.length?entries.slice(0,3).map(row).join(''):note(tr('noKind')))+
       (entries.length>3?'<details class="om-disclosure" data-om-fold="report-'+label+'"'+(M.folds.has('report-'+label)?' open':'')+'><summary>'+escape(tr('allEntries'))+' '+(entries.length-3)+'</summary>'+entries.slice(3).map(row).join('')+'</details>':'')+'</section>').join('')+'</div></section>';
   }
+  /** 父指针一排可点的编号。此前是 `note('由这些目标演变: ' + ids.join(', '))`，打出来的是
+      观察 AI 自己起的原始 id，既点不动也对不上图上的编号。找不到的条目说找不到，
+      **不回落成裸 id**——回落正是 260913 那次「G-T 不分」的来源。 */
+  function parentLinks(ids) {
+    return '<div class="om-evidence">'+list(ids).map(id=>{
+      const p=goalLabel(id);
+      return p?button('goal-event',id,escape(p.label),'om-anchor')
+        :'<span class="om-tag">'+escape(tr('missingItem'))+'</span>';
+    }).join('')+'</div>';
+  }
   function goalEventHtml(event) {
     const current=goalEvents(event.id).filter(e=>e.kind==='status').at(-1), proof=current?current.verification:event.verification;
-    return '<article class="om-goal-event om-goal-'+escape(event.actor)+'"><header>'+badge(escape(event.id))+' '+badge(tr(list(event.parent_ids).length?'actor_'+event.actor:'initialGoal'))+' '+badge(tr(event.basis))+'</header>'+
+    const L=goalLabel(event.id);
+    return '<article class="om-goal-event om-goal-'+escape(event.actor)+'"><header>'+badge(L?L.label:tr('noKind'),'om-goal-no')+
+      (L && L.layered?badge(tr('belongs_to')+' '+L.g):'')+' '+badge(tr(list(event.parent_ids).length?'actor_'+event.actor:'initialGoal'))+' '+badge(tr(event.basis))+'</header>'+
       '<dl class="om-goal-diff"><dt>'+escape(tr('beforeGoal'))+'</dt><dd><del>'+escape(event.before)+'</del></dd><dt>'+escape(tr('afterGoal'))+'</dt><dd><ins>'+escape(event.after)+'</ins></dd></dl>'+
       '<h4>'+escape(tr('trigger'))+'</h4><p class="om-prose">'+escape(event.trigger)+'</p>'+
-      (list(event.parent_ids).length?note(tr('parents')+': '+event.parent_ids.join(', ')):'')+
+      (list(event.parent_ids).length?'<h4>'+escape(tr('parents'))+'</h4>'+parentLinks(event.parent_ids):'')+
       '<p>'+badge(tr(goalStatus(event)))+'</p>'+
       (proof?'<h4>'+escape(tr('verification'))+'</h4><p class="om-prose">'+escape(proof.text)+'</p>'+refs(proof.evidence):'')+
-      '<h4>'+escape(tr('goalEvidence'))+'</h4>'+refs(event.evidence)+'</article>';
+      '<h4>'+escape(tr('goalEvidence'))+'</h4>'+refs(event.evidence)+
+      '<p class="om-id">'+escape(tr('internalId')+' '+event.id)+'</p></article>';
   }
   function goalFlowHtml(it, detailed=false) {
     if(!detailed) return flowDiagramHtml(it);
@@ -313,7 +330,7 @@
       '<div class="om-goal-pair"><section><h4>'+escape(tr('userWords'))+'</h4><blockquote>'+escape(anchor.user_text)+'</blockquote></section><section><h4>'+escape(tr('understanding'))+'</h4><p class="om-prose">'+escape(anchor.understanding)+'</p></section></div>'+
       (list(anchor.choices).length?'<h4>'+escape(tr('choices'))+'</h4><ul>'+anchor.choices.map(c=>'<li>'+escape(c)+'</li>').join('')+'</ul>':'')+refs(anchor.evidence)+'</article>';
     return '<section class="om-goal-flow"><h2>'+escape(tr('goalFlow'))+'</h2>'+note(tr('goalCorrection'))+
-      '<div class="om-goal-current"><h3>'+escape(tr('goalNow'))+'</h3>'+(heads.length?heads.map(e=>'<p>'+badge(e.id)+' '+badge(tr(e.status || 'active'))+' '+badge(tr(e.basis))+'</p><p class="om-prose">'+escape(e.after)+'</p>').join(''):note(tr('noKind')))+'</div>'+
+      '<div class="om-goal-current"><h3>'+escape(tr('goalNow'))+'</h3>'+(heads.length?heads.map(e=>'<p>'+badge(goalLabel(e.id)?.label || tr('noKind'),'om-goal-no')+' '+badge(tr(e.status || 'active'))+' '+badge(tr(e.basis))+'</p><p class="om-prose">'+escape(e.after)+'</p>').join(''):note(tr('noKind')))+'</div>'+
       '<details class="om-disclosure" data-om-fold="'+escape(key)+'"'+(detailed || M.folds.has(key)?' open':'')+'><summary>'+escape(tr('goalChanges'))+' <b>'+events.length+'</b></summary><div class="om-goal-track">'+anchorHtml+events.map(goalEventHtml).join('')+'</div></details></section>';
   }
   const flowItem = () => items().find(it=>live(it) && it.goal_flow);
@@ -420,6 +437,29 @@
     for(const band of bands) band.text=band.goal?band.goal.after:(f.anchor?.understanding || first?.after || '');
     return bands;
   }
+  /** 编号的唯一真源：id → {G 段, T 段, 第几版, 显示编号}。
+      此前编号只活在 flowDiagramHtml 渲染过程里（局部变量 taskNo/rowNo 递增），详情面板
+      拿不到，于是回落去打观察 AI 自己起的原始 id。而那些 id 恰好长成 g1/g2（API 契约的
+      示例就这么写，观察 AI 照着起名），与图上的 G1/G2 撞脸却**不同义**——260913 截图里
+      的 `g2` 其实是 T2·1，`由这些目标演变: g1` 其实是 T1·1，同一页出现两套互相矛盾的 G。
+      编号规则必须与 flowDiagramHtml 一致：段按 goalBands 顺序，T 按段内 sections 顺序连续
+      递增（不在每个 G 段里重新从 1 数），版本按 sec.members 的下标。
+      按 flow 对象身份缓存：members 与顺序不随折叠状态变，变的只有 rows。 */
+  function goalLabels(f) {
+    if(!f) return new Map();
+    if(M.labelsFor===f) return M.labels;
+    const map=new Map(), bands=goalBands(f);
+    const layered=bands.length>1 || bands.reduce((n,b)=>n+b.sections.length,0)>1;
+    let no=0;
+    for(const [bi,band] of bands.entries()) for(const sec of band.sections) {
+      const t='T'+(++no);
+      sec.members.forEach((e,i)=>map.set(e.id,{g:'G'+(bi+1),t,ver:i+1,label:t+'·'+(i+1),
+        task:sec.task?sec.task.title:'',taskKey:sec.key,layered}));
+    }
+    M.labelsFor=f;M.labels=map;
+    return map;
+  }
+  const goalLabel = id => goalLabels(flowItem()?.goal_flow).get(id);
   const AG_RIGHT=0, AG_RIGHT_OPEN=430;
   /** 就地详情的高度：固定 360px 在大屏上白白浪费，在小屏上又要在很小的窗口里翻长证据。 */
   const detailHeight = () => Math.round(Math.min(620,Math.max(320,(window.innerHeight || 900)*0.58)));
@@ -464,8 +504,8 @@
         '<span class="ag-goal-text">'+escape(short(band.text,110))+'</span>','ag-goal-band')+'</div>';
   }
   /** 任务分区头：标题、这件事上有几版目标、现在是什么状态，折起来就剩这一行。 */
-  function taskHeadHtml(sec,top,left,width,index) {
-    return '<div class="ag-task-heading" data-ag-block="task" style="left:'+left+'px;top:'+top+'px;width:'+width+'px"><b>T'+index+'</b>'+
+  function taskHeadHtml(sec,top,left,width,tno) {
+    return '<div class="ag-task-heading" data-ag-block="task" style="left:'+left+'px;top:'+top+'px;width:'+width+'px"><b>'+escape(tno)+'</b>'+
       '<strong>'+escape(sec.task?sec.task.title:tr('untasked'))+'</strong>'+
       '<span class="ag-task-state">'+escape(tr(sec.state)+' · '+sec.members.length+' '+tr('goalVersions'))+
       (sec.wrong?'<b class="ag-wrong">· '+escape(tr('mistaken'))+'</b>':'')+'</span>'+
@@ -510,7 +550,9 @@
     }
     function sectionHtml(sec) {
       const si=taskNo++;
-      const heading=banded?taskHeadHtml(sec,y,centerX,centerWidth,si+1):'';
+      // 编号从 goalLabels 取，不在这里第二次数——两处各数一遍就是它们迟早对不上的开始。
+      const tno=goalLabel(sec.members[0]?.id)?.t || ('T'+(si+1));
+      const heading=banded?taskHeadHtml(sec,y,centerX,centerWidth,tno):'';
       if(banded) y+=AG_HEAD_H;
       const body=sec.rows.map(row=>{
         const top=y, columns=row.length===1?(lanes===1?centerWidth:320):252, ri=rowNo++;
@@ -522,7 +564,7 @@
         return row.map((e,i)=>{
           const x=centerX+(centerWidth-row.length*columns-(row.length-1)*12)/2+i*(columns+12);
           const compact=list(e.members).length>0, state=goalStatus(e);
-          const label=compact?tr('pastTask'):'T'+(si+1)+'·'+(sec.members.findIndex(m=>m.id===e.id)+1);
+          const label=compact?tr('pastTask'):(goalLabel(e.id)?.label || tno);
           const content='<span class="ag-label"><b>'+escape(label)+'</b><span'+(compact && e.wrong?' class="ag-wrong"':'')+'>'+escape(compact?e.members.length+' '+tr('goalVersions')+(e.wrong?' · '+tr('mistaken'):''):state==='completedGoal'?tr('completedGoal'):currentIds.has(e.id)?tr('goalNow'):tr(state))+'</span></span><strong>'+escape(short(e.after,100))+'</strong>'+(compact?'<span class="ag-count">'+escape(tr('expandTask'))+' ↓</span>':'');
           const cause=compact?e.members[0]:e;
           const change=button('goal-event',cause.id,'<span class="ag-who">'+escape(cause.change==='initial'?tr('initialGoal'):cause.change?tr('change_'+cause.change)+' · '+tr('actor_'+cause.actor):tr(list(cause.parent_ids).length?'actor_'+cause.actor:'initialGoal'))+'</span><span>'+escape(short(cause.trigger,row.length>1?55:100))+'</span>','ag-change ag-'+escape(cause.actor),'data-ag-block="row" data-ag-row="'+ri+'" data-ag-lane="'+i+'" style="left:24px;top:'+(top+i*AG_ROW_PITCH)+'px;width:'+leftW+'px"');
@@ -551,8 +593,11 @@
         (rebuilds().length?'<h4>'+escape(tr('rebuildLog'))+'</h4><ul>'+rebuilds().map(r=>'<li>'+escape((r.at || '')+' · '+(r.reason || ''))+'</li>').join('')+'</ul>':'')+goalJournal(id);
     }
     const event=list(flow.iterations).find(e=>e.id===id);if(!event) return note(tr('missingItem'));
-    const task=list(flow.tasks).find(t=>t.id===event.task_id);
-    return (task?'<h3>'+escape(task.title)+'</h3>':'')+(event.change?badge(tr('change_'+event.change)):'')+goalEventHtml(event)+goalJournal(id);
+    const task=list(flow.tasks).find(t=>t.id===event.task_id), L=goalLabel(id);
+    // 标题带上任务编号：点开的卡片写着 T2·1，面板标题就该说它属于 T2 的哪件交付，
+    // 否则读者得自己在图上数一遍才知道手里这份详情是谁的。
+    const head=[L?L.t:'',task?task.title:''].filter(Boolean).join(' · ');
+    return (head?'<h3>'+escape(head)+'</h3>':'')+(event.change?badge(tr('change_'+event.change)):'')+goalEventHtml(event)+goalJournal(id);
   }
   /** 二遍布局。首屏那套 top 是按固定节拍估的，可真实高度要等字体排完才知道：实测 G 段头
       67px 而节拍只留了 64，于是每一段都压住下面的 T 段头 2px，而 T 段头只有 25px 却按 46px
@@ -855,7 +900,7 @@
   }
   function clear(message='') {
     M.controller?.abort(); M.generation++;M.controller=null;M.pending=null;M.state=null;M.key='';M.trace=null;
-    M.nodes.clear();M.items.clear();M.turns=[];M.selected=null;M.open.clear();M.folds.clear();M.records.clear();M.rawOpen.clear();M.taskOpen.clear();M.shut.clear();M.signature='';M.error='';M.panel='flow';M.detailOpen=false;M.detailOrigin=null;M.flowLeft=undefined;
+    M.nodes.clear();M.items.clear();M.turns=[];M.selected=null;M.open.clear();M.folds.clear();M.records.clear();M.rawOpen.clear();M.taskOpen.clear();M.shut.clear();M.signature='';M.error='';M.panel='flow';M.detailOpen=false;M.detailOrigin=null;M.flowLeft=undefined;M.labelsFor=null;M.labels=new Map();
     const r=root();if(r) r.innerHTML=message?'<p class="om-error" role="alert">'+escape(message)+'</p>':'';
   }
   function render(state) {
