@@ -1,6 +1,26 @@
 # 变更历史
 
-这里记录 v0.4.36 及更早版本的变化，最新一版见 [CHANGELOG.md](CHANGELOG.md)。一条一句，只说做了什么；想知道为什么这么定，顺着条目末尾的 issue 名去 `issues/closed/` 读（v0.4.27 及更早的条目大多没有 issue 名，那时还没有这个习惯，查 `git log` 或 `issues/closed/INDEX.md`）。本文件被整理过两次，原文都在 git 里：260913 改写前的那版取 `git show 71b1499~1:CHANGELOG-history.md`，260906 瘦身前那份最长的（含大量解释性正文）取 `git show 9b1673f:public/CHANGELOG-history.zh.md`，英文全文同一提交下的 `public/CHANGELOG-history.md`。历史路径与行为不代表当前状态。
+这里记录 v0.4.37 及更早版本的变化，最新一版见 [CHANGELOG.md](CHANGELOG.md)。一条一句，只说做了什么；想知道为什么这么定，顺着条目末尾的 issue 名去 `issues/closed/` 读（v0.4.27 及更早的条目大多没有 issue 名，那时还没有这个习惯，查 `git log` 或 `issues/closed/INDEX.md`）。本文件被整理过两次，原文都在 git 里：260913 改写前的那版取 `git show 71b1499~1:CHANGELOG-history.md`，260906 瘦身前那份最长的（含大量解释性正文）取 `git show 9b1673f:public/CHANGELOG-history.zh.md`，英文全文同一提交下的 `public/CHANGELOG-history.md`。历史路径与行为不代表当前状态。
+
+## v0.4.37 - 2026-09-13
+
+### 新增
+
+- 捕获详情页显示每条请求实际发给了哪个上游，悬停看完整地址。混用官方和第三方上游时，能看出某次失败是谁拒的。（issue 260913_捕获详情显示实际转发上游）
+
+### 变更
+
+- 实时分析页的空白说明改成先讲你会遇到什么问题，再讲这一页怎么帮你。（issue 260908-260912_实时分析页面与动作账本）
+
+### 修复
+
+- 说明书生成脚本在 Python 3.11 下无法运行。（issue 260713-260912_发版链路与产物一致性）
+
+### 文档
+
+- CHANGELOG 的写作要求移进 CLAUDE.md，条目改成短句。（issue 260714-260912_CHANGELOG写法的反复）
+- 自测清单补回一项漏登的检查，它此前只在 CI 上跑。（issue 260809-260912_文档体检与闸门机械化）
+- 架构总览里的接口清单补上漏掉的四十多个接口，并加了自动检查防止再漏。（issue 260809-260912_文档体检与闸门机械化）
 
 ## v0.4.36 - 2026-09-12
 
