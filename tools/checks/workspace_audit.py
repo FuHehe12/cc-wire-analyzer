@@ -64,10 +64,11 @@ def audit() -> dict:
                 'docs/usage/AI_USAGE.md', 'docs/usage/API契约.md',
                 'docs/usage/界面导览.md', 'docs/usage/报文解读.md',
                 'docs/guides/同类工具构建手册.md', 'docs/product/data/product-v3.json',
+                'site/index.html', 'tools/site/build_site.py',
                 'tools/build/build_manual.py', 'tools/checks/doc_audit.py']
     errors.extend(f'Required current file missing: {name}' for name in required if not (ROOT / name).is_file())
     retired = ['docs/reference', 'docs/product-manual.html', 'handbook', 'research',
-               'site', 'qa', 'README.zh.md', 'README.ja.md', '.github/workflows/pages.yml']
+               'qa', 'README.zh.md', 'README.ja.md', '.github/workflows/pages.yml']
     errors.extend(f'Retired maintenance path still exists: {name}' for name in retired if (ROOT / name).exists())
     errors.extend(f'Test still mixed into runtime source: {p.name}' for p in (ROOT / 'src').glob('*selftest.py'))
     readmes = [ROOT / 'README.md']
