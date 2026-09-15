@@ -592,6 +592,16 @@ def _version() -> str:
 
 # ===== 读取 =====
 
+# 列表排序键：created 主键 + **sid 次级键**（260915，issue 260915_mac全量验证）。
+# created 只有毫秒精度，同毫秒创建的快照会让纯 created 键碰撞：索引路径保 append 序、
+# 重建路径按文件名字典序，稳定排序分不出同键条目的高下，两边源序不同 → 列表不等
+# （发版闸门偶发红的真身）。sid 全局唯一，补作次级键后键不再碰撞，无论源序如何
+# 都收敛到同一个结果。**两处排序必须共用这一个函数**——各写一份 lambda，
+# 将来只改其中一处就是同一个病换个地方复发。
+def _sort_key(e: dict) -> tuple[str, str]:
+    return (e.get("created") or "", e.get("sid") or "")
+
+
 def _read_index() -> list[dict] | None:
     """读索引；文件缺失或任一条目 schema 不符 → None（调用方全量重建）。
 
@@ -664,7 +674,7 @@ def _rebuild_index_locked() -> list[dict]:
             entries.append(_envelope_summary(snap))
         except Exception as e:
             log.error("快照索引重建失败 %s: %s", f.name, e)
-    entries.sort(key=lambda e: e.get("created") or "")
+    entries.sort(key=_sort_key)
     try:
         SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
         _atomic_write(_INDEX_FILE,
@@ -685,7 +695,7 @@ def list_snapshots(kind: str = "") -> list[dict]:
             entries = rebuild_index()
     if kind:
         entries = [e for e in entries if e.get("kind") == kind]
-    return sorted(entries, key=lambda e: e.get("created") or "", reverse=True)
+    return sorted(entries, key=_sort_key, reverse=True)
 
 
 def get_snapshot(sid: str) -> dict:
