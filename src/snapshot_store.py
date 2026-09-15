@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -56,7 +57,16 @@ _INDEX_FILE = SNAPSHOTS_DIR / "index.jsonl"
 # 没有任何东西会报错。这里同理：版本不符的索引整体重建（快照文件本身永不因版本被丢弃）。
 SNAP_SCHEMA = 1
 
-_LOCK = threading.Lock()
+# **可重入**：`list_snapshots()` 在锁内调 `rebuild_index()`，而重建自己也必须持锁
+# （260915）——重建要把每个快照文件整份打开读，Windows 上被打开的文件删不掉也覆盖不了，
+# 与它并发的删除/更新会当场拿到 WinError 32/5。普通 Lock 在这条路径上会自锁，所以用 RLock。
+_LOCK = threading.RLock()
+
+# 索引追加了多少条还没压实。`update_meta` 走追加而不是全量重建（重建是 O(全部快照字节)，
+# 拖一张贴纸不该付这个价），代价是同一个 sid 会在索引里留多条——读取侧按 sid 去重、
+# 保留最后一条即是当前值。这个计数只为「别让索引无限长」：超过阈值压实一次。
+_APPENDS = 0
+_APPENDS_MAX = 200
 
 # 写失败计数（对齐 capture_store 的做法）：快照写不进去**必须顶到 UI**。
 # 用户点了"备份"、界面弹了成功、磁盘上没有——这是本项目惯犯 bug ③ 的标准形状。
@@ -398,6 +408,35 @@ def _snap_file(sid: str) -> Path:
     return SNAPSHOTS_DIR / f"{sid}.json"
 
 
+def _tmp_file(stem: str) -> Path:
+    """写入用的临时文件名。**每个写入方各用各的**（pid + 线程 id）：
+    固定名字（`.index.writing`）在两个请求线程同时重建索引时会互相截断，
+    Windows 上后一个 `replace()` 直接 WinError 32（260915 实测）。"""
+    return SNAPSHOTS_DIR / f".{stem}.{os.getpid()}.{threading.get_ident()}.writing"
+
+
+def _atomic_write(path: Path, data: bytes, *, stem: str) -> None:
+    """先写临时文件再 rename：中途断电/磁盘满不会留下半个 JSON 让读取侧崩。
+    失败时把自己的临时文件清掉，不在快照目录里留垃圾。"""
+    tmp = _tmp_file(stem)
+    try:
+        tmp.write_bytes(data)
+        tmp.replace(path)
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+# 旁挂文件：跟着快照走、可重算的派生物。**清单只在这一处**——删除、size_of、便携包
+# 三处都从这里取。此前各抄一份，于是 260910 取消八视图后 `.semantic.json` 只在导入侧
+# 被记得、删除侧漏了，磁盘上留下一堆谁也不读的孤儿（本机实测两份共 22KB）。
+def _side_files(sid: str) -> list[Path]:
+    return [chat_file(sid), analysis_file(sid), semantic_file(sid)]
+
+
 def _capture_summary(record: dict) -> dict:
     """kind=capture 的列表显示字段。**现算的缓存，不是元数据副本**——
     随时可从 payload 重算（rebuild_index 就是这么做的）。"""
@@ -455,6 +494,21 @@ def _envelope_summary(snap: dict) -> dict:
     return out
 
 
+def _append_index(entry: dict) -> None:
+    """往索引追加一条信封（**调用方须持锁**）。同 sid 追加多条是允许的：
+    读取侧按 sid 去重、保留最后一条。攒够 `_APPENDS_MAX` 条压实一次。"""
+    global _APPENDS
+    with _INDEX_FILE.open("ab") as fh:
+        fh.write((json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8"))
+    _APPENDS += 1
+    if _APPENDS >= _APPENDS_MAX:
+        try:
+            rebuild_index()          # 内部会把 _APPENDS 归零
+        except OSError as e:
+            # 压实失败不影响这次写入（索引已经落盘，只是长了点）
+            log.warning("快照索引压实失败（下次再试）: %s", e)
+
+
 def _write(snap: dict) -> dict:
     """落盘快照 + 追加索引。失败**抛错**（与录制不同：录制失败不许阻塞转发，
     而快照是用户的显式动作，失败必须让用户知道，不能假装成功）。"""
@@ -465,12 +519,8 @@ def _write(snap: dict) -> dict:
         try:
             SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
             data = json.dumps(snap, ensure_ascii=False).encode("utf-8")
-            tmp = SNAPSHOTS_DIR / f".{sid}.writing"
-            # 先写临时文件再 rename：中途断电/磁盘满不会留下半个 JSON 让读取侧崩
-            tmp.write_bytes(data)
-            tmp.replace(_snap_file(sid))
-            with _INDEX_FILE.open("ab") as fh:
-                fh.write((json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8"))
+            _atomic_write(_snap_file(sid), data, stem=sid)
+            _append_index(entry)
         except OSError as e:
             _WRITE_ERRORS += 1
             _LAST_WRITE_ERROR = f"{type(e).__name__}: {e}"
@@ -543,10 +593,18 @@ def _version() -> str:
 # ===== 读取 =====
 
 def _read_index() -> list[dict] | None:
-    """读索引；文件缺失或任一条目 schema 不符 → None（调用方全量重建）。"""
+    """读索引；文件缺失或任一条目 schema 不符 → None（调用方全量重建）。
+
+    **按 sid 去重、保留最后一条**（260915）。两个理由，缺一不可：
+
+      ① `update_meta` 走追加而不是全量重建，同一个 sid 本来就会有多条，后写的是当前值。
+      ② 就算没有 ①，索引里也可能混进重复行（追加与重建交叠、导入、崩溃残留）。不去重的
+         后果实测过：白板上凭空多出一张一模一样的贴纸，而且批量删除时同一个 sid 被删两遍，
+         第二遍必然报「快照不存在」——用户看到的「贴纸变多」和「批量删除失败」是同一个病。
+    """
     if not _INDEX_FILE.exists():
         return None
-    out: list[dict] = []
+    by_sid: dict[str, dict] = {}
     try:
         with _INDEX_FILE.open("rb") as fh:
             for raw in fh:
@@ -560,17 +618,36 @@ def _read_index() -> list[dict] | None:
                     log.info("快照索引 schema 过期（%r，当前 %d）→ 整体重建",
                              e.get("schema"), SNAP_SCHEMA)
                     return None
-                out.append(e)
+                sid = e.get("sid")
+                if not sid:
+                    continue          # 没有 sid 的条目点不动也删不掉，不往界面上放
+                by_sid[sid] = e       # dict 保插入序，后写的覆盖前一条、位置不变
     except OSError as e:
         log.error("快照索引读取失败（改走重建）: %s", e)
         return None
-    return out
+    return list(by_sid.values())
 
 
 def rebuild_index() -> list[dict]:
-    """从快照文件全量重建索引。索引是缓存不是事实源——丢了、坏了、版本旧了都能重来。"""
+    """从快照文件全量重建索引。索引是缓存不是事实源——丢了、坏了、版本旧了都能重来。
+
+    **全程持锁**（260915）：重建要把每个快照文件整份打开读，而 Windows 上被打开的文件
+    删不掉、也不能被 `replace()` 覆盖。此前它不取锁，于是与它并发的删除当场拿到
+    `WinError 32`、更新拿到 `WinError 5`——实测「16 张删 15 张、1 张失败」，正是用户报的
+    「批量删除失败」。锁是 RLock，`list_snapshots` 那条已在锁内的路径可以照常进来。
+
+    代价是重建是 O(全部快照字节)，所以**只在真需要时调**：索引坏了、删除之后、攒够
+    `_APPENDS_MAX` 条追加。拖一张贴纸不该付这个价（见 `update_meta`）。
+    """
+    with _LOCK:
+        return _rebuild_index_locked()
+
+
+def _rebuild_index_locked() -> list[dict]:
+    global _APPENDS
     entries: list[dict] = []
     if not SNAPSHOTS_DIR.exists():
+        _APPENDS = 0
         return entries
     for f in sorted(SNAPSHOTS_DIR.glob("snap_*.json")):
         # 旁挂文件不是快照。`snap_*.json` 这个 glob 会把 `snap_x.analysis.json` 一起捞进来
@@ -590,10 +667,11 @@ def rebuild_index() -> list[dict]:
     entries.sort(key=lambda e: e.get("created") or "")
     try:
         SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = SNAPSHOTS_DIR / ".index.writing"
-        tmp.write_bytes(("".join(json.dumps(e, ensure_ascii=False) + "\n"
-                                 for e in entries)).encode("utf-8"))
-        tmp.replace(_INDEX_FILE)
+        _atomic_write(_INDEX_FILE,
+                      ("".join(json.dumps(e, ensure_ascii=False) + "\n"
+                               for e in entries)).encode("utf-8"),
+                      stem="index")
+        _APPENDS = 0
     except OSError as e:
         log.error("快照索引写回失败（本次仍返回内存结果）: %s", e)
     return entries
@@ -637,7 +715,15 @@ def update_meta(sid: str, *, label=None, note=None, tags=None, board=None) -> di
     `board` 是白板上这张贴纸的坐标。它跟着快照走而不是存在配置里：贴纸摆在哪儿是
     **用户对这批快照的信息组织**（哪几张归一堆、哪张摆在显眼处），删掉快照它就该一起消失，
     而不是在配置里留一条指向不存在快照的孤儿坐标。
+
+    **读与写在同一把锁里**（260915）：此前只锁写入那一段，于是「拖贴纸」与「批量清理」
+    撞上时，update_meta 会把刚被删掉的快照整份写回磁盘——贴纸删完又自己长回来，实测复现。
     """
+    with _LOCK:
+        return _update_meta_locked(sid, label=label, note=note, tags=tags, board=board)
+
+
+def _update_meta_locked(sid: str, *, label=None, note=None, tags=None, board=None) -> dict:
     snap = get_snapshot(sid)
     if label is not None:
         snap["label"] = str(label).strip()[:LABEL_MAX]
@@ -652,15 +738,31 @@ def update_meta(sid: str, *, label=None, note=None, tags=None, board=None) -> di
             raise SnapshotError("bad_board", f"非法白板坐标：{board!r}")
         # 夹在合理范围内：负坐标会让贴纸飘到画布外再也点不到，超大坐标把画布撑成几万像素
         snap["board"] = {"x": max(0, min(x, 20000)), "y": max(0, min(y, 20000))}
-    with _LOCK:
-        try:
-            tmp = SNAPSHOTS_DIR / f".{sid}.writing"
-            tmp.write_bytes(json.dumps(snap, ensure_ascii=False).encode("utf-8"))
-            tmp.replace(_snap_file(sid))
-        except OSError as e:
-            raise SnapshotError("write_failed", f"快照更新失败：{e}")
-    rebuild_index()      # 信封变了，索引跟着重建（快照数量是人手量级，全量重建足够便宜）
-    return _envelope_summary(snap)
+    entry = _envelope_summary(snap)
+    try:
+        _atomic_write(_snap_file(sid),
+                      json.dumps(snap, ensure_ascii=False).encode("utf-8"), stem=sid)
+        # 信封变了，索引**追加一条新的**而不是全量重建（260915）。重建要读遍所有快照
+        # 文件（本机 16 张 4.2MB 实测 80ms，堆到几百 MB 就是几秒），而拖一张贴纸松手
+        # 就走这条路——「点击调整贴纸有卡顿」的全部来源。读取侧按 sid 保留最后一条，
+        # 追加与重建对外是同一个结果。
+        _append_index(entry)
+    except OSError as e:
+        raise SnapshotError("write_failed", f"快照更新失败：{e}")
+    return entry
+
+
+def _unlink_retry(f: Path) -> None:
+    """删文件，被占用时退一步再试一次。
+
+    Windows 上「另一个程序正在使用此文件」是本地环境的常态（杀毒、搜索索引器、还没关掉
+    的读句柄）。本进程内的读写已经由 `_LOCK` 串起来了，剩下的是进程外的瞬时占用——
+    一次短重试就能把这类偶发挡掉，挡不掉的才是真失败，照常抛出去让 UI 说得出原因。"""
+    try:
+        f.unlink()
+    except PermissionError:
+        time.sleep(0.15)
+        f.unlink()
 
 
 def delete_snapshot(sid: str) -> dict:
@@ -671,19 +773,18 @@ def delete_snapshot(sid: str) -> dict:
         raise SnapshotError("not_found", f"快照不存在：{sid}")
     with _LOCK:
         try:
-            f.unlink()
+            _unlink_retry(f)
         except OSError as e:
             raise SnapshotError("delete_failed", f"删除失败：{e}")
-        # 派生物跟着快照走：对话记录 + 语义分析（260809）。删不掉不致命——快照已没，
-        # 它们成了孤儿文件，重建索引看不到；但**新增派生文件时必须回来加进这个清单**，
-        # 否则每删一个快照就留一份垃圾。
-        for side in (chat_file(sid), analysis_file(sid)):
+        # 派生物跟着快照走，清单在 `_side_files`。删不掉不致命——快照已没，它们成了孤儿
+        # 文件，重建索引看不到；但新增派生文件时要去 `_side_files` 加，删除侧不再各抄一份。
+        for side in _side_files(sid):
             if side.exists():
                 try:
-                    side.unlink()
+                    _unlink_retry(side)
                 except OSError:
                     pass
-    rebuild_index()
+        _rebuild_index_locked()
     return {"sid": sid, "deleted": True}
 
 
@@ -715,7 +816,7 @@ def size_of(sid: str) -> int:
     否则"删 12 条"这句话不构成决策依据。"""
     _validate_sid(sid)
     n = 0
-    for f in (_snap_file(sid), chat_file(sid), analysis_file(sid)):
+    for f in [_snap_file(sid)] + _side_files(sid):
         try:
             n += f.stat().st_size
         except OSError:
@@ -728,12 +829,16 @@ def delete_many(sids) -> dict:
 
     单条失败不中断——删一半停下来，用户既不知道删了哪些、也不知道还剩哪些。
     失败的 sid 原样返回，让 UI 说得出「3 条删了、1 条没删掉，原因是…」。
+
+    **入参先去重**（260915）：同一个 sid 传两遍时，第二遍必然撞上「快照不存在」，
+    于是一次正常的清理会报出失败。索引侧已经去重了，这里是第二道——批量删除的入口
+    不止 UI 一处（API、CLI），不该要求每个调用方自己保证不重复。
     """
     ok: list[str] = []
     failed: list[dict] = []
     freed = 0
     with _LOCK:
-        for sid in sids or []:
+        for sid in dict.fromkeys(sids or []):
             try:
                 _validate_sid(sid)
                 f = _snap_file(sid)
@@ -744,19 +849,19 @@ def delete_many(sids) -> dict:
                     freed += f.stat().st_size
                 except OSError:
                     pass
-                f.unlink()
+                _unlink_retry(f)
                 ok.append(sid)
-                # 派生物与单条删除走同一份清单（对话 + 语义分析），新增派生文件时两处都要加
-                for side in (chat_file(sid), analysis_file(sid)):
+                # 派生物与单条删除走同一份清单 `_side_files`
+                for side in _side_files(sid):
                     if side.exists():
                         try:
                             freed += side.stat().st_size
-                            side.unlink()
+                            _unlink_retry(side)
                         except OSError:
                             pass
             except (SnapshotError, OSError) as e:
                 failed.append({"sid": sid, "error": str(e)})
-    rebuild_index()
+        _rebuild_index_locked()
     return {"deleted": len(ok), "sids": ok, "failed": failed, "freed": freed}
 
 
@@ -771,6 +876,14 @@ def delete_many(sids) -> dict:
 def analysis_file(sid: str) -> Path:
     _validate_sid(sid)
     return SNAPSHOTS_DIR / f"{sid}.analysis.json"
+
+
+def semantic_file(sid: str) -> Path:
+    """八视图语义层的产物。**已不再生成**（260910 随八视图取消），但旧快照旁边还躺着，
+    所以它必须留在 `_side_files` 里：删快照时一起删、占用统计算得到。
+    取消一个功能不等于它的磁盘残留会自己消失。"""
+    _validate_sid(sid)
+    return SNAPSHOTS_DIR / f"{sid}.semantic.json"
 
 
 def read_analysis(sid: str) -> dict | None:
@@ -790,14 +903,16 @@ def read_analysis(sid: str) -> dict | None:
 def write_analysis(sid: str, data: dict) -> dict:
     """落盘（原子替换）。重新分析走同一条路径，直接覆盖。"""
     _validate_sid(sid)
-    if not _snap_file(sid).exists():
-        raise SnapshotError("not_found", f"快照不存在：{sid}")
     SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     with _LOCK:
+        # 在锁内确认快照还在：锁外查一次再进来写，中间快照可能已被批量清理删掉，
+        # 那样会留下一份没有主人的 analysis 孤儿（与 update_meta 同一类竞态）
+        if not _snap_file(sid).exists():
+            raise SnapshotError("not_found", f"快照不存在：{sid}")
         try:
-            tmp = SNAPSHOTS_DIR / f".{sid}.analysis.writing"
-            tmp.write_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"))
-            tmp.replace(analysis_file(sid))
+            _atomic_write(analysis_file(sid),
+                          json.dumps(data, ensure_ascii=False).encode("utf-8"),
+                          stem=f"{sid}.analysis")
         except OSError as e:
             raise SnapshotError("write_failed", f"分析结果写入失败：{e}")
     return data
@@ -859,21 +974,23 @@ def chat_clear(sid: str) -> None:
 
 def usage() -> dict:
     """快照占用总量。**这是「永不自动清理」这个决定的配套**——不给出占用，
-    "堆着"就是不可见的，用户某天才发现磁盘被吃光。"""
+    "堆着"就是不可见的，用户某天才发现磁盘被吃光。
+
+    `count` 只数真快照，`bytes` 把旁挂文件也算上——问的是两个不同的问题：「有几张贴纸」
+    和「这个目录吃了多少磁盘」。此前 `snap_*.json` 一把抓，把 `.analysis.json`、
+    `.semantic.json` 也数成了快照（本机实测报 22 张、实为 16 张）。判据与 `rebuild_index`
+    同一个 `_SID_RE`——260827 修「幽灵贴纸」时就是这么判的，占用这一处当时漏了。
+    """
     n = 0
     total = 0
     if SNAPSHOTS_DIR.exists():
-        for f in SNAPSHOTS_DIR.glob("snap_*.json"):
+        for f in SNAPSHOTS_DIR.glob("snap_*"):
             try:
                 total += f.stat().st_size
+            except OSError:
+                continue
+            if f.suffix == ".json" and _SID_RE.match(f.name[:-len(".json")]):
                 n += 1
-            except OSError:
-                continue
-        for f in SNAPSHOTS_DIR.glob("snap_*.chat.jsonl"):
-            try:
-                total += f.stat().st_size
-            except OSError:
-                continue
     return {"count": n, "bytes": total, "dir": str(SNAPSHOTS_DIR)}
 
 

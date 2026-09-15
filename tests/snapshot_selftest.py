@@ -399,6 +399,73 @@ res2 = SS.delete_many([victim["sid"]])
 ok(res2["deleted"] == 0 and len(res2["failed"]) == 1,
    "删不掉的原样报回来（删一半停下来，用户既不知道删了谁也不知道剩下谁）")
 
+# ===== [4.5] 索引卫生与并发（260915，issue 260915_贴纸重复与批量删除失败与无忙碌反馈）=====
+# 用户报的「白板上凭空多出好多贴纸」和「批量删除失败」是同一个病：索引里多一行 → 多一张
+# 一模一样的贴纸 → 清理时同一个 sid 被删两遍 → 第二遍必然「快照不存在」。三条防线各测一次。
+print("\n[4.5] 索引卫生与并发")
+import threading                                      # noqa: E402
+import time                                           # noqa: E402
+
+hy = SS.create_capture(make_record(rid="req_test010"))
+n_before = len(SS.list_snapshots())
+with SS._INDEX_FILE.open("a", encoding="utf-8") as fh:
+    fh.write(json.dumps(SS._envelope_summary(SS.get_snapshot(hy["sid"])),
+                        ensure_ascii=False) + "\n")
+ok(len(SS.list_snapshots()) == n_before,
+   "索引里多一行不会变成第二张贴纸（去重保留最后一条）")
+ok(SS.delete_many([hy["sid"], hy["sid"]])["failed"] == [],
+   "同一个 sid 传两遍不报失败（入参去重）")
+
+# usage：count 只数真快照，bytes 把旁挂文件也算上——问的是两个不同的问题
+u_snap = SS.create_capture(make_record(rid="req_test011"))
+SS.write_analysis(u_snap["sid"], {"x": "y" * 500})
+SS.chat_append(u_snap["sid"], "user", "z" * 500)
+u = SS.usage()
+ok(u["count"] == len(SS.list_snapshots()),
+   "占用统计的张数 = 真快照数（旁挂的 analysis/chat/semantic 不是贴纸）")
+ok(u["bytes"] > sum(SS._snap_file(e["sid"]).stat().st_size for e in SS.list_snapshots()),
+   "占用统计的字节把旁挂文件也算上（问的是这个目录吃了多少磁盘）")
+SS.delete_many([u_snap["sid"]])
+
+# 并发：删除 vs 重建索引 vs 拖贴纸。Windows 上被打开的文件删不掉，此前 rebuild_index
+# 不持锁，实测「16 张删 15 张、1 张失败」。拖贴纸那条则会把刚被删的快照整份写回磁盘。
+victims = [SS.create_capture(make_record(rid=f"req_conc{i:03d}"))["sid"] for i in range(6)]
+conc: dict = {}
+noise: list = []
+
+
+def _rebuilder():
+    for _ in range(8):
+        SS.rebuild_index()
+
+
+def _mover():
+    for i in range(8):
+        try:
+            SS.update_meta(victims[i % len(victims)], board={"x": i, "y": i})
+        except SS.SnapshotError as e:
+            noise.append(str(e))      # 快照已被删 → not_found，是对的
+
+
+def _deleter():
+    time.sleep(0.01)
+    conc["r"] = SS.delete_many(victims)
+
+
+ths = [threading.Thread(target=_rebuilder), threading.Thread(target=_mover),
+       threading.Thread(target=_deleter)]
+for th in ths:
+    th.start()
+for th in ths:
+    th.join()
+ok(conc["r"]["deleted"] == len(victims) and not conc["r"]["failed"],
+   "重建索引与批量删除并发时一条都不许失败（此前 WinError 32：文件正被重建打开着）",
+   json.dumps(conc["r"].get("failed"), ensure_ascii=False))
+ok(all(not SS._snap_file(s).exists() for s in victims),
+   "被删的快照不会被并发的「拖贴纸」写回来（删完又长回来 = 贴纸变多的另一条路）")
+ok(all(s not in {e["sid"] for e in SS.list_snapshots()} for s in victims),
+   "并发之后索引里没有已删快照的残留")
+
 # ===== 骨架 AI 语义层：步号校验是分层能否成立的分界线（260809）=====
 # prompt 里要求「只引用真实步号」是要求，不是保证。没有这道校验，"AI 归纳挂在程序事实上"
 # 就只是一句说辞——模型可以归纳出一轮根本不存在的步骤，而界面照样渲染得像模像样。
