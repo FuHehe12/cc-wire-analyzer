@@ -72,7 +72,9 @@ def _decode_body(body: bytes, encoding: str) -> tuple[bytes, str | None]:
     格式必须支持 CC 声明的全部编码（`Accept-Encoding: gzip, deflate, br, zstd`）——
     这份清单从 CC 的请求头就能确定，不需要等某个上游踩出来（issue 260731）。
     """
-    if not encoding:
+    # identity 是 RFC 9110 合法的"未编码"显式声明（部分网关会下发），与空值同义；
+    # 掉进下面的"未知编码"分支会把正常响应误报成 decode_error（issue 260915 mac 实测）
+    if not encoding or encoding == "identity":
         return body, None
     try:
         if "gzip" in encoding:

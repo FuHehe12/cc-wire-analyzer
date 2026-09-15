@@ -4,6 +4,7 @@
 - `serve` 子命令 → headless 模式：起 Flask + 自动启动代理，**不开窗**，给 AI agent 用。
   AI 通过 HTTP API（/api/proxy/*、/api/captures、/api/dag…）控制与查询，数据也可直接读 jsonl。
 - `--help` / `--ai-guide` → 打印用法说明后退出，**不开窗**（见 _emit_help）。
+- 其余任何参数 → 报错并以非零码退出，**不进 GUI**（issue 260915：此前静默开窗把命令挂死）。
 
 为什么主通道是 HTTP：app.py 早有一整套 HTTP API，结构化 JSON、不用 shell 转义、
 GUI 与 AI 共用同一份实现；启停代理（唯一有副作用的动作）也走 HTTP。
@@ -129,12 +130,27 @@ def _serve() -> None:
 _HELP_ARGS = {"-h", "--help", "help", "/?", "-?", "--ai-guide", "guide", "--version", "-v"}
 
 
+def _write_stdout(data: bytes) -> None:
+    """把字节打到 stdout。noconsole 进程的 `sys.stdout` 通常是 None，但**标准句柄被重定向时**
+    （agent 的 shell 用管道收集输出、或用户 `> out.txt`）fd 1 依然有效——所以先试
+    sys.stdout.buffer，再退 os.write(1)。_emit_help 与未知命令报错共用这条输出路径。"""
+    if sys.stdout is not None:
+        try:
+            sys.stdout.buffer.write(data)
+            sys.stdout.flush()
+            return
+        except Exception:
+            pass
+    try:
+        os.write(1, data)      # stdout 被重定向/管道接走时，fd 1 有效而 sys.stdout 可能是 None
+    except OSError:
+        pass                   # 真的无处可打（双击运行）——调用方自行决定要不要落盘
+
+
 def _emit_help() -> None:
     """打印用法并退出，绝不开窗、绝不弹模态框（模态框会把 agent 的命令挂住）。
 
-    noconsole 进程的 `sys.stdout` 通常是 None，但**标准句柄被重定向时**（agent 的 shell 用管道
-    收集输出、或用户 `> out.txt`）fd 1 依然有效——所以先试 os.write(1)，能打就打。
-    无论能不能打，都把完整说明落到数据目录的 ai-guide.md：那是一条即使 stdout 不可用也能
+    无论能不能打印，都把完整说明落到数据目录的 ai-guide.md：那是一条即使 stdout 不可用也能
     被读到的路径（前提是知道它在哪，所以这条路径本身要出现在能打出来的那份文本里）。
     """
     import app as flask_app  # 说明书正文与 /api/ai-guide 同一份，别再抄第二份
@@ -156,18 +172,7 @@ def _emit_help() -> None:
         (CFG.CONFIG_DIR / "ai-guide.md").write_text(text, encoding="utf-8")
     except OSError:
         pass          # 落盘失败不能连"打印"这件事都一起失败
-    data = text.encode("utf-8", "replace")
-    if sys.stdout is not None:
-        try:
-            sys.stdout.buffer.write(data)
-            sys.stdout.flush()
-            return
-        except Exception:
-            pass
-    try:
-        os.write(1, data)      # stdout 被重定向/管道接走时，fd 1 有效而 sys.stdout 可能是 None
-    except OSError:
-        pass                   # 真的无处可打（双击运行）——文件已经落好了，静默退出
+    _write_stdout(text.encode("utf-8", "replace"))
 
 
 def main() -> None:
@@ -179,6 +184,14 @@ def main() -> None:
     if arg1.lower() in _HELP_ARGS:
         _emit_help()
         return
+    if arg1:
+        # 未知子命令：报错并以非零码退出。静默开 GUI 会把跑命令的 agent 挂死在窗口主循环里、
+        # 还冒出一个窗口（issue 260915 mac 实测：`doctor` 长驻）。无参/双击不受影响。
+        _write_stdout(
+            f"未知命令：{arg1}\n"
+            "可用：cc-wire-analyzer（无参打开图形界面）/ cc-wire-analyzer serve / --help\n"
+            .encode("utf-8", "replace"))
+        sys.exit(2)
     port = CFG.find_free_port()
     if not port:
         _msg_box("无空闲端口（5051-5100 全占用）。请关闭占用 5051+ 的程序后重试。", "启动失败", 0x10)

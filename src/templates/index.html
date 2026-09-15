@@ -7049,26 +7049,30 @@ function renderDiff(d){
         '</td></tr>').join("") + '</table></div>';
   }
 
-  /* ⑤ 正文 diff */
+  /* ⑤ 正文 diff。全部 hunk 都是 equal = 没有任何实际差异，整卡不渲染——否则「正文差异」
+     标题下只剩相同行及其行号（如 1/1），挨着「两段完全相同」易被误读成"有 1 处差异"
+     （issue 260915 mac 巡检第五节 3）。有真实差异（delete/insert/replace）时照常渲染。 */
   if(d.truncated)
     h += '<div class="card an-note">' + t18("an.truncated", {n: d.max_lines}) + '</div>';
-  let lineNo = 0;
-  h += '<div class="card an-diff"><div class="an-diff-head"><b>' + t18("an.bodyTitle") +
-       '</b><span class="an-hint">' + t18("an.bodyLegend") + '</span></div>';
-  (d.hunks || []).forEach(hk => {
-    if(hk.tag === "equal" && hk.folded)
-      h += '<div class="dl fold-mark">⋯ ' + t18("an.foldedLines", {n: hk.folded}) + ' ⋯</div>';
-    (hk.lines || []).forEach(ln => {
-      const cls = ln.side === "a" ? "del" : (ln.side === "b" ? "ins" : "same");
-      const mark = ln.side === "a" ? "−" : (ln.side === "b" ? "+" : " ");
-      lineNo++;
-      h += '<div class="dl ' + cls + '" id="dl-' + lineNo + '"><span class="dn">' +
-        (ln.na != null ? ln.na : "") + "/" + (ln.nb != null ? ln.nb : "") +
-        '</span><span class="dm">' + mark + '</span><span class="dt">' +
-        inlineHtml(ln, ln.side) + '</span></div>';
+  if((d.hunks || []).some(hk => hk.tag !== "equal")){
+    let lineNo = 0;
+    h += '<div class="card an-diff"><div class="an-diff-head"><b>' + t18("an.bodyTitle") +
+         '</b><span class="an-hint">' + t18("an.bodyLegend") + '</span></div>';
+    (d.hunks || []).forEach(hk => {
+      if(hk.tag === "equal" && hk.folded)
+        h += '<div class="dl fold-mark">⋯ ' + t18("an.foldedLines", {n: hk.folded}) + ' ⋯</div>';
+      (hk.lines || []).forEach(ln => {
+        const cls = ln.side === "a" ? "del" : (ln.side === "b" ? "ins" : "same");
+        const mark = ln.side === "a" ? "−" : (ln.side === "b" ? "+" : " ");
+        lineNo++;
+        h += '<div class="dl ' + cls + '" id="dl-' + lineNo + '"><span class="dn">' +
+          (ln.na != null ? ln.na : "") + "/" + (ln.nb != null ? ln.nb : "") +
+          '</span><span class="dm">' + mark + '</span><span class="dt">' +
+          inlineHtml(ln, ln.side) + '</span></div>';
+      });
     });
-  });
-  h += '</div>';
+    h += '</div>';
+  }
   $("anDiffOut").innerHTML = h;
 }
 

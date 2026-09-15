@@ -528,6 +528,16 @@ assert _f == "charset_undecodable:latin-1", f"兜底标记不对: {_f}"
 assert _t.encode("latin-1") == _raw, "latin-1 兜底必须无损（字节能原样还原）"
 print("    四条分支（正常/诚实声明/未知编码名/全解不出）语义正确 ✓")
 
+# 纯单元断言：_decode_body 的 identity 语义。identity 是 RFC 9110 合法的"未编码"
+# 显式声明（部分网关会下发），修复前掉进「未知编码」分支 → decode_error 误报 +
+# 失败聚合把 200 响应归进 decode_failed（issue 260915 mac 实测第四节 1）。
+print("\n[3f'''] _decode_body identity 语义...")
+_b, _e = proxy._decode_body(b"plain", "identity")
+assert (_b, _e) == (b"plain", None), f"identity 不该报错（合法的未编码声明）: {(_b, _e)}"
+_b, _e = proxy._decode_body(b"plain", "")
+assert (_b, _e) == (b"plain", None), f"空 encoding 路径被带坏: {(_b, _e)}"
+print("    identity / 空 encoding 均返回原字节、不打错误标记 ✓")
+
 
 # ===== 7. 恢复 =====
 settings_guard.restore()
