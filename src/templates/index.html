@@ -1973,7 +1973,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
                 data-i18n-title="an.exportTip"
                 title="把选中的贴纸连同 AI 归纳打成一个文件，另一台机器导入后接着看">导出便携包</button>
         <button class="btn" onclick="anClearSel('p')" data-i18n="an.clearSel">取消选择</button>
-        <button class="btn" onclick="anTidy('p')" data-i18n="an.tidy">整理贴纸</button>
+        <button class="btn" id="anTidyP" onclick="anTidy('p')" data-i18n="an.tidy">整理贴纸</button>
       </div>
       <div class="an-board" id="anBoard"></div>
       <div id="anDiffOut"></div>
@@ -1989,7 +1989,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
                 data-i18n-title="an.exportTip"
                 title="把选中的贴纸连同 AI 归纳打成一个文件，另一台机器导入后接着看">导出便携包</button>
         <button class="btn" onclick="anClearSel('c')" data-i18n="an.clearSel">取消选择</button>
-        <button class="btn" onclick="anTidy('c')" data-i18n="an.tidy">整理贴纸</button>
+        <button class="btn" id="anTidyC" onclick="anTidy('c')" data-i18n="an.tidy">整理贴纸</button>
       </div>
       <div class="an-board" id="anRecBoard"></div>
       <div id="anRecOut"></div>
@@ -2158,6 +2158,11 @@ zh: {
   "ctx.snapCapture": "备份当前录制",
   "an.savedCapture": "已备份这条录制，去「分析」页查看", "an.savedPrompt": "已备份这段提示词，去「分析」页对比",
   "an.saveFailed": "备份失败：{msg}",
+  /* 忙碌徽标文案（260915）：这些动作要读写整份快照（录制快照可达数 MB），
+     期间界面不说话，用户会当它没反应而重复点——每点一次就真多一张贴纸。 */
+  "an.busySave": "正在备份…", "an.busyAgain": "正在备份，请稍候…",
+  "an.busyPos": "正在保存贴纸位置…", "an.busyDel": "正在删除…",
+  "an.busyTidy": "正在整理贴纸 {i}/{n}…", "an.busyClean": "正在清理快照…",
   "an.usage": "{n} 个快照 · {size}", "an.writeErrors": "写入失败 {n} 次",
   "an.loadFailed": "加载失败：{msg}",
   "an.chars": " 字", "an.msgsN": "{n} 条消息",
@@ -2602,6 +2607,9 @@ en: {
   "an.savedCapture": "Recording snapshotted \u2014 see the Analyse tab",
   "an.savedPrompt": "Prompt snapshotted \u2014 compare it in the Analyse tab",
   "an.saveFailed": "Snapshot failed: {msg}",
+  "an.busySave": "Snapshotting\u2026", "an.busyAgain": "Snapshot in progress, hold on\u2026",
+  "an.busyPos": "Saving sticker position\u2026", "an.busyDel": "Deleting\u2026",
+  "an.busyTidy": "Tidying stickers {i}/{n}\u2026", "an.busyClean": "Clearing snapshots\u2026",
   "an.usage": "{n} snapshots \u00b7 {size}", "an.writeErrors": "{n} write failures",
   "an.loadFailed": "Load failed: {msg}",
   "an.chars": " chars", "an.msgsN": "{n} messages",
@@ -3046,6 +3054,9 @@ ja: {
   "an.savedCapture": "記録を保存しました（「分析」タブで確認）",
   "an.savedPrompt": "プロンプトを保存しました（「分析」タブで比較）",
   "an.saveFailed": "保存に失敗：{msg}",
+  "an.busySave": "保存中…", "an.busyAgain": "保存中です。少々お待ちください…",
+  "an.busyPos": "付箋の位置を保存中…", "an.busyDel": "削除中…",
+  "an.busyTidy": "付箋を整列中 {i}/{n}…", "an.busyClean": "スナップショットを整理中…",
   "an.usage": "スナップショット {n} 件 · {size}", "an.writeErrors": "書き込み失敗 {n} 回",
   "an.loadFailed": "読み込み失敗：{msg}",
   "an.chars": " 文字", "an.msgsN": "メッセージ {n} 件",
@@ -4314,15 +4325,22 @@ function renderDiag(){
 /* 全局加载徽标（260801）：切日期触发索引重建时后端要数秒~数十秒才响应，期间界面毫无反馈像
    死机。计数器式——fetchCaptures 与 loadDag 可交叠（dagPickDate 同时发两个），归零才隐藏。 */
 let __loadN = 0;
-function loadBegin(dateStr){
+/* 徽标本身与"加载日期"这件事无关，它只回答「活着，在干活」。260915 把文案抽出来，
+   快照那一路（备份 / 拖动 / 删除 / 整理 / 清理）也挂同一个徽标——那些动作要读写整份
+   快照文件，期间界面不说话，用户会当它没反应而重复点，每点一次就真多一张贴纸。
+   一处机制两个入口，不为快照另造第二套转圈。 */
+function busyBegin(text){
   __loadN++;
-  $("loadBadgeText").textContent = t18("loading.badge", {date: dateStr || todayStr()});
+  $("loadBadgeText").textContent = text;
   $("loadBadge").classList.add("on");
 }
-function loadEnd(){
+function busyEnd(){
   __loadN = Math.max(0, __loadN - 1);
   if(!__loadN) $("loadBadge").classList.remove("on");
 }
+function busyText(text){ if(__loadN) $("loadBadgeText").textContent = text; }
+function loadBegin(dateStr){ busyBegin(t18("loading.badge", {date: dateStr || todayStr()})); }
+function loadEnd(){ busyEnd(); }
 async function fetchCaptures(date){
   loadBegin(date);
   try{
@@ -6363,9 +6381,17 @@ function copyAiPrompt(btn){ return copyAndReport(S.aiPrompt || "", btn); }
 
 /* ================= 分析：快照备份 / 精确对比 / 思考链（260808） ================= */
 
-/* 备份当前详情页的录制，或其中一段提示词。where=null 即整条录制。 */
+/* 备份当前详情页的录制，或其中一段提示词。where=null 即整条录制。
+
+   **在途时忽略再次点击**（260915）：备份一条录制要把整份 record 写进快照文件（实测可达
+   数 MB），期间此前没有任何反馈，用户很自然地再右键点一次——而每一次点击都真的产生一张
+   新快照。「白板上凭空多出好多贴纸」有一半是这么来的，它不是显示错乱，是真备份了那么多次。 */
+let __snapBusy = false;
 async function snapCreate(kind, where){
   if(!S.captureId) return;
+  if(__snapBusy){ toast(t18("an.busyAgain")); return; }
+  __snapBusy = true;
+  busyBegin(t18("an.busySave"));
   try{
     const r = await fetch("/api/snapshots", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -6380,6 +6406,9 @@ async function snapCreate(kind, where){
     AN.dirty = true;
   }catch(e){
     toast(t18("an.saveFailed", {msg: e.message}), true);
+  }finally{
+    __snapBusy = false;
+    busyEnd();
   }
 }
 
@@ -6727,15 +6756,32 @@ function anBindStickies(board){
   });
 }
 
-async function anSavePos(sid, x, y){
+/* 保存一张贴纸的位置。
+
+   **必须读响应**（260915）：此前只 `await fetch` 而不看 `j.ok`，后端返回失败（Windows 上
+   快照文件被占用时真的会返回 write_failed）界面照样一声不吭，而本地 AN.items 已经改成了新
+   坐标——于是「摆好了、下次打开又回到原处」，正是本项目惯犯 ③「界面说成功、磁盘上没有」。
+   失败就把坐标回滚到服务端拒绝前的值，让界面与磁盘保持一致。 */
+async function anSavePos(sid, x, y, opts){
   const it = AN.items.find(v => v.sid === sid);
+  const prev = it ? it.board : null;
   if(it) it.board = {x: x, y: y};      /* 先落本地，避免网络慢时贴纸弹回旧位 */
+  const quiet = opts && opts.quiet;    /* 整理时由调用方统一显示进度，不逐张闪徽标 */
+  if(!quiet) busyBegin(t18("an.busyPos"));
   try{
-    await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/meta", {
+    const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/meta", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({board: {x: x, y: y}})});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || "failed");
+    return true;
   }catch(e){
+    if(it) it.board = prev;
     toast(t18("an.posFailed", {msg: e.message}), true);
+    anRenderBoard(anWhichOf(sid));
+    return false;
+  }finally{
+    if(!quiet) busyEnd();
   }
 }
 
@@ -6783,22 +6829,39 @@ function anSelState(which){
 
 /* 整理：**按备份时间重排**（新的在前），不只是把位置归位。
    只归位的话，贴纸本来就在默认位置时点了毫无变化，用户只会觉得按钮坏了。 */
+let __tidyBusy = false;
 async function anTidy(which){
+  if(__tidyBusy) return;             /* 整理是 N 次写盘，点第二次只会让两轮互相打架 */
   const board = $(BOARDS[which].el);
   const cols = Math.max(1, Math.floor(((board.clientWidth || 0) - BOARD.padX * 2 + BOARD.gapX)
                                       / (BOARD.w + BOARD.gapX)));
   const items = anBoardItems(which).slice()
     .sort((x, y) => String(y.created || "").localeCompare(String(x.created || "")));
-  for(let i = 0; i < items.length; i++){
-    const pos = anAutoPos(i, cols);
-    items[i].board = pos;
-    await anSavePos(items[i].sid, pos.x, pos.y);
+  /* 每张纸都要把整份快照文件重写一遍，张数一多就是秒级——必须报进度，不然跟卡死一样。
+     逐张串行而不是一把并发：并发写同一个快照目录在 Windows 上会撞文件占用，
+     而这里本来就没有抢时间的理由。 */
+  __tidyBusy = true;
+  const btn = $(which === "p" ? "anTidyP" : "anTidyC");
+  if(btn) btn.disabled = true;
+  busyBegin(t18("an.busyTidy", {i: 0, n: items.length}));
+  let done = 0;
+  try{
+    for(let i = 0; i < items.length; i++){
+      const pos = anAutoPos(i, cols);
+      items[i].board = pos;
+      if(!await anSavePos(items[i].sid, pos.x, pos.y, {quiet: true})) break;
+      busyText(t18("an.busyTidy", {i: ++done, n: items.length}));
+    }
+  }finally{
+    __tidyBusy = false;
+    if(btn) btn.disabled = false;
+    busyEnd();
   }
   /* AN.items 也按同一顺序落定，否则下次渲染又按旧顺序排 */
   const rest = AN.items.filter(x => items.indexOf(x) < 0);
   AN.items = which === "p" ? items.concat(rest) : rest.concat(items);
   anRenderBoard(which);
-  toast(t18("an.tidied", {n: items.length}));
+  if(done) toast(t18("an.tidied", {n: done}));
 }
 
 /* ---- 删除贴纸 ---- */
@@ -6816,10 +6879,14 @@ function anWhichOf(sid){
   const it = AN.items.find(x => x.sid === sid);
   return (it && it.kind === "capture") ? "c" : "p";
 }
+let __delBusy = null;
 async function anDelete(ev, sid){
   ev.stopPropagation(); ev.preventDefault();
+  if(__delBusy === sid) return;    /* 二次确认里的「删除」连点两下 = 第二下必报「快照不存在」 */
   const which = anWhichOf(sid);
   AN.pendingDel = null;
+  __delBusy = sid;
+  busyBegin(t18("an.busyDel"));
   try{
     const r = await fetch("/api/snapshots/" + encodeURIComponent(sid) + "/delete", {method: "POST"});
     const j = await r.json();
@@ -6840,6 +6907,9 @@ async function anDelete(ev, sid){
   }catch(e){
     toast(t18("an.delFailed", {msg: e.message}), true);
     anRenderBoard(which);
+  }finally{
+    __delBusy = null;
+    busyEnd();
   }
 }
 
@@ -7879,15 +7949,24 @@ async function anCleanPreview(){
         esc((x.created || "").slice(0, 16).replace("T", " ")) +
         (x.label ? ' · ' + esc(x.label) : "") + '</div>').join("") +
       (j.count > 40 ? '<div class="an-note">' + t18("an.clean.more", {n: j.count - 40}) + '</div>' : "") +
-      '</div><button class="btn danger" onclick="anCleanRun()">' +
+      '</div><button class="btn danger" onclick="anCleanRun(event)">' +
       t18("an.clean.doIt", {n: j.count}) + '</button>';
   }catch(e){
     out.innerHTML = '<div class="err-card">' + esc(e.message) + '</div>';
   }
 }
 
-async function anCleanRun(){
+/* 批量删除要逐个删文件再重建一次索引，几十张就是秒级。此前按钮不禁用也不转圈，
+   用户以为没反应又点一次——第二次的命中集合早被第一次删光了，于是整批报「快照不存在」，
+   看起来就是「批量删除失败」（260915）。 */
+let __cleanBusy = false;
+async function anCleanRun(ev){
   const out = $("anCleanOut");
+  if(__cleanBusy) return;
+  __cleanBusy = true;
+  const btn = ev && ev.target && ev.target.tagName === "BUTTON" ? ev.target : null;
+  if(btn) btn.disabled = true;
+  busyBegin(t18("an.busyClean"));
   try{
     const r = await fetch("/api/snapshots/clear", {method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -7908,6 +7987,10 @@ async function anCleanRun(){
     toast(t18("an.clean.done", {n: j.deleted, size: fmtBytes(j.freed || 0)}));
   }catch(e){
     out.innerHTML = '<div class="err-card">' + esc(e.message) + '</div>';
+  }finally{
+    __cleanBusy = false;
+    if(btn) btn.disabled = false;
+    busyEnd();
   }
 }
 
