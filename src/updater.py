@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import threading
@@ -31,6 +32,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
+
+try:
+    import certifi
+except ImportError:            # 裸 python 跑源码模式可能没装；此时回落系统默认路径
+    certifi = None
 
 import config as CFG
 
@@ -137,11 +143,35 @@ class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def _ca_context() -> ssl.SSLContext | None:
+    """更新检查用的 CA 信任源——mac 冻结态**唯一**的信任来源（issue 260916）。
+
+    为什么必须显式给：CPython 的 ssl 在 macOS 不读钥匙串，只认编译期 OPENSSLDIR /
+    `SSL_CERT_FILE`；这些路径在 CI 构建机上存在、冻结到用户机器上就没了——v0.4.38 及
+    更早的 mac 包 check 必挂 `unable to get local issuer certificate`，且因为代理转发
+    不终结 TLS、录制功能一切正常，这个坏只有点「检查更新」才看得见。certifi 随包打进
+    来（PyInstaller 对直接 import 的模块自动分析，hook 附带 cacert.pem），`where()`
+    冻结态自动指向解包目录里的那份。
+
+    Windows 返回 None 走系统默认：那边 `load_default_certs` 有系统证书存储兜底、更新
+    链路实测是通的（260827 的真更新事故反证），换成 certifi-only 反而会把「根证书装在
+    系统存储里」的企业代理用户弄断——不修没坏的东西。certifi 缺席（裸 python 源码模式）
+    同样回落 None，不挡开发。
+    """
+    if sys.platform == "win32" or certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def _opener() -> urllib.request.OpenerDirector:
     # ProxyHandler() 不传参 = 用 urllib.getproxies()：Windows 上除环境变量外还会读系统代理
     # 注册表设置。国内用户走 Clash 之类的系统代理时，后端与 WebView2 走的是同一条路——
     # 否则会出现"前端检查更新好使、后端下载永远超时"这种最难判的故障。
-    return urllib.request.build_opener(urllib.request.ProxyHandler(), _GuardedRedirect())
+    handlers = [urllib.request.ProxyHandler(), _GuardedRedirect()]
+    ctx = _ca_context()
+    if ctx is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=ctx))
+    return urllib.request.build_opener(*handlers)
 
 
 def _headers(version: str) -> dict:

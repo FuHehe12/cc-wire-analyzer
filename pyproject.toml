@@ -17,6 +17,10 @@ dependencies = [
     # 时 build.spec 的 hiddenimports 也要带上。
     "brotli>=1.1",
     "zstandard>=0.22",
+    # 冻结态的 CA 信任源（issue 260916）：CPython 的 ssl 在 macOS 不读钥匙串，冻结后
+    # 编译期证书路径也不存在，mac 包的更新检查因此必挂 CERTIFICATE_VERIFY_FAILED。
+    # updater 显式用 certifi 的 bundle；Windows 走系统证书存储本来就通，不用它。
+    "certifi>=2024.0",
 ]
 
 [project.optional-dependencies]

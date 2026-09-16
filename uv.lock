@@ -107,6 +107,7 @@ version = "0.4.1"
 source = { virtual = "." }
 dependencies = [
     { name = "brotli" },
+    { name = "certifi" },
     { name = "flask" },
     { name = "httpx" },
     { name = "pyinstaller" },
@@ -122,6 +123,7 @@ mac = [
 [package.metadata]
 requires-dist = [
     { name = "brotli", specifier = ">=1.1" },
+    { name = "certifi", specifier = ">=2024.0" },
     { name = "flask", specifier = ">=3.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pyinstaller", specifier = ">=6.0" },

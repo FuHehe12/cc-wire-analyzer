@@ -9,8 +9,9 @@
 # serve 命令能写成同一套：cc-wire-analyzer.exe serve /
 # cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer serve。
 #
-# 注意：本开发环境为 Windows，此 spec 未在 macOS 实测——macOS 打包靠 GitHub Actions
-# macos runner（.github/workflows/release.yml）+ 用户 macOS 验证。
+# 注意：260916 起本 spec 已在 macOS（Apple Silicon）本机实测构建并冻结态验证（含 onedir
+# 改造，见 issue 260916_mac冻结态GUI启动慢）；发布通道仍是 GitHub Actions macos runner
+# （.github/workflows/release.yml）+ 用户 macOS 验证。
 
 import os
 import sys
@@ -53,26 +54,37 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# onedir（issue 260916）：.app 本来就是目录，onefile 在 mac 上纯属白付成本——每次启动把
+# 数千文件解包到全新 _MEI 临时目录（~1s），且 dyld 对每个新解包的 dylib 重新做代码签名
+# 校验，pyobjc 几十个框架包装一层就是 ~4s（源码模式同路径 0.48s 实测对照）。onedir 让
+# 二进制躺在 Contents/Frameworks 的稳定路径上，验签一次即进系统缓存。Windows 的 build.spec
+# 保持 onefile：单 exe 分发是那边的刻意形态，且 DLL 加载没有逐个验签这层开销。
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
+    [],                   # onedir：二进制不嵌进 exe，交给 COLLECT 落 Frameworks
+    exclude_binaries=True,
     name='cc-wire-analyzer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,            # macOS 上 upx 常致签名/运行问题，关
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     icon=None,
 )
 
-app = BUNDLE(
+coll = COLLECT(
     exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    name='cc-wire-analyzer',
+)
+
+app = BUNDLE(
+    coll,
     name='cc-wire-analyzer.app',
     icon=None,
     bundle_identifier=None,

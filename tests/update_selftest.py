@@ -143,6 +143,15 @@ ok(not rejects(U.API_LATEST), "放行 api.github.com")
 ok(U.API_LATEST.startswith("https://api.github.com/repos/FuHehe12/"),
    "下载来源是硬编码常量，不来自配置（不变量 10 第 1 条）")
 
+print("\n[2.5] CA 信任源（issue 260916：mac 冻结态没有系统信任源可用）")
+ctx = U._ca_context()
+if sys.platform == "win32":
+    ok(ctx is None, "Windows 走系统证书存储（260827 实测更新链路通），不换 certifi-only")
+else:
+    ok(ctx is not None, "macOS 拿得到 certifi 信任源（拿不到 = 更新检查回到必挂状态）")
+    ok(ctx is not None and len(ctx.get_ca_certs()) > 0,
+       "信任源里真的装着根证书（空 bundle = 假修复，冻结态恰恰容易栽在这里）")
+
 print("\n[3] 资产匹配（按模式，不按固定文件名）")
 win = [{"name": "cc-wire-analyzer-v9.9.9-windows.exe", "size": 1, "browser_download_url": "u"},
        {"name": "cc-wire-analyzer-v9.9.9-macos.zip", "size": 2, "browser_download_url": "u2"},
