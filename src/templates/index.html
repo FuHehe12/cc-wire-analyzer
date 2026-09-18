@@ -317,6 +317,10 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
   transition:var(--apple-transition);}
 .tab-btn:hover{background:var(--bg-softer);color:var(--apple-text-secondary);}
 .tab-btn.active{background:var(--bg-warm);border-color:var(--border-warm);color:var(--gold-text);}
+/* 还没打开过任何请求时的「详情」标签（260918）。cursor 不用 .btn:disabled 那套 wait——
+   这里不是在等什么，是压根还没东西看；hover 也要压住，否则禁用的按钮会跟着亮一下。 */
+.tab-btn:disabled{opacity:.42;cursor:default;}
+.tab-btn:disabled:hover{background:transparent;}
 
 /* ===== 通用 ===== */
 /* 宽度分级（260808）：阅读型视图 1760px 上限居中；DAG 是画布型视图（.dag-wrap 自带
@@ -1365,6 +1369,11 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
   <div class="header-actions" role="tablist" aria-label="Main views" data-i18n-aria="aria.mainViews">
     <button class="tab-btn active" id="tabCaptures" role="tab" aria-selected="true" aria-controls="view-list"
       onclick="showView('list')" data-i18n="tab.captures">捕获</button>
+    <!-- 详情是常驻标签而不是「打开过才出现」（260918）：顶栏有几个视图不该随操作历史变，
+         禁用态说的是「有这么个地方，现在还没东西看」，比按钮凭空多一格信息量大。
+         它只切显示不触发加载——详情栏的 DOM 一直在，切回来时翻译与 AI 解读结果原样保留。 -->
+    <button class="tab-btn" id="tabDetail" role="tab" aria-selected="false" aria-controls="view-detail"
+      onclick="showView('detail')" data-i18n="tab.detail" data-i18n-title="tab.detailTitleEmpty" disabled>详情</button>
     <button class="tab-btn" id="tabDag" role="tab" aria-selected="false" aria-controls="view-dag"
       onclick="showView('dag')" data-i18n="tab.dag">时序</button>
     <button class="tab-btn" id="tabObserve" role="tab" aria-selected="false" aria-controls="view-observe"
@@ -1535,7 +1544,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
   </section>
 
   <!-- ============ View B 请求详情 ============ -->
-  <section id="view-detail" hidden>
+  <section id="view-detail" role="tabpanel" aria-labelledby="tabDetail" hidden>
     <div class="crumb-bar">
       <div class="crumb-left">
         <button class="btn" onclick="showView(S.detailFrom || 'list')" data-i18n="detail.back">← 返回</button>
@@ -2103,6 +2112,9 @@ zh: {
   "tab.captures": "捕获", "tab.dag": "时序", "tab.settings": "设置",
   "tab.analyze": "分析",
   "tab.observe": "实时分析",
+  "tab.detail": "详情",
+  "tab.detailTitle": "回到正在读的那条请求（内容原样保留，不重新加载）",
+  "tab.detailTitleEmpty": "还没打开过请求——先在捕获列表或时序图里点一条",
   "ob.pick": "观测", "ob.refresh": "刷新", "ob.copyGuide": "复制接入说明",
   "ob.untitled": "未命名观测", "ob.pickNone": "未选择观测",
   "ob.empty.title": "还没有任何观测",
@@ -2551,6 +2563,9 @@ en: {
   "tab.captures": "Captures", "tab.dag": "Timeline", "tab.settings": "Settings",
   "tab.analyze": "Analyse",
   "tab.observe": "Live analysis",
+  "tab.detail": "Detail",
+  "tab.detailTitle": "Back to the request you were reading — kept as it was, not reloaded",
+  "tab.detailTitleEmpty": "No request opened yet — pick one from the capture list or the timeline",
   "ob.pick": "Observation", "ob.refresh": "Refresh", "ob.copyGuide": "Copy setup notes",
   "ob.untitled": "Untitled observation", "ob.pickNone": "No observation selected",
   "ob.empty.title": "No observations yet",
@@ -2997,6 +3012,9 @@ ja: {
   "aria.mainViews": "メインビュー", "aria.toggleSecret": "API キーの表示・非表示",
   "tab.captures": "キャプチャ", "tab.dag": "タイムライン", "tab.settings": "設定",
   "tab.observe": "リアルタイム分析",
+  "tab.detail": "詳細",
+  "tab.detailTitle": "読んでいたリクエストに戻る（内容はそのまま、再読み込みしません）",
+  "tab.detailTitleEmpty": "まだリクエストを開いていません——キャプチャ一覧かタイムラインから選んでください",
   "ob.pick": "観測", "ob.refresh": "更新", "ob.copyGuide": "接続手順をコピー",
   "ob.untitled": "名称未設定の観測", "ob.pickNone": "観測が未選択です",
   "ob.empty.title": "観測がまだありません",
@@ -4036,6 +4054,9 @@ function btExplain(btn){
 
 /* ================= 视图切换 ================= */
 function showView(v){
+  /* 还没打开过任何请求就点「详情」：按钮是 disabled 的，正常点不到，这里兜住键盘与
+     程序化调用——不切成一个空白视图（260918）。 */
+  if(v === "detail" && !S.captureId) return;
   S.view = v;
   $("view-list").hidden = v !== "list";
   $("view-detail").hidden = v !== "detail";
@@ -4048,17 +4069,23 @@ function showView(v){
      detail 即使来自 dag 也是阅读视图，保持收窄 */
   $("mainContent").classList.toggle("dag-wide", v === "dag" || v === "analyze" || v === "observe");
   $("mainContent").classList.toggle("observe-wide", v === "observe");
-  const listOn = v === "list" || (v === "detail" && S.detailFrom === "list");
-  const dagOn = v === "dag" || (v === "detail" && S.detailFrom === "dag");
+  /* 260918：详情自己占一格，不再借来源标签的高亮。原先 detail 会把「捕获」点亮，于是
+     那一格同时表达两件事——结果是切走再点回来只能回列表，正在读的那条（含已出结果的
+     翻译与 AI 解读）被 renderDetail 覆盖掉。detailFrom 保留，它管的是「← 返回」去哪儿。 */
+  const listOn = v === "list";
+  const detailOn = v === "detail";
+  const dagOn = v === "dag";
   const settingsOn = v === "settings";
   const analyzeOn = v === "analyze";
-  const observeOn = v === "observe" || (v === "detail" && S.detailFrom === "observe");
+  const observeOn = v === "observe";
   $("tabCaptures").classList.toggle("active", listOn);
+  $("tabDetail").classList.toggle("active", detailOn);
   $("tabDag").classList.toggle("active", dagOn);
   $("tabSettings").classList.toggle("active", settingsOn);
   $("tabAnalyze").classList.toggle("active", analyzeOn);
   $("tabObserve").classList.toggle("active", observeOn);
   $("tabCaptures").setAttribute("aria-selected", listOn ? "true" : "false");
+  $("tabDetail").setAttribute("aria-selected", detailOn ? "true" : "false");
   $("tabDag").setAttribute("aria-selected", dagOn ? "true" : "false");
   $("tabSettings").setAttribute("aria-selected", settingsOn ? "true" : "false");
   $("tabAnalyze").setAttribute("aria-selected", analyzeOn ? "true" : "false");
@@ -4882,9 +4909,19 @@ function detailStep(dir){
   const id = dir < 0 ? S.navPrev : S.navNext;
   if(id) openDetail(id);   /* 不带 from：返回目标保持原样（从时序图进来的，翻几条后仍回时序图） */
 }
+/* 顶栏「详情」那一格的可用态（260918）。title 走换 key 而不是直接写 title：
+   applyI18n 每次切语言都按 data-i18n-title 重刷一遍，直接写的会被冲掉。 */
+function syncDetailTab(){
+  const b = $("tabDetail");
+  if(!b) return;
+  b.disabled = !S.captureId;
+  b.dataset.i18nTitle = S.captureId ? "tab.detailTitle" : "tab.detailTitleEmpty";
+  b.title = t18(b.dataset.i18nTitle);
+}
 async function openDetail(id, from){
   if(id !== S.captureId) S.msgShowAll = false;
   S.captureId = id;
+  syncDetailTab();                /* 有东西看了，解除顶栏那一格的禁用 */
   const seq = ++S.detailSeq;   /* 重入守卫：快速连点两条时丢弃过期 fetch 响应（260712） */
   if(from) S.detailFrom = from;   /* 不带 from（如「展开全部」重进）时保持原返回目标 */
   showView("detail");
