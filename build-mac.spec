@@ -86,7 +86,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='cc-wire-analyzer.app',
-    icon=None,
+    icon='src/static/icons/app.icns',
     bundle_identifier=None,
     # Finder「显示简介」的版本号（issue 260808）。版本真源仍是 git tag，见 tools/build/version_res.py。
     info_plist=mac_info_plist(),

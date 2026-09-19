@@ -6,6 +6,7 @@
 - 浏览器调试：`uv run python src/app.py`，使用启动日志或数据目录 `port.txt` 的实际端口；模板改后重启服务。
 - 测试数据入口：`tests/dev_seed.py`；采集或修改配置的测试先按开发约定双隔离，不能操作真实设置。
 - 软件构建入口：`tools/build/build.py`；本地说明书：`uv run python tools/build/build_manual.py`。
+- 图标原图：`src/static/icons/app.png`；更换原图后运行 `uv run tools/build/export_icons.py`，统一导出桌面与网页直接使用的图标资源。
 - 文档检查：`uv run python tools/checks/doc_audit.py`；具体测试与前端检查见[开发约定的验证章节](docs/development/开发约定.md#八验证改完必须跑什么)。
 - 目录与披露断面检查：`uv run python tools/checks/workspace_audit.py`；验证 `public` 原始文件哈希及本地入口边界。
 

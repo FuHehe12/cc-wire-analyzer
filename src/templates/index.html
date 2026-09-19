@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CC Wire Analyzer</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/app-32.png">
 <script>
 /* 外观必须在 CSS/首屏绘制前确定，避免深浅主题闪切。cookie 跨 localhost 动态端口，
    localStorage 作为同端口快速回退；两者都只属于 UI，不写后端 config.json。 */
@@ -309,7 +310,8 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
   background:var(--header-bg);backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);
   border-bottom:1px solid var(--header-border);box-shadow:var(--header-shadow),var(--apple-highlight);}
 .brand{display:flex;flex-direction:column;gap:2px;min-width:0;}
-.brand-title{font-size:20px;font-weight:700;letter-spacing:-0.01em;color:var(--apple-text);line-height:1.2;}
+.brand-title{display:flex;align-items:center;gap:8px;font-size:20px;font-weight:700;letter-spacing:-0.01em;color:var(--apple-text);line-height:1.2;}
+.brand-title img{border-radius:7px;flex-shrink:0;}
 .brand-sub{font-size:11px;color:var(--apple-secondary);font-family:var(--font-mono);line-height:1.4;}
 .header-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;}
 .tab-btn{background:transparent;border:1px solid transparent;padding:8px 14px;border-radius:var(--radius-sm);
@@ -1363,7 +1365,7 @@ mark.ic.hg{text-decoration:underline wavy var(--warn);text-underline-offset:3px;
 
 <header class="app-header">
   <div class="brand">
-    <div class="brand-title">CC Wire Analyzer</div>
+    <div class="brand-title"><img src="/static/icons/app-64.png" width="28" height="28" alt="">CC Wire Analyzer</div>
     <div class="brand-sub" data-i18n="brand.sub">wire-level capture · CC ↔ 上游链路流量录制</div>
   </div>
   <div class="header-actions" role="tablist" aria-label="Main views" data-i18n-aria="aria.mainViews">

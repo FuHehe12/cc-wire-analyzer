@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import re
 import sys
@@ -63,7 +64,8 @@ def ok(cond, label: str, detail: str = "") -> None:
 # 攻击载荷放在**录制正文里**，因为那才是真实威胁面：录的是上游与模型的输出，
 # 内容不受我们控制。`</script>` 尤其关键——内嵌 payload 时它是唯一的逃逸口。
 EVIL = '</script><img src=x onerror="alert(1)"><script>alert(2)</script>'
-DATE = "2026-08-19"
+# 避免固定日期被 app 启动时的保留期清理删掉，让浏览面断言始终有样例。
+DATE = datetime.date.today().isoformat()
 
 
 def seed() -> int:

@@ -56,7 +56,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,   # --noconsole：不弹黑色控制台窗口
-    icon=None,
+    icon='src/static/icons/app.ico',
     # 版本号真源仍是 git tag（CI 打包前生成 src/_version.py）；这里只是把它刻进 PE 资源。
     # 本地无 _version.py 时刻的是 0.0.0/"dev"，一眼能看出不是发行版。
     version=windows_version_info(),

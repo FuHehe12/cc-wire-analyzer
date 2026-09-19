@@ -242,8 +242,8 @@ def index():
 
 @app.route("/favicon.ico")
 def favicon():
-    # 短路：避免浏览器 favicon 请求落进 catch-all 被转发到上游
-    return Response(status=204)
+    # 本地资源：不能让浏览器的图标请求落进代理 catch-all。
+    return app.send_static_file("icons/app.ico")
 
 
 # ===== API 浏览面（issue 260825）=====
