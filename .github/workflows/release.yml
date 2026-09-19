@@ -98,7 +98,8 @@ jobs:
           - os: macos-latest
             spec: build-mac.spec
             extra: '--extra mac'   # 装 pyobjc（macOS WebKit 后端）
-            artifact: dist/cc-wire-analyzer-v*-macos.zip
+            # mac 两份产物：zip 给应用内更新器，dmg 给首次安装（见 Build macOS dmg 步注释）
+            artifact: dist/cc-wire-analyzer-v*-macos.*
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -148,6 +149,23 @@ jobs:
       - name: Zip macOS app
         if: runner.os == 'macOS'
         run: cd dist && ditto -c -k --sequesterRsrc --keepParent cc-wire-analyzer.app "cc-wire-analyzer-v${APP_VERSION}-macos.zip"
+
+      # dmg 是**首装**形态（260919_dmg首装资产）：双击挂载 → 拖进「应用程序」，用户主动移动
+      # 从源头消灭 App Translocation（zip 解压后从 Downloads 直接跑会中招，一键换版退回手动）。
+      # zip 资产保留：应用内更新器 `_pick_asset` 按 (.zip, macos) 匹配，dmg 不会被选中，
+      # 更新链路零改动——两份并存，人装 dmg、更新器吃 zip。
+      # hdiutil 是 macOS 自带；staging 里的 Applications 符号链接就是拖拽窗口的目标箭头。
+      # 无公证账号，首启会有一次系统「仍要打开」——点过即消，更新换入的新包不带隔离属性，
+      # 不会再弹（更新器下载不设 quarantine，urllib 不走 LaunchServices）。
+      - name: Build macOS dmg (first-install)
+        if: runner.os == 'macOS'
+        run: |
+          STAGING="$(mktemp -d)/ccwa-dmg"
+          mkdir -p "$STAGING"
+          cp -R dist/cc-wire-analyzer.app "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create -volname "CC Wire Analyzer" -srcfolder "$STAGING" \
+            -ov -format UDZO "dist/cc-wire-analyzer-v${APP_VERSION}-macos.dmg"
 
       - name: Rename Windows exe
         if: runner.os == 'Windows'
