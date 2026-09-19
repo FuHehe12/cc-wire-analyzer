@@ -228,7 +228,7 @@ def main() -> None:
         # 都经 should_close() 触发它 —— 两条 macOS 退出路径全覆盖；winforms 的 FormClosing 同理。
         # 不挂 closed：它是异步派发（后台线程），进程都要没了，跑不跑得完全看运气。
         win.events.closing += _restore_on_close
-        # Both source and frozen builds use the same approved artwork.
+        # 源码运行和打包后的冻结版共用同一份图标，都从 static 目录取，无需按构建形态区分。
         icon_name = "app.ico" if sys.platform == "win32" else "app.png"
         webview.start(icon=str(Path(flask_app.STATIC_FOLDER) / "icons" / icon_name))
     except Exception as e:
