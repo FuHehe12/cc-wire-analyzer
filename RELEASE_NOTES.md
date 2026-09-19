@@ -14,7 +14,7 @@ git tag 一致，不一致就发版失败——宁可红一次重发，也不能
 
 ### 变更
 
-- mac 检查更新后与 Windows 一样点一下完成换版并重启，替换不了（无写权限、非标准安装位置）时仍指路访达由用户手动拖入。
+- mac 检查更新后与 Windows 一样点一下完成换版并重启，替换不了（无写权限、非标准安装位置）时仍指路访达由用户手动拖入。经浏览器下载安装的 mac 用户请把应用拖入「应用程序」一次：系统会隔离运行这类下载来的应用，拖入前点一下换版会退回手动模式。
 
 ### 修复
 
@@ -24,7 +24,7 @@ git tag 一致，不一致就发版失败——宁可红一次重发，也不能
 
 ### Changed
 
-- On macOS, checking for updates now finishes the swap with one click and restarts, same as on Windows; when replacement is not possible (no write permission, non-standard install location) it still points you to Finder for a manual drag-in.
+- On macOS, checking for updates now finishes the swap with one click and restarts, same as on Windows; when replacement is not possible (no write permission, non-standard install location) it still points you to Finder for a manual drag-in. If you originally installed via a browser download, drag the app into Applications once: macOS runs such apps from an isolated location, and until then one-click replacement falls back to manual mode.
 
 ### Fixed
 
@@ -34,7 +34,7 @@ git tag 一致，不一致就发版失败——宁可红一次重发，也不能
 
 ### 変更
 
-- macOS でも、更新確認後は Windows と同じくワンクリックで置き換えて再起動します。置き換えられない場合（書き込み権限がない、標準外の場所へのインストール）は、引き続き Finder を示して手動でのドラッグ入れを案内します。
+- macOS でも、更新確認後は Windows と同じくワンクリックで置き換えて再起動します。置き換えられない場合（書き込み権限がない、標準外の場所へのインストール）は、引き続き Finder を示して手動でのドラッグ入れを案内します。ブラウザ経由でダウンロード・インストールした場合は、アプリを「アプリケーション」へ一度ドラッグしてください。macOS はこの種のアプリを隔離された場所で実行するため、ドラッグまでワンクリック置き換えは手動モードに戻ります。
 
 ### 修正
 
