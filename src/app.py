@@ -32,6 +32,7 @@ import snapshot_diff
 import snapshot_extract
 import snapshot_pack
 import snapshot_store
+import tls_util
 import updater
 import upstream_history
 
@@ -1599,9 +1600,10 @@ def _open_llm(req):
     260801 用户反馈「改了最大输出 tokens 没生效」时，这条路径正是可能的哑火点之一。"""
     import socket
     import urllib.error
-    import urllib.request
     try:
-        return urllib.request.urlopen(req, timeout=180)
+        # CA 信任源走 tls_util.opener：mac 冻结态裸 urlopen 无证书必挂
+        # （260919「测试模型」CERTIFICATE_VERIFY_FAILED，与 260916 同族）。
+        return tls_util.opener().open(req, timeout=180)
     except urllib.error.HTTPError as e:
         detail = ""
         try:

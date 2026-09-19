@@ -56,6 +56,7 @@ GLOBALS = {
     "cancelAnimationFrame", "structuredClone", "queueMicrotask", "Intl", "URL",
     "URLSearchParams", "Blob", "FormData", "getComputedStyle", "matchMedia",
     "btoa", "atob", "EventSource", "AbortController", "TextDecoder", "TextEncoder",
+    "Event",   # ctxFieldMenu 粘贴后补发 input 事件（260919）
     "marked", "DOMPurify",
 }
 KEYWORDS = {

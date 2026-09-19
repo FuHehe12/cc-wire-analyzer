@@ -180,17 +180,26 @@ def forward(path: str) -> Response:
                                   "ANTHROPIC_BASE_URL 改回真上游后重启。"}),
             status=502, mimetype="application/json")
 
-    url = f"{upstream_base}/{path}" if path else upstream_base
+    # query 必须随 path 原样透传（260919 实测丢失）：CC 的 /v1/messages?beta=true 这类
+    # 标志在 query 上，丢了它上游行为静默改变；录制侧同样记全，否则录制 ≠ 真实请求。
+    qs = request.query_string.decode("latin-1")
+    full_path = f"{path}?{qs}" if qs else path
+    url = f"{upstream_base}/{full_path}" if full_path else upstream_base
 
     req_body = request.get_data()  # bytes
     req_headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP}
+    # 客户端没声明 Accept-Encoding 时钉死 identity：否则 httpx 会替它注入自己的压缩
+    # 偏好（gzip/br/zstd…），上游据此压缩、原样回给未声明支持的客户端 = 乱码
+    # （260919 裸 curl 实测）。客户端声明了就原样透传，由它自己负责。
+    if not any(k.lower() == "accept-encoding" for k in req_headers):
+        req_headers["Accept-Encoding"] = "identity"
     upstream_host = urlparse(upstream_base).netloc
     if upstream_host:
         req_headers["Host"] = upstream_host
 
     rec = capture_store.new_record()
     rec["method"] = request.method
-    rec["path"] = "/" + path
+    rec["path"] = "/" + full_path
     rec["upstream"] = url
     rec["request"]["headers_safe"] = _redact(req_headers)
     try:

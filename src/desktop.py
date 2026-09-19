@@ -229,7 +229,10 @@ def main() -> None:
         # 不挂 closed：它是异步派发（后台线程），进程都要没了，跑不跑得完全看运气。
         win.events.closing += _restore_on_close
         # 源码运行和打包后的冻结版共用同一份图标，都从 static 目录取，无需按构建形态区分。
-        icon_name = "app.ico" if sys.platform == "win32" else "app.png"
+        # mac 必须用遮罩版 app-mac.png：webview.start(icon) 在 cocoa 后端会
+        # setApplicationIconImage 覆盖 bundle icns（260919 实测），传不透明原画
+        # 会在启动瞬间把 Dock 图标盖回直角白卡——icns 修好了也会被它打回原形。
+        icon_name = "app.ico" if sys.platform == "win32" else "app-mac.png"
         webview.start(icon=str(Path(flask_app.STATIC_FOLDER) / "icons" / icon_name))
     except Exception as e:
         msg = str(e)

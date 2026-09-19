@@ -464,6 +464,38 @@ else:
         sys.executable = real_exe
         del sys.frozen                           # type: ignore[attr-defined]
 
+print("\n[12] darwin 重启命令：open -n 经 LaunchServices（260919）")
+if sys.platform != "darwin":
+    ok(True, "非 darwin：跳过（open -n 路径只在 mac 走）")
+else:
+    bs2 = TMP / "relaunchcmd"
+    fake_app = bs2 / "cc-wire-analyzer.app" / "Contents" / "MacOS" / "cc-wire-analyzer"
+    sys.frozen = True                            # type: ignore[attr-defined]
+    real_exe, real_env = sys.executable, dict(os.environ)
+    try:
+        os.environ.pop("CCWA_HOME", None)
+        os.environ.pop("CCWA_CLAUDE_SETTINGS", None)
+        sys.executable = str(fake_app)
+        base = U._darwin_relaunch_cmd([])
+        ok(base == ["open", "-n", str((bs2 / "cc-wire-analyzer.app").resolve())],
+           "基础命令是 open -n <bundle>（直启二进制 = 白框图标 + 窗口不置前）")
+        os.environ["CCWA_HOME"] = str(TMP)
+        os.environ["CCWA_CLAUDE_SETTINGS"] = str(TMP / "fake.json")
+        withenv = U._darwin_relaunch_cmd([])
+        ok("--env" in withenv and f"CCWA_HOME={TMP}" in withenv
+           and f"CCWA_CLAUDE_SETTINGS={TMP / 'fake.json'}" in withenv,
+           "隔离变量经 --env 显式传递（launchd 会剥继承环境）")
+        withargs = U._darwin_relaunch_cmd(["serve"])
+        ok(withargs[-2:] == ["--args", "serve"], "子命令经 --args 转发（serve 重启 E2E 依赖）")
+        sys.executable = str(bs2 / "cc-wire-analyzer")
+        ok(U._darwin_relaunch_cmd([]) is None,
+           "裸二进制布局返回 None（调用方回落 Popen 直启，行为与旧版一致）")
+    finally:
+        sys.executable = real_exe
+        os.environ.clear()
+        os.environ.update(real_env)
+        del sys.frozen                           # type: ignore[attr-defined]
+
 print()
 if FAILED:
     print(f"[FAILED] {len(FAILED)} 条断言未通过：")

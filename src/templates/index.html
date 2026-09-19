@@ -300,6 +300,8 @@ pre,.excerpt,.md-body,.msg,.msg-text,.err-card,.dcard,.detail-col,.crumb-meta,.m
 .ctx-item{all:unset;padding:7px 12px;font-size:12px;font-family:var(--font-body);color:var(--apple-text);
   border-radius:5px;cursor:pointer;white-space:nowrap;user-select:none;}
 .ctx-item:hover{background:var(--bg-warm);color:var(--gold-text);}
+.ctx-item:disabled{opacity:.4;cursor:default;}
+.ctx-item:disabled:hover{background:none;color:var(--apple-text);}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -2332,6 +2334,7 @@ zh: {
   "stor.archive": "归档为单文件", "stor.archiveSub": "存到 archives/，可拷到另一台机器查看；原录制保留",
   "stor.working": "处理中…", "stor.fail": "操作失败",
   "stor.compactOk": "已压缩 {n} 天，省下 {saved}", "stor.compactNone": "没有可压缩的日期（今天不压、已压的不再压）",
+  "stor.err.is_today": "今天的数据正在录制，不参与此操作（只处理过去的天；等明天或换一天看）",
   "cold.title": "已冷藏", "cold.note": "这些日期很久没点开，已经收起来并再压小一截。点一下就解冻回日期栏。",
   "cold.freeze": "冷藏这一天", "cold.freezeSub": "再压小一截并收进「已冷藏」，点一下就能解冻回来",
   "cold.freezeOk": "已冷藏 {date}，又省下 {saved}（{ratio}x）", "cold.freezeNone": "这一天没法冷藏（今天正在录，永远不冻）",
@@ -2382,6 +2385,7 @@ zh: {
   "bt.copy": "复制", "bt.copied": "已复制",
   "toast.copied": "已复制 {n} 字符", "toast.copyFail": "复制失败",
   "ctx.copySel": "复制选中", "ctx.copyBlock": "复制整块（{n} 字符）", "ctx.selectBlock": "选中整块",
+  "ctx.paste": "粘贴", "ctx.selectAll": "全选", "ctx.pasteFail": "粘贴失败：{msg}",
   "llm.translating": "翻译中…", "llm.retranslate": "重译", "llm.translateFail": "翻译失败",
   "llm.translated": "↓ 翻译",
   "llm.explaining": "解读中…", "llm.reexplain": "再问一次", "llm.explainFail": "解读失败",
@@ -2831,6 +2835,8 @@ en: {
   "bt.copy": "Copy", "bt.copied": "Copied",
   "toast.copied": "Copied {n} chars", "toast.copyFail": "Copy failed",
   "ctx.copySel": "Copy selection", "ctx.copyBlock": "Copy block ({n} chars)", "ctx.selectBlock": "Select block",
+  "ctx.paste": "Paste", "ctx.selectAll": "Select all", "ctx.pasteFail": "Paste failed: {msg}",
+  "stor.err.is_today": "Today's data is still recording and is never touched (only past dates are)",
   "bt.translate": "Translate", "bt.explain": "Ask AI",
   "llm.translating": "Translating…", "llm.retranslate": "Retranslate", "llm.translateFail": "Translation failed",
   "llm.translated": "↓ Translation",
@@ -3280,6 +3286,8 @@ ja: {
   "bt.copy": "コピー", "bt.copied": "コピー済み",
   "toast.copied": "{n} 文字をコピーしました", "toast.copyFail": "コピーに失敗しました",
   "ctx.copySel": "選択範囲をコピー", "ctx.copyBlock": "ブロックをコピー（{n} 文字）", "ctx.selectBlock": "ブロックを選択",
+  "ctx.paste": "貼り付け", "ctx.selectAll": "すべて選択", "ctx.pasteFail": "貼り付け失敗：{msg}",
+  "stor.err.is_today": "今日のデータは録画中のため対象外です（過去の日付のみ処理します）",
   "bt.translate": "翻訳", "bt.explain": "AI に聞く",
   "llm.translating": "翻訳中…", "llm.retranslate": "再翻訳", "llm.translateFail": "翻訳に失敗",
   "llm.translated": "↓ 翻訳",
@@ -3630,21 +3638,13 @@ async function setLang(lang){
   renderStatus(); renderDates(); renderList(); renderDoctor(); renderDiag(); renderSettingsI18n();
   if(S.view === "dag") loadDag();
   if(S.view === "detail" && S.captureId) openDetail(S.captureId);
-  /* 分析页也全是 JS 拼的：贴纸、轮次骨架、预设问题、对话气泡的角色名。
-     漏掉它就是「界面已切英文、分析页还是中文」（同 260801 那条教训，只是换了个视图）。 */
-  if(S.view === "analyze"){
-    anLoad(true);                          /* 占用行 + 两块板 */
-    if(AN.sub === "rec" && AN.recData){
-      renderRec(AN.recData, AN.recSources || []);
-      anChatPresetsRender(); anChatRender();
-    }
-    /* 对比结果也是 JS 拼的——renderDiff 把 t18 文本拼进 anDiffOut，无 data-i18n，
-       applyI18n 管不着。切语言必须用缓存重渲，否则停在「做对比那一刻」的语言（260808）。
-       选中状态校验即缓存有效性：不再是这两条时拦住，不复活已失效的对比。 */
-    if(AN.sub === "diff"){
-      if(AN.selA && AN.selB && AN.selA !== AN.selB && AN.pDiff) renderDiff(AN.pDiff);
-    }
-  }
+  /* 分析页也全是 JS 拼的：贴纸、占用行、结果区。占用行与贴纸——正停在分析页就立即重取，
+     否则置脏，回进时 anLoad 的 dirty 守卫自然触发重取重渲（260919 之前只在「切换时恰好
+     停在本页」才刷，而语言切换几乎总发生在设置页——回分析页就整页停在旧语言）。
+     结果区无条件走缓存重渲，与分析页当前是否可见无关。 */
+  AN.dirty = true;
+  if(S.view === "analyze") anLoad(true);
+  anRerenderResults();
   /* 实时分析页也一样：分组标题、状态章、关联那行「属于 → 阶段「…」」全是 t18 拼进
      innerHTML 的，applyI18n 只管 data-i18n 的静态节点。**第四次换视图重犯同一条**，
      所以加视图必须回头看这里。 */
@@ -3830,6 +3830,48 @@ function blockTextOf(el){
 }
 function selText(){ return String(window.getSelection() ? window.getSelection().toString() : ""); }
 
+/* —— 输入框右键菜单（260919）——
+   复用 #ctxMenu 同一套浮层与关闭逻辑。粘贴走 navigator.clipboard.readText：菜单项点击
+   是干净的用户手势，桌面窗与浏览器都跑在 127.0.0.1（安全上下文），Safari 系内核的
+   「允许粘贴」确认也认这个手势。setRangeText 不触发 input 事件，手动补一发——
+   设置页的表单脏标记、自动保存靠 input 监听，静默改值会跟已保存状态对不上。 */
+function ctxFieldMenu(e, el){
+  const m = $("ctxMenu");
+  if(!m) return;
+  e.preventDefault();
+  const start = el.selectionStart, end = el.selectionEnd;
+  const selTxt = (start != null && end != null && end > start) ? el.value.slice(start, end) : "";
+  const editable = !el.disabled && !el.readOnly;
+  m.innerHTML = "";
+  const add = (label, fn, disabled) => {
+    const b = document.createElement("button");
+    b.className = "ctx-item"; b.textContent = label; b.disabled = !!disabled;
+    b.onclick = () => { ctxHide(); fn(); };
+    m.appendChild(b);
+  };
+  add(t18("ctx.copySel"), () => copyAndReport(selTxt), !selTxt);
+  add(t18("ctx.paste"), async () => {
+    try{
+      const txt = await navigator.clipboard.readText();
+      el.focus();
+      const s = el.selectionStart, t = el.selectionEnd;
+      if(s == null || t == null){
+        /* number 这类无选区概念的输入类型不支持 setRangeText（260919 实测），
+           只能整段替换——右键粘贴的意图本来就是"填这个框"，可接受。 */
+        el.value = txt;
+      }else{
+        el.setRangeText(txt, s, t, "end");
+      }
+      el.dispatchEvent(new Event("input", {bubbles: true}));
+    }catch(err){ toast(t18("ctx.pasteFail", {msg: err && err.message ? err.message : err}), true); }
+  }, !editable);
+  add(t18("ctx.selectAll"), () => { el.focus(); el.select(); }, el.disabled);
+  m.hidden = false;
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.min(e.clientX, window.innerWidth - w - 8) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - h - 8) + "px";
+}
+
 /* —— 自绘右键菜单 —— */
 function ctxHide(){ const m = $("ctxMenu"); if(m) m.hidden = true; }
 function ctxInit(){
@@ -3838,6 +3880,11 @@ function ctxInit(){
   document.body.appendChild(m);
 
   document.addEventListener("contextmenu", e => {
+    /* 输入框先走专门一页：框内选中不进 window.getSelection，下面 sel/blk 那套对它无效；
+       WKWebView 给输入框弹的原生菜单没有「粘贴」，WebView2 的原生菜单整个被禁——
+       两平台上输入框右键都拿不到粘贴，只能 Cmd/Ctrl+V（260919 mac 实测）。 */
+    const field = e.target.closest && e.target.closest("input, textarea");
+    if(field){ ctxFieldMenu(e, field); return; }
     const sel = selText(), blk = blockTextOf(e.target);
     /* 备份入口只在详情页出现（那里才有"当前这条录制"可言）。
        snapEl 是带 data-snap-where 的最近祖先——system 块或 messages 里的文本块。 */
@@ -4096,7 +4143,7 @@ function showView(v){
   /* dagLocate 期间不自己加载：它要按自己的节奏"渲染一次 → 看一眼 → 解一层"，
      这里再来一发只会多拉一份同样的 dag（序号守卫会把它的响应丢掉，白花一次带宽）。 */
   if(v === "dag" && !S.dagLocating) loadDag();
-  if(v === "analyze") anLoad();
+  if(v === "analyze"){ anLoad(); anRerenderResults(); }
   if(v === "observe") obLoad();
 }
 
@@ -4621,7 +4668,16 @@ async function _storAction(url, body, okMsg){
     const j = await r.json();
     if(j.ok){ okMsg(j); await fetchCaptures(S.date); if(S.view === "dag") loadDag();
               loadStorage(); loadSources(); }
-    else{ toast(t18("stor.fail") + "：" + (j.error || ""), true); }
+    else{
+      /* 拒绝原因在响应里都有，只是形状不一：清仓类端点给顶层 error，压实/冷藏按天循环、
+         原因挂在 failed[0]。260919 之前只读顶层——压实「今天」被拒时 toast 只剩「操作失败」，
+         用户不知道为什么、该做什么。error_code 认识的翻成界面语言，不认识的透传原文。 */
+      const f = (j.failed || [])[0];
+      const key = f ? "stor.err." + (f.error_code || "") : "";
+      const known = key && ((I18N[LANG] && I18N[LANG][key]) || I18N.zh[key]);
+      const reason = j.error || (f ? (known ? t18(key) : f.error) : "");
+      toast(t18("stor.fail") + "：" + reason, true);
+    }
   }catch(e){ toast(t18("stor.fail") + "：" + e.message, true); }
   if(btn){ btn.disabled = false; setBtnLabel(btn, t18("clear.title")); }
 }
@@ -6982,6 +7038,21 @@ function anSwap(){
   const a = AN.selA; AN.selA = AN.selB; AN.selB = a;
   anRenderBoard("p");     /* 少了这个参数会抛 TypeError，「对调」整个哑掉（P0 遗留） */
   anDiffRun();
+}
+/* 结果区（diff / 录制分析）按当前语言重渲。两个调用点：切语言（setLang）与回进分析页
+   （showView）——后者是 260919 补的：在设置页切语言再回分析页，占用行被 anLoad 的
+   dirty 守卫拦住、结果区更没人重渲，整页停在切换前的语言。renderLang 记下「结果是用
+   哪种语言渲染的」，语言没变的进入不重渲（保住滚动位置等现场）。纯 innerHTML 重写，
+   面板隐藏时调用无害。选中状态校验即缓存有效性：不再是这两条时拦住，不复活已失效的对比。 */
+function anRerenderResults(){
+  if(AN.renderLang === LANG) return;
+  AN.renderLang = LANG;
+  if(AN.sub === "diff"){
+    if(AN.selA && AN.selB && AN.selA !== AN.selB && AN.pDiff) renderDiff(AN.pDiff);
+  }else if(AN.sub === "rec" && AN.recData){
+    renderRec(AN.recData, AN.recSources || []);
+    anChatPresetsRender(); anChatRender();
+  }
 }
 
 async function anDiffRun(){

@@ -39,6 +39,7 @@ except ImportError:            # 裸 python 跑源码模式可能没装；此时
     certifi = None
 
 import config as CFG
+import tls_util
 
 log = logging.getLogger(__name__)
 
@@ -160,34 +161,16 @@ class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _ca_context() -> ssl.SSLContext | None:
-    """更新检查用的 CA 信任源——mac 冻结态**唯一**的信任来源（issue 260916）。
-
-    为什么必须显式给：CPython 的 ssl 在 macOS 不读钥匙串，只认编译期 OPENSSLDIR /
-    `SSL_CERT_FILE`；这些路径在 CI 构建机上存在、冻结到用户机器上就没了——v0.4.38 及
-    更早的 mac 包 check 必挂 `unable to get local issuer certificate`，且因为代理转发
-    不终结 TLS、录制功能一切正常，这个坏只有点「检查更新」才看得见。certifi 随包打进
-    来（PyInstaller 对直接 import 的模块自动分析，hook 附带 cacert.pem），`where()`
-    冻结态自动指向解包目录里的那份。
-
-    Windows 返回 None 走系统默认：那边 `load_default_certs` 有系统证书存储兜底、更新
-    链路实测是通的（260827 的真更新事故反证），换成 certifi-only 反而会把「根证书装在
-    系统存储里」的企业代理用户弄断——不修没坏的东西。certifi 缺席（裸 python 源码模式）
-    同样回落 None，不挡开发。
-    """
-    if sys.platform == "win32" or certifi is None:
-        return None
-    return ssl.create_default_context(cafile=certifi.where())
+    """CA 信任源。260916 修在本模块单点，260919 翻译事故后抽到 tls_util 全 app 共享——
+    语义原样（非 win32 且 certifi 在 → certifi context，否则 None 走系统默认），理由与
+    否决记录见 tls_util 模块 docstring。本函数保留给 update_selftest 与本模块引用。"""
+    return tls_util.ca_context()
 
 
 def _opener() -> urllib.request.OpenerDirector:
-    # ProxyHandler() 不传参 = 用 urllib.getproxies()：Windows 上除环境变量外还会读系统代理
-    # 注册表设置。国内用户走 Clash 之类的系统代理时，后端与 WebView2 走的是同一条路——
-    # 否则会出现"前端检查更新好使、后端下载永远超时"这种最难判的故障。
-    handlers = [urllib.request.ProxyHandler(), _GuardedRedirect()]
-    ctx = _ca_context()
-    if ctx is not None:
-        handlers.append(urllib.request.HTTPSHandler(context=ctx))
-    return urllib.request.build_opener(*handlers)
+    # 代理语义（getproxies 读系统代理，与浏览器同路）与 CA 信任源统一在 tls_util.opener
+    # （260919）；本模块额外挂重定向逐跳白名单（不变量 10 第 2 条）。
+    return tls_util.opener(_GuardedRedirect())
 
 
 def _headers(version: str) -> dict:
@@ -687,6 +670,28 @@ def _child_env() -> dict:
             if not k.startswith(_PYI_ENV_PREFIX) and k not in _PYI_ENV_LEGACY}
 
 
+def _darwin_relaunch_cmd(extra_args: list[str]) -> list[str] | None:
+    """darwin 且能解析出 .app bundle 时，构造经 LaunchServices 的重启命令。
+
+    直启内层二进制（Popen）绕过 LaunchServices：进程不激活、窗口不置前、
+    Dock 图标是白框（260919 真机实测，换版本身全对、坏在这最后一厘米）。
+    `open -n` 走系统启动，图标与激活是默认行为。`--env` 显式传隔离变量——
+    launchd 会剥继承环境（当初选 Popen 的顾虑由它解掉；真用户流程本无变量
+    要传，此路径为测试隔离服务）。`--args` 转发子命令，serve 模式的重启
+    E2E 仍可测。解析不出 bundle（裸二进制布局）返回 None，调用方回落 Popen。
+    """
+    bundle = current_bundle()
+    if bundle is None:
+        return None
+    cmd = ["open", "-n", str(bundle)]
+    for k in ("CCWA_HOME", "CCWA_CLAUDE_SETTINGS"):
+        if os.environ.get(k):
+            cmd += ["--env", f"{k}={os.environ[k]}"]
+    if extra_args:
+        cmd += ["--args"] + extra_args
+    return cmd
+
+
 def _relaunch(exe: Path, restore_fn) -> None:
     """**先恢复 settings.json → 再拉新进程 → 再退出**。顺序确定性保证。
 
@@ -709,13 +714,19 @@ def _relaunch(exe: Path, restore_fn) -> None:
     restore_fn()
     argv = [str(exe)] + [a for a in sys.argv[1:] if a not in ("--update-applied",)]
     try:
-        kwargs = {}
-        if sys.platform == "win32":
-            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP：新实例不做本进程的子进程，
-            # 我们退出时不会连带它。
-            kwargs["creationflags"] = 0x00000008 | 0x00000200
-        # env 必须显式给（见 _child_env）：继承整份环境会让新 exe 复用旧的解压目录。
-        subprocess.Popen(argv, close_fds=True, env=_child_env(), **kwargs)
+        cmd = _darwin_relaunch_cmd(argv[1:]) if sys.platform == "darwin" else None
+        if cmd is not None:
+            # darwin：经 LaunchServices 拉起（窗口置前、Dock 图标正常，260919）。
+            # env 由 open --env 显式带（launchd 会剥继承环境），不走 _child_env。
+            subprocess.Popen(cmd)
+        else:
+            kwargs = {}
+            if sys.platform == "win32":
+                # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP：新实例不做本进程的子进程，
+                # 我们退出时不会连带它。
+                kwargs["creationflags"] = 0x00000008 | 0x00000200
+            # env 必须显式给（见 _child_env）：继承整份环境会让新 exe 复用旧的解压目录。
+            subprocess.Popen(argv, close_fds=True, env=_child_env(), **kwargs)
     except Exception as e:                        # noqa: BLE001
         log.error("新版本拉起失败（旧版已被改名，用户需手动启动 %s）：%s", exe, e)
     os._exit(0)
