@@ -9,6 +9,7 @@
 | 查接口与字段 | [API契约](usage/API契约.md) |
 | 看懂界面与报文 | [界面导览](usage/界面导览.md)、[报文解读](usage/报文解读.md) |
 | 给其他 harness 做分析器 | [同类工具构建手册](guides/同类工具构建手册.md) |
+| 考虑接入其他 agent CLI | [多Agent接入可行性调研](product/AI_多Agent接入可行性调研.md) |
 
 Markdown 和产品源文件可编辑；`uv run python tools/build/build_manual.py` 将它们生成一本本地说明书，结果在 `dist/manual/index.html`。HTML 是阅读产物，不是另一份编辑真源。
 
