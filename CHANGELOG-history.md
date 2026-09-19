@@ -1,6 +1,12 @@
 # 变更历史
 
-这里记录 v0.4.39 及更早版本的变化，最新一版见 [CHANGELOG.md](CHANGELOG.md)。一条一句，只说做了什么；想知道为什么这么定，顺着条目末尾的 issue 名去 `issues/closed/` 读（v0.4.27 及更早的条目大多没有 issue 名，那时还没有这个习惯，查 `git log` 或 `issues/closed/INDEX.md`）。本文件被整理过两次，原文都在 git 里：260913 改写前的那版取 `git show 71b1499~1:CHANGELOG-history.md`，260906 瘦身前那份最长的（含大量解释性正文）取 `git show 9b1673f:public/CHANGELOG-history.zh.md`，英文全文同一提交下的 `public/CHANGELOG-history.md`。历史路径与行为不代表当前状态。
+这里记录 v0.4.40 及更早版本的变化，最新一版见 [CHANGELOG.md](CHANGELOG.md)。一条一句，只说做了什么；想知道为什么这么定，顺着条目末尾的 issue 名去 `issues/closed/` 读（v0.4.27 及更早的条目大多没有 issue 名，那时还没有这个习惯，查 `git log` 或 `issues/closed/INDEX.md`）。本文件被整理过两次，原文都在 git 里：260913 改写前的那版取 `git show 71b1499~1:CHANGELOG-history.md`，260906 瘦身前那份最长的（含大量解释性正文）取 `git show 9b1673f:public/CHANGELOG-history.zh.md`，英文全文同一提交下的 `public/CHANGELOG-history.md`。历史路径与行为不代表当前状态。
+
+## v0.4.40 - 2026-09-19
+
+### 新增
+
+- 应用采用浅底蓝色与珊瑚色色带图标，桌面窗口、双平台安装包和网页入口使用同一套视觉标识。（issue 260918_应用图标设计提案）
 
 ## v0.4.39 - 2026-09-18
 

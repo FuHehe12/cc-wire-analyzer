@@ -1,5 +1,5 @@
 <!--
-tag: v0.4.40
+tag: v0.4.41
 
 这份文件只装一个版本：最近发布的那一版，或正在准备发布的那一版。发新版时整体覆盖，不累积历史。
 GitHub Release 页的正文由 CI 从这里取（`-->` 之后到文件末尾原样发出），上面这行 tag 必须与本次
@@ -12,18 +12,30 @@ git tag 一致，不一致就发版失败——宁可红一次重发，也不能
 
 ## 中文
 
-### 新增
+### 变更
 
-- 应用采用浅底蓝色与珊瑚色色带图标，桌面窗口、双平台安装包和网页入口使用同一套视觉标识。
+- mac 检查更新后与 Windows 一样点一下完成换版并重启，替换不了（无写权限、非标准安装位置）时仍指路访达由用户手动拖入。
+
+### 修复
+
+- mac 下载更新后解出的新版本无法启动，改用与打包同一套系统工具解压以完整还原包内链接与权限，解压失败时如实报错。
 
 ## English
 
-### Added
+### Changed
 
-- The app adopts a light-blue icon with coral ribbons; the desktop window, both platform installers and the web pages now share this single visual identity.
+- On macOS, checking for updates now finishes the swap with one click and restarts, same as on Windows; when replacement is not possible (no write permission, non-standard install location) it still points you to Finder for a manual drag-in.
+
+### Fixed
+
+- On macOS the newly downloaded version failed to launch after an update; extraction now uses the same system tool as packaging to fully restore the links and permissions inside the archive, and extraction failures are reported honestly.
 
 ## 日本語
 
-### 追加
+### 変更
 
-- 明るい青地にコーラル色の帯を配したアプリアイコンを採用しました。デスクトップのウィンドウ、両プラットフォームのインストーラー、Web ページで同じビジュアルを共有します。
+- macOS でも、更新確認後は Windows と同じくワンクリックで置き換えて再起動します。置き換えられない場合（書き込み権限がない、標準外の場所へのインストール）は、引き続き Finder を示して手動でのドラッグ入れを案内します。
+
+### 修正
+
+- macOS で更新ダウンロード後の新バージョンが起動しない問題を修正しました。パッケージ作成と同じシステムツールで解凍し、アーカイブ内のリンクと権限を完全に復元します。解凍に失敗した場合は正直にエラーを報告します。
