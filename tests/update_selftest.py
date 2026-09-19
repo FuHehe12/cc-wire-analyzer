@@ -19,6 +19,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -345,6 +347,34 @@ print("\n[9] 能力自陈")
 cap = U._capability(ASSET)
 ok(cap["can_apply"] is False and cap["apply_reason"] == "source",
    "源码模式如实说不能替换，并给出原因码（笼统的'不支持'会被当成坏了）")
+
+print("\n[10] macOS 更新包解压：ditto 保符号链接（260919）")
+if sys.platform != "darwin" or not shutil.which("ditto"):
+    ok(True, "非 darwin 或无 ditto：跳过（该平台走 zipfile，与旧版一致）")
+else:
+    zt = TMP / "ziptest"
+    ver = zt / "mini.app" / "Contents" / "Frameworks" / "Python.framework" / "Versions"
+    ver.mkdir(parents=True)
+    (ver / "3.11").mkdir()
+    (ver / "3.11" / "Python").write_bytes(b"binary")
+    (ver / "Current").symlink_to("3.11")                 # 复刻正式包的框架链接（32 个之一）
+    zp = zt / "mini.zip"
+    subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent",  # 与 release.yml 同参数
+                    str(zt / "mini.app"), str(zp)], check=True)
+    out = zt / "out"
+    U._extract_update(zp, out)
+    cur = out / "mini.app" / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "Current"
+    ok(cur.is_symlink() and os.readlink(cur) == "3.11",
+       "ditto 解出的符号链接原样还原（dyld 全靠这些链接，断了 .app 双击即死）")
+    ok((cur.parent / "3.11" / "Python").read_bytes() == b"binary", "包内文件内容完整")
+    ok(not (out / "__MACOSX").exists(), "ditto 自行消费 __MACOSX，不给用户落垃圾目录")
+    # 反向断言：把坑钉死——zipfile 解同一个包必坏链接。没有这条，将来"换个解压函数"
+    # 回踩时本节会全绿（换回去的那个函数自己也过），谁也发现不了。
+    bad = zt / "bad"
+    shutil.unpack_archive(str(zp), str(bad))
+    bcur = bad / "mini.app" / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "Current"
+    ok(not bcur.is_symlink(),
+       "反证：zipfile 把符号链接解成普通文件（260919 根因，ditto 不可替代）")
 
 print()
 if FAILED:

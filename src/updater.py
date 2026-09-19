@@ -442,6 +442,27 @@ def _reveal(path: Path) -> None:
         log.warning("打开所在文件夹失败：%s", path)
 
 
+def _extract_update(src: Path, out: Path) -> None:
+    """解压更新包到 out。macOS 必须用 ditto，与 CI 打包（`ditto -c -k --sequesterRsrc`，
+    release.yml）对称：.app 里 30+ 个框架符号链接（Resources/Python、libssl.3.dylib、
+    Python.framework 等）只有 ditto 能原样还原——Python zipfile 会把符号链接解成
+    内容为路径文本的普通文件，解出的 .app 双击即死（dyld 断链 + 签名失效，260919 实测）。
+
+    **ditto 失败不做 zipfile 回落**（模块头部第 3 条同形：默默降级比不做更糟）——
+    回落解出的是已知损坏的 .app，被用户拿去覆盖好版本，比一句诚实的报错更糟，
+    异常直接抛给 apply 的 unpack_failed 分支。非 win32 非 darwin 的假想平台没有
+    ditto，维持 zipfile（与旧版行为一致）。
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "darwin":
+        r = subprocess.run(["ditto", "-x", "-k", str(src), str(out)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"ditto 退出 {r.returncode}：{(r.stderr or '').strip()[:200]}")
+    else:
+        shutil.unpack_archive(str(src), str(out))
+
+
 def swap_in_place(new_file: Path, cur: Path) -> Path:
     """把 `new_file` 换成 `cur`，返回旧文件被改名后的路径。**纯文件操作，可单独测**。
 
@@ -526,7 +547,7 @@ def apply(is_recording: bool, restore_fn) -> dict:
         try:
             out = UPDATES_DIR / "extracted"
             shutil.rmtree(out, ignore_errors=True)
-            shutil.unpack_archive(str(src), str(out))
+            _extract_update(src, out)
             app = next((p for p in out.glob("*.app")), out)
             _reveal(app)
             return {"ok": True, "in_place": False, "path": str(app), "restart": False}
