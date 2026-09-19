@@ -120,6 +120,22 @@ def current_exe() -> Path | None:
     return Path(sys.executable).resolve() if is_frozen() else None
 
 
+def current_bundle() -> Path | None:
+    """冻结态 darwin 下正在运行的 `.app` bundle 根（Contents 的上一级）。
+
+    布局不像 .app（裸二进制等非正式安装）返回 None——apply 据此回落 Finder 指路，
+    与笼统的"不支持"区分开（同 preflight 给原因码的思路）。
+    """
+    if not is_frozen() or sys.platform != "darwin":
+        return None
+    exe = Path(sys.executable).resolve()
+    # .../cc-wire-analyzer.app/Contents/MacOS/cc-wire-analyzer
+    if exe.parent.name == "MacOS" and exe.parent.parent.name == "Contents":
+        bundle = exe.parent.parent.parent
+        return bundle if bundle.suffix == ".app" else None
+    return None
+
+
 # ===== HTTP：每一跳都校验 host =====
 
 def _assert_allowed(url: str) -> None:
@@ -254,11 +270,11 @@ def _capability(asset: dict | None) -> dict:
     if sys.platform == "win32":
         return {"can_apply": bool(asset), "apply_reason": "" if asset else "no_asset",
                 "in_place": True}
-    # macOS：只做到"下载 + 校验 + 在 Finder 里指出来"，不就地替换 .app。
-    # 维护者在 Windows，替换正在运行的 bundle 还牵扯隔离属性与 Gatekeeper——
-    # 没有实测环境就不写会动用户磁盘的代码（开发约定「跨平台」一节）。
+    # macOS：能解析出 .app bundle 就就地换（260919 起，与 ditto 解压修复同版；
+    # 隔离属性/签名顾虑已被实测拆弹——urllib 下载不设隔离属性，ditto 解压保真签名）。
+    # 解析不出（裸二进制等布局）回落 Finder 指路，UI 与 agent 都据 in_place 分叉。
     return {"can_apply": bool(asset), "apply_reason": "" if asset else "no_asset",
-            "in_place": False}
+            "in_place": current_bundle() is not None}
 
 
 # ===== 下载 =====
@@ -498,19 +514,66 @@ def swap_in_place(new_file: Path, cur: Path) -> Path:
     return old
 
 
+def _swap_bundle(new_dir: Path, cur: Path) -> Path:
+    """把新 bundle 目录换到 cur 的位置，返回旧 bundle 改名后的路径。**纯文件操作，可单独测**。
+
+    与 Windows 的 swap_in_place 同构——macOS 同样"运行中的文件不能覆盖、但整个
+    bundle 目录能被改名"（进程的页已映射，改目录名不动 inode）：
+
+      1. 新 bundle 先落到 cur 同目录的 `<name>.new` ← 还没动过在用的东西，无写权限
+         就在这里失败。同卷直接改名零拷贝；跨卷（更新目录与安装位置不在一块盘）
+         EXDEV 时用 `copytree(symlinks=True)` 复制——**symlinks=True 是铁的**：
+         框架符号链接被跟随复制会破坏 ad-hoc 签名（260919 zipfile 事故同族）。
+      2. `os.replace(cur, cur+.old)`  ← 同目录、原子
+      3. `os.replace(staging, cur)`   ← 同目录、原子；失败把 .old 换回去全身而退
+    """
+    staging = cur.with_name(cur.name + STAGING_SUFFIX)
+    old = cur.with_name(cur.name + OLD_SUFFIX)
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        shutil.rmtree(old)                        # 上一次更新留下的，能删就删
+    except OSError:
+        pass
+    try:
+        os.replace(new_dir, staging)              # 同卷：改名即达
+    except OSError:
+        shutil.copytree(new_dir, staging, symlinks=True)
+    try:
+        os.replace(cur, old)
+    except OSError:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    try:
+        os.replace(staging, cur)
+    except OSError:
+        os.replace(old, cur)                      # 回滚：原封不动地放回去
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return old
+
+
 def cleanup_leftovers() -> int:
     """启动时清掉上次更新留下的 `*.old` / `*.new`。删不掉就下次再说，绝不报错。"""
-    cur = current_exe()
-    if not cur:
-        return 0
     n = 0
-    for p in (cur.with_name(cur.name + OLD_SUFFIX), cur.with_name(cur.name + STAGING_SUFFIX)):
-        try:
-            if p.exists():
-                p.unlink()
-                n += 1
-        except OSError:
-            log.info("残留文件暂时删不掉（多半仍被占用），下次启动再试：%s", p)
+    cur = current_exe()
+    if cur:
+        for p in (cur.with_name(cur.name + OLD_SUFFIX), cur.with_name(cur.name + STAGING_SUFFIX)):
+            try:
+                if p.exists():
+                    p.unlink()
+                    n += 1
+            except OSError:
+                log.info("残留文件暂时删不掉（多半仍被占用），下次启动再试：%s", p)
+    bundle = current_bundle()                    # macOS：残留是整个 bundle 目录，rmtree
+    if bundle:
+        for p in (bundle.with_name(bundle.name + OLD_SUFFIX),
+                  bundle.with_name(bundle.name + STAGING_SUFFIX)):
+            try:
+                if p.exists():
+                    shutil.rmtree(p)
+                    n += 1
+            except OSError:
+                log.info("残留 bundle 暂时删不掉（多半仍被占用），下次启动再试：%s", p)
     return n
 
 
@@ -543,18 +606,39 @@ def apply(is_recording: bool, restore_fn) -> dict:
     st = _snapshot()
     src = Path(st["path"])
     if sys.platform != "win32":
-        # macOS：解压出 .app 并在 Finder 里指出来。**有意不就地替换**，见 _capability。
+        # macOS：ditto 解压（260919）→ 能解析出 bundle 就就地换 + 拉新退出；
+        # 换不动（无写权限等）如实给原因码并回落 Finder 指路——指给用户的是解压好的
+        # .app 而不是 zip，直接拖就行。**先解压再判断**：解压失败连指路的本钱都没有。
         try:
             out = UPDATES_DIR / "extracted"
             shutil.rmtree(out, ignore_errors=True)
             _extract_update(src, out)
-            app = next((p for p in out.glob("*.app")), out)
-            _reveal(app)
-            return {"ok": True, "in_place": False, "path": str(app), "restart": False}
         except Exception as e:                   # noqa: BLE001
             log.warning("解压更新包失败：%s", e)
             return {"ok": False, "reason": "unpack_failed", "error": str(e),
                     "path": str(src)}
+        app = next((p for p in out.glob("*.app")), None)
+        if app is None:                          # 旧版这里指路 extracted/ 目录并报成功
+            log.warning("更新包里没有 .app：%s", src)
+            return {"ok": False, "reason": "unpack_failed",
+                    "error": "no .app in archive", "path": str(src)}
+        bundle = current_bundle()
+        if bundle is None:                       # 裸二进制等非 .app 布局：维持旧版行为
+            _reveal(app)
+            return {"ok": True, "in_place": False, "path": str(app), "restart": False}
+        _set(phase="applying")
+        try:
+            old = _swap_bundle(app, bundle)
+        except OSError as e:
+            log.warning("就地替换失败（%s）：%s", bundle, e)
+            _set(phase="ready", error=str(e))
+            _reveal(app)
+            return {"ok": False, "reason": "not_writable", "error": str(e),
+                    "path": str(app)}
+        log.info("已替换 bundle：%s（旧版留在 %s，下次启动清理）", bundle, old.name)
+        _set(phase="idle", has_update=False, path=None, latest=None, asset=None)
+        threading.Timer(1.0, _relaunch, args=(current_exe(), restore_fn)).start()
+        return {"ok": True, "in_place": True, "restart": True, "path": str(bundle)}
     cur = current_exe()
     assert cur is not None                        # preflight 已确认冻结态
     _set(phase="applying")

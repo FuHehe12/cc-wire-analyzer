@@ -376,6 +376,94 @@ else:
     ok(not bcur.is_symlink(),
        "反证：zipfile 把符号链接解成普通文件（260919 根因，ditto 不可替代）")
 
+print("\n[11] macOS bundle 就地替换与回滚（260919）")
+if sys.platform != "darwin":
+    ok(True, "非 darwin：跳过（bundle 替换只在 mac 走）")
+else:
+    bs = TMP / "bundleswap"
+    bs.mkdir(exist_ok=True)
+
+    def mk_bundle(root: Path, marker: str) -> Path:
+        fw = root / "Contents" / "Frameworks" / "Python.framework" / "Versions"
+        fw.mkdir(parents=True, exist_ok=True)
+        (fw / "3.11").mkdir(exist_ok=True)
+        (fw / "3.11" / "Python").write_bytes(marker.encode())
+        (fw / "Current").symlink_to("3.11")
+        return root
+
+    cur = mk_bundle(bs / "cc-wire-analyzer.app", "OLD")
+    new = mk_bundle(bs / "new.app", "NEW")
+    old = U._swap_bundle(new, cur)
+    curpy = cur / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "3.11" / "Python"
+    oldpy = old / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "3.11" / "Python"
+    ok(curpy.read_bytes() == b"NEW", "新 bundle 就位（在原路径，别名/LaunchServices 记录不失效）")
+    ok(old.exists() and oldpy.read_bytes() == b"OLD", "旧 bundle 改名留在原地")
+    ok(not (bs / "cc-wire-analyzer.app.new").exists(), "中转目录已消费掉")
+    ok((cur / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "Current").is_symlink(),
+       "换入的 bundle 符号链接完好（签名不破，双击能启动）")
+
+    # 跨卷分支：让第一次 os.replace 抛 OSError，强制走 copytree(symlinks=True)。
+    shutil.rmtree(old)
+    new2 = mk_bundle(bs / "new2.app", "NEW2")
+    real_replace2, calls2 = os.replace, {"n": 0}
+
+    def exdev_first(a, b):
+        calls2["n"] += 1
+        if calls2["n"] == 1:                     # 第 1 步 new→staging 模拟跨卷 EXDEV
+            raise OSError(18, "Cross-device link")
+        return real_replace2(a, b)
+
+    os.replace = exdev_first
+    try:
+        old2 = U._swap_bundle(new2, cur)
+    finally:
+        os.replace = real_replace2
+    ok(curpy.read_bytes() == b"NEW2", "跨卷时复制就位（copytree 回落可用）")
+    ok(old2.exists() and (old2 / "Contents" / "Frameworks" / "Python.framework"
+                          / "Versions" / "Current").is_symlink(),
+       "跨卷复制保住符号链接（symlinks=True，签名不破）")
+
+    # 回滚：第 3 步（staging→cur）失败，断言用户的 bundle 原封不动地回来。
+    shutil.rmtree(old2)
+    new3 = mk_bundle(bs / "new3.app", "NEW3")
+    real_replace3, calls3 = os.replace, {"n": 0}
+
+    def flaky3(a, b):
+        calls3["n"] += 1
+        if calls3["n"] == 3:                     # 1=new→staging 2=cur→old 3=staging→cur
+            raise OSError("模拟：第三步失败")
+        return real_replace3(a, b)
+
+    os.replace = flaky3
+    try:
+        U._swap_bundle(new3, cur)
+        ok(False, "第三步失败必须抛出")
+    except OSError:
+        ok(True, "第三步失败会抛出")
+    finally:
+        os.replace = real_replace3
+    ok(curpy.read_bytes() == b"NEW2",
+       "回滚：替换失败后 bundle 原封不动地回来（不回滚 = 用户的程序凭空消失）")
+    ok(not (bs / "cc-wire-analyzer.app.new").exists(), "回滚后不留中转目录")
+
+    # bundle 解析：冻结态 + .app 布局 → 根；非 .app 布局 → None（回落 Finder 指路）
+    sys.frozen = True                            # type: ignore[attr-defined]
+    real_exe = sys.executable
+    try:
+        sys.executable = str(bs / "cc-wire-analyzer.app" / "Contents" / "MacOS" / "cc-wire-analyzer")
+        # current_bundle 内部会 resolve（/var → /private/var 是符号链接），期望值同样 resolve 后再比
+        ok(U.current_bundle() == (bs / "cc-wire-analyzer.app").resolve(),
+           ".app 布局解析出 bundle 根")
+        sys.executable = str(bs / "cc-wire-analyzer")
+        ok(U.current_bundle() is None, "裸二进制布局解析为 None（apply 回落 Finder 指路）")
+        sys.executable = str(bs / "cc-wire-analyzer.app" / "Contents" / "MacOS" / "cc-wire-analyzer")
+        (bs / "cc-wire-analyzer.app.old").mkdir(exist_ok=True)
+        (bs / "cc-wire-analyzer.app.new").mkdir(exist_ok=True)
+        ok(U.cleanup_leftovers() >= 2, "启动时清掉上次更新的 .app.old / .app.new 目录")
+    finally:
+        sys.executable = real_exe
+        del sys.frozen                           # type: ignore[attr-defined]
+
 print()
 if FAILED:
     print(f"[FAILED] {len(FAILED)} 条断言未通过：")
